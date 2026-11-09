@@ -92,12 +92,15 @@ export const logMember = (log: PointLog) =>
 
 export const logPoints = (log: PointLog) => Math.abs(Number(log.amount) || 0);
 
+/** Points taken off: redemptions and staff deductions (`adjusted`, stored negative). */
+export const isDebit = (log: PointLog) => isRedemption(log) || Number(log.amount) < 0;
+
 /** A points movement for the activity lists. */
 export const logEntry = (log: PointLog) => ({
   member: logMember(log),
-  delta: `${isRedemption(log) ? '-' : '+'}${pointsLabel(logPoints(log))}`,
-  positive: !isRedemption(log),
-  reason: log.reason || (isRedemption(log) ? 'Points redeemed' : 'Points earned'),
+  delta: `${isDebit(log) ? '-' : '+'}${pointsLabel(logPoints(log))}`,
+  positive: !isDebit(log),
+  reason: log.reason || (isRedemption(log) ? 'Points redeemed' : isDebit(log) ? 'Points deducted' : 'Points earned'),
   date: whenLabel(log.createdAt),
   branch: log.branch?.name ?? '',
 });

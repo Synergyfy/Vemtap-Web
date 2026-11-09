@@ -1,7 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
-import { GivePointsModal } from '../../components/GivePointsModal';
-import { AssignPointsModal } from '../../components/AssignPointsModal';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { EnterpriseShell } from './EnterpriseShell';
 import { hasApiConfig } from '../../services/api/client';
@@ -19,6 +17,13 @@ import {
   statChange,
   statValue,
 } from '../loyaltyLive';
+import {
+  LOYALTY_TIERS,
+  tierBadgeClass,
+  useLoyaltyDesk,
+  type DeskMember,
+  type LoyaltyTierFilter,
+} from '../../hooks/business/useLoyaltyDesk';
 
 interface DesktopLoyaltyProgrammeScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -71,13 +76,12 @@ const EARNING_RULES = [
 const BAR_WIDTHS = ['w-1', 'w-2', 'w-0.5', 'w-1.5', 'w-3', 'w-1', 'w-0.5', 'w-2', 'w-1.5', 'w-1', 'w-2.5', 'w-0.5', 'w-1', 'w-2', 'w-1.5'];
 
 export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopLoyaltyProgrammeScreenProps) {
+  const [activeTab, setActiveTab] = useState<'picker' | 'give-points' | 'programme' | 'products' | 'activity'>('picker');
   const [enabled, setEnabled] = useState(true);
   const [ruleToggles, setRuleToggles] = useState<boolean[]>([true, true, true, true]);
   const [branchScope, setBranchScope] = useState<'all' | 'selected'>('all');
   const [expiryNotice, setExpiryNotice] = useState(true);
   const [passModalOpen, setPassModalOpen] = useState(false);
-  const [givePointsOpen, setGivePointsOpen] = useState(false);
-  const [assignPointsOpen, setAssignPointsOpen] = useState(false);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [toast, setToast] = useState<string | null>(null);
 
@@ -147,6 +151,144 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
         onError: (error) => showToast(apiErrorMessage(error, 'Could not update the programme.')),
       },
     );
+  };
+
+  // Rewards hub desk (live): customers and their balances, points per item, and the ledger.
+  const desk = useLoyaltyDesk();
+  const searchMember = desk.memberSearch;
+  const setSearchMember = desk.setMemberSearch;
+  const [tierFilter, setTierFilter] = useState<LoyaltyTierFilter>('all');
+  const members = desk.members;
+  const transactions = desk.transactions;
+
+  // Award modal
+  const [selectedMember, setSelectedMember] = useState<DeskMember | null>(null);
+  const [pointsDelta, setPointsDelta] = useState<number>(100);
+  const [pointsMode, setPointsMode] = useState<'award' | 'deduct'>('award');
+  const [pointsReason, setPointsReason] = useState('Counter Purchase');
+  const [isAwardModalOpen, setIsAwardModalOpen] = useState(false);
+
+  // Add customer modal
+  const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
+  const [newCustName, setNewCustName] = useState('');
+  const [newCustPhone, setNewCustPhone] = useState('');
+  const [newCustEmail, setNewCustEmail] = useState('');
+  const [newCustBonus, setNewCustBonus] = useState('100');
+
+  // Product & Service Points Assignment: steps show at once and save after a short pause.
+  const [itemEdits, setItemEdits] = useState<Record<string, number>>({});
+  const itemTimers = useRef<Record<string, number>>({});
+  const assignments = useMemo(
+    () => desk.items.map((item) => (item.id in itemEdits ? { ...item, points: itemEdits[item.id] } : item)),
+    [desk.items, itemEdits],
+  );
+  const [searchProduct, setSearchProduct] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'product' | 'service'>('all');
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkTarget, setBulkTarget] = useState<'all' | 'product' | 'service'>('all');
+  const [bulkPointsValue, setBulkPointsValue] = useState('50');
+  const [bulkSaving, setBulkSaving] = useState(false);
+
+  useEffect(() => {
+    const timers = itemTimers.current;
+    return () => Object.values(timers).forEach((timer) => window.clearTimeout(timer));
+  }, []);
+
+  // Search runs on the API; the tier pills narrow the loaded customers.
+  const filteredMembers = useMemo(
+    () => members.filter((m) => tierFilter === 'all' || m.tier === tierFilter),
+    [members, tierFilter],
+  );
+
+  const filteredAssignments = useMemo(() => {
+    return assignments.filter((item) => {
+      if (typeFilter !== 'all' && item.type !== typeFilter) return false;
+      if (searchProduct.trim()) {
+        const q = searchProduct.toLowerCase().trim();
+        return item.name.toLowerCase().includes(q) || item.category.toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }, [assignments, typeFilter, searchProduct]);
+
+  const handleOpenAwardModal = (member: DeskMember) => {
+    setSelectedMember(member);
+    setPointsDelta(100);
+    setPointsMode('award');
+    setPointsReason('Counter Purchase');
+    setIsAwardModalOpen(true);
+  };
+
+  const handleConfirmPoints = async () => {
+    if (!selectedMember || pointsDelta <= 0 || desk.adjusting) return;
+    if (pointsMode === 'deduct' && pointsDelta > selectedMember.points) {
+      showToast(`${selectedMember.name} has ${selectedMember.points.toLocaleString('en-US')} pts to deduct from.`);
+      return;
+    }
+    try {
+      showToast(await desk.adjustPoints(selectedMember, pointsMode, pointsDelta, pointsReason));
+      setIsAwardModalOpen(false);
+    } catch (error) {
+      showToast(apiErrorMessage(error, "Those points couldn't be updated. Please try again."));
+    }
+  };
+
+  const handleAddCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (desk.adding) return;
+    if (!newCustName.trim() || !newCustPhone.trim()) {
+      showToast('Name and phone number are required');
+      return;
+    }
+    try {
+      showToast(
+        await desk.addCustomer({
+          name: newCustName,
+          phone: newCustPhone,
+          email: newCustEmail,
+          welcomePoints: parseInt(newCustBonus, 10) || 0,
+        }),
+      );
+      setIsAddCustomerOpen(false);
+      setNewCustName('');
+      setNewCustPhone('');
+      setNewCustEmail('');
+    } catch (error) {
+      showToast(apiErrorMessage(error, "That customer couldn't be added. Please try again."));
+    }
+  };
+
+  const handleBulkAssign = async () => {
+    if (bulkSaving) return;
+    setBulkSaving(true);
+    try {
+      showToast(await desk.bulkAssign(bulkTarget, parseInt(bulkPointsValue, 10) || 0));
+      setIsBulkModalOpen(false);
+    } catch (error) {
+      showToast(apiErrorMessage(error, "Those points couldn't be assigned. Please try again."));
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  const handleUpdateItemPoints = (id: string, pts: number) => {
+    const value = Math.max(0, pts);
+    setItemEdits((prev) => ({ ...prev, [id]: value }));
+    window.clearTimeout(itemTimers.current[id]);
+    itemTimers.current[id] = window.setTimeout(() => {
+      const settle = () =>
+        setItemEdits((prev) => {
+          const { [id]: _saved, ...rest } = prev;
+          return rest;
+        });
+      desk
+        .setItemPoints(id, value)
+        .then(settle)
+        .catch((error: unknown) => {
+          settle();
+          showToast(apiErrorMessage(error, "Those points couldn't be saved. Please try again."));
+        });
+    }, 600);
   };
 
   const handleSave = () => {
@@ -237,26 +379,6 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-space-sm shrink-0">
-              {live && (
-                <button
-                  type="button"
-                  onClick={() => setAssignPointsOpen(true)}
-                  className="h-[46px] px-space-md rounded-xl bg-surface-subtle text-text-primary font-button-secondary text-button-secondary inline-flex items-center gap-space-2xs active:scale-[0.98] transition-transform"
-                >
-                  <Icon name="sell" className="text-[18px] text-primary" />
-                  <span>Assign Points</span>
-                </button>
-              )}
-              {live && (
-                <button
-                  type="button"
-                  onClick={() => setGivePointsOpen(true)}
-                  className="h-[46px] px-space-md rounded-xl bg-surface-subtle text-text-primary font-button-secondary text-button-secondary inline-flex items-center gap-space-2xs active:scale-[0.98] transition-transform"
-                >
-                  <Icon name="stars" className="text-[18px] text-primary" />
-                  <span>Give Points</span>
-                </button>
-              )}
               <button
                 type="button"
                 className="h-[46px] px-space-md rounded-xl bg-surface-subtle text-text-primary font-button-secondary text-button-secondary hover:bg-surface-container transition-all flex items-center gap-space-2xs shadow-sm"
@@ -297,15 +419,47 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
           <div className="flex items-center gap-space-xs mt-space-xs pt-space-xs overflow-x-auto">
             <button
               type="button"
-              className="px-space-md py-2.5 rounded-lg bg-primary-container text-on-primary-container font-label-md text-label-md font-semibold flex items-center gap-space-2xs shadow-sm"
+              onClick={() => setActiveTab('picker')}
+              className={`px-space-md py-2 rounded-lg font-label-md text-label-md font-semibold flex items-center gap-space-2xs transition-all ${
+                activeTab === 'picker'
+                  ? 'bg-surface-canvas text-primary shadow-xs border border-border ring-1 ring-primary/20'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-surface-subtle'
+              }`}
+            >
+              <Icon name="apps" className="text-[18px]" />
+              Hub Overview
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('give-points')}
+              className={`px-space-md py-2 rounded-lg font-label-md text-label-md font-semibold flex items-center gap-space-2xs transition-all ${
+                activeTab === 'give-points'
+                  ? 'bg-surface-canvas text-primary shadow-xs border border-border ring-1 ring-primary/20 font-bold'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-surface-subtle'
+              }`}
+            >
+              <Icon name="stars" className="text-[18px]" />
+              Give Points to Customer
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-[11px] font-bold">
+                {desk.totalMembers.toLocaleString('en-US')} Members
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('programme')}
+              className={`px-space-md py-2 rounded-lg font-label-md text-label-md font-semibold flex items-center gap-space-2xs transition-all ${
+                activeTab === 'programme'
+                  ? 'bg-surface-canvas text-primary shadow-xs border border-border ring-1 ring-primary/20 font-bold'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-surface-subtle'
+              }`}
             >
               <Icon name="tune" className="text-[18px]" />
-              Programme Configuration
+              Programme Rules &amp; Setup
             </button>
             <button
               type="button"
               onClick={onOpenRewards}
-              className="px-space-md py-2.5 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-subtle font-label-md text-label-md transition-colors flex items-center gap-space-2xs"
+              className="px-space-md py-2 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-subtle font-label-md text-label-md transition-colors flex items-center gap-space-2xs"
             >
               <Icon name="card_giftcard" className="text-[18px]" />
               Rewards Catalog
@@ -315,7 +469,27 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
             </button>
             <button
               type="button"
-              className="px-space-md py-2.5 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-subtle font-label-md text-label-md transition-colors flex items-center gap-space-2xs"
+              onClick={() => setActiveTab('products')}
+              className={`px-space-md py-2 rounded-lg font-label-md text-label-md font-semibold flex items-center gap-space-2xs transition-all ${
+                activeTab === 'products'
+                  ? 'bg-surface-canvas text-primary shadow-xs border border-border ring-1 ring-primary/20 font-bold'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-surface-subtle'
+              }`}
+            >
+              <Icon name="sell" className="text-[18px]" />
+              Product &amp; Service Points
+              <span className="ml-1 px-1.5 py-0.5 rounded-full bg-surface-container text-on-surface-variant font-caption text-[11px] font-semibold">
+                {assignments.length} Items
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('activity')}
+              className={`px-space-md py-2 rounded-lg font-label-md text-label-md font-semibold flex items-center gap-space-2xs transition-all ${
+                activeTab === 'activity'
+                  ? 'bg-surface-canvas text-primary shadow-xs border border-border ring-1 ring-primary/20 font-bold'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-surface-subtle'
+              }`}
             >
               <Icon name="receipt_long" className="text-[18px]" />
               Activity &amp; Points Ledger
@@ -325,7 +499,252 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
       </section>
 
       <div className="w-full py-space-xl">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-xl items-start">
+        {/* ========================================================================= */}
+        {/* TAB 1: HUB OVERVIEW (ACTION PICKER) */}
+        {/* ========================================================================= */}
+        {activeTab === 'picker' && (
+          <div className="flex flex-col gap-space-xl max-w-5xl">
+            {/* Quick Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-space-md">
+              <div className="bg-surface-canvas rounded-xl p-space-md shadow-sm border border-border/60">
+                <span className="font-caption text-caption text-text-secondary">Enrolled Members</span>
+                <p className="font-heading-lg text-heading-lg font-bold text-text-primary mt-1">{desk.totalMembers.toLocaleString('en-US')}</p>
+                <span className="font-caption text-[11px] text-primary font-medium">{statChange(stats.data, 'Total Customers') || 'Customers at your business'}</span>
+              </div>
+              <div className="bg-surface-canvas rounded-xl p-space-md shadow-sm border border-border/60">
+                <span className="font-caption text-caption text-text-secondary">Points Issued</span>
+                <p className="font-heading-lg text-heading-lg font-bold text-primary mt-1">{statValue(stats.data, 'Points Issued')}</p>
+                <span className="font-caption text-[11px] text-badge-discount-text font-medium">{data ? spendRuleLabel(data) : '—'}</span>
+              </div>
+              <div className="bg-surface-canvas rounded-xl p-space-md shadow-sm border border-border/60">
+                <span className="font-caption text-caption text-text-secondary">Catalog Point Rules</span>
+                <p className="font-heading-lg text-heading-lg font-bold text-text-primary mt-1">{assignments.length}</p>
+                <span className="font-caption text-[11px] text-text-tertiary">Products &amp; services</span>
+              </div>
+              <div className="bg-surface-canvas rounded-xl p-space-md shadow-sm border border-border/60">
+                <span className="font-caption text-caption text-text-secondary">Active Rewards</span>
+                <p className="font-heading-lg text-heading-lg font-bold text-badge-discount-text mt-1">{activeRewards}</p>
+                <span className="font-caption text-[11px] text-text-tertiary">Perks ready to redeem</span>
+              </div>
+            </div>
+
+            {/* Prompt Heading */}
+            <div>
+              <h2 className="font-heading-md text-heading-md text-text-primary">What would you like to do?</h2>
+              <p className="font-body-md text-body-md text-text-secondary mt-1">
+                Choose an action below to award points to a visiting customer or configure the loyalty program rules and product rewards.
+              </p>
+            </div>
+
+            {/* 2 Main Action Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-space-lg">
+              {/* Option 1: Give Points to Customer */}
+              <div className="bg-surface-canvas rounded-2xl p-space-lg border border-primary/30 shadow-md flex flex-col justify-between gap-space-md hover:shadow-lg transition-all group">
+                <div className="flex flex-col gap-space-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="w-12 h-12 rounded-xl bg-primary text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                      <Icon name="stars" className="text-[28px]" />
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full bg-surface-tint-blue text-primary font-caption text-[11px] font-bold">
+                      Customer Desk
+                    </span>
+                  </div>
+                  <h3 className="font-heading-sm text-heading-sm text-text-primary mt-2">Give Points to Customer</h3>
+                  <p className="font-body-md text-body-md text-text-secondary">
+                    Search customer list, register new members, award purchase bonus points, deduct redemptions, and view live point balances.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('give-points')}
+                  className="h-11 px-space-lg rounded-xl bg-primary text-white font-button-primary text-button-primary font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-primary/95 active:scale-95 transition-all w-fit"
+                >
+                  <Icon name="add_circle" className="text-[18px]" />
+                  <span>Give Points to Customer →</span>
+                </button>
+              </div>
+
+              {/* Option 2: Setup Rewards & Point Rules */}
+              <div className="bg-surface-canvas rounded-2xl p-space-lg border border-border shadow-md flex flex-col justify-between gap-space-md hover:shadow-lg transition-all group">
+                <div className="flex flex-col gap-space-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="w-12 h-12 rounded-xl bg-surface-container-high text-secondary flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                      <Icon name="tune" className="text-[26px]" />
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full bg-surface-container text-on-surface-variant font-caption text-[11px] font-bold">
+                      Rules &amp; Catalog
+                    </span>
+                  </div>
+                  <h3 className="font-heading-sm text-heading-sm text-text-primary mt-2">Setup Reward &amp; Point Rules</h3>
+                  <p className="font-body-md text-body-md text-text-secondary">
+                    Configure earning formulas, manage redeemable reward perks, and assign bonus loyalty points to products and services (individually or in bulk).
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('programme')}
+                    className="h-11 px-space-md rounded-xl bg-surface-subtle text-text-primary font-button-secondary text-button-secondary font-semibold hover:bg-surface-container active:scale-95 transition-all"
+                  >
+                    Programme Rules →
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('products')}
+                    className="h-11 px-space-md rounded-xl bg-surface-tint-blue text-primary font-button-secondary text-button-secondary font-bold hover:bg-primary hover:text-white active:scale-95 transition-all"
+                  >
+                    Product &amp; Service Points →
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 2: GIVE POINTS TO CUSTOMER */}
+        {/* ========================================================================= */}
+        {activeTab === 'give-points' && (
+          <div className="flex flex-col gap-space-md max-w-6xl">
+            {/* Toolbar: Search, Filters, Add Customer Button */}
+            <div className="bg-surface-canvas rounded-xl p-space-md shadow-sm border border-border flex flex-col md:flex-row items-stretch md:items-center justify-between gap-space-md">
+              <div className="flex items-center gap-space-sm flex-1 max-w-md">
+                <div className="relative flex-1">
+                  <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-[18px]" />
+                  <input
+                    type="search"
+                    value={searchMember}
+                    onChange={(e) => setSearchMember(e.target.value)}
+                    placeholder="Search customer by name, phone or email..."
+                    className="w-full h-10 pl-9 pr-4 rounded-xl border border-border bg-surface font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-hidden focus:border-primary shadow-2xs"
+                  />
+                </div>
+              </div>
+
+              {/* Tier Filter Pills */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[
+                  { key: 'all' as LoyaltyTierFilter, label: 'All', count: members.length },
+                  ...LOYALTY_TIERS.map((name) => ({ key: name as LoyaltyTierFilter, label: name, count: members.filter((m) => m.tier === name).length })),
+                ].map((tier) => (
+                  <button
+                    key={tier.key}
+                    type="button"
+                    onClick={() => setTierFilter(tier.key)}
+                    className={`h-9 px-3 rounded-lg text-label-sm font-semibold transition-all border ${
+                      tierFilter === tier.key
+                        ? 'bg-primary text-white border-primary shadow-xs'
+                        : 'bg-surface-subtle text-text-secondary border-transparent hover:bg-surface-container'
+                    }`}
+                  >
+                    <span>{tier.label}</span>
+                    <span className="ml-1 opacity-75 text-xs">({tier.count})</span>
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() => setIsAddCustomerOpen(true)}
+                  className="h-9 px-4 rounded-lg bg-primary text-white font-label-sm font-bold flex items-center gap-1.5 shadow-sm hover:bg-primary/95 active:scale-95 transition-all ml-2"
+                >
+                  <Icon name="person_add" className="text-[16px]" />
+                  <span>+ Add Customer</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Customers Table */}
+            <div className="bg-surface-canvas rounded-xl shadow-sm border border-border overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-surface-subtle text-text-secondary font-label-sm text-[12px] uppercase tracking-wider border-b border-border">
+                      <th className="py-3 px-4">Member Name &amp; Contact</th>
+                      <th className="py-3 px-4">Club Tier</th>
+                      <th className="py-3 px-4 text-right">Points Balance</th>
+                      <th className="py-3 px-4 text-right">Total Spent</th>
+                      <th className="py-3 px-4">Last Visit</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60 text-body-md text-[13px]">
+                    {desk.membersLoading ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-text-secondary">
+                          Loading customers…
+                        </td>
+                      </tr>
+                    ) : desk.membersError ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-error">
+                          {apiErrorMessage(desk.membersError, "Couldn't load customers. Try again shortly.")}
+                        </td>
+                      </tr>
+                    ) : filteredMembers.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-text-tertiary">
+                          <Icon name="person_search" className="text-[32px] mx-auto mb-2 text-text-tertiary" />
+                          <p className="font-bold text-text-primary">
+                            {searchMember.trim() || tierFilter !== 'all' ? 'No customers match your search' : 'No customers yet'}
+                          </p>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredMembers.map((member) => (
+                        <tr key={member.id} className="hover:bg-surface-subtle/50 transition-colors">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-9 h-9 rounded-full bg-surface-tint-blue text-primary font-bold text-[12px] flex items-center justify-center shrink-0">
+                                {member.name.slice(0, 2).toUpperCase()}
+                              </div>
+                              <div>
+                                <span className="font-bold text-text-primary block">{member.name}</span>
+                                <span className="text-[11px] text-text-tertiary">{[member.phone, member.email !== member.phone ? member.email : undefined].filter(Boolean).join(' • ') || '—'}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span
+                              className={`px-2 py-0.5 rounded font-caption text-[11px] font-bold ${tierBadgeClass(member.tier)}`}
+                            >
+                              {member.tier}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-tint-blue text-primary font-bold text-[13px]">
+                              <Icon name="stars" className="text-[14px]" />
+                              {member.points.toLocaleString()} pts
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right font-medium text-text-primary">
+                            ₦{member.totalSpent.toLocaleString()}
+                          </td>
+                          <td className="py-3 px-4 text-text-secondary text-[12px]">{member.lastVisit}</td>
+                          <td className="py-3 px-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAwardModal(member)}
+                              className="h-8 px-3 rounded-lg bg-primary text-white font-label-sm text-[12px] font-semibold inline-flex items-center gap-1 shadow-xs hover:bg-primary/95 active:scale-95 transition-all"
+                            >
+                              <Icon name="add_circle" className="text-[14px]" />
+                              <span>Give Points</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 3: PROGRAMME CONFIGURATION */}
+        {/* ========================================================================= */}
+        {activeTab === 'programme' && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-xl items-start">
           <div className="lg:col-span-7 flex flex-col gap-space-xl">
             <div className="bg-surface-canvas rounded-xl shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] p-space-lg relative overflow-hidden">
               <div className="absolute -top-12 -right-12 w-44 h-44 rounded-full bg-surface-tint-blue opacity-50 blur-2xl pointer-events-none" />
@@ -776,7 +1195,513 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
             </div>
           </div>
         </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 4: PRODUCTS & SERVICES POINTS ASSIGNMENT */}
+        {/* ========================================================================= */}
+        {activeTab === 'products' && (
+          <div className="flex flex-col gap-space-lg max-w-6xl">
+            {/* Toolbar */}
+            <div className="bg-surface-canvas rounded-xl p-space-md shadow-sm border border-border flex flex-col md:flex-row items-stretch md:items-center justify-between gap-space-md">
+              <div className="flex items-center gap-space-sm flex-1 max-w-md">
+                <div className="relative flex-1">
+                  <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-[18px]" />
+                  <input
+                    type="search"
+                    value={searchProduct}
+                    onChange={(e) => setSearchProduct(e.target.value)}
+                    placeholder="Search product or service in catalog..."
+                    className="w-full h-10 pl-9 pr-4 rounded-xl border border-border bg-surface font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-hidden focus:border-primary shadow-2xs"
+                  />
+                </div>
+              </div>
+
+              {/* Type Filter & Bulk Assign Action */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {[
+                  { key: 'all' as const, label: 'All Items' },
+                  { key: 'product' as const, label: 'Products Only' },
+                  { key: 'service' as const, label: 'Services Only' },
+                ].map((tf) => (
+                  <button
+                    key={tf.key}
+                    type="button"
+                    onClick={() => setTypeFilter(tf.key)}
+                    className={`h-9 px-3.5 rounded-lg text-label-sm font-semibold transition-all border ${
+                      typeFilter === tf.key
+                        ? 'bg-primary text-white border-primary shadow-xs'
+                        : 'bg-surface-subtle text-text-secondary border-transparent hover:bg-surface-container'
+                    }`}
+                  >
+                    {tf.label}
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() => setIsBulkModalOpen(true)}
+                  className="h-9 px-4 rounded-lg bg-surface-tint-blue text-primary border border-primary/30 font-label-sm font-bold flex items-center gap-1.5 shadow-xs hover:bg-primary hover:text-white active:scale-95 transition-all ml-2"
+                >
+                  <Icon name="auto_awesome" className="text-[16px]" />
+                  <span>Bulk Assign Points</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Catalog Items Table */}
+            <div className="bg-surface-canvas rounded-xl shadow-sm border border-border overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-surface-subtle text-text-secondary font-label-sm text-[12px] uppercase tracking-wider border-b border-border">
+                      <th className="py-3 px-4">Item Name &amp; Category</th>
+                      <th className="py-3 px-4">Type</th>
+                      <th className="py-3 px-4 text-right">Retail Price</th>
+                      <th className="py-3 px-4 text-right">Loyalty Points Awarded</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60 text-body-md text-[13px]">
+                    {(desk.itemsLoading || desk.itemsError || filteredAssignments.length === 0) && (
+                      <tr>
+                        <td colSpan={4} className={`py-12 text-center ${desk.itemsError ? 'text-error' : 'text-text-tertiary'}`}>
+                          {desk.itemsLoading
+                            ? 'Loading your catalogue…'
+                            : desk.itemsError
+                              ? apiErrorMessage(desk.itemsError, "Couldn't load your products and services.")
+                              : assignments.length
+                                ? 'No products or services match your search'
+                                : 'Add products or services to your catalogue to give them points'}
+                        </td>
+                      </tr>
+                    )}
+                    {filteredAssignments.map((item) => (
+                      <tr key={item.id} className="hover:bg-surface-subtle/50 transition-colors">
+                        <td className="py-3 px-4">
+                          <span className="font-bold text-text-primary block">{item.name}</span>
+                          <span className="text-[11px] text-text-tertiary">{item.category}</span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span
+                            className={`px-2 py-0.5 rounded font-caption text-[11px] font-bold uppercase ${
+                              item.type === 'service'
+                                ? 'bg-tertiary-fixed text-tertiary'
+                                : 'bg-surface-tint-blue text-primary'
+                            }`}
+                          >
+                            {item.type}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right font-semibold text-text-primary">
+                          ₦{item.price.toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <div className="inline-flex items-center gap-2">
+                            <div className="flex items-center border border-border rounded-lg bg-surface-container-lowest overflow-hidden">
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateItemPoints(item.id, item.points - 5)}
+                                className="w-7 h-7 flex items-center justify-center text-text-secondary hover:bg-surface-container active:scale-95"
+                              >
+                                -
+                              </button>
+                              <span className="w-12 text-center text-label-sm font-bold text-primary">
+                                {item.points}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateItemPoints(item.id, item.points + 5)}
+                                className="w-7 h-7 flex items-center justify-center text-text-secondary hover:bg-surface-container active:scale-95"
+                              >
+                                +
+                              </button>
+                            </div>
+                            <span className="text-[11px] text-text-tertiary font-medium">pts</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 5: ACTIVITY & POINTS LEDGER */}
+        {/* ========================================================================= */}
+        {activeTab === 'activity' && (
+          <div className="flex flex-col gap-space-lg max-w-6xl">
+            <div className="bg-surface-canvas rounded-xl shadow-sm border border-border overflow-hidden">
+              <div className="p-space-md border-b border-border flex items-center justify-between">
+                <div>
+                  <h3 className="font-heading-sm text-heading-sm text-text-primary">Points Transaction Ledger</h3>
+                  <p className="font-caption text-caption text-text-secondary">
+                    Real-time log of customer points awarded and redeemed across all stations
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-bold">
+                  Latest {transactions.length} Ledger Events
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-surface-subtle text-text-secondary font-label-sm text-[12px] uppercase tracking-wider border-b border-border">
+                      <th className="py-3 px-4">Tx ID</th>
+                      <th className="py-3 px-4">Member Name</th>
+                      <th className="py-3 px-4">Points Delta</th>
+                      <th className="py-3 px-4">Reason / Notes</th>
+                      <th className="py-3 px-4">Branch</th>
+                      <th className="py-3 px-4 text-right">Timestamp</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60 text-body-md text-[13px]">
+                    {transactions.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-text-tertiary">
+                          {desk.transactionsLoading ? 'Loading points activity…' : 'No points have been earned or redeemed yet'}
+                        </td>
+                      </tr>
+                    )}
+                    {transactions.map((tx) => (
+                      <tr key={tx.id} className="hover:bg-surface-subtle/50 transition-colors">
+                        <td className="py-3 px-4 font-mono text-[11px] text-text-tertiary font-bold">{tx.id.slice(0, 8).toUpperCase()}</td>
+                        <td className="py-3 px-4 font-bold text-text-primary">{tx.memberName}</td>
+                        <td className="py-3 px-4">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full font-bold text-[12px] ${
+                              tx.points > 0
+                                ? 'bg-badge-discount-bg text-badge-discount-text'
+                                : 'bg-error-container text-on-error-container'
+                            }`}
+                          >
+                            {tx.points > 0 ? `+${tx.points.toLocaleString('en-US')}` : tx.points.toLocaleString('en-US')} pts
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-text-secondary">{tx.reason}</td>
+                        <td className="py-3 px-4 text-text-tertiary text-[12px]">{tx.branch || '—'}</td>
+                        <td className="py-3 px-4 text-right text-text-tertiary text-[12px]">{tx.date}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* ========================================================================= */}
+      {/* DESKTOP MODAL 1: AWARD / ADJUST POINTS */}
+      {/* ========================================================================= */}
+      {isAwardModalOpen && selectedMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs" onClick={() => setIsAwardModalOpen(false)} />
+          <div className="relative w-full max-w-md bg-surface-canvas rounded-2xl shadow-2xl border border-border p-6 flex flex-col gap-4 z-10 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Icon name="stars" className="text-[22px] text-primary" />
+                <h3 className="font-heading-sm text-heading-sm text-text-primary">Award Customer Points</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAwardModalOpen(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-text-tertiary hover:bg-surface-container"
+              >
+                <Icon name="close" className="text-[18px]" />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-surface-tint-blue/30 border border-primary/20 flex items-center justify-between">
+              <div>
+                <p className="font-bold text-text-primary">{selectedMember.name}</p>
+                <span className="text-xs text-text-tertiary">{selectedMember.phone || '—'}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-xs text-text-tertiary block">Current Points Balance</span>
+                <span className="font-heading-sm text-heading-sm font-bold text-primary">{selectedMember.points.toLocaleString()} pts</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 p-1 rounded-xl bg-surface-container-low">
+              <button
+                type="button"
+                onClick={() => setPointsMode('award')}
+                className={`py-2 rounded-lg font-label-md text-label-md font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  pointsMode === 'award'
+                    ? 'bg-primary text-white shadow-xs'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                <Icon name="add" className="text-[16px]" />
+                <span>Give Points (+)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPointsMode('deduct')}
+                className={`py-2 rounded-lg font-label-md text-label-md font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  pointsMode === 'deduct'
+                    ? 'bg-error text-white shadow-xs'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                <Icon name="remove" className="text-[16px]" />
+                <span>Deduct Points (-)</span>
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <span className="font-caption text-caption text-text-tertiary uppercase font-bold">Quick Select Points</span>
+              <div className="grid grid-cols-4 gap-2">
+                {[50, 100, 250, 500].map((amt) => (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => setPointsDelta(amt)}
+                    className={`py-2 rounded-xl text-label-md font-bold border transition-all ${
+                      pointsDelta === amt
+                        ? 'bg-surface-tint-blue text-primary border-primary'
+                        : 'bg-surface-container-lowest text-text-secondary border-border hover:bg-surface-container'
+                    }`}
+                  >
+                    +{amt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <span className="font-label-md text-label-md text-text-primary font-medium">Custom Amount:</span>
+              <input
+                type="number"
+                min="1"
+                value={pointsDelta}
+                onChange={(e) => setPointsDelta(Math.max(1, parseInt(e.target.value, 10) || 0))}
+                className="w-28 h-9 px-3 rounded-lg border border-border bg-surface-canvas font-heading-sm text-[15px] font-bold text-text-primary text-center focus:outline-hidden focus:border-primary"
+              />
+              <span className="font-label-md text-label-md text-text-tertiary font-bold">points</span>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <span className="font-caption text-caption text-text-tertiary uppercase font-bold">Reason / Notes</span>
+              <select
+                value={pointsReason}
+                onChange={(e) => setPointsReason(e.target.value)}
+                className="w-full h-10 px-3 rounded-xl border border-border bg-surface-canvas text-body-md text-text-primary focus:outline-hidden focus:border-primary"
+              >
+                <option value="Counter Purchase">Counter Purchase</option>
+                <option value="Referral Reward">Referral Reward</option>
+                <option value="Birthday Bonus">Birthday Surprise Bonus</option>
+                <option value="Review Bonus">Verified Review Bonus</option>
+                <option value="Goodwill Perk">Goodwill Customer Perk</option>
+                <option value="Manual Adjustment">Manual Staff Adjustment</option>
+              </select>
+            </div>
+
+            <div className="p-3 rounded-xl bg-surface-subtle text-body-md flex items-center justify-between text-text-secondary">
+              <span>New balance preview:</span>
+              <span className="font-bold text-text-primary">
+                {selectedMember.points} →{' '}
+                <span className="text-primary font-extrabold text-[15px]">
+                  {Math.max(0, selectedMember.points + (pointsMode === 'award' ? pointsDelta : -pointsDelta)).toLocaleString()} pts
+                </span>
+              </span>
+            </div>
+
+            <div className="pt-2 flex items-center gap-3 border-t border-border mt-1">
+              <button
+                type="button"
+                onClick={() => setIsAwardModalOpen(false)}
+                className="flex-1 h-10 rounded-xl border border-border text-label-md font-semibold text-text-secondary hover:bg-surface-container"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmPoints()}
+                disabled={desk.adjusting}
+                className="flex-1 h-10 rounded-xl bg-primary text-white text-label-md font-bold shadow-sm hover:bg-primary/95 active:scale-95 transition-all disabled:opacity-60"
+              >
+                {desk.adjusting ? 'Updating…' : <>Confirm &amp; Update Points</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* DESKTOP MODAL 2: ADD NEW CUSTOMER */}
+      {/* ========================================================================= */}
+      {isAddCustomerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs" onClick={() => setIsAddCustomerOpen(false)} />
+          <form
+            onSubmit={(e) => void handleAddCustomer(e)}
+            className="relative w-full max-w-md bg-surface-canvas rounded-2xl shadow-2xl border border-border p-6 flex flex-col gap-4 z-10 animate-in zoom-in-95 duration-150"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Icon name="person_add" className="text-[22px] text-primary" />
+                <h3 className="font-heading-sm text-heading-sm text-text-primary">Register Loyalty Member</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddCustomerOpen(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-text-tertiary hover:bg-surface-container"
+              >
+                <Icon name="close" className="text-[18px]" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="font-caption text-caption text-text-tertiary uppercase font-bold">Full Name *</label>
+              <input
+                type="text"
+                required
+                value={newCustName}
+                onChange={(e) => setNewCustName(e.target.value)}
+                placeholder="e.g. Amina Bello"
+                className="w-full h-10 px-3 rounded-xl border border-border bg-surface-canvas text-body-md text-text-primary focus:outline-hidden focus:border-primary"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="font-caption text-caption text-text-tertiary uppercase font-bold">Phone Number *</label>
+              <input
+                type="tel"
+                required
+                value={newCustPhone}
+                onChange={(e) => setNewCustPhone(e.target.value)}
+                placeholder="e.g. 0803 456 7890"
+                className="w-full h-10 px-3 rounded-xl border border-border bg-surface-canvas text-body-md text-text-primary focus:outline-hidden focus:border-primary"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="font-caption text-caption text-text-tertiary uppercase font-bold">Email (Optional)</label>
+              <input
+                type="email"
+                value={newCustEmail}
+                onChange={(e) => setNewCustEmail(e.target.value)}
+                placeholder="e.g. amina@example.com"
+                className="w-full h-10 px-3 rounded-xl border border-border bg-surface-canvas text-body-md text-text-primary focus:outline-hidden focus:border-primary"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <span className="font-caption text-caption text-text-tertiary uppercase font-bold">Tier</span>
+                <div className="w-full h-10 px-3 rounded-xl border border-border bg-surface-subtle text-body-md text-text-secondary flex items-center">
+                  Set by points balance
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="font-caption text-caption text-text-tertiary uppercase font-bold">Welcome Points</label>
+                <input
+                  type="number"
+                  value={newCustBonus}
+                  onChange={(e) => setNewCustBonus(e.target.value)}
+                  placeholder="100"
+                  className="w-full h-10 px-3 rounded-xl border border-border bg-surface-canvas text-body-md text-text-primary focus:outline-hidden focus:border-primary"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center gap-3 border-t border-border mt-1">
+              <button
+                type="button"
+                onClick={() => setIsAddCustomerOpen(false)}
+                className="flex-1 h-10 rounded-xl border border-border text-label-md font-semibold text-text-secondary hover:bg-surface-container"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={desk.adding}
+                className="flex-1 h-10 rounded-xl bg-primary text-white text-label-md font-bold shadow-sm hover:bg-primary/95 active:scale-95 transition-all disabled:opacity-60"
+              >
+                {desk.adding ? 'Saving…' : <>Save Member &amp; Award Points</>}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* DESKTOP MODAL 3: BULK ASSIGN POINTS */}
+      {/* ========================================================================= */}
+      {isBulkModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs" onClick={() => setIsBulkModalOpen(false)} />
+          <div className="relative w-full max-w-md bg-surface-canvas rounded-2xl shadow-2xl border border-border p-6 flex flex-col gap-4 z-10 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Icon name="auto_awesome" className="text-[22px] text-primary" />
+                <h3 className="font-heading-sm text-heading-sm text-text-primary">Bulk Assign Points</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBulkModalOpen(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-text-tertiary hover:bg-surface-container"
+              >
+                <Icon name="close" className="text-[18px]" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="font-caption text-caption text-text-tertiary uppercase font-bold">Apply Target Group</label>
+              <select
+                value={bulkTarget}
+                onChange={(e) => setBulkTarget(e.target.value as any)}
+                className="w-full h-10 px-3 rounded-xl border border-border bg-surface-canvas text-body-md text-text-primary focus:outline-hidden focus:border-primary"
+              >
+                <option value="all">All Items (All Products &amp; Services)</option>
+                <option value="product">Products Only</option>
+                <option value="service">Services Only</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="font-caption text-caption text-text-tertiary uppercase font-bold">Bonus Loyalty Points Per Item</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  value={bulkPointsValue}
+                  onChange={(e) => setBulkPointsValue(e.target.value)}
+                  className="w-full h-10 px-3 rounded-xl border border-border bg-surface-canvas text-heading-sm text-[16px] font-bold text-text-primary focus:outline-hidden focus:border-primary"
+                />
+                <span className="font-label-md text-label-md text-text-tertiary font-bold shrink-0">points</span>
+              </div>
+              <p className="font-caption text-caption text-text-secondary mt-1">
+                Every customer purchasing an item in this group will automatically earn this bonus amount upon order settlement.
+              </p>
+            </div>
+
+            <div className="pt-2 flex items-center gap-3 border-t border-border mt-1">
+              <button
+                type="button"
+                onClick={() => setIsBulkModalOpen(false)}
+                className="flex-1 h-10 rounded-xl border border-border text-label-md font-semibold text-text-secondary hover:bg-surface-container"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleBulkAssign()}
+                disabled={bulkSaving}
+                className="flex-1 h-10 rounded-xl bg-primary text-white text-label-md font-bold shadow-sm hover:bg-primary/95 active:scale-95 transition-all disabled:opacity-60"
+              >
+                {bulkSaving ? 'Applying…' : 'Apply to Group'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {passModalOpen && (
         <div
@@ -849,8 +1774,6 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
           {toast}
         </div>
       )}
-      <AssignPointsModal open={assignPointsOpen} onClose={() => setAssignPointsOpen(false)} onSaved={showToast} />
-      <GivePointsModal open={givePointsOpen} onClose={() => setGivePointsOpen(false)} onGiven={showToast} />
     </EnterpriseShell>
   );
 }
