@@ -244,7 +244,8 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
         </div>
       </header>
 
-      <div className="flex flex-col w-full flex-1 pb-28">
+      {/* Bottom space clears the floating "Create New Deal" button (bottom-24 + 52px) so the last card's actions stay tappable. */}
+      <div className="flex flex-col w-full flex-1 pb-44">
         <div className="px-margin pt-space-md flex flex-col gap-space-sm">
           {/* Heading + New Deal */}
           <div className="flex items-center justify-between gap-space-sm">
