@@ -43,6 +43,7 @@ import {
   type ClusterBoostDurationKey,
   type ClusterBoostPaymentMethod,
 } from './clusterBoostData';
+import { usePaymentMode } from '../hooks/usePaymentMode';
 import { hasApiConfig } from '../services/api/client';
 import { adWalletService } from '../services';
 import { apiErrorMessage } from '../services/errorMessages';
@@ -121,6 +122,7 @@ export function ClusterBoostFlow({
 }: ClusterBoostFlowProps) {
   const isDesktop = useIsDesktop();
   const live = hasApiConfig();
+  const paymentMode = usePaymentMode();
   const liveBoost = useLiveClusterBoost();
   const clusterState = useMemo(() => getClusterState(), []);
   const cluster = live ? liveBoost.cluster : clusterState.currentCluster;
@@ -505,10 +507,13 @@ export function ClusterBoostFlow({
           ))}
         </div>
 
-        <p className="text-[11px] text-text-secondary text-center leading-relaxed px-2">
-          Sandbox checkout — no live payment gateway is connected in this build. Performance
-          metrics appear in My Boosts once real cluster tracking is wired.
-        </p>
+        {paymentMode === 'test' && (
+          <p className="text-[11px] text-text-secondary text-center leading-relaxed px-2">
+            {live
+              ? 'Test checkout — payments run on Paystack test mode, so no real money moved.'
+              : 'Sandbox checkout — no live payment gateway is connected in this build. Performance metrics appear in My Boosts once real cluster tracking is wired.'}
+          </p>
+        )}
 
         <div className="flex flex-col sm:flex-row gap-2">
           <button
@@ -1150,7 +1155,7 @@ export function ClusterBoostFlow({
                     + {formatNaira(amount)}
                   </button>
                 ))}
-                <span className="self-center text-[10px] text-text-secondary">Demo top-up</span>
+                {!live && <span className="self-center text-[10px] text-text-secondary">Demo top-up</span>}
               </div>
             )}
           </div>
@@ -1160,11 +1165,14 @@ export function ClusterBoostFlow({
           <div className="p-3 rounded-xl bg-surface-canvas border border-border-subtle space-y-1">
             <div className="flex items-center gap-2">
               <Icon name="lock" className="text-[15px] text-emerald-600" />
-              <p className="text-xs font-semibold text-text-primary">Secure sandbox checkout</p>
+              <p className="text-xs font-semibold text-text-primary">
+                {paymentMode === 'test' ? 'Secure sandbox checkout' : 'Secure checkout by Paystack'}
+              </p>
             </div>
             <p className="text-[11px] text-text-secondary leading-relaxed">
-              The existing Paystack integration runs in test mode in this build — no live card is
-              ever charged and no card details are collected here.
+              {paymentMode === 'test'
+                ? 'Paystack runs in test mode — no real card is charged and no card details are collected here.'
+                : 'You’ll enter your card on Paystack’s secure page — Vemtap never sees or stores your card details.'}
             </p>
           </div>
         )}

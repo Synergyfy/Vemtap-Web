@@ -266,7 +266,7 @@ export function DesktopLoyaltyRewardsScreen({ onNav, onOpenProgramme }: DesktopL
             .map((part) => part[0]?.toUpperCase())
             .join(''),
           name: entry.member,
-          tier: entry.positive ? 'Earned' : 'Redeemed',
+          tier: entry.positive ? 'Earned' : isRedemption(log) ? 'Redeemed' : 'Deducted',
           entry: `${entry.delta} pts · ${entry.reason}`,
           time: entry.date,
           meta: entry.branch || '—',
