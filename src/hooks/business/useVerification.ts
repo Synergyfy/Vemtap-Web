@@ -155,7 +155,10 @@ const shortDate = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : null;
 
 const checkSummary = (check?: VerificationCheck | null) => ({
-  label: check ? CHECK_LABEL[check.status] : 'Not started',
+  /** False until the owner has sent this check in. */
+  submitted: Boolean(check),
+  status: check?.status ?? null,
+  label: check ? CHECK_LABEL[check.status] : 'Not submitted',
   ok: check?.status === 'verified',
   name: check?.recordName ?? null,
   ref: check?.maskedId ?? null,
@@ -163,6 +166,8 @@ const checkSummary = (check?: VerificationCheck | null) => ({
   note: check ? (reasonCopy(check.reasons)[0] ?? null) : null,
   date: shortDate(check?.reviewedAt ?? check?.createdAt),
 });
+
+export type VerificationCheckSummary = ReturnType<typeof checkSummary>;
 
 /**
  * Display values for the verification status center, from `GET /verification/status`
@@ -175,14 +180,46 @@ export function useVerificationSummary() {
   const data = live ? status.data : undefined;
   const identity = checkSummary(data?.identity);
   const registration = checkSummary(data?.business);
+  const verified = data?.isVerified ?? false;
+  const biz = business.data;
+  const locations = (biz?.branches ?? [])
+    .filter((branch) => branch.isActive !== false)
+    .map((branch) => ({
+      id: branch.id,
+      name: branch.name,
+      isMain: Boolean(branch.isMainBranch),
+      address: [branch.address, branch.city].filter(Boolean).join(', ') || null,
+    }));
+  const submitted = identity.submitted || registration.submitted;
+  // Nothing sent in yet reads "Not started", never "In progress".
+  const progressLabel = verified
+    ? 'Compliant'
+    : !submitted
+      ? 'Not started'
+      : data?.status === 'rejected'
+        ? 'Action needed'
+        : data?.status === 'needs_review'
+          ? 'Under review'
+          : 'In progress';
   return {
     live,
     loading: live && status.isLoading,
     businessName: business.data?.name ?? 'Your business',
-    verified: data?.isVerified ?? false,
-    statusLabel: data ? STATUS_LABEL[data.status] : 'Checking status…',
+    verified,
+    submitted,
+    progressLabel,
+    statusLabel: data ? (submitted || verified ? STATUS_LABEL[data.status] : STATUS_LABEL.unverified) : 'Checking status…',
     lastVerified: shortDate(data?.verifiedAt),
     checksVerified: Number(identity.ok) + Number(registration.ok),
+    /** Cover photo, else logo; null shows the storefront icon. */
+    image: biz?.coverImage || biz?.logoUrl || null,
+    /** Active branches from `GET /businesses/my-business`. */
+    locations,
+    locationsLoading: live && business.isLoading,
+    suspended: biz?.status === 'suspended',
+    suspensionReason: biz?.suspensionReason ?? null,
+    /** The business's Vemtap code, shown as its credential reference. */
+    credentialRef: biz?.uniqueCode ?? null,
     identity,
     registration,
   };

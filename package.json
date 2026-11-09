@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "dev:lan": "vite --mode lan",
-    "build": "vite build",
+    "dev": "node init && vite",
+    "dev:lan": "node init && vite --mode lan",
+    "build": "node init && vite build",
     "typecheck": "tsc",
     "preview": "vite preview"
   },

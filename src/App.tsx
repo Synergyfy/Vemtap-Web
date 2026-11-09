@@ -3225,6 +3225,36 @@ function AppInner() {
     }
   };
 
+  /**
+   * Any sign-in: an account that left business setup half way reopens it on the
+   * page after the last one completed, instead of the customer feed. Business
+   * sign-up keeps the account a customer until its first Business Profile save,
+   * so a customer with a saved run resumes too — without the account choice,
+   * since signing in has just confirmed this identity (and its PIN, kept in
+   * memory for the upgrade on the next save). Resolves true when it routed.
+   */
+  const resumeUnfinishedSetupAfterSignIn = async (user?: SessionUser | null, pin?: string) => {
+    if (!hasApiConfig() || !user) return false;
+    const business = Boolean(user.businessRole) || isBusinessRole(user.role);
+    const customer = user.role === 'Customer' || user.role === 'USER';
+    // Admins and agents have no business setup to resume.
+    if (!business && !customer) return false;
+    const saved = await hydrateBusinessSetupFromServer();
+    if (!hasUnfinishedBusinessSetup(saved)) return false;
+    if (business) {
+      await continueBusinessAfterSignIn(user);
+      return true;
+    }
+    rememberUpgradePin(pin ?? null);
+    setBusinessOnboardingFrom('home');
+    setAuthIntent('customer');
+    resumeAtBusinessProfile();
+    // The onboarding access check would reopen the account choice; it was just answered.
+    setAccessChecked('business-onboarding');
+    setRoute('business-onboarding');
+    return true;
+  };
+
   // The session has loaded: a customer (or an owner on a customer token) stays on
   // home; a business token goes back through the same choice as signing in.
   useEffect(() => {
@@ -3360,6 +3390,8 @@ function AppInner() {
           await continueBusinessAfterSignIn(user);
           return;
         }
+        // Setup left half way (customer or owner) reopens where it stopped.
+        if (!isNew && (await resumeUnfinishedSetupAfterSignIn(user))) return;
         if (business && user?.businessId && !isNew) {
           await routeSignedInOwner(user);
           return;
@@ -3612,6 +3644,8 @@ function AppInner() {
                 await continueBusinessAfterSignIn(user);
                 return;
               }
+              // Setup left half way (customer or owner) reopens where it stopped.
+              if (await resumeUnfinishedSetupAfterSignIn(user, password)) return;
               if (isBusinessRole(user?.role)) {
                 await routeSignedInOwner(user);
                 return;
@@ -3662,6 +3696,8 @@ function AppInner() {
               await continueBusinessAfterSignIn(user);
               return;
             }
+            // Setup left half way (customer or owner) reopens where it stopped.
+            if (await resumeUnfinishedSetupAfterSignIn(user, password)) return;
             if (isBusinessRole(user?.role)) {
               await routeSignedInOwner(user);
               return;
@@ -5634,12 +5670,14 @@ function AppInner() {
             onNav={businessPortalNav}
             onBack={() => setRoute('business-overview')}
             onUpdateInfo={() => setRoute('business-verification')}
+            onManageLocations={() => setRoute('hub-locations')}
           />
         );
       return (
         <VerificationStatusCenterScreen
           onBack={() => setRoute('business-overview')}
           onUpdateInfo={() => setRoute('business-verification')}
+          onManageLocations={() => setRoute('hub-locations')}
         />
       );
 

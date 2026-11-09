@@ -246,7 +246,11 @@ export async function uploadFile<TResponse>(path: string, file: File, field = 'f
     const headers: Record<string, string> = {};
     const accessToken = getAccessToken();
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-    return fetch(buildUrl(path), { method: 'POST', headers, body: form });
+    // A body the API's proxy rejects (413) or a dropped connection reaches the
+    // browser only as an opaque network error ("Failed to fetch").
+    return fetch(buildUrl(path), { method: 'POST', headers, body: form }).catch(() => {
+      throw new Error("The upload couldn't reach Vemtap. Check your connection, or try a smaller file.");
+    });
   };
   let response = await send();
   if (response.status === 401 && (await renewSession())) response = await send();
