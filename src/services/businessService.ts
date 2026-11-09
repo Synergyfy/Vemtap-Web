@@ -29,6 +29,9 @@ export interface MyBusiness {
   uniqueCode?: string | null;
   description?: string | null;
   verificationStatus?: string | null;
+  /** `suspended` when the platform has paused the storefront. */
+  status?: 'active' | 'pending' | 'suspended' | null;
+  suspensionReason?: string | null;
   isVisible?: boolean | null;
   category?: { id?: string; name?: string | null } | null;
   subcategory?: { id?: string; name?: string | null } | null;
