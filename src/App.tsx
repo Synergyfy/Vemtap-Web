@@ -5670,12 +5670,14 @@ function AppInner() {
             onNav={businessPortalNav}
             onBack={() => setRoute('business-overview')}
             onUpdateInfo={() => setRoute('business-verification')}
+            onManageLocations={() => setRoute('hub-locations')}
           />
         );
       return (
         <VerificationStatusCenterScreen
           onBack={() => setRoute('business-overview')}
           onUpdateInfo={() => setRoute('business-verification')}
+          onManageLocations={() => setRoute('hub-locations')}
         />
       );
 

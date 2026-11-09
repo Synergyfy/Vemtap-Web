@@ -7,10 +7,12 @@ import {
 } from './verificationDraft';
 import { useVerificationSummary } from '../hooks/business/useVerification';
 import { UserAvatar } from '../components/ui/UserAvatar';
+import { VerificationCheckSheet } from '../components/sheets/VerificationCheckSheet';
 
 interface VerificationStatusCenterScreenProps {
   onBack: () => void;
   onUpdateInfo: () => void;
+  onManageLocations?: () => void;
 }
 
 const BUSINESS_IMG =
@@ -20,7 +22,7 @@ const BUSINESS_ALT =
 
 type CertificateModal = 'id' | 'cac' | null;
 
-export function VerificationStatusCenterScreen({ onBack, onUpdateInfo }: VerificationStatusCenterScreenProps) {
+export function VerificationStatusCenterScreen({ onBack, onUpdateInfo, onManageLocations }: VerificationStatusCenterScreenProps) {
   const [modal, setModal] = useState<CertificateModal>(null);
   const [letterSent, setLetterSent] = useState(false);
 
@@ -30,6 +32,8 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo }: Verific
   // Live: the real status from `GET /verification/status`; demo keeps the sample copy.
   const summary = useVerificationSummary();
   const live = summary.live;
+  const branchCount = summary.locations.length;
+  const branchWord = `${branchCount} ${branchCount === 1 ? 'Location' : 'Locations'}`;
   const pill = (ok: boolean) =>
     ok || !live ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary';
 
@@ -74,7 +78,15 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo }: Verific
               <div className="flex items-start justify-between gap-space-sm mb-space-md">
                 <div className="flex items-center gap-space-sm min-w-0">
                   <div className="relative h-14 w-14 rounded-xl overflow-hidden shadow-sm flex-shrink-0 bg-surface-container">
-                    <img alt={BUSINESS_ALT} className="w-full h-full object-cover" src={BUSINESS_IMG} />
+                    {!live ? (
+                      <img alt={BUSINESS_ALT} className="w-full h-full object-cover" src={BUSINESS_IMG} />
+                    ) : summary.image ? (
+                      <img alt={summary.businessName} className="w-full h-full object-cover" src={summary.image} />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-text-tertiary">
+                        <Icon name="storefront" className="text-[26px]" />
+                      </div>
+                    )}
                     <div className="absolute inset-0 bg-primary/5" />
                   </div>
                   <div className="min-w-0">
@@ -108,7 +120,7 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo }: Verific
                   </div>
                 </div>
                 <div className={`inline-flex items-center px-2.5 py-1 rounded-full ${pill(summary.verified)} font-label-sm text-label-sm font-semibold`}>
-                  {live ? (summary.verified ? 'Compliant' : 'In progress') : '100% Compliant'}
+                  {live ? summary.progressLabel : '100% Compliant'}
                 </div>
               </div>
               {/* Micro Trust Pillars */}
@@ -116,12 +128,16 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo }: Verific
                 <div className="flex flex-col items-center text-center p-space-2xs">
                   <Icon name="local_police" className="text-[18px] text-primary mb-1" />
                   <span className="font-caption text-caption font-semibold text-text-primary">Legal Entity</span>
-                  <span className="font-caption text-caption text-text-tertiary scale-90">Validated</span>
+                  <span className="font-caption text-caption text-text-tertiary scale-90">
+                    {!live || summary.registration.ok ? 'Validated' : summary.registration.label}
+                  </span>
                 </div>
                 <div className="flex flex-col items-center text-center p-space-2xs">
                   <Icon name="storefront" className="text-[18px] text-badge-discount-text mb-1" />
-                  <span className="font-caption text-caption font-semibold text-text-primary">2 Hubs</span>
-                  <span className="font-caption text-caption text-text-tertiary scale-90">Inspected</span>
+                  <span className="font-caption text-caption font-semibold text-text-primary">
+                    {live ? (summary.locationsLoading ? '…' : branchWord) : '2 Hubs'}
+                  </span>
+                  <span className="font-caption text-caption text-text-tertiary scale-90">{live ? 'Active' : 'Inspected'}</span>
                 </div>
                 <div className="flex flex-col items-center text-center p-space-2xs">
                   <Icon name="security" className="text-[18px] text-primary mb-1" />
@@ -228,20 +244,31 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo }: Verific
                       Physical Business Locations
                     </h3>
                     <p className="font-caption text-caption text-text-secondary mt-0.5">
-                      2 Active Branches (Apo & Wuse II)
+                      {live
+                        ? branchCount
+                          ? `${branchCount} Active ${branchCount === 1 ? 'Branch' : 'Branches'} (${summary.locations.map((branch) => branch.name).join(' & ')})`
+                          : summary.locationsLoading
+                            ? 'Loading branches…'
+                            : 'No branches added yet'
+                        : '2 Active Branches (Apo & Wuse II)'}
                     </p>
                   </div>
                 </div>
-                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold flex-shrink-0">
-                  <Icon name="check" className="text-[14px]" />
-                  Verified
+                <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full ${pill(branchCount > 0)} font-label-sm text-label-sm font-semibold flex-shrink-0`}>
+                  <Icon name={!live || branchCount ? 'check' : 'schedule'} className="text-[14px]" />
+                  {live ? (branchCount ? `${branchCount} Active` : 'None yet') : 'Verified'}
                 </span>
               </div>
-              <div className="mt-space-sm pt-space-xs flex items-center justify-between">
-                <span className="font-caption text-caption text-text-tertiary">Geofenced GPS beacon live</span>
+              <div className="mt-space-sm pt-space-xs flex items-center justify-between gap-space-sm">
+                <span className="font-caption text-caption text-text-tertiary truncate">
+                  {live
+                    ? (summary.locations.find((branch) => branch.isMain)?.address ?? summary.locations[0]?.address ?? 'Add your branch address')
+                    : 'Geofenced GPS beacon live'}
+                </span>
                 <button
-                  className="font-label-sm text-label-sm text-primary font-semibold inline-flex items-center gap-0.5 hover:underline"
+                  className="font-label-sm text-label-sm text-primary font-semibold inline-flex items-center gap-0.5 hover:underline shrink-0"
                   type="button"
+                  onClick={onManageLocations}
                 >
                   Manage Locations
                   <Icon name="chevron_right" className="text-[16px]" />
@@ -261,13 +288,22 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo }: Verific
                       <h3 className="font-label-md text-label-md text-text-primary font-semibold">
                         Storefront Standing
                       </h3>
-                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-badge-discount-bg font-label-sm text-label-sm font-semibold text-badge-discount-text">
-                        <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" />
-                        In Good Standing
-                      </span>
+                      {live && summary.suspended ? (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-error-container font-label-sm text-label-sm font-semibold text-on-error-container">
+                          <span className="w-1.5 h-1.5 rounded-full bg-error" />
+                          Suspended
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-badge-discount-bg font-label-sm text-label-sm font-semibold text-badge-discount-text">
+                          <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" />
+                          In Good Standing
+                        </span>
+                      )}
                     </div>
                     <p className="font-caption text-caption text-text-secondary mt-1 leading-snug">
-                      Full access to hyper-local discovery, instant deals, and customer passes
+                      {live && summary.suspended
+                        ? (summary.suspensionReason ?? 'Your storefront is paused. Contact Vemtap support to restore it.')
+                        : 'Full access to hyper-local discovery, instant deals, and customer passes'}
                     </p>
                   </div>
                 </div>
@@ -351,73 +387,16 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo }: Verific
           </div>
         </div>
 
-        {/* Modal / Bottom Sheet for Certificate Details */}
+        {/* Bottom Sheet for Certificate Details */}
         {modal && (
-          <div
-            className="fixed inset-0 z-50 bg-on-background/40 backdrop-blur-sm flex items-end justify-center"
-            role="dialog"
-            aria-modal="true"
-            onClick={() => setModal(null)}
-          >
-            <div
-              className="w-full max-w-lg bg-surface-container-lowest rounded-t-2xl p-space-lg shadow-2xl"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="w-12 h-1 rounded-full bg-surface-container-highest mx-auto mb-space-md" />
-              <div className="flex items-start justify-between mb-space-md">
-                <div className="flex items-center gap-space-xs">
-                  <div className="w-10 h-10 rounded-xl bg-surface-tint-blue flex items-center justify-center text-primary">
-                    <Icon name="verified_user" className="text-[24px]" />
-                  </div>
-                  <div>
-                    <h3 className="font-heading-sm text-heading-sm text-text-primary">
-                      {modal === 'id' ? 'Director Identification Proof' : 'CAC Registration Credential'}
-                    </h3>
-                    <p className="font-caption text-caption text-text-secondary">Validated on Federal Database</p>
-                  </div>
-                </div>
-                <button
-                  className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center text-text-secondary"
-                  type="button"
-                  onClick={() => setModal(null)}
-                >
-                  <Icon name="close" className="text-[18px]" />
-                </button>
-              </div>
-              {/* Certificate Preview Container */}
-              <div className="rounded-xl bg-surface-container-low p-space-md mb-space-md">
-                <div className="flex justify-between items-center pb-2 mb-2">
-                  <span className="font-caption text-caption text-text-tertiary">Registration Number</span>
-                  <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                    {draft.cacNumber}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center pb-2 mb-2">
-                  <span className="font-caption text-caption text-text-tertiary">Registered Entity</span>
-                  <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                    {draft.businessName}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center pb-2 mb-2">
-                  <span className="font-caption text-caption text-text-tertiary">Status</span>
-                  <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold flex items-center gap-1">
-                    <Icon name="check_circle" className="text-[14px]" /> Active & Verified
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="font-caption text-caption text-text-tertiary">Digital Hash</span>
-                  <span className="font-caption text-caption font-mono text-text-secondary">#vm-8492048-ng</span>
-                </div>
-              </div>
-              <button
-                className="w-full h-12 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary font-semibold active:scale-95 transition-transform"
-                type="button"
-                onClick={() => setModal(null)}
-              >
-                Done
-              </button>
-            </div>
-          </div>
+          <VerificationCheckSheet
+            kind={modal}
+            check={modal === 'cac' ? summary.registration : summary.identity}
+            live={live}
+            demo={{ cacNumber: draft.cacNumber, businessName: draft.businessName }}
+            onClose={() => setModal(null)}
+            onStart={onUpdateInfo}
+          />
         )}
       </AppScreen>
     </div>
