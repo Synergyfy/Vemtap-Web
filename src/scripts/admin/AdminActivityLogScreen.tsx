@@ -1,11 +1,14 @@
 import { useState, useMemo } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import type { AdminAuditLog } from '../../services/adminService';
+import { formatCount, NONE } from './adminLive';
+import { adminErrorMessage, useAdminAuditLogs } from './useAdminData';
 
 interface AdminActivityLogScreenProps {
   onNavigate: (path: string) => void;
 }
 
 type AuditSeverity = 'INFO' | 'WARNING' | 'CRITICAL' | 'SECURITY';
-type AuditCategory = 'ALL' | 'AUTH' | 'ESCROW' | 'KYB_COMPLIANCE' | 'SYSTEM_CONFIG' | 'DISPUTES';
 
 interface AdminActivityRecord {
   id: string;
@@ -14,7 +17,8 @@ interface AdminActivityRecord {
   adminEmail: string;
   adminRole: string;
   action: string;
-  category: Exclude<AuditCategory, 'ALL'>;
+  /** Sample categories in mock mode; the backend module (BUSINESSES, PAYMENTS…) against the API. */
+  category: string;
   severity: AuditSeverity;
   targetEntity: string;
   targetId: string;
@@ -23,6 +27,37 @@ interface AdminActivityRecord {
   location: string;
   details: string;
   hash: string;
+}
+
+const LIVE_MODULES = ['ALL', 'BUSINESSES', 'BRANCHES', 'PAYMENTS', 'SETTINGS', 'TICKETS', 'MESSAGING', 'LOYALTY', 'VISITORS', 'REPORTS'] as const;
+
+function toActivity(log: AdminAuditLog): AdminActivityRecord {
+  const actorName =
+    [log.actor?.firstName, log.actor?.lastName].filter(Boolean).join(' ').trim() || log.actor?.email || 'System';
+  const payload = log.payload ? JSON.stringify(log.payload) : '';
+  return {
+    id: log.id.slice(0, 8).toUpperCase(),
+    timestamp: new Date(log.createdAt).toLocaleString(undefined, {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }),
+    adminName: actorName,
+    adminEmail: log.actor?.email ?? NONE,
+    adminRole: log.actor?.role ?? NONE,
+    action: `${log.method} ${log.endpoint}`,
+    category: log.module,
+    severity: log.impersonationTokenId ? 'SECURITY' : log.statusCode >= 500 ? 'CRITICAL' : log.statusCode >= 400 ? 'WARNING' : 'INFO',
+    targetEntity: log.business?.name ?? log.branch?.name ?? NONE,
+    targetId: (log.businessId ?? log.branchId ?? '').slice(0, 8).toUpperCase() || NONE,
+    ipAddress: log.ipAddress ?? NONE,
+    userAgent: log.userAgent ?? NONE,
+    location: NONE,
+    details: `HTTP ${log.statusCode}${log.impersonationTokenId ? ' • while impersonating' : ''}${payload ? ` • ${payload.length > 600 ? `${payload.slice(0, 600)}…` : payload}` : ''}`,
+    hash: '',
+  };
 }
 
 const ACTIVITY_LOGS: AdminActivityRecord[] = [
@@ -148,9 +183,32 @@ const ACTIVITY_LOGS: AdminActivityRecord[] = [
 ];
 
 export function AdminActivityLogScreen({ onNavigate: _onNavigate }: AdminActivityLogScreenProps) {
-  const [logs] = useState(ACTIVITY_LOGS);
-  const [selectedLog, setSelectedLog] = useState<AdminActivityRecord>(ACTIVITY_LOGS[0]);
-  const [categoryFilter, setCategoryFilter] = useState<AuditCategory>('ALL');
+  const live = hasApiConfig();
+  const [mockLogs] = useState(ACTIVITY_LOGS);
+  const [mockSelected, setMockSelected] = useState<AdminActivityRecord>(ACTIVITY_LOGS[0]);
+  const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
+  const [page, setPage] = useState(1);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Live API: the audit trail, filtered by module on the server.
+  const logsQuery = useAdminAuditLogs({ module: live && categoryFilter !== 'ALL' ? categoryFilter : undefined, page, limit: 50 });
+  const liveLogs = useMemo(() => (logsQuery.data?.data ?? []).map(toActivity), [logsQuery.data]);
+  const logs = live ? liveLogs : mockLogs;
+  const lastPage = Math.max(1, logsQuery.data?.meta.lastPage ?? 1);
+  const selectedLog: AdminActivityRecord | undefined = live ? liveLogs.find((l) => l.id === selectedId) ?? liveLogs[0] : mockSelected;
+  const setSelectedLog = (log: AdminActivityRecord) => (live ? setSelectedId(log.id) : setMockSelected(log));
+
+  const exportCsv = () => {
+    const header = ['Time', 'Actor', 'Email', 'Role', 'Action', 'Module', 'Status', 'Target', 'IP'];
+    const rows = filteredLogs.map((l) => [l.timestamp, l.adminName, l.adminEmail, l.adminRole, l.action, l.category, l.details.split(' • ')[0], l.targetEntity, l.ipAddress]);
+    const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vemtap-admin-audit-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -161,7 +219,7 @@ export function AdminActivityLogScreen({ onNavigate: _onNavigate }: AdminActivit
 
   const filteredLogs = useMemo(() => {
     return logs.filter(log => {
-      const matchCat = categoryFilter === 'ALL' || log.category === categoryFilter;
+      const matchCat = live || categoryFilter === 'ALL' || log.category === categoryFilter;
       const matchSearch =
         log.adminName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -170,7 +228,7 @@ export function AdminActivityLogScreen({ onNavigate: _onNavigate }: AdminActivit
         log.ipAddress.toLowerCase().includes(searchQuery.toLowerCase());
       return matchCat && matchSearch;
     });
-  }, [logs, categoryFilter, searchQuery]);
+  }, [live, logs, categoryFilter, searchQuery]);
 
   return (
     <div className="space-y-6">
@@ -187,12 +245,18 @@ export function AdminActivityLogScreen({ onNavigate: _onNavigate }: AdminActivit
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
             <span className="material-symbols-outlined text-base text-[#0055c4]">receipt_long</span>
-            <span>Immutable Security Audit Ledger // WORM Compliant</span>
+            <span>{live ? 'Admin Audit Log' : 'Immutable Security Audit Ledger // WORM Compliant'}</span>
           </div>
           <h2 className="text-lg font-bold text-slate-900">Administrative Actions & System Governance Trail</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Every administrative action, financial override, and credential change is cryptographically hashed and stamped.</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {live
+              ? `${formatCount(logsQuery.data?.meta.total)} recorded actions by admins and agents.`
+              : 'Every administrative action, financial override, and credential change is cryptographically hashed and stamped.'}
+          </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+{!live && (
+<>
           <button
             onClick={() => showToast('Audit ledger signature verified against platform root key.')}
             className="px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors flex items-center gap-1.5"
@@ -200,8 +264,10 @@ export function AdminActivityLogScreen({ onNavigate: _onNavigate }: AdminActivit
             <span className="material-symbols-outlined text-sm">verified_user</span>
             <span>Verify Signature</span>
           </button>
+</>
+)}
           <button
-            onClick={() => showToast('Audit trail exported as cryptographically signed CSV.')}
+            onClick={() => (live ? exportCsv() : showToast('Audit trail exported as cryptographically signed CSV.'))}
             className="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center gap-1.5"
           >
             <span className="material-symbols-outlined text-sm">download</span>
@@ -228,10 +294,13 @@ export function AdminActivityLogScreen({ onNavigate: _onNavigate }: AdminActivit
             </div>
 
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-              {(['ALL', 'AUTH', 'ESCROW', 'KYB_COMPLIANCE', 'SYSTEM_CONFIG', 'DISPUTES'] as const).map(cat => (
+              {(live ? LIVE_MODULES : (['ALL', 'AUTH', 'ESCROW', 'KYB_COMPLIANCE', 'SYSTEM_CONFIG', 'DISPUTES'] as const)).map(cat => (
                 <button
                   key={cat}
-                  onClick={() => setCategoryFilter(cat)}
+                  onClick={() => {
+                    setCategoryFilter(cat);
+                    setPage(1);
+                  }}
                   className={`px-3 py-1.5 rounded-xl font-semibold whitespace-nowrap transition-colors ${
                     categoryFilter === cat
                       ? 'bg-slate-900 text-white'
@@ -244,10 +313,41 @@ export function AdminActivityLogScreen({ onNavigate: _onNavigate }: AdminActivit
             </div>
           </div>
 
+          {live && lastPage > 1 && (
+            <div className="flex items-center justify-between text-[11px] text-slate-500">
+              <span>Page {page} of {lastPage}</span>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  className="px-2 py-1 rounded-lg bg-slate-100 text-slate-700 disabled:opacity-40"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
+                  disabled={page >= lastPage}
+                  className="px-2 py-1 rounded-lg bg-slate-100 text-slate-700 disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Records Table */}
           <div className="space-y-2.5 max-h-[720px] overflow-y-auto pr-1">
+            {live && filteredLogs.length === 0 && (
+              <p className="p-6 text-center text-xs text-slate-500">
+                {logsQuery.isLoading
+                  ? 'Loading the audit log…'
+                  : logsQuery.isError
+                    ? `Couldn't load the audit log: ${adminErrorMessage(logsQuery.error)}`
+                    : 'No actions recorded.'}
+              </p>
+            )}
             {filteredLogs.map(log => {
-              const isSelected = log.id === selectedLog.id;
+              const isSelected = log.id === selectedLog?.id;
               return (
                 <div
                   key={log.id}
@@ -302,6 +402,11 @@ export function AdminActivityLogScreen({ onNavigate: _onNavigate }: AdminActivit
         </div>
 
         {/* Right: Cryptographic Audit Inspector (5 cols) */}
+        {!selectedLog ? (
+          <div className="lg:col-span-5 bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs text-xs text-slate-500">
+            Select an entry to inspect it.
+          </div>
+        ) : (
         <div className="lg:col-span-5 bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs space-y-5">
           <div className="pb-4 border-b border-slate-100">
             <div className="flex items-center justify-between">
@@ -332,7 +437,7 @@ export function AdminActivityLogScreen({ onNavigate: _onNavigate }: AdminActivit
             </div>
             <div className="flex justify-between items-center text-slate-600">
               <span className="font-medium text-slate-500">Network IP & Geo:</span>
-              <span>{selectedLog.ipAddress} ({selectedLog.location})</span>
+              <span>{live ? selectedLog.ipAddress : `${selectedLog.ipAddress} (${selectedLog.location})`}</span>
             </div>
           </div>
 
@@ -346,12 +451,16 @@ export function AdminActivityLogScreen({ onNavigate: _onNavigate }: AdminActivit
 
           {/* Cryptographic Proof Card */}
           <div className="space-y-2 text-xs">
-            <span className="font-bold uppercase tracking-wider text-slate-500 block">Cryptographic Chain Stamping</span>
+            <span className="font-bold uppercase tracking-wider text-slate-500 block">
+              {live ? 'Client' : 'Cryptographic Chain Stamping'}
+            </span>
             <div className="p-3 bg-slate-900 text-slate-300 rounded-xl space-y-2 font-mono text-[11px]">
-              <div>
-                <span className="text-slate-400 block text-[10px] uppercase">SHA-256 Ledger Digest:</span>
-                <span className="text-emerald-400 break-all">{selectedLog.hash}</span>
-              </div>
+              {!live && (
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase">SHA-256 Ledger Digest:</span>
+                  <span className="text-emerald-400 break-all">{selectedLog.hash}</span>
+                </div>
+              )}
               <div>
                 <span className="text-slate-400 block text-[10px] uppercase">Client Agent:</span>
                 <span className="text-slate-200 break-all">{selectedLog.userAgent}</span>
@@ -359,6 +468,8 @@ export function AdminActivityLogScreen({ onNavigate: _onNavigate }: AdminActivit
             </div>
           </div>
 
+{!live && (
+<>
           <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
             <span className="text-[11px] text-slate-500">Immutable ledger log v4.2</span>
             <button
@@ -369,7 +480,10 @@ export function AdminActivityLogScreen({ onNavigate: _onNavigate }: AdminActivit
               <span className="material-symbols-outlined text-xs">check_circle</span>
             </button>
           </div>
+</>
+)}
         </div>
+        )}
       </div>
     </div>
   );

@@ -1,4 +1,8 @@
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { adminService, type AdminApiCluster } from '../../services/adminService';
+import { formatCount, formatDate, NONE } from './adminLive';
+import { adminErrorMessage, useAdminAction, useAdminClusterDetail, useAdminClusters } from './useAdminData';
 
 export interface ClusterRecord {
   id: string;
@@ -7,7 +11,8 @@ export interface ClusterRecord {
   zone: string;
   state: string;
   lga: string;
-  tier: 'Tier 1' | 'Tier 2' | 'Tier 3';
+  /** Sample tiers in mock mode; the cluster type (market, district…) against the API. */
+  tier: string;
   businesses: number;
   deals: number;
   radius: number; // in meters
@@ -19,6 +24,34 @@ export interface ClusterRecord {
   zonalOffice: string;
   registeredDate: string;
   posDensity: string;
+  /** The API record behind a live row (absent in mock mode). */
+  raw?: AdminApiCluster;
+}
+
+const titleCase = (value: string) => value.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+function toClusterRecord(cluster: AdminApiCluster): ClusterRecord {
+  return {
+    id: cluster.id,
+    code: cluster.uniqueCode ?? cluster.id.slice(0, 8).toUpperCase(),
+    name: cluster.name,
+    zone: cluster.area || NONE,
+    state: cluster.state || NONE,
+    lga: cluster.city || NONE,
+    tier: titleCase(cluster.type || 'custom'),
+    businesses: cluster.branchCount ?? 0,
+    deals: cluster.activeOfferCount ?? 0,
+    radius: cluster.radiusMeters ?? 0,
+    lat: cluster.latitude ?? 0,
+    lng: cluster.longitude ?? 0,
+    taps24h: cluster.scanCount ?? 0,
+    status: cluster.isActive ? 'ACTIVE' : 'PENDING',
+    leadOfficer: NONE,
+    zonalOffice: NONE,
+    registeredDate: formatDate(cluster.createdAt),
+    posDensity: NONE,
+    raw: cluster,
+  };
 }
 
 const INITIAL_CLUSTERS: ClusterRecord[] = [
@@ -149,8 +182,28 @@ interface AdminClusterManagementScreenProps {
 }
 
 export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagementScreenProps) {
-  const [clusters, setClusters] = useState<ClusterRecord[]>(INITIAL_CLUSTERS);
-  const [selectedClusterId, setSelectedClusterId] = useState<string>('c1');
+  const live = hasApiConfig();
+  const [mockClusters, setClusters] = useState<ClusterRecord[]>(INITIAL_CLUSTERS);
+  const [selectedClusterId, setSelectedClusterId] = useState<string>(live ? '' : 'c1');
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Live API: every cluster (the admin list pages at 200).
+  const clustersQuery = useAdminClusters({ page: 1, limit: 200 });
+  const liveClusters = useMemo(() => (clustersQuery.data?.data ?? []).map(toClusterRecord), [clustersQuery.data]);
+  const clusters = live ? liveClusters : mockClusters;
+  const liveTotal = clustersQuery.data?.meta.total ?? liveClusters.length;
+  const activeClusters = liveClusters.filter((c) => c.status === 'ACTIVE').length;
+  const footprintKm2 = liveClusters.reduce((sum, c) => sum + Math.PI * (c.radius / 1000) ** 2, 0);
+  const meanRadius = liveClusters.length ? Math.round(liveClusters.reduce((sum, c) => sum + c.radius, 0) / liveClusters.length) : 0;
+  const branchTotal = liveClusters.reduce((sum, c) => sum + c.businesses, 0);
+  const scanTotal = liveClusters.reduce((sum, c) => sum + c.taps24h, 0);
+  const [radiusDraft, setRadiusDraft] = useState<Record<string, number>>({});
+
+  const createCluster = useAdminAction((input: Parameters<typeof adminService.createCluster>[0]) => adminService.createCluster(input));
+  const updateCluster = useAdminAction(({ id, input }: { id: string; input: Parameters<typeof adminService.updateCluster>[1] }) =>
+    adminService.updateCluster(id, input),
+  );
+  const autoAssign = useAdminAction(() => adminService.autoAssignClusters());
   const [activeTab, setActiveTab] = useState<'ALL' | 'TIER1' | 'TIER2' | 'EXPANDING'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [dossierTab, setDossierTab] = useState<'details' | 'businesses' | 'boundaries' | 'qr'>('details');
@@ -169,7 +222,9 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
     leadOfficer: 'Admin Supervisor',
   });
 
-  const selectedCluster = clusters.find((c) => c.id === selectedClusterId) || clusters[0];
+  const selectedCluster: ClusterRecord | undefined = clusters.find((c) => c.id === selectedClusterId) || clusters[0];
+  const clusterDetail = useAdminClusterDetail(live ? selectedCluster?.id : null);
+  const selectedRadius = selectedCluster ? radiusDraft[selectedCluster.id] ?? selectedCluster.radius : 0;
 
   const filteredClusters = clusters.filter((c) => {
     const matchesSearch =
@@ -179,6 +234,9 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
       c.state.toLowerCase().includes(searchQuery.toLowerCase());
 
     if (!matchesSearch) return false;
+    // Live tabs: All / Active / Inactive.
+    if (live && activeTab === 'TIER1') return c.status === 'ACTIVE';
+    if (live && activeTab === 'TIER2') return c.status !== 'ACTIVE';
     if (activeTab === 'TIER1') return c.tier === 'Tier 1';
     if (activeTab === 'TIER2') return c.tier === 'Tier 2';
     if (activeTab === 'EXPANDING') return c.status === 'EXPANDING';
@@ -188,6 +246,29 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
   const handleRegisterCluster = (e: FormEvent) => {
     e.preventDefault();
     if (!newClusterForm.name.trim()) return;
+    if (live) {
+      setActionError(null);
+      createCluster.mutate(
+        {
+          name: newClusterForm.name.trim(),
+          state: newClusterForm.state,
+          city: newClusterForm.lga.trim() || undefined,
+          area: newClusterForm.zone.trim() || undefined,
+          latitude: Number(newClusterForm.lat),
+          longitude: Number(newClusterForm.lng),
+          radiusMeters: Number(newClusterForm.radius) || undefined,
+        },
+        {
+          onSuccess: (created) => {
+            if (created?.id) setSelectedClusterId(created.id);
+            setShowAddModal(false);
+            notify(`Cluster "${newClusterForm.name.trim()}" created.`);
+          },
+          onError: (error) => setActionError(adminErrorMessage(error)),
+        },
+      );
+      return;
+    }
 
     const newC: ClusterRecord = {
       id: `c_${Date.now()}`,
@@ -217,7 +298,55 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
     setTimeout(() => setBannerNotice(null), 4000);
   };
 
+  const notify = (message: string) => {
+    setBannerNotice(message);
+    setTimeout(() => setBannerNotice(null), 4000);
+  };
+
+  const saveRadius = () => {
+    if (!selectedCluster) return;
+    setActionError(null);
+    updateCluster.mutate(
+      { id: selectedCluster.id, input: { radiusMeters: selectedRadius } },
+      {
+        onSuccess: () => notify(`Radius for ${selectedCluster.name} saved (${selectedRadius} m).`),
+        onError: (error) => setActionError(adminErrorMessage(error)),
+      },
+    );
+  };
+
+  const toggleCluster = (field: 'isActive' | 'qrIsActive') => {
+    if (!selectedCluster?.raw) return;
+    const next = !selectedCluster.raw[field];
+    setActionError(null);
+    updateCluster.mutate(
+      { id: selectedCluster.id, input: { [field]: next } },
+      {
+        onSuccess: () =>
+          notify(
+            field === 'isActive'
+              ? `${selectedCluster.name} ${next ? 'activated' : 'deactivated'}.`
+              : `${selectedCluster.name} QR code ${next ? 'activated' : 'deactivated'}.`,
+          ),
+        onError: (error) => setActionError(adminErrorMessage(error)),
+      },
+    );
+  };
+
   const handleRecomputeBuffers = () => {
+    if (live) {
+      setActionError(null);
+      autoAssign.mutate(undefined, {
+        onSuccess: (result) =>
+          notify(
+            result?.enqueued
+              ? 'Branch auto-assignment queued.'
+              : `Auto-assigned ${result?.assigned ?? 0} branch(es) to their nearest cluster.`,
+          ),
+        onError: (error) => setActionError(adminErrorMessage(error)),
+      });
+      return;
+    }
     setBannerNotice('Recomputed geofence perimeter polygon buffers for 48 operational clusters.');
     setTimeout(() => setBannerNotice(null), 3500);
   };
@@ -265,13 +394,24 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
           </button>
         </div>
       )}
+      {actionError && (
+        <div className="p-3.5 bg-red-50 border border-red-200 text-red-800 rounded-xl flex items-center justify-between text-sm shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-red-600">error</span>
+            <span>{actionError}</span>
+          </div>
+          <button onClick={() => setActionError(null)} className="text-red-600 hover:text-red-800 text-sm font-semibold">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Top Operational Banner & Primary Action Header */}
       <section className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <span className="font-mono text-xs uppercase tracking-wider text-slate-500 font-semibold">
-              Jurisdiction / Federal Republic of Nigeria / Lagos State
+              {live ? 'Jurisdiction / Clusters' : 'Jurisdiction / Federal Republic of Nigeria / Lagos State'}
             </span>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">
@@ -297,8 +437,8 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
             type="button"
             className="h-9 px-3.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors"
           >
-            <span className="material-symbols-outlined text-[18px] text-blue-600">radar</span>
-            <span>Recompute Geofence Buffers</span>
+            <span className={`material-symbols-outlined text-[18px] text-blue-600 ${autoAssign.isPending ? 'animate-spin' : ''}`}>radar</span>
+            <span>{live ? 'Auto-assign Branches' : 'Recompute Geofence Buffers'}</span>
           </button>
           <button
             onClick={() => setShowAddModal(true)}
@@ -318,17 +458,23 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
           <div className="flex items-start justify-between">
             <div>
               <span className="text-xs uppercase tracking-wider text-slate-500 font-semibold">Total Active Clusters</span>
-              <div className="text-2xl font-bold text-slate-900 mt-1">48</div>
+              <div className="text-2xl font-bold text-slate-900 mt-1">{live ? formatCount(activeClusters) : '48'}</div>
             </div>
             <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
               <span className="material-symbols-outlined text-[22px]">hub</span>
             </div>
           </div>
           <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-500">
-            <span className="inline-flex items-center text-emerald-600 font-semibold gap-0.5">
-              <span className="material-symbols-outlined text-[14px]">arrow_upward</span> +3 this month
-            </span>
-            <span>• 100% GIS verified</span>
+            {live ? (
+              <span>{formatCount(liveTotal)} clusters in total</span>
+            ) : (
+              <>
+                <span className="inline-flex items-center text-emerald-600 font-semibold gap-0.5">
+                  <span className="material-symbols-outlined text-[14px]">arrow_upward</span> +3 this month
+                </span>
+                <span>• 100% GIS verified</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -337,14 +483,16 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
           <div className="flex items-start justify-between">
             <div>
               <span className="text-xs uppercase tracking-wider text-slate-500 font-semibold">Geofenced Footprint</span>
-              <div className="text-2xl font-bold text-slate-900 mt-1">142.8 <span className="text-sm font-normal text-slate-500">km²</span></div>
+              <div className="text-2xl font-bold text-slate-900 mt-1">
+                {live ? footprintKm2.toFixed(1) : '142.8'} <span className="text-sm font-normal text-slate-500">km²</span>
+              </div>
             </div>
             <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
               <span className="material-symbols-outlined text-[22px]">polyline</span>
             </div>
           </div>
           <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-500">
-            <span className="text-slate-700 font-semibold">1,820m</span>
+            <span className="text-slate-700 font-semibold">{live ? `${meanRadius.toLocaleString()}m` : '1,820m'}</span>
             <span>mean perimeter buffer</span>
           </div>
         </div>
@@ -353,18 +501,26 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
         <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100 flex flex-col justify-between">
           <div className="flex items-start justify-between">
             <div>
-              <span className="text-xs uppercase tracking-wider text-slate-500 font-semibold">Aggregated Merchants</span>
-              <div className="text-2xl font-bold text-slate-900 mt-1">3,420</div>
+              <span className="text-xs uppercase tracking-wider text-slate-500 font-semibold">
+                {live ? 'Branches in Clusters' : 'Aggregated Merchants'}
+              </span>
+              <div className="text-2xl font-bold text-slate-900 mt-1">{live ? formatCount(branchTotal) : '3,420'}</div>
             </div>
             <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
               <span className="material-symbols-outlined text-[22px]">store</span>
             </div>
           </div>
           <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-500">
-            <span className="inline-flex items-center text-emerald-600 font-semibold gap-0.5">
-              <span className="material-symbols-outlined text-[14px]">check_circle</span> 94.2%
-            </span>
-            <span>Active POS Terminal density</span>
+            {live ? (
+              <span>{formatCount(liveClusters.reduce((sum, c) => sum + c.deals, 0))} active deals</span>
+            ) : (
+              <>
+                <span className="inline-flex items-center text-emerald-600 font-semibold gap-0.5">
+                  <span className="material-symbols-outlined text-[14px]">check_circle</span> 94.2%
+                </span>
+                <span>Active POS Terminal density</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -372,16 +528,26 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
         <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100 flex flex-col justify-between">
           <div className="flex items-start justify-between">
             <div>
-              <span className="text-xs uppercase tracking-wider text-slate-500 font-semibold">24h Aggregated Footfall</span>
-              <div className="text-2xl font-bold text-slate-900 mt-1">1.28M <span className="text-sm font-normal text-slate-500">Taps</span></div>
+              <span className="text-xs uppercase tracking-wider text-slate-500 font-semibold">
+                {live ? 'Cluster QR Scans' : '24h Aggregated Footfall'}
+              </span>
+              <div className="text-2xl font-bold text-slate-900 mt-1">
+                {live ? formatCount(scanTotal) : '1.28M'} <span className="text-sm font-normal text-slate-500">{live ? 'Scans' : 'Taps'}</span>
+              </div>
             </div>
             <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
               <span className="material-symbols-outlined text-[22px]">tap_and_play</span>
             </div>
           </div>
           <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-500">
-            <span className="text-amber-700 font-semibold">Peak 84k taps/hr</span>
-            <span>across 48 zones</span>
+            {live ? (
+              <span>All time, across {formatCount(liveTotal)} clusters</span>
+            ) : (
+              <>
+                <span className="text-amber-700 font-semibold">Peak 84k taps/hr</span>
+                <span>across 48 zones</span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -398,7 +564,7 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search cluster name, code, LGA, or zone..."
+                placeholder={live ? 'Search cluster name, code, city or area...' : 'Search cluster name, code, LGA, or zone...'}
                 className="w-full h-9 pl-9 pr-3 rounded-lg bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
@@ -410,7 +576,7 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                   activeTab === 'ALL' ? 'bg-blue-600 text-white' : 'bg-slate-200/80 text-slate-700 hover:bg-slate-300'
                 }`}
               >
-                All (48)
+                All ({live ? liveClusters.length : 48})
               </button>
               <button
                 onClick={() => setActiveTab('TIER1')}
@@ -418,7 +584,7 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                   activeTab === 'TIER1' ? 'bg-blue-600 text-white' : 'bg-slate-200/80 text-slate-700 hover:bg-slate-300'
                 }`}
               >
-                Tier 1 (24)
+                {live ? `Active (${activeClusters})` : 'Tier 1 (24)'}
               </button>
               <button
                 onClick={() => setActiveTab('TIER2')}
@@ -426,8 +592,10 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                   activeTab === 'TIER2' ? 'bg-blue-600 text-white' : 'bg-slate-200/80 text-slate-700 hover:bg-slate-300'
                 }`}
               >
-                Tier 2 (16)
+                {live ? `Inactive (${liveClusters.length - activeClusters})` : 'Tier 2 (16)'}
               </button>
+{!live && (
+<>
               <button
                 onClick={() => setActiveTab('EXPANDING')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
@@ -436,6 +604,8 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
               >
                 Expanding (8)
               </button>
+</>
+)}
             </div>
           </div>
 
@@ -453,6 +623,17 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
+                {live && filteredClusters.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-8 px-4 text-center text-slate-500">
+                      {clustersQuery.isLoading
+                        ? 'Loading clusters…'
+                        : clustersQuery.isError
+                          ? `Couldn't load clusters: ${adminErrorMessage(clustersQuery.error)}`
+                          : 'No clusters match.'}
+                    </td>
+                  </tr>
+                )}
                 {filteredClusters.map((cluster) => {
                   const isSelected = cluster.id === selectedClusterId;
                   return (
@@ -480,7 +661,7 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                       </td>
                       <td className="py-3 px-3 text-right">
                         <span className="font-semibold text-slate-800">{cluster.businesses}</span>
-                        <div className="text-[10px] text-emerald-600 font-medium">{cluster.posDensity} POS</div>
+                        <div className="text-[10px] text-emerald-600 font-medium">{live ? 'branches' : `${cluster.posDensity} POS`}</div>
                       </td>
                       <td className="py-3 px-3 text-right">
                         <span className="font-semibold text-slate-800">{cluster.deals}</span>
@@ -498,7 +679,7 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                               : 'bg-amber-100 text-amber-800'
                           }`}
                         >
-                          {cluster.status}
+                          {live ? (cluster.status === 'ACTIVE' ? 'ACTIVE' : 'INACTIVE') : cluster.status}
                         </span>
                       </td>
                     </tr>
@@ -512,19 +693,24 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
           <div className="p-3 border-t border-slate-200 bg-slate-50/50 flex items-center justify-between text-xs text-slate-500">
             <span>Showing {filteredClusters.length} of {clusters.length} clusters registered</span>
             <div className="flex items-center gap-2">
-              <span className="font-mono text-[11px]">GIS Mesh: Realtime Synced</span>
+              {!live && <span className="font-mono text-[11px]">GIS Mesh: Realtime Synced</span>}
             </div>
           </div>
         </div>
 
         {/* Cluster Dossier / Detail View (5 cols) */}
+        {!selectedCluster ? (
+          <div className="xl:col-span-5 bg-white rounded-xl shadow-md border border-slate-200 p-4 text-xs text-slate-500">
+            Select a cluster to see its details.
+          </div>
+        ) : (
         <div className="xl:col-span-5 flex flex-col bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden sticky top-20">
           {/* Dossier Header */}
           <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold uppercase">
-                  {selectedCluster.tier} Zone
+                  {live ? selectedCluster.tier : `${selectedCluster.tier} Zone`}
                 </span>
                 <span className="font-mono text-xs text-slate-500">{selectedCluster.code}</span>
               </div>
@@ -542,7 +728,9 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
             <div className="mt-1">
               <h2 className="text-lg font-bold text-slate-900 leading-snug">{selectedCluster.name}</h2>
               <p className="text-xs text-slate-500">
-                Nigeria • {selectedCluster.state} • {selectedCluster.lga} • {selectedCluster.zone}
+                {live
+                  ? [selectedCluster.raw?.country, selectedCluster.state, selectedCluster.lga, selectedCluster.zone].filter((v) => v && v !== NONE).join(' • ') || NONE
+                  : `Nigeria • ${selectedCluster.state} • ${selectedCluster.lga} • ${selectedCluster.zone}`}
               </p>
             </div>
 
@@ -568,7 +756,7 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                 }`}
               >
                 <span className="material-symbols-outlined text-[15px]">store</span>
-                <span>Businesses ({selectedCluster.businesses})</span>
+                <span>{live ? 'Branches' : 'Businesses'} ({selectedCluster.businesses})</span>
               </button>
               <button
                 onClick={() => setDossierTab('boundaries')}
@@ -599,7 +787,35 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
           <div className="p-4 flex flex-col gap-4 max-h-[calc(100vh-270px)] overflow-y-auto">
             {dossierTab === 'details' && (
               <>
+                {/* Status (live) */}
+                {live && (
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[11px] uppercase tracking-wider text-slate-500 font-bold">Status</span>
+                    <div className="grid grid-cols-2 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-100 text-xs">
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">Registered Date</span>
+                        <span className="font-medium text-slate-700">{selectedCluster.registeredDate}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[11px]">Parent Cluster</span>
+                        <span className="font-medium text-slate-700">{clusterDetail.data?.parent?.name ?? NONE}</span>
+                      </div>
+                      <div className="col-span-2 flex items-center justify-between">
+                        <span className="text-slate-700 font-semibold">{selectedCluster.status === 'ACTIVE' ? 'Active' : 'Inactive'}</span>
+                        <button
+                          onClick={() => toggleCluster('isActive')}
+                          disabled={updateCluster.isPending}
+                          className="h-7 px-3 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-semibold disabled:opacity-50"
+                        >
+                          {selectedCluster.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Governance Details */}
+                {!live && (
                 <div className="flex flex-col gap-1.5">
                   <span className="text-[11px] uppercase tracking-wider text-slate-500 font-bold">
                     Governance & Field Oversight
@@ -623,6 +839,7 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                     </div>
                   </div>
                 </div>
+                )}
 
                 {/* Spatial Telemetry & POS */}
                 <div className="flex flex-col gap-1.5">
@@ -633,13 +850,15 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                     <div>
                       <span className="text-slate-400 block text-[11px]">Centroid GPS</span>
                       <span className="font-mono font-medium text-slate-800">
-                        {selectedCluster.lat.toFixed(4)}° N, {selectedCluster.lng.toFixed(4)}° E
+                        {selectedCluster.lat.toFixed(4)}°, {selectedCluster.lng.toFixed(4)}°
                       </span>
                     </div>
                     <div>
                       <span className="text-slate-400 block text-[11px]">Geofence Radius</span>
                       <span className="font-semibold text-slate-800">{selectedCluster.radius.toLocaleString()} meters</span>
                     </div>
+{!live && (
+<>
                     <div>
                       <span className="text-slate-400 block text-[11px]">POS Terminal Fleet</span>
                       <span className="font-semibold text-blue-600">{Math.round(selectedCluster.businesses * 1.45)} Active Terminals</span>
@@ -648,15 +867,21 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                       <span className="text-slate-400 block text-[11px]">Network Ping Latency</span>
                       <span className="font-medium text-emerald-600">14ms (Lagos Edge)</span>
                     </div>
+</>
+)}
                   </div>
                 </div>
 
                 {/* 24h Activity Velocity */}
                 <div className="p-3 bg-gradient-to-br from-blue-50 to-indigo-50/40 rounded-xl border border-blue-100 flex flex-col gap-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-blue-900">24h Footfall & Tap Velocity</span>
-                    <span className="text-xs font-mono font-bold text-blue-700">{selectedCluster.taps24h.toLocaleString()} taps</span>
+                    <span className="text-xs font-bold text-blue-900">{live ? 'Cluster QR Scans' : '24h Footfall & Tap Velocity'}</span>
+                    <span className="text-xs font-mono font-bold text-blue-700">
+                      {selectedCluster.taps24h.toLocaleString()} {live ? 'scans' : 'taps'}
+                    </span>
                   </div>
+                  {!live && (
+                  <>
                   <div className="w-full bg-blue-200/50 h-2 rounded-full overflow-hidden">
                     <div className="bg-blue-600 h-full rounded-full" style={{ width: '82%' }}></div>
                   </div>
@@ -664,10 +889,14 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                     <span>Peak Window: 13:00 - 17:30 WAT</span>
                     <span>Conversion: 24.8%</span>
                   </div>
+                  </>
+                  )}
                 </div>
 
                 {/* Quick Administrative Action Bar */}
                 <div className="pt-2 border-t border-slate-200 flex flex-col gap-2">
+{!live && (
+<>
                   <button
                     onClick={() => {
                       setBannerNotice(`Realigned geofence centroid anchor for ${selectedCluster.name}.`);
@@ -679,6 +908,8 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                     <span className="material-symbols-outlined text-[16px] text-blue-600">my_location</span>
                     <span>Re-Center Geofence Anchor</span>
                   </button>
+</>
+)}
                   <button
                     onClick={() => onNavigate?.('/admin/locations/map')}
                     type="button"
@@ -694,9 +925,38 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
             {dossierTab === 'businesses' && (
               <div className="flex flex-col gap-3">
                 <div className="flex items-center justify-between text-xs text-slate-500">
-                  <span>Merchant roster in this cluster</span>
-                  <span className="font-semibold text-slate-800">{selectedCluster.businesses} Merchants</span>
+                  <span>{live ? 'Branches in this cluster' : 'Merchant roster in this cluster'}</span>
+                  <span className="font-semibold text-slate-800">
+                    {selectedCluster.businesses} {live ? 'Branches' : 'Merchants'}
+                  </span>
                 </div>
+                {live && (
+                  <div className="space-y-2">
+                    {clusterDetail.isLoading && <p className="text-xs text-slate-500">Loading branches…</p>}
+                    {clusterDetail.data && clusterDetail.data.branches.length === 0 && (
+                      <p className="text-xs text-slate-500">No branches in this cluster yet.</p>
+                    )}
+                    {(clusterDetail.data?.branches ?? []).map((b) => (
+                      <div key={b.id} className="p-2.5 bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200/80 flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-[11px] shrink-0">
+                            {b.name.charAt(0)}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-semibold text-slate-900 truncate">{b.name}</div>
+                            <div className="text-[11px] text-slate-500 truncate">{b.address || [b.city, b.state].filter(Boolean).join(', ') || NONE}</div>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className={`text-[10px] font-semibold ${b.isActive ? 'text-emerald-600' : 'text-slate-500'}`}>
+                            {b.isActive ? 'Active' : 'Inactive'}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!live && (
                 <div className="space-y-2">
                   {[
                     { name: 'Slot Electronics Flagship', cat: 'Electronics & Gadgets', pos: '6 Terminals', status: 'Active' },
@@ -722,11 +982,12 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                     </div>
                   ))}
                 </div>
+                )}
                 <button
                   onClick={() => onNavigate?.('/admin/businesses')}
                   className="w-full py-2 border border-slate-200 hover:bg-slate-50 rounded-lg text-xs font-semibold text-slate-700 text-center"
                 >
-                  View All {selectedCluster.businesses} Merchants →
+                  {live ? 'Open Businesses →' : `View All ${selectedCluster.businesses} Merchants →`}
                 </button>
               </div>
             )}
@@ -735,15 +996,22 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
               <div className="flex flex-col gap-3">
                 <div className="p-3 bg-slate-900 text-white rounded-lg flex flex-col gap-2">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-400">Boundary Perimeter</span>
-                    <span className="font-mono text-emerald-400 font-bold">RTK DGPS VERIFIED</span>
+                    <span className="text-slate-400">{live ? 'Circular Geofence' : 'Boundary Perimeter'}</span>
+                    {!live && <span className="font-mono text-emerald-400 font-bold">RTK DGPS VERIFIED</span>}
                   </div>
+                  {live ? (
+                    <div className="font-mono text-[11px] text-slate-300 space-y-1">
+                      <div>Centre: [{selectedCluster.lat.toFixed(4)}, {selectedCluster.lng.toFixed(4)}]</div>
+                      <div>Radius: {selectedCluster.radius}m</div>
+                    </div>
+                  ) : (
                   <div className="font-mono text-[11px] text-slate-300 space-y-1">
                     <div>P1: [{selectedCluster.lat.toFixed(4)}, {selectedCluster.lng.toFixed(4)}]</div>
                     <div>P2: [{(selectedCluster.lat + 0.008).toFixed(4)}, {(selectedCluster.lng + 0.006).toFixed(4)}]</div>
                     <div>P3: [{(selectedCluster.lat + 0.004).toFixed(4)}, {(selectedCluster.lng - 0.007).toFixed(4)}]</div>
                     <div>Buffer Radius: {selectedCluster.radius}m radial zone</div>
                   </div>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-1.5">
@@ -754,9 +1022,13 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                       min="500"
                       max="5000"
                       step="100"
-                      value={selectedCluster.radius}
+                      value={live ? selectedRadius : selectedCluster.radius}
                       onChange={(e) => {
                         const newR = Number(e.target.value);
+                        if (live) {
+                          setRadiusDraft((prev) => ({ ...prev, [selectedCluster.id]: newR }));
+                          return;
+                        }
                         setClusters((prev) =>
                           prev.map((c) => (c.id === selectedCluster.id ? { ...c, radius: newR } : c))
                         );
@@ -764,19 +1036,21 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                       className="w-full"
                     />
                     <span className="text-xs font-mono font-bold text-slate-800 w-16 text-right">
-                      {selectedCluster.radius}m
+                      {live ? selectedRadius : selectedCluster.radius}m
                     </span>
                   </div>
                 </div>
 
                 <button
+                  disabled={live && (updateCluster.isPending || selectedRadius === selectedCluster.radius)}
                   onClick={() => {
+                    if (live) return saveRadius();
                     setBannerNotice(`Updated spatial geofence buffer for ${selectedCluster.name}.`);
                     setTimeout(() => setBannerNotice(null), 3000);
                   }}
-                  className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold"
+                  className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold disabled:opacity-50"
                 >
-                  Save Geofence Polygon Changes
+                  {live ? 'Save Radius' : 'Save Geofence Polygon Changes'}
                 </button>
               </div>
             )}
@@ -791,8 +1065,32 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                 </div>
                 <div className="text-xs text-slate-600">
                   <span className="font-bold text-slate-900 block">{selectedCluster.name} Area Beacon</span>
-                  Point mobile cameras or NFC devices to trigger VEMTAP cluster rewards within this perimeter.
+                  {live
+                    ? `QR code is ${selectedCluster.raw?.qrIsActive ? 'active' : 'inactive'} • ${selectedCluster.taps24h.toLocaleString()} scans`
+                    : 'Point mobile cameras or NFC devices to trigger VEMTAP cluster rewards within this perimeter.'}
                 </div>
+                {live && (
+                  <div className="flex flex-col gap-2 w-full">
+                    {clusterDetail.data?.qrUrl && (
+                      <a
+                        href={clusterDetail.data.qrUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] font-mono text-blue-600 hover:underline break-all"
+                      >
+                        {clusterDetail.data.qrUrl}
+                      </a>
+                    )}
+                    <button
+                      onClick={() => toggleCluster('qrIsActive')}
+                      disabled={updateCluster.isPending}
+                      className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold disabled:opacity-50"
+                    >
+                      {selectedCluster.raw?.qrIsActive ? 'Deactivate QR Code' : 'Activate QR Code'}
+                    </button>
+                  </div>
+                )}
+                {!live && (
                 <div className="flex items-center gap-2 w-full">
                   <button
                     onClick={() => {
@@ -815,10 +1113,12 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                     <span>Print Batch</span>
                   </button>
                 </div>
+                )}
               </div>
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* Modal: Register New Cluster */}
@@ -866,12 +1166,12 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                   </select>
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="font-semibold text-slate-700">LGA / District</label>
+                  <label className="font-semibold text-slate-700">{live ? 'City' : 'LGA / District'}</label>
                   <input
                     type="text"
                     value={newClusterForm.lga}
                     onChange={(e) => setNewClusterForm({ ...newClusterForm, lga: e.target.value })}
-                    placeholder="e.g. Ikeja LGA"
+                    placeholder={live ? 'e.g. Ikeja' : 'e.g. Ikeja LGA'}
                     className="h-9 px-3 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
@@ -910,6 +1210,8 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                 </div>
               </div>
 
+{!live && (
+<>
               <div className="flex flex-col gap-1">
                 <label className="font-semibold text-slate-700">Lead Field Officer</label>
                 <input
@@ -920,7 +1222,11 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                   className="h-9 px-3 border border-slate-300 rounded-lg text-xs"
                 />
               </div>
+</>
+)}
 
+{!live && (
+<>
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-[11px] flex items-start gap-2">
                 <span className="material-symbols-outlined text-[16px] text-amber-600 mt-0.5">info</span>
                 <span>
@@ -928,6 +1234,8 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                   beacons within the buffer radius.
                 </span>
               </div>
+</>
+)}
 
               <div className="pt-2 border-t border-slate-200 flex items-center justify-end gap-2">
                 <button
@@ -939,9 +1247,10 @@ export function AdminClusterManagementScreen({ onNavigate }: AdminClusterManagem
                 </button>
                 <button
                   type="submit"
-                  className="h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+                  disabled={createCluster.isPending}
+                  className="h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold disabled:opacity-50"
                 >
-                  Create & Initialize Cluster
+                  {live ? 'Create Cluster' : 'Create & Initialize Cluster'}
                 </button>
               </div>
             </form>

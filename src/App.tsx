@@ -23,7 +23,7 @@ import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessB
 import { BusinessOfferingsProvider } from './context/BusinessOfferingsContext';
 import { BusinessFeaturesProvider, useBusinessFeatures } from './context/BusinessFeaturesContext';
 import { BUSINESS_FEATURES, FEATURE_MANAGE_ROUTE, FEATURE_SETUP_ROUTE, findDisabledRoute, type FeatureId, type FeatureState } from './scripts/businessFeatures';
-import { isAdminAuthenticated } from './scripts/admin/adminAuth';
+import { isAdminAuthenticated, isPlatformAdminRole } from './scripts/admin/adminAuth';
 import { addPaidBusinessLocation, getBusinessLocationCount } from './scripts/businessLocationsStore';
 import { CartProvider } from './context/CartContext';
 import { BookingProvider, useBooking } from './context/BookingContext';
@@ -1760,6 +1760,9 @@ function AppInner() {
   // The referral admin page is for platform admins only.
   const adminCheckPending =
     hasApiConfig() && route === 'admin-referral' && (!sessionUser || (sessionUser.role !== 'SUPER_ADMIN' && sessionUser.role !== 'Admin'));
+  // The admin console (/admin*) waits for the profile, so an admin never sees the login flash.
+  const isAdminConsoleRoute = route !== 'admin-referral' && (ROUTE_PATH[route] ?? '').startsWith('/admin');
+  const adminConsoleCheckPending = hasApiConfig() && isAdminConsoleRoute && authed && !sessionUser && sessionQuery.isLoading;
   useEffect(() => {
     if (!hasApiConfig() || route !== 'admin-referral') return;
     if (!authed) setRouteState('sign-in');
@@ -5212,11 +5215,10 @@ function AppInner() {
     case 'admin-settings-team':
     case 'admin-settings-audit':
     {
-      // The sample admin portal has no backend behind it: never shown against the live API.
-      const leave = () => setRoute(!authed ? 'welcome' : 'home');
-      if (hasApiConfig()) return isDesktop ? <DesktopNotFoundScreen onHome={leave} /> : <NotFoundScreen onHome={leave} />;
-      if (route === 'admin-login' || !isAdminAuthenticated()) {
-        return <AdminLoginScreen onLoginSuccess={() => setRoute('admin-overview')} onBackToApp={() => setRoute('home')} />;
+      // Live API: the console is for a signed-in Admin / SUPER_ADMIN account. Mock mode keeps the sample session.
+      const adminSignedIn = hasApiConfig() ? authed && isPlatformAdminRole(sessionUser?.role) : isAdminAuthenticated();
+      if (route === 'admin-login' || !adminSignedIn) {
+        return <AdminLoginScreen onLoginSuccess={() => setRoute('admin-overview')} onBackToApp={() => setRoute(authed ? 'home' : 'welcome')} />;
       }
       const navigateAdminPath = (path: string) => {
         if (path === '/dashboard') setRoute('dashboard');
@@ -7461,7 +7463,7 @@ function AppInner() {
   return (
     <StoreOrderingProvider>
     <>
-      {shellSwitching || returningToShell || plainCustomerOnBusinessPage || accessCheckPending || adminCheckPending ? (
+      {shellSwitching || returningToShell || plainCustomerOnBusinessPage || accessCheckPending || adminCheckPending || adminConsoleCheckPending ? (
         routeLoading
       ) : (
         <Suspense fallback={routeLoading}>{renderRoute()}</Suspense>

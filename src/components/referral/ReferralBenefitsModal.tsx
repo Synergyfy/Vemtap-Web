@@ -8,7 +8,8 @@ import {
   REFERRAL_PROGRAMME_NOTICE,
   type ReferralAudience,
 } from '../../scripts/referralData';
-import { getReferralVideoUrl, referralVideoEmbedUrl } from '../../scripts/referralVideo';
+import { referralVideoEmbedUrl } from '../../scripts/referralVideo';
+import { useReferralVideo } from '../../hooks/useReferralVideo';
 
 export interface ReferralBenefitsModalProps {
   open: boolean;
@@ -57,7 +58,7 @@ function Section({ accountType, points }: { accountType: ReferralAudience; point
  * once. Nothing renders when no playable link is configured.
  */
 function VideoExplainer() {
-  const embed = referralVideoEmbedUrl(getReferralVideoUrl());
+  const embed = referralVideoEmbedUrl(useReferralVideo().url);
   if (!embed) return null;
 
   return (

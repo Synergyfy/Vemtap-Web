@@ -1,17 +1,22 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import type { AdminApiSubscription } from '../../services/adminService';
+import { formatCount, formatDate, NONE } from './adminLive';
+import { adminErrorMessage, useAdminSubscriptions, useAdminSubscriptionStats } from './useAdminData';
 
 interface AdminSubscriptionsListScreenProps {
   onNavigate: (path: string) => void;
 }
 
-type SubStatus = 'Active' | 'Grace Period' | 'Overdue' | 'Expired' | 'Cancelled';
+type SubStatus = 'Active' | 'Trial' | 'Grace Period' | 'Overdue' | 'Expired' | 'Cancelled';
 
 interface Subscription {
   id: string;
   merchantName: string;
   merchantShort: string;
   plan: string;
-  tier: 'Platinum' | 'Gold' | 'Silver' | 'Free';
+  /** Sample tiers in mock mode; the live plan name against the API. */
+  tier: string;
   billingFee: string;
   billingPeriod: 'monthly' | 'annual';
   paymentMethod: string;
@@ -28,6 +33,8 @@ interface Subscription {
   nextDebit: string;
   fallback: string;
   entitlements: { label: string; value: string }[];
+  /** Live: the business behind the subscription. */
+  businessId?: string;
 }
 
 const SUBS: Subscription[] = [
@@ -176,6 +183,7 @@ const SUBS: Subscription[] = [
 function statusBadge(s: SubStatus) {
   switch (s) {
     case 'Active': return 'bg-green-100 text-green-700';
+    case 'Trial': return 'bg-blue-100 text-blue-700';
     case 'Grace Period': return 'bg-amber-100 text-amber-700';
     case 'Overdue': return 'bg-red-100 text-red-600';
     case 'Expired': return 'bg-slate-200 text-slate-600';
@@ -189,7 +197,39 @@ function tierBadge(t: Subscription['tier']) {
     case 'Gold': return 'bg-yellow-100 text-yellow-700';
     case 'Silver': return 'bg-slate-200 text-slate-700';
     case 'Free': return 'bg-slate-100 text-slate-500';
+    default: return 'bg-blue-50 text-blue-700';
   }
+}
+
+const LIVE_STATUS: Record<string, SubStatus> = { active: 'Active', trial: 'Trial', expired: 'Expired', canceled: 'Cancelled' };
+
+function toSubscription(sub: AdminApiSubscription): Subscription {
+  const renewal = sub.renewal && sub.renewal !== 'N/A' ? sub.renewal : null;
+  const days = renewal ? Math.ceil((new Date(renewal).getTime() - Date.now()) / 86_400_000) : null;
+  return {
+    id: sub.id.slice(0, 8).toUpperCase(),
+    merchantName: sub.business,
+    merchantShort: sub.business.slice(0, 2).toUpperCase(),
+    plan: sub.plan,
+    tier: sub.plan,
+    billingFee: sub.amount === 'N/A' ? NONE : sub.amount === 'Free' ? 'Free' : `${sub.amount}/mo`,
+    billingPeriod: 'monthly',
+    paymentMethod: NONE,
+    renewalDate: renewal ? formatDate(renewal) : NONE,
+    renewalLabel: days === null ? '' : days < 0 ? `${-days}d ago` : days === 0 ? 'Today' : `In ${days} days`,
+    status: LIVE_STATUS[sub.status] ?? 'Active',
+    uuid: sub.id,
+    location: NONE,
+    renewalAnchor: NONE,
+    lifetimeBillings: NONE,
+    lifetimeCycles: 0,
+    channelMandate: NONE,
+    mandateRef: '',
+    nextDebit: renewal ? formatDate(renewal) : NONE,
+    fallback: NONE,
+    entitlements: [],
+    businessId: sub.businessId,
+  };
 }
 
 const FILTER_TABS: { id: string; label: string; count: number }[] = [
@@ -202,11 +242,55 @@ const FILTER_TABS: { id: string; label: string; count: number }[] = [
 ];
 
 export function AdminSubscriptionsListScreen({ onNavigate }: AdminSubscriptionsListScreenProps) {
-  const [selectedId, setSelectedId] = useState(SUBS[0].id);
+  const live = hasApiConfig();
+  const [selectedId, setSelectedId] = useState(live ? '' : SUBS[0].id);
   const [filterTab, setFilterTab] = useState('all');
   const [toast, setToast] = useState('');
+  const [search, setSearch] = useState('');
+  const [planFilter, setPlanFilter] = useState('');
+  const [page, setPage] = useState(1);
 
-  const selected = SUBS.find(s => s.id === selectedId) ?? SUBS[0];
+  // Live API: every subscription (the endpoint returns them all, newest first).
+  const subsQuery = useAdminSubscriptions();
+  const stats = useAdminSubscriptionStats().data;
+  const liveSubs = useMemo(() => (subsQuery.data ?? []).map(toSubscription), [subsQuery.data]);
+  const statusCount = (status: SubStatus) => liveSubs.filter((x) => x.status === status).length;
+  const planOptions = useMemo(() => Array.from(new Set(liveSubs.map((x) => x.plan))).sort(), [liveSubs]);
+  const filteredLive = liveSubs.filter((x) => {
+    if (filterTab === 'active' && x.status !== 'Active') return false;
+    if (filterTab === 'trial' && x.status !== 'Trial') return false;
+    if (filterTab === 'expired' && x.status !== 'Expired') return false;
+    if (filterTab === 'cancelled' && x.status !== 'Cancelled') return false;
+    if (planFilter && x.plan !== planFilter) return false;
+    const q = search.trim().toLowerCase();
+    return !q || x.merchantName.toLowerCase().includes(q) || x.plan.toLowerCase().includes(q) || x.uuid.includes(q);
+  });
+  const PAGE = 25;
+  const lastPage = Math.max(1, Math.ceil(filteredLive.length / PAGE));
+  const rows = live ? filteredLive.slice((page - 1) * PAGE, page * PAGE) : SUBS;
+  const filterTabs = live
+    ? [
+        { id: 'all', label: 'All', count: liveSubs.length },
+        { id: 'active', label: 'Active', count: statusCount('Active') },
+        { id: 'trial', label: 'Trial', count: statusCount('Trial') },
+        { id: 'expired', label: 'Expired', count: statusCount('Expired') },
+        { id: 'cancelled', label: 'Cancelled', count: statusCount('Cancelled') },
+      ]
+    : FILTER_TABS;
+
+  const selected: Subscription | undefined = (live ? liveSubs : SUBS).find(s => s.id === selectedId) ?? rows[0];
+
+  const exportCsv = () => {
+    const header = ['ID', 'Business', 'Plan', 'Fee', 'Renewal', 'Status'];
+    const lines = filteredLive.map((x) => [x.uuid, x.merchantName, x.plan, x.billingFee, x.renewalDate, x.status]);
+    const csv = [header, ...lines].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vemtap-subscriptions-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   function showToast(msg: string) {
     setToast(msg);
@@ -227,7 +311,9 @@ export function AdminSubscriptionsListScreen({ onNavigate }: AdminSubscriptionsL
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="material-symbols-outlined text-primary text-base">autorenew</span>
-            <span className="text-[10px] font-semibold tracking-widest text-primary uppercase">Revenue Operations • Ledger 2024-Q4</span>
+            <span className="text-[10px] font-semibold tracking-widest text-primary uppercase">
+              {live ? 'Revenue Operations' : 'Revenue Operations • Ledger 2024-Q4'}
+            </span>
           </div>
           <h1 className="text-headline-xl font-bold text-on-surface">Platform Subscriptions &amp; Lifecycle Management</h1>
           <p className="text-body-md text-on-surface-variant mt-1">
@@ -236,12 +322,14 @@ export function AdminSubscriptionsListScreen({ onNavigate }: AdminSubscriptionsL
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <button
-            onClick={() => showToast('Subscription CSV exported')}
+            onClick={() => (live ? exportCsv() : showToast('Subscription CSV exported'))}
             className="flex items-center gap-1.5 px-3 py-2 bg-surface-container border border-outline-variant rounded-xl text-sm font-medium text-on-surface hover:bg-surface-container-high transition-colors"
           >
             <span className="material-symbols-outlined text-base">download</span>
             Export CSV
           </button>
+{!live && (
+<>
           <button
             onClick={() => showToast('Bulk renewal notices queued')}
             className="flex items-center gap-1.5 px-3 py-2 bg-surface-container border border-outline-variant rounded-xl text-sm font-medium text-on-surface hover:bg-surface-container-high transition-colors"
@@ -256,6 +344,8 @@ export function AdminSubscriptionsListScreen({ onNavigate }: AdminSubscriptionsL
             <span className="material-symbols-outlined text-base">add</span>
             New Plan Assignment
           </button>
+</>
+)}
         </div>
       </div>
 
@@ -263,7 +353,15 @@ export function AdminSubscriptionsListScreen({ onNavigate }: AdminSubscriptionsL
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-4">
           <p className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Total Subscriptions</p>
-          <p className="text-3xl font-bold text-on-surface">3,840</p>
+          <p className="text-3xl font-bold text-on-surface">{live ? formatCount(liveSubs.length) : '3,840'}</p>
+          {live ? (
+            <div className="flex gap-2 mt-3 flex-wrap text-[10px] text-on-surface-variant">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Active {statusCount('Active')}</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />Trial {statusCount('Trial')}</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-slate-400 inline-block" />Expired {statusCount('Expired')}</span>
+            </div>
+          ) : (
+          <>
           <div className="w-full h-2 rounded-full overflow-hidden flex mt-3 gap-0.5">
             <div className="h-full bg-green-500 rounded-full" style={{ width: '76.3%' }} />
             <div className="h-full bg-amber-400 rounded-full" style={{ width: '2.2%' }} />
@@ -275,22 +373,38 @@ export function AdminSubscriptionsListScreen({ onNavigate }: AdminSubscriptionsL
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Grace 2.2%</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" />Overdue 1.1%</span>
           </div>
+          </>
+          )}
         </div>
         <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-4">
-          <p className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Auto-Renewal Rate</p>
-          <p className="text-3xl font-bold text-on-surface">94.2%</p>
-          <p className="text-xs text-green-600 font-semibold mt-1">+1.8% MoM</p>
-          <p className="text-xs text-on-surface-variant mt-1">3,618 active mandates</p>
+          <p className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1">
+            {live ? 'Active & Trial' : 'Auto-Renewal Rate'}
+          </p>
+          <p className="text-3xl font-bold text-on-surface">
+            {live ? formatCount((stats?.activeSubscriptions ?? 0) + (stats?.activeTrials ?? 0)) : '94.2%'}
+          </p>
+          {live ? (
+            <p className="text-xs text-on-surface-variant mt-1">{formatCount(stats?.activeTrials)} on trial</p>
+          ) : (
+            <>
+              <p className="text-xs text-green-600 font-semibold mt-1">+1.8% MoM</p>
+              <p className="text-xs text-on-surface-variant mt-1">3,618 active mandates</p>
+            </>
+          )}
         </div>
         <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-4">
-          <p className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Renewal Inflow (7 days)</p>
-          <p className="text-3xl font-bold text-on-surface">₦18.4M</p>
-          <p className="text-xs text-on-surface-variant mt-1">412 upcoming renewals</p>
+          <p className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1">
+            {live ? 'Renewing in 7 Days' : 'Renewal Inflow (7 days)'}
+          </p>
+          <p className="text-3xl font-bold text-on-surface">{live ? formatCount(stats?.expiringSoon) : '₦18.4M'}</p>
+          <p className="text-xs text-on-surface-variant mt-1">{live ? 'subscriptions' : '412 upcoming renewals'}</p>
         </div>
         <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-4">
-          <p className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1">Churn Rate</p>
-          <p className="text-3xl font-bold text-on-surface">1.4%</p>
-          <p className="text-xs text-on-surface-variant mt-1">Avg LTV ₦384,500</p>
+          <p className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider mb-1">
+            {live ? 'Expired' : 'Churn Rate'}
+          </p>
+          <p className="text-3xl font-bold text-on-surface">{live ? formatCount(stats?.pastDue) : '1.4%'}</p>
+          <p className="text-xs text-on-surface-variant mt-1">{live ? 'not renewed' : 'Avg LTV ₦384,500'}</p>
         </div>
       </div>
 
@@ -302,31 +416,61 @@ export function AdminSubscriptionsListScreen({ onNavigate }: AdminSubscriptionsL
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 bg-surface-container border border-outline-variant rounded-xl px-3 py-2 flex-1">
               <span className="material-symbols-outlined text-base text-on-surface-variant">search</span>
-              <input className="bg-transparent text-sm outline-none flex-1 text-on-surface placeholder:text-on-surface-variant" placeholder="Search subscriptions..." />
+              <input
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+                className="bg-transparent text-sm outline-none flex-1 text-on-surface placeholder:text-on-surface-variant"
+                placeholder="Search subscriptions..."
+              />
             </div>
-            <select className="px-3 py-2 bg-surface-container border border-outline-variant rounded-xl text-sm text-on-surface outline-none">
-              <option>All Tiers</option>
-              <option>Platinum</option>
-              <option>Gold</option>
-              <option>Silver</option>
-              <option>Free</option>
+            <select
+              value={planFilter}
+              onChange={(e) => {
+                setPlanFilter(e.target.value);
+                setPage(1);
+              }}
+              className="px-3 py-2 bg-surface-container border border-outline-variant rounded-xl text-sm text-on-surface outline-none"
+            >
+              <option value="">{live ? 'All Plans' : 'All Tiers'}</option>
+              {live ? (
+                planOptions.map((plan) => (
+                  <option key={plan} value={plan}>
+                    {plan}
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option>Platinum</option>
+                  <option>Gold</option>
+                  <option>Silver</option>
+                  <option>Free</option>
+                </>
+              )}
             </select>
+            {!live && (
             <select className="px-3 py-2 bg-surface-container border border-outline-variant rounded-xl text-sm text-on-surface outline-none">
               <option>Renewal Window</option>
               <option>Next 7 days</option>
               <option>Next 30 days</option>
             </select>
-            <button onClick={() => showToast('Refreshed subscription data')} className="p-2 bg-surface-container border border-outline-variant rounded-xl hover:bg-surface-container-high transition-colors">
+            )}
+            <button onClick={() => (live ? void subsQuery.refetch() : showToast('Refreshed subscription data'))} className="p-2 bg-surface-container border border-outline-variant rounded-xl hover:bg-surface-container-high transition-colors">
               <span className="material-symbols-outlined text-base text-on-surface-variant">refresh</span>
             </button>
           </div>
 
           {/* Filter Pills */}
           <div className="flex gap-1 flex-wrap">
-            {FILTER_TABS.map(t => (
+            {filterTabs.map(t => (
               <button
                 key={t.id}
-                onClick={() => setFilterTab(t.id)}
+                onClick={() => {
+                  setFilterTab(t.id);
+                  setPage(1);
+                }}
                 className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${filterTab === t.id ? 'bg-primary text-white' : 'bg-surface-container border border-outline-variant text-on-surface-variant hover:bg-surface-container-high'}`}
               >
                 {t.label} <span className="opacity-75">{t.count.toLocaleString()}</span>
@@ -348,11 +492,22 @@ export function AdminSubscriptionsListScreen({ onNavigate }: AdminSubscriptionsL
                   </tr>
                 </thead>
                 <tbody>
-                  {SUBS.map(sub => (
+                  {live && rows.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-xs text-on-surface-variant">
+                        {subsQuery.isLoading
+                          ? 'Loading subscriptions…'
+                          : subsQuery.isError
+                            ? `Couldn't load subscriptions: ${adminErrorMessage(subsQuery.error)}`
+                            : 'No subscriptions match.'}
+                      </td>
+                    </tr>
+                  )}
+                  {rows.map(sub => (
                     <tr
                       key={sub.id}
                       onClick={() => setSelectedId(sub.id)}
-                      className={`border-b border-outline-variant/30 cursor-pointer transition-colors ${selectedId === sub.id ? 'bg-secondary-container/20' : 'hover:bg-surface-container'}`}
+                      className={`border-b border-outline-variant/30 cursor-pointer transition-colors ${selected?.id === sub.id ? 'bg-secondary-container/20' : 'hover:bg-surface-container'}`}
                     >
                       <td className="px-4 py-3">
                         <p className="text-xs font-semibold text-on-surface">{sub.merchantName}</p>
@@ -363,7 +518,7 @@ export function AdminSubscriptionsListScreen({ onNavigate }: AdminSubscriptionsL
                       </td>
                       <td className="px-3 py-3">
                         <p className="text-xs font-medium text-on-surface">{sub.billingFee}</p>
-                        <p className="text-[11px] text-on-surface-variant">{sub.paymentMethod}</p>
+                        {!live && <p className="text-[11px] text-on-surface-variant">{sub.paymentMethod}</p>}
                       </td>
                       <td className="px-3 py-3">
                         <p className="text-xs font-medium text-on-surface">{sub.renewalDate}</p>
@@ -378,12 +533,24 @@ export function AdminSubscriptionsListScreen({ onNavigate }: AdminSubscriptionsL
               </table>
             </div>
             <div className="px-4 py-3 border-t border-outline-variant flex items-center justify-between">
-              <p className="text-xs text-on-surface-variant">Showing 1–5 of 3,840 subscriptions</p>
+              <p className="text-xs text-on-surface-variant">
+                {live
+                  ? `Showing ${rows.length ? (page - 1) * PAGE + 1 : 0}–${(page - 1) * PAGE + rows.length} of ${filteredLive.length} subscriptions`
+                  : 'Showing 1–5 of 3,840 subscriptions'}
+              </p>
               <div className="flex items-center gap-1">
-                <button className="p-1.5 rounded-lg border border-outline-variant hover:bg-surface-container text-on-surface-variant">
+                <button
+                  onClick={() => live && setPage((x) => Math.max(1, x - 1))}
+                  disabled={live && page <= 1}
+                  className="p-1.5 rounded-lg border border-outline-variant hover:bg-surface-container text-on-surface-variant disabled:opacity-40"
+                >
                   <span className="material-symbols-outlined text-base">chevron_left</span>
                 </button>
-                <button className="p-1.5 rounded-lg border border-outline-variant hover:bg-surface-container text-on-surface-variant">
+                <button
+                  onClick={() => live && setPage((x) => Math.min(lastPage, x + 1))}
+                  disabled={live && page >= lastPage}
+                  className="p-1.5 rounded-lg border border-outline-variant hover:bg-surface-container text-on-surface-variant disabled:opacity-40"
+                >
                   <span className="material-symbols-outlined text-base">chevron_right</span>
                 </button>
               </div>
@@ -392,6 +559,11 @@ export function AdminSubscriptionsListScreen({ onNavigate }: AdminSubscriptionsL
         </div>
 
         {/* Right Dossier (5 cols) */}
+        {!selected ? (
+          <div className="lg:col-span-5 bg-surface-container-lowest border border-outline-variant rounded-2xl p-5 text-xs text-on-surface-variant">
+            Select a subscription to see it.
+          </div>
+        ) : (
         <div className="lg:col-span-5 bg-surface-container-lowest border border-outline-variant rounded-2xl overflow-hidden flex flex-col">
           {/* Dossier Header */}
           <div className="px-5 py-4 border-b border-outline-variant">
@@ -399,7 +571,7 @@ export function AdminSubscriptionsListScreen({ onNavigate }: AdminSubscriptionsL
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusBadge(selected.status)}`}>{selected.status.toUpperCase()}</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">AUTO-RENEW ON</span>
+                  {!live && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">AUTO-RENEW ON</span>}
                 </div>
                 <p className="text-sm font-bold text-on-surface mt-2">#{selected.id}</p>
                 <p className="text-[11px] font-mono text-on-surface-variant mt-0.5">{selected.uuid}</p>
@@ -424,8 +596,10 @@ export function AdminSubscriptionsListScreen({ onNavigate }: AdminSubscriptionsL
                 </div>
                 <div>
                   <p className="text-sm font-bold text-on-surface">{selected.merchantName}</p>
-                  <p className="text-xs text-on-surface-variant">{selected.location}</p>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full mt-1 inline-block ${tierBadge(selected.tier)}`}>{selected.tier} {selected.plan}</span>
+                  {!live && <p className="text-xs text-on-surface-variant">{selected.location}</p>}
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full mt-1 inline-block ${tierBadge(selected.tier)}`}>
+                    {live ? selected.plan : `${selected.tier} ${selected.plan}`}
+                  </span>
                 </div>
               </div>
             </div>
@@ -434,12 +608,20 @@ export function AdminSubscriptionsListScreen({ onNavigate }: AdminSubscriptionsL
             <div className="px-5 py-4 border-b border-outline-variant">
               <h4 className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider mb-3">Subscription Specs</h4>
               <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: 'Current Plan', value: selected.plan },
-                  { label: 'Billing Fee', value: selected.billingFee },
-                  { label: 'Renewal Anchor', value: selected.renewalAnchor },
-                  { label: 'Lifetime Billings', value: `${selected.lifetimeBillings} / ${selected.lifetimeCycles} cycles` },
-                ].map(d => (
+                {(live
+                  ? [
+                      { label: 'Current Plan', value: selected.plan },
+                      { label: 'Billing Fee', value: selected.billingFee },
+                      { label: 'Renews / Ends', value: selected.renewalDate },
+                      { label: 'Status', value: selected.status },
+                    ]
+                  : [
+                      { label: 'Current Plan', value: selected.plan },
+                      { label: 'Billing Fee', value: selected.billingFee },
+                      { label: 'Renewal Anchor', value: selected.renewalAnchor },
+                      { label: 'Lifetime Billings', value: `${selected.lifetimeBillings} / ${selected.lifetimeCycles} cycles` },
+                    ]
+                ).map(d => (
                   <div key={d.label}>
                     <p className="text-[11px] text-on-surface-variant">{d.label}</p>
                     <p className="text-xs font-semibold text-on-surface mt-0.5">{d.value}</p>
@@ -448,6 +630,8 @@ export function AdminSubscriptionsListScreen({ onNavigate }: AdminSubscriptionsL
               </div>
             </div>
 
+{!live && (
+<>
             {/* Channel & Mandate */}
             <div className="px-5 py-4 border-b border-outline-variant">
               <h4 className="text-[11px] font-semibold text-on-surface-variant uppercase tracking-wider mb-3">Channel &amp; Mandate</h4>
@@ -524,8 +708,11 @@ export function AdminSubscriptionsListScreen({ onNavigate }: AdminSubscriptionsL
                 Upgrade / Downgrade
               </button>
             </div>
+</>
+)}
           </div>
         </div>
+        )}
       </div>
     </div>
   );

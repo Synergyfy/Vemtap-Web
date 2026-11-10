@@ -1,5 +1,8 @@
 import { useState } from 'react';
-import { setAdminSession, SUPER_ADMIN_USER } from './adminAuth';
+import { isPlatformAdminRole, setAdminSession, SUPER_ADMIN_USER } from './adminAuth';
+import { hasApiConfig } from '../../services/api/client';
+import { useAuth } from '../../context/AuthContext';
+import { TwoFactorRequiredError } from '../../services/authService';
 
 interface AdminLoginScreenProps {
   onLoginSuccess: () => void;
@@ -7,9 +10,12 @@ interface AdminLoginScreenProps {
 }
 
 export function AdminLoginScreen({ onLoginSuccess, onBackToApp }: AdminLoginScreenProps) {
-  const [email, setEmail] = useState('michael.o@vemtap.com');
-  const [password, setPassword] = useState('••••••••••••');
-  const [twoFactorCode, setTwoFactorCode] = useState('482910');
+  const live = hasApiConfig();
+  const { signIn, signOut } = useAuth();
+  // Sample credentials only pre-fill the mock-mode form.
+  const [email, setEmail] = useState(live ? '' : 'michael.o@vemtap.com');
+  const [password, setPassword] = useState(live ? '' : '••••••••••••');
+  const [twoFactorCode, setTwoFactorCode] = useState(live ? '' : '482910');
   const [rememberTerminal, setRememberTerminal] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +28,31 @@ export function AdminLoginScreen({ onLoginSuccess, onBackToApp }: AdminLoginScre
     }
     setIsLoading(true);
     setError(null);
+
+    if (live) {
+      void (async () => {
+        try {
+          const user = await signIn({ identifier: email.trim(), password, twoFactorCode });
+          if (!isPlatformAdminRole(user?.role)) {
+            await signOut().catch(() => undefined);
+            setError('This account does not have admin access.');
+            return;
+          }
+          onLoginSuccess();
+        } catch (err) {
+          setError(
+            err instanceof TwoFactorRequiredError
+              ? 'This account has 2FA on. Enter the 6-digit code from your authenticator app.'
+              : err instanceof Error && err.message
+                ? err.message
+                : 'Sign-in failed. Check your email and PIN.',
+          );
+        } finally {
+          setIsLoading(false);
+        }
+      })();
+      return;
+    }
 
     setTimeout(() => {
       setIsLoading(false);
@@ -118,11 +149,13 @@ export function AdminLoginScreen({ onLoginSuccess, onBackToApp }: AdminLoginScre
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
-                  Password
+                  {live ? 'PIN' : 'Password'}
                 </label>
-                <a href="#reset" className="text-[11px] text-blue-400 hover:underline">
-                  Terminal Reset
-                </a>
+                {!live && (
+                  <a href="#reset" className="text-[11px] text-blue-400 hover:underline">
+                    Terminal Reset
+                  </a>
+                )}
               </div>
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3 top-2.5 text-[17px] text-slate-400">
@@ -189,7 +222,8 @@ export function AdminLoginScreen({ onLoginSuccess, onBackToApp }: AdminLoginScre
             </button>
           </form>
 
-          {/* Quick Demo Action for Pairing */}
+          {/* Quick Demo Action for Pairing (mock mode only) */}
+          {!live && (
           <div className="mt-5 pt-4 border-t border-slate-800">
             <button
               type="button"
@@ -200,6 +234,7 @@ export function AdminLoginScreen({ onLoginSuccess, onBackToApp }: AdminLoginScre
               <span>1-Click Demo Login as Super Admin (Michael O.)</span>
             </button>
           </div>
+          )}
         </div>
 
         {/* Security Disclaimers */}

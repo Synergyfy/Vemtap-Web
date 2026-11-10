@@ -1,15 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useIsDesktop } from '../../hooks/useIsDesktop';
 import { AppScreen } from '../../components/ui/AppScreen';
 import { Icon } from '../../components/ui/Icon';
 import { ScreenHeader } from '../../components/ui/ScreenHeader';
-import {
-  DEFAULT_REFERRAL_VIDEO_URL,
-  getReferralVideoSetting,
-  referralVideoEmbedUrl,
-  setReferralVideoUrl,
-  clearReferralVideoUrl,
-} from '../referralVideo';
+import { DEFAULT_REFERRAL_VIDEO_URL, referralVideoEmbedUrl } from '../referralVideo';
+import { useReferralVideo, useSaveReferralVideo } from '../../hooks/useReferralVideo';
 
 interface AdminReferralScreenProps {
   onBack: () => void;
@@ -69,10 +64,15 @@ export function AdminReferralScreen({ onBack }: AdminReferralScreenProps) {
 }
 
 function AdminReferralBody() {
-  // Read on every render so the "Default / Custom link" badge and the Reset
-  // button stay truthful straight after a save.
-  const setting = getReferralVideoSetting();
+  // Live API: one link for every account; mock mode: this browser's override.
+  const setting = useReferralVideo();
+  const { save, reset, saving } = useSaveReferralVideo();
   const [draft, setDraft] = useState(() => setting.url);
+  // Show the saved link once it loads, unless the admin has started typing.
+  const edited = useRef(false);
+  useEffect(() => {
+    if (!edited.current) setDraft(setting.url);
+  }, [setting.url]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -84,8 +84,8 @@ function AdminReferralBody() {
     window.setTimeout(() => setNotice((current) => (current === message ? null : current)), 3000);
   };
 
-  const handleSave = () => {
-    const result = setReferralVideoUrl(trimmed);
+  const handleSave = async () => {
+    const result = await save(trimmed);
     if (!result.ok) {
       setError(result.message ?? 'That link could not be saved.');
       setNotice(null);
@@ -97,8 +97,13 @@ function AdminReferralBody() {
     showToast(trimmed ? 'Explainer video saved.' : 'Back to the default explainer video.');
   };
 
-  const handleReset = () => {
-    clearReferralVideoUrl();
+  const handleReset = async () => {
+    const result = await reset();
+    if (!result.ok) {
+      setError(result.message ?? 'The video could not be reset.');
+      return;
+    }
+    edited.current = false;
     setDraft(DEFAULT_REFERRAL_VIDEO_URL);
     setError(null);
     showToast('Restored the default explainer video.');
@@ -156,6 +161,7 @@ function AdminReferralBody() {
             type="url"
             value={draft}
             onChange={(event) => {
+              edited.current = true;
               setDraft(event.target.value);
               if (error) setError(null);
             }}
@@ -181,15 +187,16 @@ function AdminReferralBody() {
         <div className="flex flex-wrap items-center gap-space-xs">
           <button
             type="button"
-            onClick={handleSave}
-            className="h-11 px-space-md rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary font-semibold shadow-sm hover:bg-primary transition active:scale-[0.98]"
+            onClick={() => void handleSave()}
+            disabled={saving}
+            className="h-11 px-space-md rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary font-semibold shadow-sm hover:bg-primary transition active:scale-[0.98] disabled:opacity-50"
           >
-            Save video
+            {saving ? 'Saving…' : 'Save video'}
           </button>
           <button
             type="button"
             disabled={!setting.overridden}
-            onClick={handleReset}
+            onClick={() => void handleReset()}
             className="h-11 px-space-md rounded-xl border border-border-subtle bg-surface-canvas hover:bg-surface-subtle text-text-secondary font-button-secondary text-button-secondary transition disabled:opacity-40 active:scale-[0.98]"
           >
             Reset to default

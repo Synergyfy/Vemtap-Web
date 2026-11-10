@@ -1,17 +1,12 @@
 /**
  * Admin-controlled referral explainer video.
  *
- * FRONTEND ONLY. There is no backend yet, so this module is the single source
- * of truth for the video the "See Referral Benefits" popup plays. It is edited
- * from the Platform Admin screen at `/admin/referral`.
+ * Live API: the link is a platform setting — read with `GET /settings/referral-video`
+ * and saved through `PATCH /admin/settings` (see `hooks/useReferralVideo.ts`).
+ * Mock mode (no API configured): the browser-storage override below stands in.
  *
- * Integration notes for the future backend:
- *  - `getReferralVideoSetting()` → replace with `GET /admin/referral-video`.
- *  - `setReferralVideoUrl()` → replace with `PUT /admin/referral-video`.
- *  - The localStorage override exists only so an admin can swap the link in
- *    this build without redeploying. It must never win over a real API value.
- *  - Only YouTube is supported because the player is an embed. Widen
- *    `parseYouTubeId` when the backend accepts other providers.
+ * Only YouTube is supported because the player is an embed. Widen
+ * `parseYouTubeId` when other providers are accepted.
  */
 
 /**

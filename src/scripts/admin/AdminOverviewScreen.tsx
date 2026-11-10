@@ -1,9 +1,20 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ADMIN_CLUSTERS,
   RECENT_TRANSACTIONS,
   VERIFICATION_QUEUE,
 } from './adminData';
+import { hasApiConfig } from '../../services/api/client';
+import { formatCount, NONE, toClusterNode, toVerificationItem } from './adminLive';
+import {
+  useAdminBusinessSummary,
+  useAdminClusters,
+  useAdminDeviceStats,
+  useAdminPendingVerification,
+  useAdminSubscriptionStats,
+  useAdminSystemHealth,
+  useAdminUsers,
+} from './useAdminData';
 
 interface AdminOverviewScreenProps {
   onNavigate: (path: string) => void;
@@ -14,7 +25,47 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
 
+  // Live API data (mock mode keeps the sample figures below).
+  const live = hasApiConfig();
+  const businessSummary = useAdminBusinessSummary();
+  const customers = useAdminUsers({ role: 'Customer', page: 1, limit: 1 });
+  const pending = useAdminPendingVerification({ page: 1, limit: 4 });
+  const clusters = useAdminClusters({ page: 1, limit: 50 });
+  const devices = useAdminDeviceStats();
+  const subscriptions = useAdminSubscriptionStats();
+  const health = useAdminSystemHealth();
+
+  const verificationQueue = live ? (pending.data?.data ?? []).map(toVerificationItem) : VERIFICATION_QUEUE;
+  const pendingTotal = live ? pending.data?.meta.total : 93;
+  const liveClusters = useMemo(
+    () => (clusters.data?.data ?? []).map(toClusterNode).sort((a, b) => b.taps - a.taps),
+    [clusters.data],
+  );
+  const clusterTotal = clusters.data?.meta.total;
+  const maxClusterScans = Math.max(1, ...liveClusters.map((c) => c.taps));
+  const deviceUptime =
+    devices.data && devices.data.totalDevices > 0
+      ? `${Math.round((devices.data.activeNow / devices.data.totalDevices) * 100)}%`
+      : NONE;
+
   const handleRefresh = () => {
+    if (live) {
+      setIsRefreshing(true);
+      void Promise.all([
+        businessSummary.refetch(),
+        customers.refetch(),
+        pending.refetch(),
+        clusters.refetch(),
+        devices.refetch(),
+        subscriptions.refetch(),
+        health.refetch(),
+      ]).finally(() => {
+        setIsRefreshing(false);
+        setRefreshNotice('Overview refreshed from the live API.');
+        setTimeout(() => setRefreshNotice(null), 3000);
+      });
+      return;
+    }
     setIsRefreshing(true);
     setTimeout(() => {
       setIsRefreshing(false);
@@ -24,7 +75,22 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
   };
 
   const handleExport = () => {
-    const data = {
+    const data = live
+      ? {
+          timestamp: new Date().toISOString(),
+          kpis: {
+            totalCustomers: customers.data?.meta.total ?? null,
+            activeMerchants: businessSummary.data?.totalActiveBusiness ?? null,
+            pendingMerchants: businessSummary.data?.totalPendingBusiness ?? null,
+            suspendedMerchants: businessSummary.data?.totalSuspendedBusiness ?? null,
+            devices: devices.data ?? null,
+            subscriptions: subscriptions.data ?? null,
+            clusters: clusterTotal ?? null,
+          },
+          verificationQueue: pending.data?.data ?? [],
+          systemHealth: health.data ?? null,
+        }
+      : {
       timestamp: new Date().toISOString(),
       timeframe,
       kpis: {
@@ -66,7 +132,9 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
             <span className="px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase bg-blue-50 text-[#0055c4] border border-blue-100">
               PLATFORM COMMAND CENTRE • REAL-TIME TELEMETRY
             </span>
-            <span className="text-[11px] text-slate-400 font-medium">Cluster Sync: 48/48 Nodes Active</span>
+            <span className="text-[11px] text-slate-400 font-medium">
+              {live ? `${formatCount(clusterTotal)} clusters` : 'Cluster Sync: 48/48 Nodes Active'}
+            </span>
           </div>
           <h1 className="text-xl font-bold tracking-tight text-slate-900">Overview & Ecosystem Pulse</h1>
           <p className="text-slate-500 text-[12px]">
@@ -76,7 +144,8 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
 
         {/* Header Actions */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Filter Pill */}
+          {/* Filter Pill (the live summary endpoints have no date range) */}
+          {!live && (
           <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1 text-[11px] font-medium text-slate-600">
             <button
               onClick={() => setTimeframe('today')}
@@ -109,6 +178,7 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
               Last 30 Days
             </button>
           </div>
+          )}
 
           {/* Refresh Button */}
           <button
@@ -148,17 +218,27 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
             </div>
           </div>
           <div className="mt-2">
-            <div className="text-2xl font-bold text-slate-900 tracking-tight">142,850</div>
+            <div className="text-2xl font-bold text-slate-900 tracking-tight">
+              {live ? formatCount(customers.data?.meta.total) : '142,850'}
+            </div>
             <div className="flex items-center gap-1.5 mt-1">
-              <span className="inline-flex items-center text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-1 rounded">
-                <span className="material-symbols-outlined text-[13px]">trending_up</span>
-                +12.4%
-              </span>
-              <span className="text-[11px] text-slate-400">MoM growth</span>
+              {live ? (
+                <span className="text-[11px] text-slate-400">Customer accounts</span>
+              ) : (
+                <>
+                  <span className="inline-flex items-center text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-1 rounded">
+                    <span className="material-symbols-outlined text-[13px]">trending_up</span>
+                    +12.4%
+                  </span>
+                  <span className="text-[11px] text-slate-400">MoM growth</span>
+                </>
+              )}
             </div>
           </div>
           <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-            <span>98.2k 30d actives</span>
+            <span>
+              {live ? `${formatCount(businessSummary.data?.totalPlatformUsers)} platform users` : '98.2k 30d actives'}
+            </span>
             <svg className="w-14 h-4 text-[#0055c4]" fill="none" viewBox="0 0 56 16">
               <path
                 d="M1 14 L12 10 L24 12 L36 5 L48 8 L55 2"
@@ -185,18 +265,22 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
             </div>
           </div>
           <div className="mt-2">
-            <div className="text-2xl font-bold text-slate-900 tracking-tight">3,840</div>
+            <div className="text-2xl font-bold text-slate-900 tracking-tight">
+              {live ? formatCount(businessSummary.data?.totalActiveBusiness) : '3,840'}
+            </div>
             <div className="flex items-center gap-1.5 mt-1">
               <span className="inline-flex items-center text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-1 rounded">
                 <span className="material-symbols-outlined text-[13px]">add</span>
-                18 new
+                {live ? `${formatCount(businessSummary.data?.totalPendingBusiness)} pending` : '18 new'}
               </span>
-              <span className="text-[11px] text-slate-400">this week</span>
+              <span className="text-[11px] text-slate-400">{live ? 'approval' : 'this week'}</span>
             </div>
           </div>
           <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-            <span>84 active clusters</span>
-            <span className="font-medium text-slate-700">75.8% CAC OK</span>
+            <span>{live ? `${formatCount(clusterTotal)} clusters` : '84 active clusters'}</span>
+            <span className="font-medium text-slate-700">
+              {live ? `${formatCount(businessSummary.data?.totalSuspendedBusiness)} suspended` : '75.8% CAC OK'}
+            </span>
           </div>
         </div>
 
@@ -214,17 +298,23 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
             </div>
           </div>
           <div className="mt-2">
-            <div className="text-2xl font-bold text-slate-900 tracking-tight">₦284.5M</div>
+            <div className="text-2xl font-bold text-slate-900 tracking-tight">{live ? NONE : '₦284.5M'}</div>
             <div className="flex items-center gap-1.5 mt-1">
-              <span className="inline-flex items-center text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-1 rounded">
-                99.4%
-              </span>
-              <span className="text-[11px] text-slate-400">settlement rate</span>
+              {live ? (
+                <span className="text-[11px] text-slate-400">No platform volume data yet</span>
+              ) : (
+                <>
+                  <span className="inline-flex items-center text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-1 rounded">
+                    99.4%
+                  </span>
+                  <span className="text-[11px] text-slate-400">settlement rate</span>
+                </>
+              )}
             </div>
           </div>
           <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-            <span>214.2k transactions</span>
-            <span className="text-emerald-600 font-medium">Zero backlogs</span>
+            <span>{live ? NONE : '214.2k transactions'}</span>
+            {!live && <span className="text-emerald-600 font-medium">Zero backlogs</span>}
           </div>
         </div>
 
@@ -242,17 +332,21 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
             </div>
           </div>
           <div className="mt-2">
-            <div className="text-2xl font-bold text-slate-900 tracking-tight">14,820</div>
+            <div className="text-2xl font-bold text-slate-900 tracking-tight">
+              {live ? formatCount(devices.data?.totalDevices) : '14,820'}
+            </div>
             <div className="flex items-center gap-1.5 mt-1">
               <span className="inline-flex items-center text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-1 rounded">
-                98.6%
+                {live ? deviceUptime : '98.6%'}
               </span>
-              <span className="text-[11px] text-slate-400">online uptime</span>
+              <span className="text-[11px] text-slate-400">{live ? 'active' : 'online uptime'}</span>
             </div>
           </div>
           <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-            <span>128 sync pings/min</span>
-            <span className="text-slate-600 font-medium">Firmware v3.1</span>
+            <span>{live ? `${formatCount(devices.data?.totalScans)} total scans` : '128 sync pings/min'}</span>
+            <span className="text-slate-600 font-medium">
+              {live ? `${formatCount(devices.data?.offline)} offline` : 'Firmware v3.1'}
+            </span>
           </div>
         </div>
 
@@ -270,17 +364,23 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
             </div>
           </div>
           <div className="mt-2">
-            <div className="text-2xl font-bold text-slate-900 tracking-tight">₦38.45M</div>
+            <div className="text-2xl font-bold text-slate-900 tracking-tight">{live ? NONE : '₦38.45M'}</div>
             <div className="flex items-center gap-1.5 mt-1">
-              <span className="inline-flex items-center text-[11px] font-semibold text-blue-600 bg-blue-50 px-1 rounded">
-                88.5%
-              </span>
-              <span className="text-[11px] text-slate-400">inventory util</span>
+              {live ? (
+                <span className="text-[11px] text-slate-400">No ad revenue data yet</span>
+              ) : (
+                <>
+                  <span className="inline-flex items-center text-[11px] font-semibold text-blue-600 bg-blue-50 px-1 rounded">
+                    88.5%
+                  </span>
+                  <span className="text-[11px] text-slate-400">inventory util</span>
+                </>
+              )}
             </div>
           </div>
           <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-            <span>28/32 slots booked</span>
-            <span className="text-amber-600 font-medium">MTD target 92%</span>
+            <span>{live ? NONE : '28/32 slots booked'}</span>
+            {!live && <span className="text-amber-600 font-medium">MTD target 92%</span>}
           </div>
         </div>
       </div>
@@ -298,7 +398,7 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
                   Verification & Review Queue Requiring Attention
                 </h2>
                 <span className="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-700 border border-red-200">
-                  93 Pending Audits
+                  {formatCount(pendingTotal)} Pending Audits
                 </span>
               </div>
               <button
@@ -312,7 +412,16 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
 
             {/* Verification Action Table/List */}
             <div className="divide-y divide-slate-100">
-              {VERIFICATION_QUEUE.map((item) => (
+              {live && pending.isLoading && (
+                <div className="p-4 text-[12px] text-slate-500">Loading the verification queue…</div>
+              )}
+              {live && pending.isError && (
+                <div className="p-4 text-[12px] text-red-700">Couldn't load the verification queue.</div>
+              )}
+              {live && !pending.isLoading && !pending.isError && verificationQueue.length === 0 && (
+                <div className="p-4 text-[12px] text-slate-500">No businesses are waiting for verification.</div>
+              )}
+              {verificationQueue.map((item) => (
                 <div
                   key={item.id}
                   className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 transition-colors"
@@ -414,7 +523,30 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
 
             {/* Commercial Hubs Bars */}
             <div className="space-y-3.5 pt-1">
-              {ADMIN_CLUSTERS.slice(0, 4).map((c) => {
+              {live && liveClusters.length === 0 && (
+                <div className="text-[12px] text-slate-500">
+                  {clusters.isLoading ? 'Loading clusters…' : 'No clusters yet.'}
+                </div>
+              )}
+              {live &&
+                liveClusters.slice(0, 4).map((c) => (
+                  <div key={c.id}>
+                    <div className="flex items-center justify-between text-[12px] mb-1">
+                      <span className="font-semibold text-slate-800">{c.name}</span>
+                      <span className="text-slate-500 text-[11px]">
+                        <strong className="text-emerald-700">{c.taps.toLocaleString()}</strong> QR scans •{' '}
+                        <strong>{c.activeMerchants.toLocaleString()}</strong> branches
+                      </span>
+                    </div>
+                    <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden flex">
+                      <div
+                        className="bg-emerald-500 h-full rounded-full"
+                        style={{ width: `${Math.round((c.taps / maxClusterScans) * 100)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                ))}
+              {!live && ADMIN_CLUSTERS.slice(0, 4).map((c) => {
                 const impPercent = Math.round((c.impressions / 50000) * 100);
                 const tapPercent = Math.round((c.taps / 50000) * 100);
                 return (
@@ -439,7 +571,11 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
             <div className="pt-2 flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-100">
               <span className="flex items-center gap-1">
                 <span className="material-symbols-outlined text-[14px] text-emerald-600">bolt</span>
-                Top converter: Victoria Island belt (27.5% tap conversion)
+                {live
+                  ? liveClusters[0]
+                    ? `Most scanned: ${liveClusters[0].name} (${liveClusters[0].taps.toLocaleString()} scans)`
+                    : 'No cluster scans yet'
+                  : 'Top converter: Victoria Island belt (27.5% tap conversion)'}
               </span>
               <button
                 onClick={() => onNavigate('/admin/locations')}
@@ -459,7 +595,7 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
                   Recent Platform Transactions & Activity Feed
                 </h2>
               </div>
-              <span className="text-[11px] font-medium text-slate-400">Stream latency: 24ms</span>
+              {!live && <span className="text-[11px] font-medium text-slate-400">Stream latency: 24ms</span>}
             </div>
 
             <div className="overflow-x-auto">
@@ -474,7 +610,14 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-normal">
-                  {RECENT_TRANSACTIONS.map((txn) => (
+                  {live && (
+                    <tr>
+                      <td colSpan={5} className="py-6 px-4 text-center text-slate-500">
+                        No platform-wide transaction feed is available yet.
+                      </td>
+                    </tr>
+                  )}
+                  {!live && RECENT_TRANSACTIONS.map((txn) => (
                     <tr key={txn.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="py-2.5 px-4 text-slate-400 font-mono text-[11px]">{txn.timestamp}</td>
                       <td className="py-2.5 px-4">
@@ -500,7 +643,9 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
             </div>
 
             <div className="p-3 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between text-[11px]">
-              <span className="text-slate-500">Showing last 4 live pulses of 214,190 logged today</span>
+              <span className="text-slate-500">
+                {live ? 'Orders are listed per business' : 'Showing last 4 live pulses of 214,190 logged today'}
+              </span>
               <button
                 onClick={() => onNavigate('/admin/orders')}
                 className="font-semibold text-[#0055c4] hover:underline"
@@ -520,11 +665,36 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
                 <span className="material-symbols-outlined text-emerald-600 text-[19px]">account_balance_wallet</span>
                 <h3 className="font-bold text-[14px] text-slate-900">Subscription & Settlement</h3>
               </div>
-              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                HEALTHY
-              </span>
+              {!live && (
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                  HEALTHY
+                </span>
+              )}
             </div>
 
+            {live ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2 text-[12px]">
+                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                    <span className="text-[10px] text-slate-400 block uppercase font-medium">Active Subscriptions</span>
+                    <span className="text-sm font-bold text-slate-800">{formatCount(subscriptions.data?.activeSubscriptions)}</span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">
+                      {formatCount(subscriptions.data?.activeTrials)} on trial
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
+                    <span className="text-[10px] text-slate-400 block uppercase font-medium">Renewal Sweep</span>
+                    <span className="text-sm font-bold text-slate-800">{formatCount(subscriptions.data?.expiringSoon)} due in 7 days</span>
+                    <span className="text-[10px] text-amber-600 font-medium block mt-0.5">
+                      {formatCount(subscriptions.data?.pastDue)} expired
+                    </span>
+                  </div>
+                </div>
+                {subscriptions.isError && (
+                  <p className="text-[11px] text-red-700">Couldn't load subscription stats.</p>
+                )}
+              </div>
+            ) : (
             <div className="space-y-3">
               {/* MRR */}
               <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-100">
@@ -560,6 +730,7 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
                 </div>
               </div>
             </div>
+            )}
           </div>
 
           {/* 2. Ad Performance & Sponsored Inventory */}
@@ -569,8 +740,22 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
                 <span className="material-symbols-outlined text-amber-600 text-[19px]">ad_units</span>
                 <h3 className="font-bold text-[14px] text-slate-900">Ad & Sponsored Inventory</h3>
               </div>
-              <span className="text-[11px] text-slate-500 font-semibold">28/32 Booked</span>
+              {!live && <span className="text-[11px] text-slate-500 font-semibold">28/32 Booked</span>}
             </div>
+
+            {live && (
+              <div className="space-y-2">
+                <p className="text-[12px] text-slate-500">No sponsored inventory data is available yet.</p>
+                <button
+                  onClick={() => onNavigate('/admin/marketing/ads')}
+                  className="text-[11px] text-[#0055c4] hover:underline font-semibold"
+                >
+                  Open Ads Management
+                </button>
+              </div>
+            )}
+            {!live && (
+            <>
 
             {/* Spotlight Card */}
             <div className="p-3 rounded-lg bg-gradient-to-br from-slate-900 to-slate-800 text-white space-y-2 shadow-sm">
@@ -615,6 +800,8 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
                 </button>
               </div>
             </div>
+            </>
+            )}
           </div>
 
           {/* 3. System Nodes & Gateway Latency */}
@@ -624,13 +811,57 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
                 <span className="material-symbols-outlined text-[#0055c4] text-[19px]">dns</span>
                 <h3 className="font-bold text-[14px] text-slate-900">Nodes & Gateway Latency</h3>
               </div>
+              {live ? (
+                <span
+                  className={`inline-flex items-center gap-1 text-[11px] font-semibold ${
+                    health.data?.status === 'operational' ? 'text-emerald-600' : 'text-amber-700'
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      health.data?.status === 'operational' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                    }`}
+                  ></span>
+                  {health.data ? (health.data.status === 'operational' ? 'Nominal' : 'Degraded') : health.isError ? 'Unavailable' : '…'}
+                </span>
+              ) : (
               <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 Nominal
               </span>
+              )}
             </div>
 
+            {live && (
+              <div className="space-y-2.5">
+                {(health.data?.services ?? []).map((service) => (
+                  <div
+                    key={service.name}
+                    className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100 text-[12px]"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`w-2 h-2 rounded-full ${service.status === 'operational' ? 'bg-emerald-500' : 'bg-red-500'}`}
+                      ></span>
+                      <span className="font-medium text-slate-700">{service.name}</span>
+                    </div>
+                    <span className="font-mono text-[11px] font-semibold text-slate-800">{service.latency ?? service.status}</span>
+                  </div>
+                ))}
+                {health.data?.metrics && (
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100 text-[12px]">
+                    <span className="font-medium text-slate-700">Server CPU / memory</span>
+                    <span className="font-mono text-[11px] font-semibold text-slate-800">
+                      {health.data.metrics.cpu}% / {health.data.metrics.memory}%
+                    </span>
+                  </div>
+                )}
+                {health.isError && <p className="text-[12px] text-red-700">Couldn't load system health.</p>}
+              </div>
+            )}
+
             {/* Real-time latency monitors */}
+            {!live && (
             <div className="space-y-2.5">
               <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100 text-[12px]">
                 <div className="flex items-center gap-2">
@@ -664,9 +895,10 @@ export function AdminOverviewScreen({ onNavigate }: AdminOverviewScreenProps) {
                 <span className="font-mono text-[11px] font-semibold text-slate-800">14ms</span>
               </div>
             </div>
+            )}
 
             <div className="pt-1 text-[11px] text-slate-400 flex items-center justify-between">
-              <span>Sync cycle: Every 5s</span>
+              <span>{live ? 'Refreshes every 30s' : 'Sync cycle: Every 5s'}</span>
               <button
                 onClick={() => onNavigate('/admin/settings')}
                 className="text-[#0055c4] hover:underline font-semibold"

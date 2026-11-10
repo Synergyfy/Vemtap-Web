@@ -1,4 +1,6 @@
 import { useState, useMemo } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { AdminLiveUnavailable } from './AdminLiveUnavailable';
 import { RECENT_TRANSACTIONS, type PlatformTransaction } from './adminData';
 import { AdminTransactionsExceptionsScreen } from './AdminTransactionsExceptionsScreen';
 
@@ -385,7 +387,20 @@ export function AdminOrdersScreen({ onNavigate, subpage = 'live' }: AdminOrdersS
       {/* ========================================================================= */}
       {/* 1. SUBPAGE: LIVE ORDERS & LEDGER                                          */}
       {/* ========================================================================= */}
-      {subpage === 'live' && (
+      {/* No platform-wide orders, terminals or disputes endpoints yet: live mode shows a notice. */}
+      {hasApiConfig() && (
+        <AdminLiveUnavailable
+          title={subpage === 'terminals' ? 'POS monitoring' : subpage === 'live' ? 'Platform-wide orders & bookings' : 'Transactions & exceptions'}
+          needs={
+            subpage === 'terminals'
+              ? 'an admin POS terminal feed (status, heartbeat, volume per terminal)'
+              : subpage === 'live'
+                ? 'GET /admin/orders — orders and bookings across all businesses'
+                : 'GET /admin/transactions and /admin/disputes — payment exceptions and disputes across businesses'
+          }
+        />
+      )}
+      {!hasApiConfig() && subpage === 'live' && (
         <div className="space-y-6">
           {/* KPI Ribbon */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -571,7 +586,7 @@ export function AdminOrdersScreen({ onNavigate, subpage = 'live' }: AdminOrdersS
       {/* ========================================================================= */}
       {/* 2. SUBPAGE: POS HARDWARE FLEET                                            */}
       {/* ========================================================================= */}
-      {subpage === 'terminals' && (
+      {!hasApiConfig() && subpage === 'terminals' && (
         <div className="space-y-6">
           {/* Hardware Fleet KPIs */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -777,7 +792,7 @@ export function AdminOrdersScreen({ onNavigate, subpage = 'live' }: AdminOrdersS
       {/* ========================================================================= */}
       {/* 3. SUBPAGE: TRANSACTIONS & EXCEPTIONS                                     */}
       {/* ========================================================================= */}
-      {(subpage === 'transactions' || subpage === 'disputes') && (
+      {!hasApiConfig() && (subpage === 'transactions' || subpage === 'disputes') && (
         <AdminTransactionsExceptionsScreen onNavigate={onNavigate} />
       )}
 

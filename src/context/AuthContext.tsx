@@ -13,6 +13,8 @@ interface AuthCredentials {
   identifier?: string;
   email?: string;
   password?: string;
+  /** Code from an authenticator app, for accounts with 2FA on. */
+  twoFactorCode?: string;
   source?: string;
 }
 
@@ -209,6 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const response = await authService.login({
               identifier,
               password: password.trim(),
+              ...(credentials?.twoFactorCode?.trim() ? { twoFactorCode: credentials.twoFactorCode.trim() } : {}),
             });
             persistProfileFromUser(response);
             const user = (response as { user?: SessionUser }).user;

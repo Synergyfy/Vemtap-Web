@@ -1,4 +1,6 @@
 import { AdminCampaignsAnnouncementsScreen } from './AdminCampaignsAnnouncementsScreen';
+import { hasApiConfig } from '../../services/api/client';
+import { AdminLiveUnavailable } from './AdminLiveUnavailable';
 import { AdminAdsManagementScreen } from './AdminAdsManagementScreen';
 import { AdminAdPerformanceScreen } from './AdminAdPerformanceScreen';
 
@@ -59,7 +61,12 @@ export function AdminMarketingScreen({ onNavigate, subpage = 'campaigns' }: Admi
       {/* Render selected view */}
       {currentTab === 'campaigns' && <AdminCampaignsAnnouncementsScreen onNavigate={onNavigate} />}
       {currentTab === 'ads' && <AdminAdsManagementScreen onNavigate={onNavigate} />}
-      {currentTab === 'performance' && <AdminAdPerformanceScreen onNavigate={onNavigate} />}
+      {currentTab === 'performance' &&
+        (hasApiConfig() ? (
+          <AdminLiveUnavailable title="Ad performance" needs="an admin report of boost / promotion impressions, clicks and spend" />
+        ) : (
+          <AdminAdPerformanceScreen onNavigate={onNavigate} />
+        ))}
     </div>
   );
 }

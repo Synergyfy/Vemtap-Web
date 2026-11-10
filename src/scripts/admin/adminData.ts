@@ -7,7 +7,8 @@ export interface AdminBusiness {
   name: string;
   slug: string;
   category: string;
-  tier: 'Platinum Enterprise' | 'Gold Merchant' | 'Silver Tier' | 'Basic Trial';
+  /** Sample tiers in mock mode; the live plan name (or "No active plan") against the API. */
+  tier: string;
   cacRc: string;
   tin: string;
   cluster: string;
@@ -71,6 +72,8 @@ export interface AdminBusiness {
     assignment: string;
     status: 'Active Signal' | 'Standby' | 'Offline';
   }>;
+  /** The API record behind a live row (absent in mock mode). */
+  raw?: import('../../services/adminService').AdminApiBusiness;
 }
 
 export interface AdminCustomer {

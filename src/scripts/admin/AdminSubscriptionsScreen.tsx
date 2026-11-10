@@ -1,4 +1,6 @@
 import { AdminPlanConfigurationScreen } from './AdminPlanConfigurationScreen';
+import { hasApiConfig } from '../../services/api/client';
+import { AdminLiveUnavailable } from './AdminLiveUnavailable';
 import { AdminSubscriptionsListScreen } from './AdminSubscriptionsListScreen';
 import { AdminPaymentsScreen } from './AdminPaymentsScreen';
 import { AdminAdBillingScreen } from './AdminAdBillingScreen';
@@ -50,8 +52,18 @@ export function AdminSubscriptionsScreen({ onNavigate, subpage }: AdminSubscript
       {/* Render active sub-screen */}
       {activeTab === 'plan-configuration' && <AdminPlanConfigurationScreen onNavigate={onNavigate} />}
       {activeTab === 'subscriptions' && <AdminSubscriptionsListScreen onNavigate={onNavigate} />}
-      {activeTab === 'payments' && <AdminPaymentsScreen onNavigate={onNavigate} />}
-      {activeTab === 'ad-billing' && <AdminAdBillingScreen onNavigate={onNavigate} />}
+      {activeTab === 'payments' &&
+        (hasApiConfig() ? (
+          <AdminLiveUnavailable title="Payments" needs="GET /admin/payments — subscription and checkout payments across businesses" />
+        ) : (
+          <AdminPaymentsScreen onNavigate={onNavigate} />
+        ))}
+      {activeTab === 'ad-billing' &&
+        (hasApiConfig() ? (
+          <AdminLiveUnavailable title="Ad payments & billing" needs="an admin view of ad-wallet top-ups, ad spend and invoices" />
+        ) : (
+          <AdminAdBillingScreen onNavigate={onNavigate} />
+        ))}
     </div>
   );
 }

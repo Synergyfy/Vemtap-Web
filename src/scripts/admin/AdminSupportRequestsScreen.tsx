@@ -1,11 +1,15 @@
 import { useState, useMemo } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { adminService, type AdminSupportTicket, type AdminTicketUser } from '../../services/adminService';
+import { formatCount, NONE, timeAgo } from './adminLive';
+import { adminErrorMessage, useAdminAction, useAdminTicket, useAdminTickets } from './useAdminData';
 
 interface AdminSupportRequestsScreenProps {
   onNavigate: (path: string) => void;
 }
 
 type TicketPriority = 'Critical' | 'High' | 'Medium' | 'Low';
-type TicketStatus = 'Open' | 'In Progress' | 'Escalated' | 'Resolved';
+type TicketStatus = 'Open' | 'In Progress' | 'Escalated' | 'Resolved' | 'Cancelled';
 type RequesterType = 'Customer' | 'Business';
 
 interface SupportTicket {
@@ -23,7 +27,7 @@ interface SupportTicket {
   createdAt: string;
   lastReply: string;
   assignedTo: string;
-  channel: 'In-App Chat' | 'Email' | 'WhatsApp SLA' | 'Escalation Desk';
+  channel: string;
   messagesCount: number;
   description: string;
   metadata: {
@@ -38,6 +42,51 @@ interface SupportTicket {
     timestamp: string;
     text: string;
   }[];
+}
+
+const BUSINESS_ROLES = ['Owner', 'Manager', 'Staff'];
+const STAFF_ROLES = ['Admin', 'SUPER_ADMIN', 'Agent'];
+const LIVE_STATUS: Record<string, TicketStatus> = {
+  Pending: 'Open',
+  'In Progress': 'In Progress',
+  Resolved: 'Resolved',
+  Cancelled: 'Cancelled',
+};
+const LIVE_PRIORITY: Record<string, TicketPriority> = { Urgent: 'Critical', High: 'High', Normal: 'Medium', Low: 'Low' };
+const nameOf = (user: AdminTicketUser | null | undefined) =>
+  (user && ([user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.email)) || '';
+
+function toTicket(t: AdminSupportTicket): SupportTicket {
+  const requesterName = nameOf(t.user) || t.guestName || t.guestEmail || 'Guest';
+  return {
+    id: t.id,
+    ticketNumber: `#${t.id.slice(0, 8).toUpperCase()}`,
+    subject: t.subject,
+    category: t.category || NONE,
+    requesterName,
+    requesterType: t.user?.role && BUSINESS_ROLES.includes(t.user.role) ? 'Business' : 'Customer',
+    requesterAvatar: requesterName.slice(0, 2).toUpperCase(),
+    email: t.user?.email || t.guestEmail || NONE,
+    phone: t.user?.phone || NONE,
+    priority: LIVE_PRIORITY[t.priority] ?? 'Medium',
+    status: LIVE_STATUS[t.status] ?? 'Open',
+    createdAt: new Date(t.createdAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+    lastReply: timeAgo(t.updatedAt),
+    assignedTo: nameOf(t.assignedTo) || 'Unassigned',
+    channel: t.type === 'Chat' ? 'In-App Chat' : t.channel || 'Ticket',
+    messagesCount: t.messages?.length ?? 0,
+    description: '',
+    metadata: {},
+    chatThread: (t.messages ?? [])
+      .slice()
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      .map((m) => ({
+        sender: nameOf(m.sender) || (m.senderId && m.senderId === t.userId ? requesterName : 'Support'),
+        isStaff: Boolean(m.sender?.role && STAFF_ROLES.includes(m.sender.role)) || (!!m.senderId && m.senderId !== t.userId),
+        timestamp: timeAgo(m.createdAt),
+        text: m.message,
+      })),
+  };
 }
 
 const SUPPORT_TICKETS: SupportTicket[] = [
@@ -191,8 +240,17 @@ const SUPPORT_TICKETS: SupportTicket[] = [
 ];
 
 export function AdminSupportRequestsScreen({ onNavigate }: AdminSupportRequestsScreenProps) {
-  const [tickets, setTickets] = useState(SUPPORT_TICKETS);
-  const [selectedId, setSelectedId] = useState<string>(SUPPORT_TICKETS[0].id);
+  const live = hasApiConfig();
+  const [mockTickets, setTickets] = useState(SUPPORT_TICKETS);
+  const [selectedId, setSelectedId] = useState<string>(live ? '' : SUPPORT_TICKETS[0].id);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Live API: the newest 100 tickets; the open one loads its full thread.
+  const ticketsQuery = useAdminTickets();
+  const liveTickets = useMemo(() => (ticketsQuery.data?.data ?? []).map(toTicket), [ticketsQuery.data]);
+  const tickets = live ? liveTickets : mockTickets;
+  const replyMutation = useAdminAction(({ id, message }: { id: string; message: string }) => adminService.replyToTicket(id, message));
+  const statusMutation = useAdminAction(({ id, status }: { id: string; status: string }) => adminService.setTicketStatus(id, status));
   const [filterType, setFilterType] = useState<'All' | 'Customer' | 'Business'>('All');
   const [filterStatus, setFilterStatus] = useState<'All' | TicketStatus>('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -204,9 +262,12 @@ export function AdminSupportRequestsScreen({ onNavigate }: AdminSupportRequestsS
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  const selectedTicket = useMemo(() => {
+  const listedTicket = useMemo(() => {
     return tickets.find(t => t.id === selectedId) || tickets[0];
   }, [tickets, selectedId]);
+  const ticketDetail = useAdminTicket(live ? listedTicket?.id : null);
+  const selectedTicket: SupportTicket | undefined = live && ticketDetail.data ? toTicket(ticketDetail.data) : listedTicket;
+  const openCount = liveTickets.filter((t) => t.status === 'Open' || t.status === 'In Progress');
 
   const filteredTickets = useMemo(() => {
     return tickets.filter(t => {
@@ -222,7 +283,21 @@ export function AdminSupportRequestsScreen({ onNavigate }: AdminSupportRequestsS
   }, [tickets, filterType, filterStatus, searchQuery]);
 
   const handleSendReply = () => {
-    if (!replyText.trim()) return;
+    if (!replyText.trim() || !selectedTicket) return;
+    if (live) {
+      setActionError(null);
+      replyMutation.mutate(
+        { id: selectedTicket.id, message: replyText.trim() },
+        {
+          onSuccess: () => {
+            setReplyText('');
+            showToast('Reply sent.');
+          },
+          onError: (error) => setActionError(adminErrorMessage(error)),
+        },
+      );
+      return;
+    }
     const updated = tickets.map(t => {
       if (t.id === selectedTicket.id) {
         return {
@@ -248,6 +323,19 @@ export function AdminSupportRequestsScreen({ onNavigate }: AdminSupportRequestsS
   };
 
   const handleStatusChange = (newStatus: TicketStatus) => {
+    if (!selectedTicket) return;
+    if (live) {
+      const backend = newStatus === 'Open' ? 'Pending' : newStatus;
+      setActionError(null);
+      statusMutation.mutate(
+        { id: selectedTicket.id, status: backend },
+        {
+          onSuccess: () => showToast(`Ticket marked ${newStatus}.`),
+          onError: (error) => setActionError(adminErrorMessage(error)),
+        },
+      );
+      return;
+    }
     const updated = tickets.map(t => {
       if (t.id === selectedTicket.id) {
         return { ...t, status: newStatus };
@@ -267,6 +355,14 @@ export function AdminSupportRequestsScreen({ onNavigate }: AdminSupportRequestsS
           <span>{toastMessage}</span>
         </div>
       )}
+      {actionError && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-xs flex items-center justify-between">
+          <span>{actionError}</span>
+          <button onClick={() => setActionError(null)} className="text-red-600 font-semibold">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* KPI Bento Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -275,22 +371,26 @@ export function AdminSupportRequestsScreen({ onNavigate }: AdminSupportRequestsS
             <span className="text-[11px] font-semibold uppercase tracking-wider">Active Open Cases</span>
             <span className="material-symbols-outlined text-[#0055c4] text-lg">support_agent</span>
           </div>
-          <div className="text-2xl font-bold text-slate-900">42</div>
+          <div className="text-2xl font-bold text-slate-900">{live ? formatCount(openCount.length) : '42'}</div>
           <div className="flex items-center gap-1.5 mt-1 text-[11px]">
-            <span className="text-amber-600 font-semibold">14 Business</span>
+            <span className="text-amber-600 font-semibold">
+              {live ? openCount.filter((t) => t.requesterType === 'Business').length : 14} Business
+            </span>
             <span className="text-slate-400">•</span>
-            <span className="text-sky-600 font-semibold">28 Customer</span>
+            <span className="text-sky-600 font-semibold">
+              {live ? openCount.filter((t) => t.requesterType === 'Customer').length : 28} Customer
+            </span>
           </div>
         </div>
 
         <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs">
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">Avg First Response</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider">{live ? 'Total Tickets' : 'Avg First Response'}</span>
             <span className="material-symbols-outlined text-emerald-600 text-lg">speed</span>
           </div>
-          <div className="text-2xl font-bold text-slate-900">4m 12s</div>
+          <div className="text-2xl font-bold text-slate-900">{live ? formatCount(ticketsQuery.data?.meta.total) : '4m 12s'}</div>
           <div className="text-[11px] text-emerald-600 font-medium mt-1">
-            <span>SLA Target: &lt; 15 mins (98.4% met)</span>
+            <span>{live ? `${liveTickets.filter((t) => t.assignedTo === 'Unassigned').length} unassigned` : 'SLA Target: < 15 mins (98.4% met)'}</span>
           </div>
         </div>
 
@@ -299,17 +399,28 @@ export function AdminSupportRequestsScreen({ onNavigate }: AdminSupportRequestsS
             <span className="text-[11px] font-semibold uppercase tracking-wider">Critical Escalations</span>
             <span className="material-symbols-outlined text-rose-600 text-lg">emergency_home</span>
           </div>
-          <div className="text-2xl font-bold text-rose-600">3</div>
-          <div className="text-[11px] text-slate-500 mt-1">Requires L2/L3 Engineering sign-off</div>
+          <div className="text-2xl font-bold text-rose-600">
+            {live ? openCount.filter((t) => t.priority === 'Critical').length : 3}
+          </div>
+          <div className="text-[11px] text-slate-500 mt-1">{live ? 'Open tickets marked urgent' : 'Requires L2/L3 Engineering sign-off'}</div>
         </div>
 
         <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs">
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wider">Resolution CSAT</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider">{live ? 'Resolved' : 'Resolution CSAT'}</span>
             <span className="material-symbols-outlined text-amber-500 text-lg">star</span>
           </div>
-          <div className="text-2xl font-bold text-slate-900">4.92 <span className="text-sm font-normal text-slate-400">/ 5.0</span></div>
-          <div className="text-[11px] text-emerald-600 font-medium mt-1">Based on 642 verified reviews</div>
+          {live ? (
+            <>
+              <div className="text-2xl font-bold text-slate-900">{liveTickets.filter((t) => t.status === 'Resolved').length}</div>
+              <div className="text-[11px] text-slate-500 font-medium mt-1">of the latest {liveTickets.length} tickets</div>
+            </>
+          ) : (
+            <>
+              <div className="text-2xl font-bold text-slate-900">4.92 <span className="text-sm font-normal text-slate-400">/ 5.0</span></div>
+              <div className="text-[11px] text-emerald-600 font-medium mt-1">Based on 642 verified reviews</div>
+            </>
+          )}
         </div>
       </div>
 
@@ -349,7 +460,7 @@ export function AdminSupportRequestsScreen({ onNavigate }: AdminSupportRequestsS
           {/* Status Sub-filter Ribbon */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs border-b border-slate-100 pt-1">
             <span className="text-slate-400 text-[11px] font-semibold uppercase tracking-wider shrink-0">Status:</span>
-            {(['All', 'Open', 'In Progress', 'Escalated', 'Resolved'] as const).map(status => (
+            {(live ? (['All', 'Open', 'In Progress', 'Resolved', 'Cancelled'] as const) : (['All', 'Open', 'In Progress', 'Escalated', 'Resolved'] as const)).map(status => (
               <button
                 key={status}
                 onClick={() => setFilterStatus(status)}
@@ -366,8 +477,12 @@ export function AdminSupportRequestsScreen({ onNavigate }: AdminSupportRequestsS
 
           {/* Tickets List */}
           <div className="space-y-2.5 max-h-[720px] overflow-y-auto pr-1">
+            {live && ticketsQuery.isLoading && <p className="p-4 text-xs text-slate-500">Loading tickets…</p>}
+            {live && ticketsQuery.isError && (
+              <p className="p-4 text-xs text-red-700">Couldn't load tickets: {adminErrorMessage(ticketsQuery.error)}</p>
+            )}
             {filteredTickets.map(ticket => {
-              const isSelected = ticket.id === selectedTicket.id;
+              const isSelected = ticket.id === selectedTicket?.id;
               return (
                 <div
                   key={ticket.id}
@@ -435,7 +550,7 @@ export function AdminSupportRequestsScreen({ onNavigate }: AdminSupportRequestsS
               );
             })}
 
-            {filteredTickets.length === 0 && (
+            {filteredTickets.length === 0 && !(live && (ticketsQuery.isLoading || ticketsQuery.isError)) && (
               <div className="p-8 text-center text-slate-500">
                 <span className="material-symbols-outlined text-3xl text-slate-400 mb-2">inbox</span>
                 <p className="text-xs">No support cases matching current filters.</p>
@@ -445,6 +560,11 @@ export function AdminSupportRequestsScreen({ onNavigate }: AdminSupportRequestsS
         </div>
 
         {/* Right: Live Case Workspace & Chat Thread (5 cols) */}
+        {!selectedTicket ? (
+          <div className="lg:col-span-5 bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs text-xs text-slate-500">
+            Select a ticket to open it.
+          </div>
+        ) : (
         <div className="lg:col-span-5 bg-white border border-slate-200/80 rounded-2xl p-5 shadow-2xs space-y-5">
           {/* Workspace Header */}
           <div className="flex items-start justify-between pb-4 border-b border-slate-100">
@@ -530,6 +650,9 @@ export function AdminSupportRequestsScreen({ onNavigate }: AdminSupportRequestsS
           <div className="space-y-3">
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Case Audit Conversation Stream</h4>
             <div className="bg-slate-50/70 border border-slate-200/70 rounded-xl p-3 space-y-3 max-h-[300px] overflow-y-auto">
+              {live && selectedTicket.chatThread.length === 0 && (
+                <p className="text-xs text-slate-500">{ticketDetail.isLoading ? 'Loading messages…' : 'No messages yet.'}</p>
+              )}
               {selectedTicket.chatThread.map((msg, idx) => (
                 <div
                   key={idx}
@@ -566,11 +689,23 @@ export function AdminSupportRequestsScreen({ onNavigate }: AdminSupportRequestsS
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
+                  disabled={live && statusMutation.isPending}
                   onClick={() => handleStatusChange('Resolved')}
                   className="px-2.5 py-1.5 rounded-lg border border-emerald-300 text-emerald-700 bg-emerald-50 text-xs font-semibold hover:bg-emerald-100 transition-colors"
                 >
                   Mark Resolved
                 </button>
+                {live && (
+                  <button
+                    type="button"
+                    disabled={statusMutation.isPending}
+                    onClick={() => handleStatusChange('In Progress')}
+                    className="px-2.5 py-1.5 rounded-lg border border-blue-300 text-blue-700 bg-blue-50 text-xs font-semibold hover:bg-blue-100 transition-colors disabled:opacity-50"
+                  >
+                    Mark In Progress
+                  </button>
+                )}
+                {!live && (
                 <button
                   type="button"
                   onClick={() => handleStatusChange('Escalated')}
@@ -578,12 +713,13 @@ export function AdminSupportRequestsScreen({ onNavigate }: AdminSupportRequestsS
                 >
                   Escalate to L3
                 </button>
+                )}
               </div>
 
               <button
                 type="button"
                 onClick={handleSendReply}
-                disabled={!replyText.trim()}
+                disabled={!replyText.trim() || (live && replyMutation.isPending)}
                 className="px-4 py-1.5 rounded-xl bg-[#0055c4] text-white text-xs font-bold hover:bg-[#00429b] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-2xs"
               >
                 <span>Send Reply</span>
@@ -592,6 +728,7 @@ export function AdminSupportRequestsScreen({ onNavigate }: AdminSupportRequestsS
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
   );
