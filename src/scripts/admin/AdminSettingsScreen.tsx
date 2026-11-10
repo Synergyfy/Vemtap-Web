@@ -1,4 +1,6 @@
 import { AdminSupportRequestsScreen } from './AdminSupportRequestsScreen';
+import { hasApiConfig } from '../../services/api/client';
+import { AdminLiveUnavailable } from './AdminLiveUnavailable';
 import { AdminComplaintsDisputesScreen } from './AdminComplaintsDisputesScreen';
 import { AdminPlatformSettingsScreen } from './AdminPlatformSettingsScreen';
 import { AdminActivityLogScreen } from './AdminActivityLogScreen';
@@ -67,7 +69,12 @@ export function AdminSettingsScreen({ onNavigate, subpage = 'support' }: AdminSe
 
       {/* Dynamic Content Views */}
       {activeSubpage === 'support' && <AdminSupportRequestsScreen onNavigate={onNavigate} />}
-      {activeSubpage === 'disputes' && <AdminComplaintsDisputesScreen onNavigate={onNavigate} />}
+      {activeSubpage === 'disputes' &&
+        (hasApiConfig() ? (
+          <AdminLiveUnavailable title="Complaints & disputes" needs="GET /admin/disputes — customer/merchant complaints and their resolution" />
+        ) : (
+          <AdminComplaintsDisputesScreen onNavigate={onNavigate} />
+        ))}
       {activeSubpage === 'platform' && <AdminPlatformSettingsScreen onNavigate={onNavigate} />}
       {activeSubpage === 'audit' && <AdminActivityLogScreen onNavigate={onNavigate} />}
     </div>

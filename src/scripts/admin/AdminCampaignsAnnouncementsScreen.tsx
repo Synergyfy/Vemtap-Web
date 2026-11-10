@@ -1,4 +1,8 @@
 import { useState, useMemo } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { adminService, type AdminBroadcast, type AdminBroadcastInput } from '../../services/adminService';
+import { formatCount, formatDate, NONE } from './adminLive';
+import { adminErrorMessage, useAdminAction, useAdminBroadcasts } from './useAdminData';
 
 interface CampaignAnnouncement {
   id: string;
@@ -13,6 +17,7 @@ interface CampaignAnnouncement {
   openRate: string;
   scheduleDate: string;
   expiryNotice: string;
+  /** `ACTIVE` = still sending; `DRAFT` = failed against the live API (there are no drafts there). */
   status: 'ACTIVE' | 'SCHEDULED' | 'DRAFT' | 'COMPLETED';
   author: string;
   pushPreviewHeadline: string;
@@ -21,6 +26,41 @@ interface CampaignAnnouncement {
   inAppBody: string;
   deepLink: string;
   imageSrc: string;
+}
+
+const AUDIENCE_LABEL: Record<string, string> = {
+  ALL: 'Everyone',
+  BUSINESSES: 'Businesses',
+  CUSTOMERS: 'Customers',
+  AGENTS: 'Agents',
+};
+
+function toCampaign(b: AdminBroadcast): CampaignAnnouncement {
+  const push = b.channels?.includes('push');
+  const inApp = b.channels?.includes('in_app') || b.channels?.includes('inApp') || b.channels?.includes('in-app');
+  const author = [b.sender?.firstName, b.sender?.lastName].filter(Boolean).join(' ').trim() || b.sender?.email || 'Admin';
+  return {
+    id: b.id,
+    code: `#${b.id.slice(0, 8).toUpperCase()}`,
+    title: b.title,
+    channels: [push ? 'notifications_active' : '', inApp ? 'chat_bubble' : ''].filter(Boolean),
+    channelSummary: [inApp ? 'In-app' : '', push ? 'Push' : ''].filter(Boolean).join(' + ') || (b.channels ?? []).join(', ') || NONE,
+    targetSegment: AUDIENCE_LABEL[b.targetAudience] ?? b.targetAudience,
+    targetCluster: 'All locations',
+    audienceCount: b.totalRecipients ?? 0,
+    deliveryRate: `${formatCount(b.pushRecipients)} push`,
+    openRate: NONE,
+    scheduleDate: formatDate(b.createdAt),
+    expiryNotice: b.type,
+    status: b.status === 'PROCESSING' ? 'ACTIVE' : b.status === 'FAILED' ? 'DRAFT' : 'COMPLETED',
+    author,
+    pushPreviewHeadline: b.title,
+    pushPreviewBody: b.message,
+    inAppHeadline: b.title,
+    inAppBody: b.message,
+    deepLink: b.actionUrl ?? '',
+    imageSrc: '',
+  };
 }
 
 const CAMPAIGNS_DATA: CampaignAnnouncement[] = [
@@ -141,14 +181,47 @@ interface AdminCampaignsAnnouncementsScreenProps {
 }
 
 export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: AdminCampaignsAnnouncementsScreenProps) {
-  const [campaigns, setCampaigns] = useState<CampaignAnnouncement[]>(CAMPAIGNS_DATA);
-  const [selectedId, setSelectedId] = useState<string>(CAMPAIGNS_DATA[0].id);
+  const live = hasApiConfig();
+  const [mockCampaigns, setCampaigns] = useState<CampaignAnnouncement[]>(CAMPAIGNS_DATA);
+  const [selectedId, setSelectedId] = useState<string>(live ? '' : CAMPAIGNS_DATA[0].id);
+  const [composing, setComposing] = useState(false);
+  const [draft, setDraft] = useState<AdminBroadcastInput>({ title: '', message: '', targetAudience: 'ALL', actionUrl: '' });
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Live API: broadcast history; "Create Announcement" sends a real broadcast.
+  const broadcastsQuery = useAdminBroadcasts();
+  const liveCampaigns = useMemo(() => (broadcastsQuery.data?.items ?? []).map(toCampaign), [broadcastsQuery.data]);
+  const campaigns = live ? liveCampaigns : mockCampaigns;
+  const statusCount = (status: CampaignAnnouncement['status']) => campaigns.filter((c) => c.status === status).length;
+  const sendBroadcast = useAdminAction((input: AdminBroadcastInput) => adminService.sendBroadcast(input));
+  const handleSend = () => {
+    if (!draft.title.trim() || !draft.message.trim()) return setActionError('Add a title and a message.');
+    setActionError(null);
+    sendBroadcast.mutate(
+      {
+        title: draft.title.trim(),
+        message: draft.message.trim(),
+        targetAudience: draft.targetAudience,
+        ...(draft.actionUrl?.trim() ? { actionUrl: draft.actionUrl.trim() } : {}),
+        sendPush: true,
+        sendInApp: true,
+      },
+      {
+        onSuccess: () => {
+          setComposing(false);
+          setDraft({ title: '', message: '', targetAudience: 'ALL', actionUrl: '' });
+          triggerNotice('Broadcast sent.');
+        },
+        onError: (error) => setActionError(adminErrorMessage(error)),
+      },
+    );
+  };
   const [statusTab, setStatusTab] = useState<'ALL' | 'ACTIVE' | 'SCHEDULED' | 'DRAFT' | 'COMPLETED'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [channelFilter, setChannelFilter] = useState('ALL');
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
-  const selectedCampaign = useMemo(() => {
+  const selectedCampaign: CampaignAnnouncement | undefined = useMemo(() => {
     return campaigns.find((c) => c.id === selectedId) || campaigns[0];
   }, [campaigns, selectedId]);
 
@@ -220,6 +293,8 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
 
         {/* Right Header Action Suite */}
         <div className="flex flex-wrap items-center gap-2 self-start lg:self-center">
+{!live && (
+<>
           <button
             onClick={() => triggerNotice('Message delivery audit ledger exported.')}
             className="h-9 px-3.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-[12px] font-semibold flex items-center gap-1.5 shadow-2xs transition-colors"
@@ -234,8 +309,10 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
             <span className="material-symbols-outlined text-[18px] text-slate-500">library_books</span>
             <span>Template Library</span>
           </button>
+</>
+)}
           <button
-            onClick={() => triggerNotice('Announcement creation wizard initiated.')}
+            onClick={() => (live ? setComposing(true) : triggerNotice('Announcement creation wizard initiated.'))}
             className="h-9 px-4 rounded-lg bg-[#0055c4] hover:bg-[#066cf4] text-white text-[12px] font-semibold flex items-center gap-1.5 shadow-2xs transition-colors"
           >
             <span className="material-symbols-outlined text-[18px]">add_circle</span>
@@ -256,13 +333,17 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
           </div>
           <div className="mt-3">
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-slate-900 tracking-tight">148</span>
-              <span className="text-[11px] text-slate-500">Campaigns (30d)</span>
+              <span className="text-2xl font-bold text-slate-900 tracking-tight">
+                {live ? formatCount(broadcastsQuery.data?.meta.total) : '148'}
+              </span>
+              <span className="text-[11px] text-slate-500">{live ? 'Broadcasts' : 'Campaigns (30d)'}</span>
             </div>
             <div className="flex items-center gap-1.5 mt-2 text-[11px] text-slate-600">
               <span className="material-symbols-outlined text-[#0055c4] text-[15px]">sensors</span>
-              <span className="font-bold text-slate-900">1.84M</span>
-              <span>Consumers Reached</span>
+              <span className="font-bold text-slate-900">
+                {live ? formatCount(campaigns.reduce((sum, c) => sum + c.audienceCount, 0)) : '1.84M'}
+              </span>
+              <span>{live ? 'Recipients (latest 100)' : 'Consumers Reached'}</span>
             </div>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-100">
@@ -280,12 +361,12 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
           </div>
           <div className="mt-3">
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-slate-900 tracking-tight">44.8%</span>
-              <span className="text-[11px] text-slate-500">Open Rate</span>
+              <span className="text-2xl font-bold text-slate-900 tracking-tight">{live ? NONE : '44.8%'}</span>
+              <span className="text-[11px] text-slate-500">{live ? 'Opens not tracked' : 'Open Rate'}</span>
             </div>
             <div className="flex items-center gap-1.5 mt-2 text-[11px] text-slate-600">
               <span className="material-symbols-outlined text-[#0055c4] text-[15px]">ads_click</span>
-              <span className="font-bold text-slate-900">18.2%</span>
+              <span className="font-bold text-slate-900">{live ? NONE : '18.2%'}</span>
               <span>Aggregate CTR</span>
             </div>
           </div>
@@ -304,13 +385,13 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
           </div>
           <div className="mt-3">
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-slate-900 tracking-tight">6</span>
-              <span className="text-[11px] text-slate-500">Live Campaigns</span>
+              <span className="text-2xl font-bold text-slate-900 tracking-tight">{live ? statusCount('ACTIVE') : '6'}</span>
+              <span className="text-[11px] text-slate-500">{live ? 'Still sending' : 'Live Campaigns'}</span>
             </div>
             <div className="flex items-center gap-1.5 mt-2 text-[11px] text-slate-600">
               <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="font-bold text-slate-900">2</span>
-              <span>Cluster Flash Alerts Active</span>
+              <span className="font-bold text-slate-900">{live ? statusCount('DRAFT') : '2'}</span>
+              <span>{live ? 'Failed' : 'Cluster Flash Alerts Active'}</span>
             </div>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-100">
@@ -328,12 +409,18 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
           </div>
           <div className="mt-3">
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-slate-900 tracking-tight">99.4%</span>
-              <span className="text-[11px] text-slate-500">SMS/Push SLA</span>
+              <span className="text-2xl font-bold text-slate-900 tracking-tight">
+                {live
+                  ? campaigns.length
+                    ? `${Math.round((statusCount('COMPLETED') / campaigns.length) * 100)}%`
+                    : NONE
+                  : '99.4%'}
+              </span>
+              <span className="text-[11px] text-slate-500">{live ? 'Sent successfully' : 'SMS/Push SLA'}</span>
             </div>
             <div className="flex items-center gap-1.5 mt-2 text-[11px] text-slate-600">
               <span className="material-symbols-outlined text-slate-400 text-[15px]">unsubscribe</span>
-              <span className="font-bold text-slate-900">0.02%</span>
+              <span className="font-bold text-slate-900">{live ? NONE : '0.02%'}</span>
               <span>Opt-Out Rate (Strict)</span>
             </div>
           </div>
@@ -361,7 +448,7 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
                   }`}
                 >
                   <span>All Announcements</span>
-                  <span className="px-1.5 py-0.2 rounded-full bg-white/20 text-[10px]">148</span>
+                  <span className="px-1.5 py-0.2 rounded-full bg-white/20 text-[10px]">{live ? campaigns.length : '148'}</span>
                 </button>
                 <button
                   onClick={() => setStatusTab('ACTIVE')}
@@ -371,8 +458,8 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
                       : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
-                  <span>Live Active</span>
-                  <span className="px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-700 text-[10px]">6</span>
+                  <span>{live ? 'Sending' : 'Live Active'}</span>
+                  <span className="px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-700 text-[10px]">{live ? statusCount('ACTIVE') : '6'}</span>
                 </button>
                 <button
                   onClick={() => setStatusTab('SCHEDULED')}
@@ -383,7 +470,7 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
                   }`}
                 >
                   <span>Scheduled</span>
-                  <span className="px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-700 text-[10px]">8</span>
+                  <span className="px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-700 text-[10px]">{live ? statusCount('SCHEDULED') : '8'}</span>
                 </button>
                 <button
                   onClick={() => setStatusTab('DRAFT')}
@@ -393,8 +480,8 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
                       : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
-                  <span>Drafts</span>
-                  <span className="px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-700 text-[10px]">12</span>
+                  <span>{live ? 'Failed' : 'Drafts'}</span>
+                  <span className="px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-700 text-[10px]">{live ? statusCount('DRAFT') : '12'}</span>
                 </button>
                 <button
                   onClick={() => setStatusTab('COMPLETED')}
@@ -405,12 +492,12 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
                   }`}
                 >
                   <span>Completed</span>
-                  <span className="px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-700 text-[10px]">122</span>
+                  <span className="px-1.5 py-0.2 rounded-full bg-slate-100 text-slate-700 text-[10px]">{live ? statusCount('COMPLETED') : '122'}</span>
                 </button>
               </div>
               <div className="hidden xl:flex items-center gap-2 text-slate-400 text-[11px]">
                 <span className="material-symbols-outlined text-[16px]">sync</span>
-                <span>Real-time polling</span>
+                <span>{live ? 'Broadcast history' : 'Real-time polling'}</span>
               </div>
             </div>
 
@@ -489,13 +576,27 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-normal">
+                  {live && filteredCampaigns.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="py-8 px-4 text-center text-slate-500">
+                        {broadcastsQuery.isLoading
+                          ? 'Loading broadcasts…'
+                          : broadcastsQuery.isError
+                            ? `Couldn't load broadcasts: ${adminErrorMessage(broadcastsQuery.error)}`
+                            : 'No broadcasts yet.'}
+                      </td>
+                    </tr>
+                  )}
                   {filteredCampaigns.map((camp) => {
-                    const isSelected = camp.id === selectedId;
+                    const isSelected = camp.id === selectedCampaign?.id;
 
                     return (
                       <tr
                         key={camp.id}
-                        onClick={() => setSelectedId(camp.id)}
+                        onClick={() => {
+                          setSelectedId(camp.id);
+                          setComposing(false);
+                        }}
                         className={`transition-colors cursor-pointer ${
                           isSelected
                             ? 'bg-blue-50/70 hover:bg-blue-50 border-l-4 border-l-[#0055c4]'
@@ -567,6 +668,8 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
             </div>
           </div>
 
+{!live && (
+<>
           {/* Quick Operational Dispatch Activity */}
           <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-2xs">
             <div className="flex items-center justify-between mb-3">
@@ -602,10 +705,77 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
               </div>
             </div>
           </div>
+</>
+)}
         </div>
 
         {/* RIGHT 35% PANEL: SELECTED CAMPAIGN INSPECTOR */}
         <div className="lg:col-span-4 flex flex-col gap-4">
+          {live && composing && (
+            <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs sticky top-16 space-y-3 text-[12px]">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">New Announcement</span>
+                <button onClick={() => setComposing(false)} className="text-slate-400 hover:text-slate-700">
+                  <span className="material-symbols-outlined text-[18px]">close</span>
+                </button>
+              </div>
+              {actionError && <p className="p-2 rounded-lg bg-red-50 border border-red-200 text-red-800">{actionError}</p>}
+              <label className="block">
+                <span className="font-semibold text-slate-700">Title</span>
+                <input
+                  value={draft.title}
+                  maxLength={255}
+                  onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                  className="mt-1 w-full h-9 px-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#0055c4]"
+                />
+              </label>
+              <label className="block">
+                <span className="font-semibold text-slate-700">Message</span>
+                <textarea
+                  rows={4}
+                  value={draft.message}
+                  onChange={(e) => setDraft({ ...draft, message: e.target.value })}
+                  className="mt-1 w-full px-3 py-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#0055c4]"
+                />
+              </label>
+              <label className="block">
+                <span className="font-semibold text-slate-700">Audience</span>
+                <select
+                  value={draft.targetAudience}
+                  onChange={(e) => setDraft({ ...draft, targetAudience: e.target.value as AdminBroadcastInput['targetAudience'] })}
+                  className="mt-1 w-full h-9 px-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-900"
+                >
+                  <option value="ALL">Everyone</option>
+                  <option value="BUSINESSES">Businesses</option>
+                  <option value="CUSTOMERS">Customers</option>
+                  <option value="AGENTS">Agents</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="font-semibold text-slate-700">Link (optional)</span>
+                <input
+                  value={draft.actionUrl ?? ''}
+                  onChange={(e) => setDraft({ ...draft, actionUrl: e.target.value })}
+                  placeholder="/deals"
+                  className="mt-1 w-full h-9 px-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#0055c4]"
+                />
+              </label>
+              <p className="text-[11px] text-slate-500">Sends an in-app notification and a push notification.</p>
+              <button
+                onClick={handleSend}
+                disabled={sendBroadcast.isPending}
+                className="w-full py-2 rounded-lg bg-[#0055c4] hover:bg-[#066cf4] text-white text-[12px] font-bold disabled:opacity-50"
+              >
+                {sendBroadcast.isPending ? 'Sending…' : 'Send Broadcast'}
+              </button>
+            </div>
+          )}
+          {!(live && composing) && !selectedCampaign && (
+            <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs text-[12px] text-slate-500">
+              Select a broadcast, or create an announcement.
+            </div>
+          )}
+          {!(live && composing) && selectedCampaign && (
           <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs sticky top-16">
             {/* Inspector Top Bar */}
             <div className="flex items-start justify-between pb-3 mb-3 border-b border-slate-100">
@@ -632,12 +802,14 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
                   <span className="material-symbols-outlined text-[15px] text-[#0055c4]">smartphone</span>
                   Creative Render Preview
                 </span>
+                {!live && (
                 <span
                   onClick={() => triggerNotice(`Edit copy modal opened for ${selectedCampaign.code}.`)}
                   className="text-[11px] text-[#0055c4] font-semibold cursor-pointer hover:underline"
                 >
                   Edit Copy
                 </span>
+                )}
               </div>
 
               {/* Smartphone Notification & Modal Mockup */}
@@ -662,6 +834,7 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
 
                 {/* In-App Dialog Preview */}
                 <div className="bg-white rounded-lg p-3 shadow-2xs border border-slate-200/80">
+                  {selectedCampaign.imageSrc && (
                   <div className="relative w-full h-24 rounded-lg overflow-hidden mb-2 bg-slate-900">
                     <img
                       className="w-full h-full object-cover"
@@ -674,8 +847,11 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
                       </span>
                     </div>
                   </div>
+                  )}
                   <h4 className="text-[12px] font-bold text-slate-900 mb-1">{selectedCampaign.inAppHeadline}</h4>
                   <p className="text-[11px] text-slate-600 leading-relaxed mb-3">{selectedCampaign.inAppBody}</p>
+                  {(!live || selectedCampaign.deepLink) && (
+                  <>
                   <button
                     onClick={() => triggerNotice(`Deep link triggered: ${selectedCampaign.deepLink}`)}
                     className="w-full py-1.5 px-3 rounded-lg bg-[#0055c4] text-white text-[11px] font-bold flex items-center justify-center gap-1 shadow-2xs hover:bg-[#066cf4] transition-colors"
@@ -686,6 +862,8 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
                   <div className="text-center mt-1.5">
                     <span className="font-mono text-[10px] text-slate-400">Target: {selectedCampaign.deepLink}</span>
                   </div>
+                  </>
+                  )}
                 </div>
               </div>
             </div>
@@ -696,6 +874,19 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
                 Audience Targeting Matrix
               </span>
               <div className="bg-slate-50 rounded-xl p-2.5 flex flex-col gap-2 border border-slate-100 text-[11px]">
+                {live && (
+                  <div className="flex items-start gap-2 bg-white p-2 rounded-lg border border-slate-100">
+                    <span className="material-symbols-outlined text-[#0055c4] text-[18px] mt-0.5">group</span>
+                    <div className="flex flex-col">
+                      <span className="font-bold text-slate-900">{selectedCampaign.targetSegment}</span>
+                      <span className="text-slate-500">
+                        {formatCount(selectedCampaign.audienceCount)} recipients • {selectedCampaign.deliveryRate}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                {!live && (
+                <>
                 <div className="flex items-start gap-2 bg-white p-2 rounded-lg border border-slate-100">
                   <span className="material-symbols-outlined text-[#0055c4] text-[18px] mt-0.5">location_on</span>
                   <div className="flex flex-col">
@@ -711,9 +902,13 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
                     <span className="text-slate-400 font-mono text-[10px]">Filter: Device OS = iOS &amp; Android (v9.0+)</span>
                   </div>
                 </div>
+                </>
+                )}
               </div>
             </div>
 
+{!live && (
+<>
             {/* Actions */}
             <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
               <button
@@ -733,7 +928,10 @@ export function AdminCampaignsAnnouncementsScreen({ onNavigate: _onNavigate }: A
                 Duplicate
               </button>
             </div>
+</>
+)}
           </div>
+          )}
         </div>
       </div>
     </div>

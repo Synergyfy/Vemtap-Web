@@ -1,4 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import type { AdminApiCluster } from '../../services/adminService';
+import { formatCount } from './adminLive';
+import { useAdminClusters } from './useAdminData';
 
 interface HierarchyNode {
   id: string;
@@ -10,13 +14,74 @@ interface HierarchyNode {
   radius?: string;
 }
 
+const UNSPECIFIED = 'Not set';
+
+/** Live tree: country → state → city → area → cluster, built from the clusters' own location fields. */
+function buildTree(list: AdminApiCluster[]) {
+  const key = (...parts: Array<string | null | undefined>) => parts.map((p) => p || UNSPECIFIED).join('|');
+  const countries = new Map<string, HierarchyNode>();
+  const states: Record<string, HierarchyNode[]> = {};
+  const lgas: Record<string, HierarchyNode[]> = {};
+  const wards: Record<string, HierarchyNode[]> = {};
+  const clusters: Record<string, HierarchyNode[]> = {};
+  const count = (map: Record<string, HierarchyNode[]>, parent: string, id: string, name: string) => {
+    map[parent] ??= [];
+    let node = map[parent].find((n) => n.id === id);
+    if (!node) {
+      node = { id, name, countLabel: '', status: 'LIVE', merchants: 0 };
+      map[parent].push(node);
+    }
+    node.merchants = (node.merchants ?? 0) + 1;
+    return node;
+  };
+  for (const c of list) {
+    const countryId = key(c.country);
+    const stateId = key(c.country, c.state);
+    const cityId = key(c.country, c.state, c.city);
+    const areaId = key(c.country, c.state, c.city, c.area);
+    const country = countries.get(countryId) ?? { id: countryId, name: c.country || UNSPECIFIED, countLabel: '', status: 'LIVE' as const, merchants: 0 };
+    country.merchants = (country.merchants ?? 0) + 1;
+    countries.set(countryId, country);
+    count(states, countryId, stateId, c.state || UNSPECIFIED);
+    count(lgas, stateId, cityId, c.city || UNSPECIFIED);
+    count(wards, cityId, areaId, c.area || UNSPECIFIED);
+    clusters[areaId] ??= [];
+    clusters[areaId].push({
+      id: c.id,
+      name: c.name,
+      code: c.uniqueCode ?? c.id.slice(0, 8).toUpperCase(),
+      countLabel: `${c.branchCount} branch${c.branchCount === 1 ? '' : 'es'}`,
+      radius: c.radiusMeters ? `${c.radiusMeters}m` : '—',
+      status: c.isActive ? 'ACTIVE' : 'STAGED',
+    });
+  }
+  const label = (n: HierarchyNode) => ({ ...n, countLabel: `${n.merchants} cluster${n.merchants === 1 ? '' : 's'}` });
+  const relabel = (map: Record<string, HierarchyNode[]>) =>
+    Object.fromEntries(Object.entries(map).map(([k, v]) => [k, v.map(label)]));
+  return {
+    countries: Array.from(countries.values()).map(label),
+    states: relabel(states),
+    lgas: relabel(lgas),
+    wards: relabel(wards),
+    clusters,
+  };
+}
+
+/** The selected id if it is in the list, else the first one. */
+const pick = (nodes: HierarchyNode[], id: string) => (nodes.some((n) => n.id === id) ? id : nodes[0]?.id ?? '');
+
 export function AdminLocationHierarchyScreen() {
+  const live = hasApiConfig();
+  const clustersQuery = useAdminClusters({ page: 1, limit: 200 });
+  const liveList = useMemo(() => clustersQuery.data?.data ?? [], [clustersQuery.data]);
+  const liveTree = useMemo(() => buildTree(liveList), [liveList]);
+
   // Navigation cascade state
-  const [selectedCountry, setSelectedCountry] = useState<string>('ng');
-  const [selectedState, setSelectedState] = useState<string>('lagos');
-  const [selectedLga, setSelectedLga] = useState<string>('ikeja');
-  const [selectedWard, setSelectedWard] = useState<string>('computer-village');
-  const [selectedCluster, setSelectedCluster] = useState<string>('cl-1');
+  const [rawCountry, setSelectedCountry] = useState<string>('ng');
+  const [rawState, setSelectedState] = useState<string>('lagos');
+  const [rawLga, setSelectedLga] = useState<string>('ikeja');
+  const [rawWard, setSelectedWard] = useState<string>('computer-village');
+  const [rawCluster, setSelectedCluster] = useState<string>('cl-1');
   const [bannerNotice, setBannerNotice] = useState<string | null>(null);
 
   // Modal state
@@ -24,13 +89,13 @@ export function AdminLocationHierarchyScreen() {
   const [newUnitType, setNewUnitType] = useState<'State' | 'LGA' | 'Ward' | 'Cluster'>('Cluster');
   const [newUnitName, setNewUnitName] = useState('');
 
-  const countries: HierarchyNode[] = [
+  const mockCountries: HierarchyNode[] = [
     { id: 'ng', name: 'Nigeria', countLabel: '36 States • 84 Clusters', status: 'LIVE' },
     { id: 'gh', name: 'Ghana', countLabel: '16 Regions • Sandbox', status: 'STAGED' },
     { id: 'ke', name: 'Kenya', countLabel: '47 Counties • Roadmap', status: 'ROADMAP' },
   ];
 
-  const states: Record<string, HierarchyNode[]> = {
+  const mockStates: Record<string, HierarchyNode[]> = {
     ng: [
       { id: 'lagos', name: 'Lagos State', countLabel: '20 LGAs • 42 Clusters', status: 'LIVE' },
       { id: 'fct', name: 'Abuja FCT', countLabel: '6 Area Councils • 18 Clusters', status: 'LIVE' },
@@ -47,7 +112,7 @@ export function AdminLocationHierarchyScreen() {
     ],
   };
 
-  const lgas: Record<string, HierarchyNode[]> = {
+  const mockLgas: Record<string, HierarchyNode[]> = {
     lagos: [
       { id: 'ikeja', name: 'Ikeja LGA', countLabel: 'Capital Dist. • 8 Clusters', status: 'LIVE' },
       { id: 'eti-osa', name: 'Eti-Osa LGA', countLabel: 'Coastal • 12 Clusters', status: 'LIVE' },
@@ -60,7 +125,7 @@ export function AdminLocationHierarchyScreen() {
     ],
   };
 
-  const wards: Record<string, HierarchyNode[]> = {
+  const mockWards: Record<string, HierarchyNode[]> = {
     ikeja: [
       { id: 'computer-village', name: 'Computer Village Zone', countLabel: 'Tech Ward 04 • 3 Clusters', status: 'LIVE' },
       { id: 'allen', name: 'Allen Avenue Strip', countLabel: 'Retail Ward 02 • 2 Clusters', status: 'LIVE' },
@@ -73,7 +138,7 @@ export function AdminLocationHierarchyScreen() {
     ],
   };
 
-  const clusters: Record<string, HierarchyNode[]> = {
+  const mockClusters: Record<string, HierarchyNode[]> = {
     'computer-village': [
       { id: 'cl-1', name: 'Ikeja Computer Village Hub', code: 'CL-LOS-IKV-01', countLabel: '284 Merchants', radius: '350m', status: 'ACTIVE' },
       { id: 'cl-2', name: 'Medical Road Corridor', code: 'CL-LOS-IKV-02', countLabel: '98 Merchants', radius: '220m', status: 'ACTIVE' },
@@ -84,14 +149,54 @@ export function AdminLocationHierarchyScreen() {
     ],
   };
 
+  const countries = live ? liveTree.countries : mockCountries;
+  const states = live ? liveTree.states : mockStates;
+  const lgas = live ? liveTree.lgas : mockLgas;
+  const wards = live ? liveTree.wards : mockWards;
+  const clusters = live ? liveTree.clusters : mockClusters;
+
+  // Live: fall back to the first node when a selection is not in the tree.
+  const selectedCountry = live ? pick(countries, rawCountry) : rawCountry;
   const currentStates = states[selectedCountry] || [];
+  const selectedState = live ? pick(currentStates, rawState) : rawState;
   const currentLgas = lgas[selectedState] || [];
+  const selectedLga = live ? pick(currentLgas, rawLga) : rawLga;
   const currentWards = wards[selectedLga] || [];
+  const selectedWard = live ? pick(currentWards, rawWard) : rawWard;
   const currentClusters = clusters[selectedWard] || [];
+  const selectedCluster = live ? pick(currentClusters, rawCluster) : rawCluster;
+  const selectedLeaf = liveList.find((c) => c.id === selectedCluster);
+  const nameOf = (nodes: HierarchyNode[], id: string) => nodes.find((n) => n.id === id)?.name ?? '';
+  const activePath = [
+    nameOf(countries, selectedCountry),
+    nameOf(currentStates, selectedState),
+    nameOf(currentLgas, selectedLga),
+    nameOf(currentWards, selectedWard),
+    selectedLeaf ? `${selectedLeaf.name} (${selectedLeaf.uniqueCode ?? selectedLeaf.id.slice(0, 8)})` : '',
+  ]
+    .filter(Boolean)
+    .join(' / ');
+
+  const exportLeafGeoJson = () => {
+    if (!selectedLeaf) return;
+    const geo = {
+      type: 'Feature',
+      properties: { id: selectedLeaf.id, name: selectedLeaf.name, code: selectedLeaf.uniqueCode, radiusMeters: selectedLeaf.radiusMeters },
+      geometry: { type: 'Point', coordinates: [selectedLeaf.longitude, selectedLeaf.latitude] },
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(geo, null, 2)], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vemtap-cluster-${selectedLeaf.uniqueCode ?? selectedLeaf.id}.geojson`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const handleCopyUri = () => {
     navigator.clipboard?.writeText(
-      `vemtap://geo/hierarchy/${selectedCountry}/${selectedState}/${selectedLga}/${selectedWard}/${selectedCluster}`
+      live
+        ? `vemtap://geo/cluster/${selectedCluster}`
+        : `vemtap://geo/hierarchy/${selectedCountry}/${selectedState}/${selectedLga}/${selectedWard}/${selectedCluster}`
     );
     setBannerNotice('Spatial URI copied to clipboard.');
     setTimeout(() => setBannerNotice(null), 3000);
@@ -136,6 +241,8 @@ export function AdminLocationHierarchyScreen() {
 
         {/* Actions Toolbar */}
         <div className="flex items-center gap-2.5 flex-wrap">
+{!live && (
+<>
           <button
             onClick={handleAuditSpatialDrift}
             type="button"
@@ -152,6 +259,8 @@ export function AdminLocationHierarchyScreen() {
             <span className="material-symbols-outlined text-[18px]">add_circle</span>
             <span>Add Jurisdictional Unit</span>
           </button>
+</>
+)}
         </div>
       </div>
 
@@ -161,15 +270,23 @@ export function AdminLocationHierarchyScreen() {
           <div className="flex items-start justify-between">
             <div>
               <span className="text-xs uppercase tracking-wider text-slate-500 font-semibold">Sovereign Territories</span>
-              <div className="text-2xl font-bold text-slate-900 mt-1">3 <span className="text-sm font-normal text-slate-500">Nations</span></div>
+              <div className="text-2xl font-bold text-slate-900 mt-1">
+                {live ? countries.length : 3} <span className="text-sm font-normal text-slate-500">{live ? 'Countries' : 'Nations'}</span>
+              </div>
             </div>
             <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
               <span className="material-symbols-outlined text-[22px]">flag</span>
             </div>
           </div>
           <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-500">
-            <span className="text-emerald-600 font-semibold">1 Live</span>
-            <span>• 1 Staged • 1 Roadmap</span>
+            {live ? (
+              <span>with at least one cluster</span>
+            ) : (
+              <>
+                <span className="text-emerald-600 font-semibold">1 Live</span>
+                <span>• 1 Staged • 1 Roadmap</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -177,31 +294,47 @@ export function AdminLocationHierarchyScreen() {
           <div className="flex items-start justify-between">
             <div>
               <span className="text-xs uppercase tracking-wider text-slate-500 font-semibold">States & Regions</span>
-              <div className="text-2xl font-bold text-slate-900 mt-1">37 <span className="text-sm font-normal text-slate-500">Subdivisions</span></div>
+              <div className="text-2xl font-bold text-slate-900 mt-1">
+                {live ? Object.values(states).reduce((sum, list) => sum + list.length, 0) : 37} <span className="text-sm font-normal text-slate-500">Subdivisions</span>
+              </div>
             </div>
             <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
               <span className="material-symbols-outlined text-[22px]">map</span>
             </div>
           </div>
           <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-500">
-            <span className="text-slate-700 font-semibold">36 States + FCT</span>
-            <span>mapped in GIS database</span>
+            {live ? (
+              <span>states with clusters</span>
+            ) : (
+              <>
+                <span className="text-slate-700 font-semibold">36 States + FCT</span>
+                <span>mapped in GIS database</span>
+              </>
+            )}
           </div>
         </div>
 
         <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-100 flex flex-col justify-between">
           <div className="flex items-start justify-between">
             <div>
-              <span className="text-xs uppercase tracking-wider text-slate-500 font-semibold">Municipal LGAs</span>
-              <div className="text-2xl font-bold text-slate-900 mt-1">774 <span className="text-sm font-normal text-slate-500">Districts</span></div>
+              <span className="text-xs uppercase tracking-wider text-slate-500 font-semibold">{live ? 'Cities' : 'Municipal LGAs'}</span>
+              <div className="text-2xl font-bold text-slate-900 mt-1">
+                {live ? Object.values(lgas).reduce((sum, list) => sum + list.length, 0) : 774} <span className="text-sm font-normal text-slate-500">{live ? 'Cities' : 'Districts'}</span>
+              </div>
             </div>
             <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
               <span className="material-symbols-outlined text-[22px]">location_city</span>
             </div>
           </div>
           <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-500">
-            <span className="text-emerald-600 font-semibold">148 commercial</span>
-            <span>high-frequency zones</span>
+            {live ? (
+              <span>cities with clusters</span>
+            ) : (
+              <>
+                <span className="text-emerald-600 font-semibold">148 commercial</span>
+                <span>high-frequency zones</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -209,15 +342,24 @@ export function AdminLocationHierarchyScreen() {
           <div className="flex items-start justify-between">
             <div>
               <span className="text-xs uppercase tracking-wider text-slate-500 font-semibold">Registered Leaf Clusters</span>
-              <div className="text-2xl font-bold text-slate-900 mt-1">48 <span className="text-sm font-normal text-slate-500">Active</span></div>
+              <div className="text-2xl font-bold text-slate-900 mt-1">
+                {live ? formatCount(liveList.filter((c) => c.isActive).length) : 48}{' '}
+                <span className="text-sm font-normal text-slate-500">Active</span>
+              </div>
             </div>
             <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
               <span className="material-symbols-outlined text-[22px]">hub</span>
             </div>
           </div>
           <div className="mt-3 flex items-center gap-1.5 text-xs text-slate-500">
-            <span className="text-amber-700 font-semibold">100% Boundary</span>
-            <span>geofence verified</span>
+            {live ? (
+              <span>{formatCount(liveList.length)} clusters in total</span>
+            ) : (
+              <>
+                <span className="text-amber-700 font-semibold">100% Boundary</span>
+                <span>geofence verified</span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -271,7 +413,7 @@ export function AdminLocationHierarchyScreen() {
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-lg leading-none">
-                        {c.id === 'ng' ? '🇳🇬' : c.id === 'gh' ? '🇬🇭' : '🇰🇪'}
+                        {live ? '🌍' : c.id === 'ng' ? '🇳🇬' : c.id === 'gh' ? '🇬🇭' : '🇰🇪'}
                       </span>
                       <div className="flex flex-col min-w-0">
                         <span className="text-xs font-bold truncate">{c.name}</span>
@@ -443,7 +585,9 @@ export function AdminLocationHierarchyScreen() {
           <div className="flex items-center gap-1.5 text-slate-600 flex-wrap">
             <span className="font-bold text-slate-900">Active Path:</span>
             <span className="font-mono text-[11px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-              Nigeria / Lagos State / Ikeja LGA / Computer Village Zone / Ikeja Computer Village Hub (CL-LOS-IKV-01)
+              {live
+                ? activePath || (clustersQuery.isLoading ? 'Loading clusters…' : 'No clusters yet')
+                : 'Nigeria / Lagos State / Ikeja LGA / Computer Village Zone / Ikeja Computer Village Hub (CL-LOS-IKV-01)'}
             </span>
           </div>
           <button
@@ -465,10 +609,31 @@ export function AdminLocationHierarchyScreen() {
             </div>
             <div>
               <h3 className="font-bold text-slate-900 text-sm">Spatial Boundary & Geofence Matrix</h3>
-              <p className="text-xs text-slate-500">Verified polygon geometry & dynamic merchant ping density</p>
+              <p className="text-xs text-slate-500">
+                {live ? (selectedLeaf ? selectedLeaf.name : 'Select a cluster') : 'Verified polygon geometry & dynamic merchant ping density'}
+              </p>
             </div>
           </div>
 
+          {live && selectedLeaf && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-2 text-xs">
+              <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Centre</span>
+                <span className="font-mono font-bold text-slate-800">
+                  {selectedLeaf.latitude?.toFixed(4) ?? '—'}, {selectedLeaf.longitude?.toFixed(4) ?? '—'}
+                </span>
+              </div>
+              <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Radius</span>
+                <span className="font-mono font-bold text-slate-800">{selectedLeaf.radiusMeters ? `${selectedLeaf.radiusMeters}m` : '—'}</span>
+              </div>
+              <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">QR Scans</span>
+                <span className="font-mono font-bold text-blue-600">{formatCount(selectedLeaf.scanCount)}</span>
+              </div>
+            </div>
+          )}
+          {!live && (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-2 text-xs">
             <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
               <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">GPS Accuracy</span>
@@ -483,10 +648,12 @@ export function AdminLocationHierarchyScreen() {
               <span className="font-mono font-bold text-blue-600">4,120 pings / min</span>
             </div>
           </div>
+          )}
         </div>
 
         {/* Action Controls for Selected Node */}
         <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 w-full lg:w-auto">
+{!live && (
           <button
             onClick={() => {
               setBannerNotice('Split leaf cluster into sub-wards.');
@@ -497,8 +664,11 @@ export function AdminLocationHierarchyScreen() {
             <span className="material-symbols-outlined text-[16px]">call_split</span>
             <span>Split Leaf</span>
           </button>
+)}
           <button
+            disabled={live && !selectedLeaf}
             onClick={() => {
+              if (live) return exportLeafGeoJson();
               setBannerNotice('Exported boundary shapefile.');
               setTimeout(() => setBannerNotice(null), 3000);
             }}
@@ -507,6 +677,7 @@ export function AdminLocationHierarchyScreen() {
             <span className="material-symbols-outlined text-[16px]">file_download</span>
             <span>Export GeoJSON</span>
           </button>
+{!live && (
           <button
             onClick={() => {
               setBannerNotice('Geofence polygon calibrated against terrestrial satellite baseline.');
@@ -517,6 +688,7 @@ export function AdminLocationHierarchyScreen() {
             <span className="material-symbols-outlined text-[16px]">sync_saved_locally</span>
             <span>Calibrate Geofence</span>
           </button>
+)}
         </div>
       </div>
 

@@ -63,9 +63,22 @@ export const storeAuthResponse = (response: unknown) => {
   setAuthTokens(accessToken, readTokenValue(response, ['refreshToken', 'refresh_token', 'refresh']) ?? getRefreshToken() ?? undefined);
 };
 
+/** Thrown by `login` when the account needs a 2FA code to finish signing in. */
+export class TwoFactorRequiredError extends Error {
+  constructor() {
+    super('Enter the 6-digit code from your authenticator app.');
+    this.name = 'TwoFactorRequiredError';
+  }
+}
+
 export const authService = {
-  login: async (payload: { identifier: string; password?: string }) => {
-    const response = await api.post<AuthTokensResponse>('/auth/login', payload);
+  login: async (payload: { identifier: string; password?: string; twoFactorCode?: string }) => {
+    const response = await api.post<AuthTokensResponse & { requiresTwoFactor?: boolean }>('/auth/login', payload);
+
+    // The PIN was right but the account has 2FA on: the same call again with `twoFactorCode` signs in.
+    if (response?.requiresTwoFactor) {
+      throw new TwoFactorRequiredError();
+    }
 
     const accessToken = readTokenValue(response, ['accessToken', 'access_token', 'token']);
     const refreshToken = readTokenValue(response, ['refreshToken', 'refresh_token', 'refresh']);

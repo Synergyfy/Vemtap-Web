@@ -1,4 +1,14 @@
-import { useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { adminService, type AdminApiBusiness } from '../../services/adminService';
+import { formatCount, NONE, timeAgo } from './adminLive';
+import {
+  adminErrorMessage,
+  useAdminAction,
+  useAdminBusinesses,
+  useAdminPendingVerification,
+  useAdminVerificationDetail,
+} from './useAdminData';
 
 interface KYBCase {
   id: string;
@@ -14,7 +24,8 @@ interface KYBCase {
   tinNumber: string;
   address: string;
   cluster: string;
-  stage: 'Geofence Audit' | 'TIN Clearance' | 'Doc Resubmit' | 'Final Sign-off' | 'Audit Cleared';
+  /** Sample pipeline stages in mock mode; the business's verification status against the API. */
+  stage: string;
   stageBg: string;
   stageText: string;
   slaHours: string;
@@ -23,7 +34,59 @@ interface KYBCase {
   primaryAction: string;
   primaryActionStyle: string;
   isSelected?: boolean;
+  /** The API record behind a live row (absent in mock mode). */
+  raw?: AdminApiBusiness;
 }
+
+const LIVE_STAGE: Record<string, { label: string; bg: string; text: string }> = {
+  needs_review: { label: 'Needs review', bg: 'bg-amber-100', text: 'text-amber-900' },
+  in_progress: { label: 'Checks in progress', bg: 'bg-[#dae2fd]', text: 'text-[#001a41]' },
+  rejected: { label: 'Rejected', bg: 'bg-[#ffdad6]', text: 'text-[#93000a]' },
+  unverified: { label: 'Not started', bg: 'bg-[#e6e8ea]', text: 'text-[#191c1e]' },
+};
+
+/** A business awaiting verification, shaped as a queue row. */
+function toKybCase(business: AdminApiBusiness): KYBCase {
+  const stage = LIVE_STAGE[business.verificationStatus ?? 'unverified'] ?? LIVE_STAGE.unverified;
+  const name = business.name || NONE;
+  const submitted = new Date(business.createdAt);
+  return {
+    id: business.id,
+    kybId: `#${business.uniqueCode ?? business.id.slice(0, 8).toUpperCase()}`,
+    submittedAt: Number.isNaN(submitted.getTime())
+      ? NONE
+      : submitted.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
+    entityName: name,
+    tradeName: business.category?.name ?? NONE,
+    initials: name.slice(0, 2).toUpperCase(),
+    initialsColor: 'bg-[#e6e8ea] text-[#191c1e]',
+    cacStatus: 'pending',
+    cacNumber: business.registrationNumber || 'No CAC number',
+    tinStatus: 'pending',
+    tinNumber: business.officialEmail || business.owner?.email || NONE,
+    address: business.address || NONE,
+    cluster: [business.city, business.state].filter(Boolean).join(', ') || NONE,
+    stage: stage.label,
+    stageBg: stage.bg,
+    stageText: stage.text,
+    slaHours: timeAgo(business.createdAt),
+    slaColor: 'text-[#191c1e]',
+    slaLabel: 'Since sign-up',
+    primaryAction: 'Approve',
+    primaryActionStyle: 'bg-[#066cf4] text-white hover:bg-[#0055c4]',
+    raw: business,
+  };
+}
+
+const CHECK_LABEL: Record<string, string> = { identity: 'Owner identity (ID + selfie)', business: 'Business registration (CAC)' };
+const CHECK_STATUS: Record<string, { icon: string; color: string; label: string }> = {
+  verified: { icon: 'verified', color: 'text-emerald-700', label: 'Passed' },
+  needs_review: { icon: 'pending', color: 'text-amber-600', label: 'Needs review' },
+  failed: { icon: 'error', color: 'text-[#ba1a1a]', label: 'Failed' },
+  pending: { icon: 'schedule', color: 'text-[#4a5e88]', label: 'Pending' },
+};
+
+const LIVE_PAGE_SIZE = 20;
 
 const KYB_QUEUE: KYBCase[] = [
   {
@@ -84,12 +147,58 @@ interface AdminVerificationScreenProps {
 }
 
 export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerificationScreenProps) {
-  const [queue, setQueue] = useState<KYBCase[]>(KYB_QUEUE);
-  const [selected, setSelected] = useState<KYBCase>(KYB_QUEUE[0]);
+  const live = hasApiConfig();
+  const [mockQueue, setQueue] = useState<KYBCase[]>(KYB_QUEUE);
+  const [mockSelected, setMockSelected] = useState<KYBCase>(KYB_QUEUE[0]);
   const [activeTab, setActiveTab] = useState<'all' | 'cac' | 'geofence' | 'resubmit' | 'rejected'>('all');
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Live API: businesses not yet verified, newest first.
+  const deferredSearch = useDeferredValue(search.trim());
+  const pending = useAdminPendingVerification({ search: deferredSearch || undefined, page, limit: LIVE_PAGE_SIZE });
+  const verifiedCount = useAdminBusinesses({ isVerified: true, page: 1, limit: 1 }).data?.meta.total;
+  const liveRows = useMemo(() => (pending.data?.data ?? []).map(toKybCase), [pending.data]);
+  const liveTotal = pending.data?.meta.total ?? 0;
+  const lastPage = Math.max(1, pending.data?.meta.lastPage ?? Math.ceil(liveTotal / LIVE_PAGE_SIZE));
+  const liveTabRows = useMemo(() => {
+    const status = (row: KYBCase) => row.raw?.verificationStatus ?? 'unverified';
+    if (activeTab === 'cac') return liveRows.filter((r) => status(r) === 'needs_review');
+    if (activeTab === 'resubmit') return liveRows.filter((r) => status(r) === 'in_progress');
+    if (activeTab === 'rejected') return liveRows.filter((r) => status(r) === 'rejected');
+    if (activeTab === 'geofence') return [];
+    return liveRows;
+  }, [liveRows, activeTab]);
+
+  const queue = live ? liveTabRows : mockQueue;
+  const liveSelected = liveRows.find((r) => r.id === selectedId) ?? liveTabRows[0] ?? null;
+  const selected: KYBCase | null = live ? liveSelected : mockSelected;
+  const setSelected = (item: KYBCase) => (live ? setSelectedId(item.id) : setMockSelected(item));
+  const detail = useAdminVerificationDetail(live ? selected?.id : null);
+
+  const approve = useAdminAction((id: string) => adminService.approveVerification(id, 'Approved from the admin console'));
+  const reject = useAdminAction((id: string) => adminService.rejectVerification(id, 'Rejected from the admin console'));
+
+  const notify = (message: string) => {
+    setActionNotice(message);
+    setTimeout(() => setActionNotice(null), 4000);
+  };
 
   const handleApprove = (item: KYBCase) => {
+    if (live) {
+      setActionError(null);
+      approve.mutate(item.id, {
+        onSuccess: () => {
+          setSelectedId(null);
+          notify(`${item.entityName} verified.`);
+        },
+        onError: (error) => setActionError(adminErrorMessage(error)),
+      });
+      return;
+    }
     setQueue((prev) => prev.filter((q) => q.id !== item.id));
     setSelected(queue.find((q) => q.id !== item.id) ?? KYB_QUEUE[0]);
     setActionNotice(`${item.entityName} approved — Live API Key issued.`);
@@ -97,16 +206,41 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
   };
 
   const handleReject = () => {
+    if (!selected) return;
+    if (live) {
+      setActionError(null);
+      reject.mutate(selected.id, {
+        onSuccess: () => notify(`${selected.entityName} rejected — the owner can submit again.`),
+        onError: (error) => setActionError(adminErrorMessage(error)),
+      });
+      return;
+    }
     setActionNotice(`${selected.entityName} rejected — Notice queued for dispatch.`);
     setTimeout(() => setActionNotice(null), 4000);
   };
 
   const handleRequest = () => {
+    if (!selected) return;
     setActionNotice(`Document resubmission request sent to ${selected.entityName}.`);
     setTimeout(() => setActionNotice(null), 4000);
   };
 
-  const tabCounts = { all: 3152, cac: 42, geofence: 32, resubmit: 18, rejected: 86 };
+  const countStatus = (status: string) => liveRows.filter((r) => (r.raw?.verificationStatus ?? 'unverified') === status).length;
+  const tabCounts = live
+    ? { all: liveTotal, cac: countStatus('needs_review'), geofence: 0, resubmit: countStatus('in_progress'), rejected: countStatus('rejected') }
+    : { all: 3152, cac: 42, geofence: 32, resubmit: 18, rejected: 86 };
+
+  const handleExport = () => {
+    const header = ['ID', 'Business', 'Category', 'CAC', 'Contact', 'Address', 'Location', 'Stage', 'Submitted'];
+    const rows = queue.map((q) => [q.kybId, q.entityName, q.tradeName, q.cacNumber, q.tinNumber, q.address, q.cluster, q.stage, q.submittedAt]);
+    const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vemtap-verification-queue-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="p-6 space-y-6 max-w-[1600px] w-full mx-auto">
@@ -122,6 +256,17 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
           </button>
         </div>
       )}
+      {actionError && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-[12px] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[17px] text-red-600">error</span>
+            <span>{actionError}</span>
+          </div>
+          <button onClick={() => setActionError(null)}>
+            <span className="material-symbols-outlined text-[15px] text-red-600">close</span>
+          </button>
+        </div>
+      )}
 
       {/* TOP: Triage Title & Live Telemetry */}
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
@@ -131,10 +276,12 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
               Regulatory Node 03
             </span>
             <span className="text-[#c2c6d7] text-[12px]">•</span>
-            <span className="text-[12px] text-[#4a5e88] flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
-              CAC & FIRS Realtime Telemetry Sync Active
-            </span>
+            {!live && (
+              <span className="text-[12px] text-[#4a5e88] flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                CAC & FIRS Realtime Telemetry Sync Active
+              </span>
+            )}
           </div>
           <h1 className="text-[24px] font-bold tracking-tight text-[#191c1e]">
             Business Verification & KYB Pipeline
@@ -148,14 +295,27 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
             <span className="material-symbols-outlined text-[16px] text-[#4a5e88]">tune</span>
             Filter Rules
           </button>
-          <button className="h-9 px-3 rounded-lg bg-[#f2f4f6] text-[#191c1e] hover:bg-[#e6e8ea] text-[12px] font-medium shadow-sm flex items-center gap-1.5 transition-colors">
+          <button
+            onClick={live ? handleExport : undefined}
+            className="h-9 px-3 rounded-lg bg-[#f2f4f6] text-[#191c1e] hover:bg-[#e6e8ea] text-[12px] font-medium shadow-sm flex items-center gap-1.5 transition-colors"
+          >
             <span className="material-symbols-outlined text-[16px] text-[#4a5e88]">file_download</span>
             Export Audit Log
           </button>
+          {live ? (
+            <button
+              onClick={() => void pending.refetch()}
+              className="h-9 px-3 rounded-lg bg-[#066cf4] text-white text-[12px] font-medium hover:bg-[#0055c4] transition-colors shadow-sm flex items-center gap-1.5"
+            >
+              <span className={`material-symbols-outlined text-[16px] ${pending.isFetching ? 'animate-spin' : ''}`}>sync</span>
+              Refresh Queue
+            </button>
+          ) : (
           <button className="h-9 px-3 rounded-lg bg-[#066cf4] text-white text-[12px] font-medium hover:bg-[#0055c4] transition-colors shadow-sm flex items-center gap-1.5">
             <span className="material-symbols-outlined text-[16px]">sync</span>
             Trigger CAC Batch Poll
           </button>
+          )}
         </div>
       </div>
 
@@ -172,19 +332,28 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
           </div>
           <div className="mt-3 flex items-baseline justify-between">
             <div className="flex items-baseline gap-1">
-              <span className="text-[24px] font-bold tracking-tight text-[#191c1e]">{queue.length + 119}</span>
+              <span className="text-[24px] font-bold tracking-tight text-[#191c1e]">
+                {live ? formatCount(pending.data?.stats.totalPending ?? liveTotal) : queue.length + 119}
+              </span>
               <span className="text-[12px] text-[#4a5e88]">cases</span>
             </div>
             <span className="text-[10px] font-bold text-[#0055c4] flex items-center gap-0.5">
-              <span className="material-symbols-outlined text-[14px]">trending_up</span>+14 today
+              <span className="material-symbols-outlined text-[14px]">trending_up</span>
+              {live ? `${formatCount(pending.data?.stats.verifiedToday)} verified today` : '+14 today'}
             </span>
           </div>
+          {live ? (
+            <div className="mt-2 pt-1 text-[11px] text-[#4a5e88]">
+              Avg wait {pending.data?.stats.avgWaitTime ?? NONE} hrs
+            </div>
+          ) : (
           <div className="mt-2 pt-1 flex items-center gap-2">
             <div className="flex-1 h-1.5 rounded-full bg-[#e6e8ea] overflow-hidden">
               <div className="h-full bg-[#066cf4] rounded-full" style={{ width: '68%' }} />
             </div>
             <span className="text-[11px] text-[#4a5e88] shrink-0">68% allocated</span>
           </div>
+          )}
         </div>
 
         {/* Card 2: Verified */}
@@ -198,17 +367,21 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
           </div>
           <div className="mt-3 flex items-baseline justify-between">
             <div className="flex items-baseline gap-1">
-              <span className="text-[24px] font-bold tracking-tight text-[#191c1e]">2,910</span>
+              <span className="text-[24px] font-bold tracking-tight text-[#191c1e]">{live ? formatCount(verifiedCount) : '2,910'}</span>
               <span className="text-[12px] text-[#4a5e88]">entities</span>
             </div>
-            <span className="text-[10px] font-bold text-emerald-700 flex items-center gap-0.5">
-              <span className="material-symbols-outlined text-[14px]">check_circle</span>98.2% pass
-            </span>
+            {!live && (
+              <span className="text-[10px] font-bold text-emerald-700 flex items-center gap-0.5">
+                <span className="material-symbols-outlined text-[14px]">check_circle</span>98.2% pass
+              </span>
+            )}
           </div>
+          {!live && (
           <div className="mt-2 pt-1 flex items-center justify-between text-[#4a5e88]">
             <span className="text-[11px]">Corporate tier verified</span>
             <span className="text-[12px] font-medium text-[#191c1e]">92.4% avg conf</span>
           </div>
+          )}
         </div>
 
         {/* Card 3: Rejected */}
@@ -222,17 +395,21 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
           </div>
           <div className="mt-3 flex items-baseline justify-between">
             <div className="flex items-baseline gap-1">
-              <span className="text-[24px] font-bold tracking-tight text-[#191c1e]">86</span>
-              <span className="text-[12px] text-[#4a5e88]">disqualified</span>
+              <span className="text-[24px] font-bold tracking-tight text-[#191c1e]">{live ? formatCount(tabCounts.rejected) : '86'}</span>
+              <span className="text-[12px] text-[#4a5e88]">{live ? 'on this page' : 'disqualified'}</span>
             </div>
-            <span className="text-[10px] font-bold text-[#ba1a1a] flex items-center gap-0.5">
-              <span className="material-symbols-outlined text-[14px]">warning</span>CAC mismatch
-            </span>
+            {!live && (
+              <span className="text-[10px] font-bold text-[#ba1a1a] flex items-center gap-0.5">
+                <span className="material-symbols-outlined text-[14px]">warning</span>CAC mismatch
+              </span>
+            )}
           </div>
+          {!live && (
           <div className="mt-2 pt-1 flex items-center justify-between text-[#4a5e88]">
             <span className="text-[11px]">Revoked/Forged TIN</span>
             <span className="text-[12px] font-medium text-[#ba1a1a]">18 critical holds</span>
           </div>
+          )}
         </div>
 
         {/* Card 4: Field Review */}
@@ -246,17 +423,21 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
           </div>
           <div className="mt-3 flex items-baseline justify-between">
             <div className="flex items-baseline gap-1">
-              <span className="text-[24px] font-bold tracking-tight text-[#191c1e]">32</span>
-              <span className="text-[12px] text-[#4a5e88]">geofence flags</span>
+              <span className="text-[24px] font-bold tracking-tight text-[#191c1e]">{live ? formatCount(tabCounts.cac) : '32'}</span>
+              <span className="text-[12px] text-[#4a5e88]">{live ? 'need a person (this page)' : 'geofence flags'}</span>
             </div>
-            <span className="text-[10px] font-bold text-amber-700 bg-amber-100/60 px-1.5 py-0.5 rounded">
-              Agent Dispatched
-            </span>
+            {!live && (
+              <span className="text-[10px] font-bold text-amber-700 bg-amber-100/60 px-1.5 py-0.5 rounded">
+                Agent Dispatched
+              </span>
+            )}
           </div>
+          {!live && (
           <div className="mt-2 pt-1 flex items-center justify-between text-[#4a5e88]">
             <span className="text-[11px]">Avg response lag</span>
             <span className="text-[12px] font-medium text-[#191c1e]">3.8 hrs SLA</span>
           </div>
+          )}
         </div>
       </div>
 
@@ -310,15 +491,22 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
               <span className="text-[15px] font-semibold text-[#191c1e]">Queue Worklist</span>
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-[#066cf4]" />
-                <span className="text-[11px] text-[#4a5e88]">Showing {queue.length + 37} Priority Items</span>
+                <span className="text-[11px] text-[#4a5e88]">
+                  {live ? `Showing ${queue.length} of ${formatCount(liveTotal)}` : `Showing ${queue.length + 37} Priority Items`}
+                </span>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-2.5 top-2 text-[16px] text-[#727786]">search</span>
                 <input
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setPage(1);
+                  }}
                   className="h-8 pl-8 pr-3 rounded bg-[#f2f4f6] text-[#191c1e] placeholder:text-[#727786] text-[12px] focus:outline-none focus:ring-1 focus:ring-[#066cf4]/30 w-52"
-                  placeholder="Search RC, TIN, merchant..."
+                  placeholder={live ? 'Search business or owner...' : 'Search RC, TIN, merchant...'}
                   type="text"
                 />
               </div>
@@ -344,21 +532,32 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
                 </tr>
               </thead>
               <tbody className="text-[12px]">
+                {live && queue.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="py-8 px-4 text-center text-[#4a5e88]">
+                      {pending.isLoading
+                        ? 'Loading the verification queue…'
+                        : pending.isError
+                          ? `Couldn't load the queue: ${adminErrorMessage(pending.error)}`
+                          : 'Nothing in this queue.'}
+                    </td>
+                  </tr>
+                )}
                 {queue.map((item) => (
                   <tr
                     key={item.id}
                     onClick={() => setSelected(item)}
                     className={`transition-colors cursor-pointer ${
-                      selected.id === item.id
+                      selected?.id === item.id
                         ? 'bg-[#d9e2ff]/20 hover:bg-[#d9e2ff]/30'
                         : 'bg-white hover:bg-[#f2f4f6]/50'
                     }`}
                   >
                     <td className="py-3 px-4 relative">
-                      {selected.id === item.id && (
+                      {selected?.id === item.id && (
                         <span className="absolute left-0 top-0 bottom-0 w-1 bg-[#066cf4]" />
                       )}
-                      <input type="checkbox" checked={selected.id === item.id} readOnly className="rounded cursor-pointer" />
+                      <input type="checkbox" checked={selected?.id === item.id} readOnly className="rounded cursor-pointer" />
                     </td>
                     <td className="py-3 px-4 whitespace-nowrap">
                       <span className="text-[12px] font-bold text-[#191c1e]">{item.kybId}</span>
@@ -415,6 +614,7 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
                     <td className="py-3 px-4 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-1">
                         <button
+                          disabled={approve.isPending}
                           onClick={(e) => { e.stopPropagation(); handleApprove(item); }}
                           className={`h-7 px-2 rounded text-[10px] font-bold shadow-sm transition-colors ${item.primaryActionStyle}`}
                         >
@@ -434,10 +634,32 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
           {/* Pagination */}
           <div className="px-4 py-2.5 bg-white border-t border-[#f2f4f6] flex items-center justify-between">
             <div className="flex items-center gap-2 text-[11px] text-[#4a5e88]">
-              <span>Showing 1 to {queue.length} of 42 actionable entries</span>
-              <span>•</span>
-              <span className="text-[#191c1e] font-medium">Batch 01/09</span>
+              <span>
+                {live
+                  ? `Page ${page} of ${lastPage} • ${formatCount(liveTotal)} unverified businesses`
+                  : `Showing 1 to ${queue.length} of 42 actionable entries`}
+              </span>
+              {!live && <span>•</span>}
+              {!live && <span className="text-[#191c1e] font-medium">Batch 01/09</span>}
             </div>
+            {live ? (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                  className="h-8 px-2 rounded bg-[#f2f4f6] text-[#191c1e] text-[11px] font-medium disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
+                  disabled={page >= lastPage}
+                  className="h-8 px-2 rounded bg-[#f2f4f6] hover:bg-[#e6e8ea] text-[#191c1e] text-[11px] font-medium disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            ) : (
             <div className="flex items-center gap-1">
               <button className="h-8 px-2 rounded bg-[#f2f4f6] text-[#4a5e88] text-[11px] font-medium opacity-50" disabled>Previous</button>
               <button className="h-8 w-8 rounded bg-[#066cf4] text-white text-[11px] font-bold flex items-center justify-center">1</button>
@@ -445,10 +667,16 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
               <button className="h-8 w-8 rounded bg-[#f2f4f6] hover:bg-[#e6e8ea] text-[11px] text-[#191c1e] flex items-center justify-center">3</button>
               <button className="h-8 px-2 rounded bg-[#f2f4f6] hover:bg-[#e6e8ea] text-[#191c1e] text-[11px] font-medium">Next</button>
             </div>
+            )}
           </div>
         </div>
 
         {/* RIGHT: Persistent Side Inspector (4 cols) */}
+        {!selected ? (
+          <div className="col-span-12 xl:col-span-4 bg-white rounded-xl p-4 shadow-sm text-[12px] text-[#4a5e88]">
+            Select a business to inspect it.
+          </div>
+        ) : (
         <div className="col-span-12 xl:col-span-4 flex flex-col gap-4 bg-white rounded-xl p-4 shadow-sm">
           {/* Inspector Header */}
           <div className="flex items-start justify-between">
@@ -471,7 +699,47 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
             </span>
           </div>
 
-          {/* KYB Scoring Suite */}
+          {/* Verification checks (live) */}
+          {live && (
+            <div className="bg-[#f2f4f6] rounded-xl p-3 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#4a5e88]">Verification Checks</span>
+                <span className="text-[11px] font-bold text-[#191c1e] bg-white px-1.5 py-0.5 rounded">
+                  {(detail.data?.status ?? selected.raw?.verificationStatus ?? 'unverified').replace(/_/g, ' ')}
+                </span>
+              </div>
+              {detail.isLoading && <p className="text-[12px] text-[#4a5e88]">Loading checks…</p>}
+              {detail.isError && <p className="text-[12px] text-[#ba1a1a]">Couldn't load the checks.</p>}
+              {detail.data && detail.data.checks.length === 0 && (
+                <p className="text-[12px] text-[#4a5e88]">The owner hasn't submitted any checks yet.</p>
+              )}
+              {(detail.data?.checks ?? []).map((check) => {
+                const look = CHECK_STATUS[check.status] ?? CHECK_STATUS.pending;
+                return (
+                  <div key={check.id} className="py-1 border-b border-[#e6e8ea] last:border-0">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={`material-symbols-outlined text-[17px] ${look.color}`}>{look.icon}</span>
+                        <span className="text-[12px] text-[#191c1e]">{CHECK_LABEL[check.kind] ?? check.kind}</span>
+                      </div>
+                      <span className="text-[10px] font-bold uppercase text-[#191c1e]">{look.label}</span>
+                    </div>
+                    {(check.recordName || check.maskedId) && (
+                      <div className="text-[11px] text-[#4a5e88] ml-6">
+                        {[check.recordName, check.maskedId].filter(Boolean).join(' • ')}
+                      </div>
+                    )}
+                    {check.reasons.length > 0 && (
+                      <div className="text-[11px] text-[#ba1a1a] ml-6">{check.reasons.join('; ')}</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* KYB Scoring Suite (sample: mock mode only) */}
+          {!live && (
           <div className="bg-[#f2f4f6] rounded-xl p-3 flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#4a5e88]">Automated Verification Suite</span>
@@ -495,7 +763,42 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
             ))}
           </div>
 
-          {/* Document Previews */}
+          )}
+
+          {/* Submitted documents (live) */}
+          {live && (() => {
+            const urls = Array.from(
+              new Set([...(selected.raw?.documents ?? []), ...(detail.data?.checks ?? []).flatMap((c) => c.documentUrls)]),
+            );
+            return (
+              <div className="flex flex-col gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#4a5e88]">
+                  Submitted Credentials ({urls.length})
+                </span>
+                {urls.length === 0 ? (
+                  <p className="text-[12px] text-[#4a5e88]">No documents uploaded.</p>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    {urls.map((url, idx) => (
+                      <a
+                        key={url}
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-2 text-[12px] text-[#066cf4] hover:underline truncate"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">description</span>
+                        Document {idx + 1}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Document Previews (sample: mock mode only) */}
+          {!live && (
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#4a5e88]">Submitted Credentials (3)</span>
@@ -522,7 +825,10 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
             </div>
           </div>
 
+          )}
+
           {/* Geofence Map Preview */}
+          {!live && (
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#4a5e88]">Cluster Geofence Radius</span>
@@ -539,7 +845,26 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
             </div>
           </div>
 
-          {/* Managing Signatory */}
+          )}
+
+          {/* Owner (live) */}
+          {live && (
+            <div className="bg-[#f2f4f6]/60 rounded-lg p-3 flex flex-col gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#4a5e88]">Account Owner</span>
+              <div className="text-[12px] font-semibold text-[#191c1e]">
+                {selected.raw?.ownerName ||
+                  [selected.raw?.owner?.firstName, selected.raw?.owner?.lastName].filter(Boolean).join(' ') ||
+                  NONE}
+              </div>
+              <div className="text-[11px] text-[#4a5e88]">
+                {[selected.raw?.owner?.email, selected.raw?.owner?.phone || selected.raw?.phone].filter(Boolean).join(' • ') || NONE}
+              </div>
+              <div className="text-[11px] text-[#4a5e88]">{selected.address}</div>
+            </div>
+          )}
+
+          {/* Managing Signatory (sample: mock mode only) */}
+          {!live && (
           <div className="bg-[#f2f4f6]/60 rounded-lg p-3 flex flex-col gap-1.5">
             <span className="text-[10px] font-bold uppercase tracking-widest text-[#4a5e88]">Managing Signatory</span>
             <div className="flex items-center justify-between mt-0.5">
@@ -554,15 +879,20 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
             </div>
           </div>
 
+          )}
+
           {/* Action Buttons */}
           <div className="flex flex-col gap-2 pt-1">
             <button
+              disabled={approve.isPending || reject.isPending}
               onClick={handleApprove.bind(null, selected)}
-              className="w-full h-10 rounded-lg bg-[#066cf4] text-white text-[13px] font-semibold hover:bg-[#0055c4] transition-colors flex items-center justify-center gap-2 shadow-sm"
+              className="w-full h-10 disabled:opacity-50 rounded-lg bg-[#066cf4] text-white text-[13px] font-semibold hover:bg-[#0055c4] transition-colors flex items-center justify-center gap-2 shadow-sm"
             >
               <span className="material-symbols-outlined text-[18px]">verified</span>
-              Approve Merchant & Issue Live Key
+              {live ? 'Approve & Verify Business' : 'Approve Merchant & Issue Live Key'}
             </button>
+            {/* No endpoint asks an owner for documents; rejecting lets them submit again. */}
+            {!live && (
             <button
               onClick={handleRequest}
               className="w-full h-9 rounded-lg bg-[#f2f4f6] text-[#191c1e] text-[12px] font-medium hover:bg-[#e6e8ea] transition-colors flex items-center justify-center gap-2"
@@ -570,7 +900,9 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
               <span className="material-symbols-outlined text-[16px] text-[#4a5e88]">upload_file</span>
               Request Documents
             </button>
+            )}
             <button
+              disabled={approve.isPending || reject.isPending}
               onClick={handleReject}
               className="w-full h-9 rounded-lg bg-[#ffdad6] text-[#93000a] text-[12px] font-medium hover:bg-[#ffb4ab] transition-colors flex items-center justify-center gap-2"
             >
@@ -579,9 +911,11 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
             </button>
           </div>
         </div>
+        )}
       </div>
 
-      {/* BOTTOM TELEMETRY CARDS */}
+      {/* BOTTOM TELEMETRY CARDS (sample: mock mode only) */}
+      {!live && (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Top Verified Clusters */}
         <div className="bg-white rounded-xl p-4 shadow-sm flex flex-col gap-3">
@@ -671,6 +1005,7 @@ export function AdminVerificationScreen({ onNavigate: _onNavigate }: AdminVerifi
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

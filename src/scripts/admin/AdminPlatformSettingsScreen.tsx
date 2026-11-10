@@ -1,4 +1,25 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { adminService, type AdminPlatformParameters } from '../../services/adminService';
+import { adminErrorMessage, useAdminAction, useAdminPlatformSettings } from './useAdminData';
+
+/** The page's starting values; "Reset Defaults" puts these back into the form. */
+const DEFAULTS: AdminPlatformParameters = {
+  platformCurrencySymbol: '₦ (NGN)',
+  platformVatRate: 7.5,
+  withholdingTaxRate: 5,
+  defaultPosTakeRate: 1.5,
+  escrowHoldingHours: 24,
+  defaultGeofenceRadiusMeters: 2000,
+  maxClustersPerMerchant: 10,
+  nfcHeartbeatIntervalSec: 45,
+  maintenanceMode: false,
+  strictKybGate: true,
+  dualAuthorizerEscrow: true,
+  autoDunningActive: true,
+  smsGatewayFallback: true,
+  realtimeTelemetryRateLimit: false,
+};
 
 interface AdminPlatformSettingsScreenProps {
   onNavigate: (path: string) => void;
@@ -27,6 +48,33 @@ export function AdminPlatformSettingsScreen({ onNavigate: _onNavigate }: AdminPl
 
   // Notice Toast
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Live API: load the stored parameters into the form; "Deploy Changes" saves them.
+  const live = hasApiConfig();
+  const settingsQuery = useAdminPlatformSettings();
+  const saveSettings = useAdminAction((input: Partial<AdminPlatformParameters>) => adminService.updatePlatformSettings(input));
+  const fill = (v: AdminPlatformParameters) => {
+    setCurrencySymbol(v.platformCurrencySymbol);
+    setPlatformVatRate(String(v.platformVatRate));
+    setWhtRate(String(v.withholdingTaxRate));
+    setDefaultPosTakeRate(String(v.defaultPosTakeRate));
+    setEscrowHoldingHours(String(v.escrowHoldingHours));
+    setDefaultGeofenceRadiusMeters(String(v.defaultGeofenceRadiusMeters));
+    setMaxClustersPerMerchant(String(v.maxClustersPerMerchant));
+    setNfcHeartbeatIntervalSec(String(v.nfcHeartbeatIntervalSec));
+    setMaintenanceMode(v.maintenanceMode);
+    setStrictKybGate(v.strictKybGate);
+    setDualAuthorizerEscrow(v.dualAuthorizerEscrow);
+    setAutoDunningActive(v.autoDunningActive);
+    setSmsGatewayFallback(v.smsGatewayFallback);
+    setRealtimeTelemetryRateLimit(v.realtimeTelemetryRateLimit);
+  };
+  useEffect(() => {
+    if (settingsQuery.data) fill({ ...DEFAULTS, ...settingsQuery.data });
+    // Refill only when a fresh copy arrives from the server.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsQuery.data]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -35,7 +83,37 @@ export function AdminPlatformSettingsScreen({ onNavigate: _onNavigate }: AdminPl
 
   const handleSaveAll = (e: React.FormEvent) => {
     e.preventDefault();
-    showToast('Platform configuration synchronized to all edge servers and ledger nodes.');
+    if (!live) {
+      showToast('Platform configuration synchronized to all edge servers and ledger nodes.');
+      return;
+    }
+    const num = (value: string) => Number(value);
+    const input: Partial<AdminPlatformParameters> = {
+      platformCurrencySymbol: currencySymbol.trim(),
+      platformVatRate: num(platformVatRate),
+      withholdingTaxRate: num(whtRate),
+      defaultPosTakeRate: num(defaultPosTakeRate),
+      escrowHoldingHours: Math.round(num(escrowHoldingHours)),
+      defaultGeofenceRadiusMeters: Math.round(num(defaultGeofenceRadiusMeters)),
+      maxClustersPerMerchant: Math.round(num(maxClustersPerMerchant)),
+      nfcHeartbeatIntervalSec: Math.round(num(nfcHeartbeatIntervalSec)),
+      maintenanceMode,
+      strictKybGate,
+      dualAuthorizerEscrow,
+      autoDunningActive,
+      smsGatewayFallback,
+      realtimeTelemetryRateLimit,
+    };
+    const bad = Object.entries(input).find(([, v]) => typeof v === 'number' && !Number.isFinite(v));
+    if (bad) {
+      setSaveError(`Enter a number for ${bad[0]}.`);
+      return;
+    }
+    setSaveError(null);
+    saveSettings.mutate(input, {
+      onSuccess: () => showToast('Platform settings saved.'),
+      onError: (error) => setSaveError(adminErrorMessage(error)),
+    });
   };
 
   return (
@@ -47,28 +125,55 @@ export function AdminPlatformSettingsScreen({ onNavigate: _onNavigate }: AdminPl
           <span>{toastMessage}</span>
         </div>
       )}
+      {saveError && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-xs flex items-center justify-between">
+          <span>{saveError}</span>
+          <button type="button" onClick={() => setSaveError(null)} className="text-red-600 font-semibold">
+            Dismiss
+          </button>
+        </div>
+      )}
+      {live && settingsQuery.isError && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-xs">
+          Couldn't load platform settings: {adminErrorMessage(settingsQuery.error)}
+        </div>
+      )}
 
       {/* Top Banner & Quick Actions */}
       <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-2xl p-5 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
         <div>
           <div className="flex items-center gap-2 text-xs text-blue-200 font-semibold tracking-wider uppercase mb-1">
             <span className="material-symbols-outlined text-sm">tune</span>
-            <span>Global Runtime Governance // Core Engine v4.2</span>
+            <span>{live ? 'Global Platform Parameters' : 'Global Runtime Governance // Core Engine v4.2'}</span>
           </div>
           <h2 className="text-lg font-bold">Platform Configuration & System Preferences</h2>
-          <p className="text-xs text-slate-300 mt-0.5">Parameters applied across all payment rails, NFC POS edge fleets, and merchant clusters.</p>
+          <p className="text-xs text-slate-300 mt-0.5">
+            {live
+              ? settingsQuery.data?.updatedAt
+                ? `Last saved ${new Date(settingsQuery.data.updatedAt).toLocaleString()}.`
+                : 'Loading…'
+              : 'Parameters applied across all payment rails, NFC POS edge fleets, and merchant clusters.'}
+          </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => showToast('Configuration reset to cluster defaults.')}
+            onClick={() => {
+              if (live) {
+                fill(DEFAULTS);
+                showToast('Defaults loaded into the form — Deploy Changes to save them.');
+                return;
+              }
+              showToast('Configuration reset to cluster defaults.');
+            }}
             className="px-3 py-2 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/20 text-white transition-colors border border-white/20"
           >
             Reset Defaults
           </button>
           <button
             type="submit"
-            className="px-4 py-2 rounded-xl text-xs font-bold bg-[#066cf4] hover:bg-blue-600 text-white transition-colors shadow-sm flex items-center gap-1.5"
+            disabled={live && (saveSettings.isPending || !settingsQuery.data)}
+            className="disabled:opacity-50 px-4 py-2 rounded-xl text-xs font-bold bg-[#066cf4] hover:bg-blue-600 text-white transition-colors shadow-sm flex items-center gap-1.5"
           >
             <span className="material-symbols-outlined text-sm">save</span>
             <span>Deploy Changes</span>
@@ -198,7 +303,11 @@ export function AdminPlatformSettingsScreen({ onNavigate: _onNavigate }: AdminPl
             <span className="material-symbols-outlined text-[#0055c4] text-lg">policy</span>
             <div>
               <h3 className="text-sm font-bold text-slate-900">Security Gateways & Operational Switches</h3>
-              <p className="text-xs text-slate-500">Platform-wide guardrails enforced at API and gateway layers.</p>
+              <p className="text-xs text-slate-500">
+                {live
+                  ? 'Saved for the platform; the backend does not act on these switches yet.'
+                  : 'Platform-wide guardrails enforced at API and gateway layers.'}
+              </p>
             </div>
           </div>
 

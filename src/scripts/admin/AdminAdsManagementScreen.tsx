@@ -1,11 +1,16 @@
 import { useState, useMemo } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import type { AdminSponsoredCampaign } from '../../services/adminService';
+import { formatCount, NONE } from './adminLive';
+import { adminErrorMessage, useAdminSponsoredCampaigns } from './useAdminData';
 
 interface AdCampaign {
   id: string;
   name: string;
   code: string;
   advertiser: string;
-  tier: 'Platinum' | 'Gold' | 'Silver';
+  /** Sample tiers in mock mode; empty against the live API. */
+  tier: 'Platinum' | 'Gold' | 'Silver' | '';
   rcNumber: string;
   placement: string;
   slotPosition: string;
@@ -13,7 +18,8 @@ interface AdCampaign {
   spentBudget: number;
   runtimeDates: string;
   daysRemainingText: string;
-  status: 'Active' | 'Pending Approval' | 'Paused' | 'Ended';
+  /** `Draft` exists only against the live API (a campaign the business is still building). */
+  status: 'Active' | 'Pending Approval' | 'Paused' | 'Ended' | 'Draft';
   billingModel: string;
   imageAlt: string;
   imageSrc: string;
@@ -184,18 +190,89 @@ const CAMPAIGNS_DATA: AdCampaign[] = [
   },
 ];
 
+const LIVE_STATUS: Record<string, AdCampaign['status']> = {
+  Active: 'Active',
+  Pending: 'Pending Approval',
+  Paused: 'Paused',
+  Ended: 'Ended',
+  Draft: 'Draft',
+};
+
+const money = (value: unknown) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
+
+function toAdCampaign(c: AdminSponsoredCampaign): AdCampaign {
+  const ctr = c.impressions > 0 ? `${((c.clicks / c.impressions) * 100).toFixed(1)}% CTR` : NONE;
+  return {
+    id: c.id,
+    name: c.name,
+    code: `#${c.id.slice(0, 8).toUpperCase()}`,
+    advertiser: c.business,
+    tier: '',
+    rcNumber: '',
+    placement: 'Sponsored in discovery',
+    slotPosition: c.radius ? `Radius ${c.radius}` : NONE,
+    totalBudget: money(c.budget),
+    spentBudget: money(c.spent),
+    runtimeDates: c.duration ?? NONE,
+    daysRemainingText: '',
+    status: LIVE_STATUS[c.status] ?? 'Draft',
+    billingModel: 'Ad wallet',
+    imageAlt: c.name,
+    imageSrc: '',
+    targetGeo: c.radius ? `Radius ${c.radius}` : NONE,
+    clickUrl: NONE,
+    flightDays: c.duration ?? NONE,
+    cpmModel: NONE,
+    unbilledReserve: NONE,
+    impressions: formatCount(c.impressions),
+    viewability: NONE,
+    taps: formatCount(c.clicks),
+    ctr,
+    posVisits: formatCount(c.conversions),
+    attributedGmv: NONE,
+    roi: '',
+  };
+}
+
 interface AdminAdsManagementScreenProps {
   onNavigate: (path: string) => void;
 }
 
 export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScreenProps) {
-  const [campaigns, setCampaigns] = useState<AdCampaign[]>(CAMPAIGNS_DATA);
-  const [selectedId, setSelectedId] = useState<string>(CAMPAIGNS_DATA[0].id);
+  const live = hasApiConfig();
+  const [mockCampaigns, setCampaigns] = useState<AdCampaign[]>(CAMPAIGNS_DATA);
+  const [selectedId, setSelectedId] = useState<string>(live ? '' : CAMPAIGNS_DATA[0].id);
+
+  // Live API: businesses' sponsored campaigns (newest 100). Admins can view them; there are
+  // no admin endpoints to pause or edit a campaign yet.
+  const sponsoredQuery = useAdminSponsoredCampaigns();
+  const liveCampaigns = useMemo(() => (sponsoredQuery.data?.data ?? []).map(toAdCampaign), [sponsoredQuery.data]);
+  const campaigns = live ? liveCampaigns : mockCampaigns;
+  const countStatus = (status: AdCampaign['status']) => campaigns.filter((c) => c.status === status).length;
+  const totalSpent = liveCampaigns.reduce((sum, c) => sum + c.spentBudget, 0);
+  const totalBudget = liveCampaigns.reduce((sum, c) => sum + c.totalBudget, 0);
+  const sumRaw = (key: 'impressions' | 'clicks' | 'conversions') =>
+    (sponsoredQuery.data?.data ?? []).reduce((sum, c) => sum + (c[key] ?? 0), 0);
+
+  const exportCsv = () => {
+    const header = ['ID', 'Campaign', 'Business', 'Status', 'Budget', 'Spent', 'Impressions', 'Clicks', 'Conversions'];
+    const rows = (sponsoredQuery.data?.data ?? []).map((c) => [c.id, c.name, c.business, c.status, money(c.budget), money(c.spent), c.impressions, c.clicks, c.conversions]);
+    const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vemtap-sponsored-campaigns-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
   const [statusTab, setStatusTab] = useState<'ALL' | 'ACTIVE' | 'PENDING' | 'PAUSED' | 'ENDED'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [actionNotice, setActionNotice] = useState<string | null>(null);
 
-  const selectedCampaign = useMemo(() => {
+  const selectedCampaign: AdCampaign | undefined = useMemo(() => {
     return campaigns.find((c) => c.id === selectedId) || campaigns[0];
   }, [campaigns, selectedId]);
 
@@ -256,7 +333,7 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
               Inventory &amp; Monetization Engine
             </span>
             <span className="w-1.5 h-1.5 rounded-full bg-[#0055c4]"></span>
-            <span className="text-[12px] text-slate-500">Ad Placement Core v4.2</span>
+            {!live && <span className="text-[12px] text-slate-500">Ad Placement Core v4.2</span>}
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
             Advertising Campaigns &amp; Placements Management
@@ -266,6 +343,8 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
+{!live && (
+<>
           <button
             onClick={() => triggerNotice('Placement rate card drawer opened.')}
             className="h-9 px-3.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-[12px] font-semibold flex items-center gap-1.5 shadow-2xs transition-colors"
@@ -287,6 +366,8 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
             <span className="material-symbols-outlined text-[18px]">add_circle</span>
             <span>Launch Ad Campaign</span>
           </button>
+</>
+)}
         </div>
       </div>
 
@@ -301,12 +382,12 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
             </span>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-slate-900 tracking-tight">48</span>
+            <span className="text-2xl font-bold text-slate-900 tracking-tight">{live ? countStatus('Active') : '48'}</span>
             <span className="text-[12px] text-slate-500 font-medium">Live Campaigns</span>
           </div>
           <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-slate-500">
             <span className="text-[11px] flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-amber-500"></span> 12 Awaiting Review
+              <span className="w-2 h-2 rounded-full bg-amber-500"></span> {live ? countStatus('Pending Approval') : 12} Awaiting Review
             </span>
             <button
               onClick={() => setStatusTab('PENDING')}
@@ -321,21 +402,23 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Total Sponsored Revenue (MTD)
+              {live ? 'Total Spent (Newest 100)' : 'Total Sponsored Revenue (MTD)'}
             </span>
             <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600 material-symbols-outlined text-[18px]">
               payments
             </span>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-slate-900 tracking-tight">₦24.8M</span>
-            <span className="text-[12px] text-emerald-600 font-semibold flex items-center gap-0.5">
-              <span className="material-symbols-outlined text-[16px]">trending_up</span>+18.4%
-            </span>
+            <span className="text-2xl font-bold text-slate-900 tracking-tight">{live ? `₦${totalSpent.toLocaleString()}` : '₦24.8M'}</span>
+            {!live && (
+              <span className="text-[12px] text-emerald-600 font-semibold flex items-center gap-0.5">
+                <span className="material-symbols-outlined text-[16px]">trending_up</span>+18.4%
+              </span>
+            )}
           </div>
           <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-slate-500 text-[11px]">
-            <span>Settled Net</span>
-            <span className="font-semibold text-slate-800">₦32.5M Projected</span>
+            <span>{live ? 'Total budgets' : 'Settled Net'}</span>
+            <span className="font-semibold text-slate-800">{live ? `₦${totalBudget.toLocaleString()}` : '₦32.5M Projected'}</span>
           </div>
         </div>
 
@@ -343,37 +426,37 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Placements Inventory Utilisation
+              {live ? 'Impressions & Clicks' : 'Placements Inventory Utilisation'}
             </span>
             <span className="p-1.5 rounded-lg bg-blue-50 text-[#0055c4] material-symbols-outlined text-[18px]">
               grid_view
             </span>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-slate-900 tracking-tight">88.5%</span>
-            <span className="text-[12px] text-slate-500 font-medium">Fill Rate</span>
+            <span className="text-2xl font-bold text-slate-900 tracking-tight">{live ? formatCount(sumRaw('impressions')) : '88.5%'}</span>
+            <span className="text-[12px] text-slate-500 font-medium">{live ? 'Impressions' : 'Fill Rate'}</span>
           </div>
           <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-slate-500 text-[11px]">
-            <span>Prime Spots Allocation</span>
-            <span className="font-bold text-[#0055c4]">28 / 32 Slots Booked</span>
+            <span>{live ? 'Clicks' : 'Prime Spots Allocation'}</span>
+            <span className="font-bold text-[#0055c4]">{live ? formatCount(sumRaw('clicks')) : '28 / 32 Slots Booked'}</span>
           </div>
         </div>
 
         {/* KPI 4 */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between relative overflow-hidden group hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Avg Campaign ROAS</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{live ? 'Conversions' : 'Avg Campaign ROAS'}</span>
             <span className="p-1.5 rounded-lg bg-purple-50 text-purple-600 material-symbols-outlined text-[18px]">
               auto_graph
             </span>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-slate-900 tracking-tight">4.8x</span>
-            <span className="text-[12px] text-slate-500 font-medium">Merchant Return</span>
+            <span className="text-2xl font-bold text-slate-900 tracking-tight">{live ? formatCount(sumRaw('conversions')) : '4.8x'}</span>
+            <span className="text-[12px] text-slate-500 font-medium">{live ? 'Recorded' : 'Merchant Return'}</span>
           </div>
           <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-slate-500 text-[11px]">
-            <span>Attributed Consumer Orders</span>
-            <span className="font-semibold text-emerald-600">82.1k Conversions</span>
+            <span>{live ? 'Campaigns loaded' : 'Attributed Consumer Orders'}</span>
+            <span className="font-semibold text-emerald-600">{live ? formatCount(sponsoredQuery.data?.meta.total) : '82.1k Conversions'}</span>
           </div>
         </div>
       </div>
@@ -388,7 +471,7 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
             </span>
             <input
               type="text"
-              placeholder="Search by Campaign Name, Advertiser / Merchant, Placement Slot, or Campaign ID..."
+              placeholder={live ? 'Search by campaign or business...' : 'Search by Campaign Name, Advertiser / Merchant, Placement Slot, or Campaign ID...'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full h-9 pl-9 pr-4 rounded-lg bg-slate-50 font-medium text-[12px] text-slate-800 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0055c4]/30"
@@ -405,7 +488,7 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
                   : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              All Ads (64)
+              {live ? `All Ads (${campaigns.length})` : 'All Ads (64)'}
             </button>
             <button
               onClick={() => setStatusTab('ACTIVE')}
@@ -415,7 +498,7 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
                   : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              Active Live (48)
+              {live ? `Active Live (${countStatus('Active')})` : 'Active Live (48)'}
             </button>
             <button
               onClick={() => setStatusTab('PENDING')}
@@ -425,7 +508,7 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
                   : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Pending Approval (12)
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Pending Approval ({live ? countStatus('Pending Approval') : 12})
             </button>
             <button
               onClick={() => setStatusTab('PAUSED')}
@@ -435,7 +518,7 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
                   : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              Paused (4)
+              {live ? `Paused (${countStatus('Paused')})` : 'Paused (4)'}
             </button>
             <button
               onClick={() => setStatusTab('ENDED')}
@@ -445,13 +528,15 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
                   : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              Ended (180)
+              {live ? `Ended (${countStatus('Ended')})` : 'Ended (180)'}
             </button>
           </div>
         </div>
 
         {/* Secondary Filter Strip */}
         <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-600">
+{!live && (
+<>
           <span className="font-bold text-slate-400 uppercase tracking-wider mr-1">Filter Inventory:</span>
           <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-slate-50 hover:bg-slate-100 text-slate-700 cursor-pointer font-medium transition-colors">
             <span className="material-symbols-outlined text-[15px] text-slate-500">view_carousel</span>
@@ -473,9 +558,11 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
             <span>Runtime: Current Q4</span>
             <span className="material-symbols-outlined text-[14px] text-slate-400">expand_more</span>
           </div>
+</>
+)}
           <div className="ml-auto flex items-center gap-2">
             <button
-              onClick={() => triggerNotice('Exporting CSV inventory log...')}
+              onClick={() => (live ? exportCsv() : triggerNotice('Exporting CSV inventory log...'))}
               className="h-7 px-2.5 text-slate-600 hover:text-slate-900 font-semibold uppercase flex items-center gap-1"
             >
               <span className="material-symbols-outlined text-[14px]">file_download</span> Export CSV
@@ -505,8 +592,19 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-normal">
+                {live && filteredCampaigns.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="py-8 px-4 text-center text-slate-500">
+                      {sponsoredQuery.isLoading
+                        ? 'Loading sponsored campaigns…'
+                        : sponsoredQuery.isError
+                          ? `Couldn't load campaigns: ${adminErrorMessage(sponsoredQuery.error)}`
+                          : 'No sponsored campaigns.'}
+                    </td>
+                  </tr>
+                )}
                 {filteredCampaigns.map((ad) => {
-                  const isSelected = ad.id === selectedId;
+                  const isSelected = ad.id === selectedCampaign?.id;
                   const spentPercent = Math.min(100, Math.round((ad.spentBudget / (ad.totalBudget || 1)) * 100));
 
                   return (
@@ -543,6 +641,7 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
                       <td className="py-3 px-4">
                         <div className="flex flex-col">
                           <span className="font-semibold text-slate-900">{ad.advertiser}</span>
+                          {!live && (
                           <div className="flex items-center gap-1 mt-0.5">
                             <span
                               className={`px-1.5 py-0.2 rounded font-bold text-[9px] uppercase tracking-wider ${
@@ -557,6 +656,7 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
                             </span>
                             <span className="text-slate-400 font-mono text-[10px]">{ad.rcNumber}</span>
                           </div>
+                          )}
                         </div>
                       </td>
                       <td className="py-3 px-4">
@@ -599,6 +699,7 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
                         <span className="block text-[10px] text-slate-400 mt-0.5">{ad.billingModel}</span>
                       </td>
                       <td className="py-3 pr-4 pl-2 text-right">
+                        {!live && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -610,6 +711,7 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
                             {ad.status === 'Active' ? 'pause_circle' : 'play_circle'}
                           </span>
                         </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -622,7 +724,7 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
           <div className="px-4 py-3 bg-slate-50 flex flex-col sm:flex-row items-center justify-between gap-2 border-t border-slate-100 text-[11px] text-slate-500">
             <div>
               Showing <strong className="text-slate-900">1-{filteredCampaigns.length}</strong> of{' '}
-              <strong className="text-slate-900">{campaigns.length}</strong> active &amp; scheduled campaigns
+              <strong className="text-slate-900">{campaigns.length}</strong> {live ? 'campaigns' : <>active &amp; scheduled campaigns</>}
             </div>
             <div className="flex items-center gap-1 font-semibold">
               <span className="px-2 py-0.5 rounded bg-white text-[#0055c4] shadow-2xs border border-slate-200">1</span>
@@ -631,6 +733,11 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
         </div>
 
         {/* RIGHT PANEL: Ad Campaign Dossier & Creative Inspector (35% / 4 cols) */}
+        {!selectedCampaign ? (
+          <div className="lg:col-span-4 bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs text-[12px] text-slate-500">
+            Select a campaign to inspect it.
+          </div>
+        ) : (
         <div className="lg:col-span-4 flex flex-col gap-4">
           <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-2xs flex flex-col">
             {/* Header & Status Pill */}
@@ -646,7 +753,7 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse"></span> {selectedCampaign.status}
                 </span>
-                <span className="text-[10px] text-emerald-700 font-medium mt-0.5">Creative: Verified &amp; Approved</span>
+                {!live && <span className="text-[10px] text-emerald-700 font-medium mt-0.5">Creative: Verified &amp; Approved</span>}
               </div>
             </div>
 
@@ -658,9 +765,11 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
                 </div>
                 <div className="flex flex-col min-w-0">
                   <span className="text-[12px] font-bold text-slate-900 truncate">{selectedCampaign.advertiser}</span>
-                  <span className="text-[10px] text-slate-400 truncate">
-                    {selectedCampaign.rcNumber} • {selectedCampaign.tier} Merchant Tier
-                  </span>
+                  {!live && (
+                    <span className="text-[10px] text-slate-400 truncate">
+                      {selectedCampaign.rcNumber} • {selectedCampaign.tier} Merchant Tier
+                    </span>
+                  )}
                 </div>
               </div>
               <button
@@ -672,6 +781,8 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
               </button>
             </div>
 
+{!live && (
+<>
             {/* Creative Inspector Visual Section */}
             <div className="mb-4">
               <div className="flex items-center justify-between mb-1.5">
@@ -697,6 +808,8 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
                 </div>
               </div>
             </div>
+</>
+)}
 
             {/* Placement & Targeting Specs */}
             <div className="space-y-2 mb-4 text-[12px]">
@@ -726,9 +839,11 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   Budget &amp; Escrow Standing
                 </span>
-                <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] uppercase font-bold">
-                  Prepaid Escrow
-                </span>
+                {!live && (
+                  <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 text-[10px] uppercase font-bold">
+                    Prepaid Escrow
+                  </span>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-2 mb-2">
                 <div className="bg-white p-2.5 rounded-lg border border-slate-100">
@@ -741,10 +856,12 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
                 </div>
               </div>
               <div className="space-y-1">
-                <div className="flex justify-between text-[11px]">
-                  <span className="text-slate-500">Pacing: ₦225,000 / day</span>
-                  <span className="font-semibold text-emerald-700">On Target</span>
-                </div>
+                {!live && (
+                  <div className="flex justify-between text-[11px]">
+                    <span className="text-slate-500">Pacing: ₦225,000 / day</span>
+                    <span className="font-semibold text-emerald-700">On Target</span>
+                  </div>
+                )}
                 <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
                   <div
                     className="bg-[#0055c4] h-1.5 rounded-full"
@@ -754,22 +871,24 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
                   ></div>
                 </div>
               </div>
+              {!live && (
               <div className="mt-2 pt-2 flex justify-between text-[11px] text-slate-500 border-t border-slate-200/60">
                 <span>Model: <strong>{selectedCampaign.cpmModel}</strong></span>
                 <span>Unbilled Reserve: <strong>{selectedCampaign.unbilledReserve}</strong></span>
               </div>
+              )}
             </div>
 
             {/* Campaign Performance Summary & Live Funnel */}
             <div className="mb-4">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block mb-2">
-                Real-Time Performance Funnel
+                {live ? 'Performance' : 'Real-Time Performance Funnel'}
               </span>
               <div className="grid grid-cols-2 gap-2">
                 <div className="p-2.5 rounded-lg bg-slate-50 flex flex-col border border-slate-100">
                   <span className="text-[11px] text-slate-400">Impressions Served</span>
                   <span className="text-base font-bold text-slate-900 mt-0.5">{selectedCampaign.impressions}</span>
-                  <span className="text-[10px] text-emerald-600 font-semibold mt-1">{selectedCampaign.viewability} viewability</span>
+                  {!live && <span className="text-[10px] text-emerald-600 font-semibold mt-1">{selectedCampaign.viewability} viewability</span>}
                 </div>
                 <div className="p-2.5 rounded-lg bg-slate-50 flex flex-col border border-slate-100">
                   <span className="text-[11px] text-slate-400">Taps / Clicks</span>
@@ -777,18 +896,22 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
                   <span className="text-[10px] text-[#0055c4] font-semibold mt-1">{selectedCampaign.ctr}</span>
                 </div>
                 <div className="p-2.5 rounded-lg bg-slate-50 flex flex-col border border-slate-100">
-                  <span className="text-[11px] text-slate-400">POS Store Visits</span>
+                  <span className="text-[11px] text-slate-400">{live ? 'Conversions' : 'POS Store Visits'}</span>
                   <span className="text-base font-bold text-slate-900 mt-0.5">{selectedCampaign.posVisits}</span>
-                  <span className="text-[10px] text-slate-500 mt-1">Geofence validated</span>
+                  {!live && <span className="text-[10px] text-slate-500 mt-1">Geofence validated</span>}
                 </div>
+                {!live && (
                 <div className="p-2.5 rounded-lg bg-slate-50 flex flex-col border border-slate-100">
                   <span className="text-[11px] text-slate-400">Attributed GMV</span>
                   <span className="text-base font-bold text-emerald-700 mt-0.5">{selectedCampaign.attributedGmv}</span>
                   <span className="text-[10px] text-emerald-600 font-semibold mt-1">{selectedCampaign.roi}</span>
                 </div>
+                )}
               </div>
             </div>
 
+{!live && (
+<>
             {/* Quick Operational Actions */}
             <div className="space-y-2 pt-3 border-t border-slate-100 text-[11px]">
               <span className="font-bold uppercase tracking-wider text-slate-400 block mb-1">Administrative Actions</span>
@@ -825,8 +948,12 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
                 </button>
               </div>
             </div>
+</>
+)}
           </div>
 
+{!live && (
+<>
           {/* Live Delivery Health & Network Telemetry Pill */}
           <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-2xs flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -840,7 +967,10 @@ export function AdminAdsManagementScreen({ onNavigate }: AdminAdsManagementScree
             </div>
             <span className="px-2 py-0.5 rounded bg-slate-100 text-[11px] font-mono font-bold text-slate-600">200 OK</span>
           </div>
+</>
+)}
         </div>
+        )}
       </div>
     </div>
   );

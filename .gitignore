@@ -9,8 +9,6 @@ node_modules/
 dist/
 
 # Environment variables and secrets
-.env
-.env.*
 !.env.example
 
 # Documentation to ignore
@@ -21,3 +19,4 @@ api-integration.md
 
 # TypeScript output logs
 tsc-*.txt
+config.bat

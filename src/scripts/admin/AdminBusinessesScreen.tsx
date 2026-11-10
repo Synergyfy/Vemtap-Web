@@ -1,14 +1,21 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useDeferredValue } from 'react';
 import { ADMIN_BUSINESSES, type AdminBusiness } from './adminData';
 import { AdminChatModal } from './AdminChatModal';
+import { hasApiConfig } from '../../services/api/client';
+import { adminService } from '../../services/adminService';
+import { formatCount, formatDate, formatNaira, NONE, toAdminBusiness } from './adminLive';
+import { adminErrorMessage, useAdminAction, useAdminBusinesses, useAdminBusinessStats } from './useAdminData';
+
+const LIVE_PAGE_SIZE = 25;
 
 interface AdminBusinessesScreenProps {
   onNavigate: (path: string) => void;
 }
 
 export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps) {
-  const [businesses, setBusinesses] = useState<AdminBusiness[]>(ADMIN_BUSINESSES);
-  const [selectedBusiness, setSelectedBusiness] = useState<AdminBusiness | null>(ADMIN_BUSINESSES[0]);
+  const live = hasApiConfig();
+  const [mockBusinesses, setBusinesses] = useState<AdminBusiness[]>(ADMIN_BUSINESSES);
+  const [selectedBusiness, setSelectedBusiness] = useState<AdminBusiness | null>(live ? null : ADMIN_BUSINESSES[0]);
   const [isProfileView, setIsProfileView] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<
@@ -22,10 +29,43 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
   const [statusFilter, setStatusFilter] = useState('');
   const [tierFilter, setTierFilter] = useState('');
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+
+  // Live API: search, status and paging run on the server; category and plan filter the loaded page.
+  const deferredSearch = useDeferredValue(searchQuery.trim());
+  const liveQuery = useAdminBusinesses({
+    search: deferredSearch || undefined,
+    status:
+      statusFilter === 'Suspended'
+        ? 'suspended'
+        : statusFilter === 'Pending Validation' || statusFilter === 'Under Review'
+          ? 'pending'
+          : undefined,
+    isVerified: statusFilter === 'Verified' ? true : undefined,
+    page,
+    limit: LIVE_PAGE_SIZE,
+  });
+  const liveBusinesses = useMemo(() => (liveQuery.data?.data ?? []).map(toAdminBusiness), [liveQuery.data]);
+  const businesses = live ? liveBusinesses : mockBusinesses;
+  const liveStats = liveQuery.data?.stats;
+  const liveTotal = liveQuery.data?.meta.total ?? 0;
+  const lastPage = Math.max(1, liveQuery.data?.meta.lastPage ?? Math.ceil(liveTotal / LIVE_PAGE_SIZE));
+  const categoryOptions = useMemo(
+    () => Array.from(new Set(liveBusinesses.map((b) => b.category).filter((c) => c !== NONE))).sort(),
+    [liveBusinesses],
+  );
+  const planOptions = useMemo(() => Array.from(new Set(liveBusinesses.map((b) => b.tier))).sort(), [liveBusinesses]);
+  const businessStats = useAdminBusinessStats(live && isProfileView ? selectedBusiness?.id : null);
+
+  const suspendBusiness = useAdminAction((id: string) =>
+    adminService.suspendBusiness(id, 'Suspended by a platform admin from the admin console.'),
+  );
+  const reactivateBusiness = useAdminAction((id: string) => adminService.reactivateBusiness(id));
 
   const filteredBusinesses = useMemo(() => {
     return businesses.filter((b) => {
-      if (searchQuery.trim()) {
+      if (!live && searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matches =
           b.name.toLowerCase().includes(q) ||
@@ -33,21 +73,22 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
           b.cacRc.toLowerCase().includes(q);
         if (!matches) return false;
       }
-      if (categoryFilter && !b.category.toLowerCase().includes(categoryFilter.toLowerCase())) {
+      if (categoryFilter && (live ? b.category !== categoryFilter : !b.category.toLowerCase().includes(categoryFilter.toLowerCase()))) {
         return false;
       }
       if (clusterFilter && !b.cluster.toLowerCase().includes(clusterFilter.toLowerCase())) {
         return false;
       }
-      if (statusFilter && b.complianceStatus !== statusFilter) {
+      // Live: the server already filtered by status (pending covers both pending states).
+      if (statusFilter && !live && b.complianceStatus !== statusFilter) {
         return false;
       }
-      if (tierFilter && !b.tier.toLowerCase().includes(tierFilter.toLowerCase())) {
+      if (tierFilter && (live ? b.tier !== tierFilter : !b.tier.toLowerCase().includes(tierFilter.toLowerCase()))) {
         return false;
       }
       return true;
     });
-  }, [businesses, searchQuery, categoryFilter, clusterFilter, statusFilter, tierFilter]);
+  }, [live, businesses, searchQuery, categoryFilter, clusterFilter, statusFilter, tierFilter]);
 
   const handleOpenProfile = (biz: AdminBusiness) => {
     setSelectedBusiness(biz);
@@ -55,6 +96,25 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
   };
 
   const handleToggleStatus = (bizId: string) => {
+    if (live) {
+      const target = businesses.find((b) => b.id === bizId) ?? selectedBusiness;
+      if (!target) return;
+      const reinstating = target.complianceStatus === 'Suspended';
+      setActionError(null);
+      (reinstating ? reactivateBusiness : suspendBusiness).mutate(bizId, {
+        onSuccess: (updated) => {
+          const next =
+            updated && typeof updated === 'object' && 'id' in updated && target.raw
+              ? toAdminBusiness({ ...target.raw, ...(updated as object), status: String((updated as { status?: string }).status ?? target.raw.status).toUpperCase() })
+              : { ...target, complianceStatus: reinstating ? ('Pending Validation' as const) : ('Suspended' as const) };
+          setSelectedBusiness((prev) => (prev?.id === bizId ? next : prev));
+          setActionNotice(`Business "${target.name}" ${reinstating ? 'reinstated' : 'suspended'}.`);
+          setTimeout(() => setActionNotice(null), 3000);
+        },
+        onError: (error) => setActionError(adminErrorMessage(error)),
+      });
+      return;
+    }
     setBusinesses((prev) =>
       prev.map((b) => {
         if (b.id !== bizId) return b;
@@ -85,6 +145,7 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
     setClusterFilter('');
     setStatusFilter('');
     setTierFilter('');
+    setPage(1);
   };
 
   const handleExportCsv = () => {
@@ -127,6 +188,17 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
             </button>
           </div>
         )}
+        {actionError && (
+          <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-[12px] flex items-center justify-between shadow-2xs">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-[17px] text-red-600">error</span>
+              <span>{actionError}</span>
+            </div>
+            <button onClick={() => setActionError(null)} className="text-red-600 hover:text-red-800 cursor-pointer">
+              <span className="material-symbols-outlined text-[15px]">close</span>
+            </button>
+          </div>
+        )}
 
         {/* Top Header Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
@@ -158,17 +230,21 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
 
           {/* Right Action Buttons */}
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setIsChatOpen(true)}
-              className="bg-[#0055c4] hover:bg-[#066cf4] text-white px-3.5 py-1.5 rounded-lg text-[12px] font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[16px]">forum</span>
-              <span>Chat with Business</span>
-            </button>
+            {/* Admin ↔ business chat has no backend yet: sample chat in mock mode only. */}
+            {!live && (
+              <button
+                onClick={() => setIsChatOpen(true)}
+                className="bg-[#0055c4] hover:bg-[#066cf4] text-white px-3.5 py-1.5 rounded-lg text-[12px] font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[16px]">forum</span>
+                <span>Chat with Business</span>
+              </button>
+            )}
 
             <button
+              disabled={suspendBusiness.isPending || reactivateBusiness.isPending}
               onClick={() => handleToggleStatus(selectedBusiness.id)}
-              className={`h-8 px-3 rounded-lg text-[12px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+              className={`h-8 px-3 rounded-lg disabled:opacity-50 text-[12px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
                 selectedBusiness.complianceStatus === 'Suspended'
                   ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                   : 'bg-red-50 hover:bg-red-100 text-red-700 border border-red-200'
@@ -284,8 +360,17 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
             </div>
 
             <div className="flex lg:flex-col items-center lg:items-end justify-between gap-1 shrink-0 bg-slate-50 lg:bg-transparent p-4 lg:p-0 rounded-xl border lg:border-none border-slate-100">
-              <div className="text-2xl sm:text-3xl font-bold text-[#0055c4]">{selectedBusiness.monthlyGmv}</div>
-              <div className="text-[12px] text-slate-400 font-medium">30-Day Platform GMV</div>
+              {live ? (
+                <>
+                  <div className="text-2xl sm:text-3xl font-bold text-[#0055c4]">{formatCount(businessStats.data?.totalTaps)}</div>
+                  <div className="text-[12px] text-slate-400 font-medium">Total Taps</div>
+                </>
+              ) : (
+                <>
+                  <div className="text-2xl sm:text-3xl font-bold text-[#0055c4]">{selectedBusiness.monthlyGmv}</div>
+                  <div className="text-[12px] text-slate-400 font-medium">30-Day Platform GMV</div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -297,8 +382,11 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
               { id: 'overview', label: '1. Overview' },
               { id: 'info', label: '2. Business Information' },
               { id: 'branches', label: `3. Branches (${selectedBusiness.branchCount})` },
-              { id: 'staff', label: `4. Staff (${selectedBusiness.staffCount})` },
-              { id: 'catalogue', label: `5. Products & Catalogue (${selectedBusiness.catalogue.length || 142})` },
+              { id: 'staff', label: live ? '4. Staff' : `4. Staff (${selectedBusiness.staffCount})` },
+              {
+                id: 'catalogue',
+                label: live ? '5. Products & Catalogue' : `5. Products & Catalogue (${selectedBusiness.catalogue.length || 142})`,
+              },
               { id: 'status', label: '6. Account Status' },
               { id: 'subscription', label: '7. Subscription Details' },
               { id: 'qr', label: '8. Business QR Assets' },
@@ -324,6 +412,33 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
           {activeTab === 'overview' && (
             <div className="flex flex-col gap-6">
               {/* Quick KPI Cards */}
+              {live && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-xs">
+                    <span className="text-[11px] text-slate-500 font-medium">Total Visitors</span>
+                    <div className="text-2xl font-bold text-slate-900 mt-1">{formatCount(businessStats.data?.totalVisitors)}</div>
+                    <div className="text-[10px] font-bold text-[#0055c4] uppercase mt-1">All branches</div>
+                  </div>
+                  <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-xs">
+                    <span className="text-[11px] text-slate-500 font-medium">Total Taps</span>
+                    <div className="text-2xl font-bold text-slate-900 mt-1">{formatCount(businessStats.data?.totalTaps)}</div>
+                    <div className="text-[10px] font-bold text-emerald-600 uppercase mt-1">NFC & QR</div>
+                  </div>
+                  <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-xs">
+                    <span className="text-[11px] text-slate-500 font-medium">Branches</span>
+                    <div className="text-2xl font-bold text-slate-900 mt-1">
+                      {formatCount(businessStats.data?.totalBranches ?? selectedBusiness.branchCount)}
+                    </div>
+                    <div className="text-[10px] font-bold text-slate-500 uppercase mt-1">Registered</div>
+                  </div>
+                  <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-xs">
+                    <span className="text-[11px] text-slate-500 font-medium">Member Since</span>
+                    <div className="text-2xl font-bold text-slate-900 mt-1">{formatDate(selectedBusiness.raw?.createdAt)}</div>
+                    <div className="text-[10px] font-bold text-[#0055c4] uppercase mt-1">{selectedBusiness.tier}</div>
+                  </div>
+                </div>
+              )}
+              {!live && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-xs">
                   <span className="text-[11px] text-slate-500 font-medium">Active Tap POS Terminals</span>
@@ -352,15 +467,17 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
                   <div className="text-[10px] font-bold text-[#0055c4] uppercase mt-1">Tier-1 Rating</div>
                 </div>
               </div>
+              )}
 
               {/* Summary & Operating Schedule */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-200/80 shadow-xs flex flex-col gap-4">
                   <h3 className="font-bold text-[15px] text-slate-900">Store Profile & Operating Hours</h3>
                   <p className="text-[13px] text-slate-600 leading-relaxed">
-                    {selectedBusiness.name} operates as a vetted high-volume commercial hub in{' '}
-                    {selectedBusiness.cluster}. Linked with direct inventory integration and instant contactless NFC
-                    tap checkouts.
+                    {live
+                      ? [selectedBusiness.category, selectedBusiness.state].filter((part) => part !== NONE).join(' • ') ||
+                        'No profile details yet.'
+                      : `${selectedBusiness.name} operates as a vetted high-volume commercial hub in ${selectedBusiness.cluster}. Linked with direct inventory integration and instant contactless NFC tap checkouts.`}
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
                     <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
@@ -383,7 +500,29 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
                     </div>
                   </div>
 
-                  {/* Inline Sparkline Trend Visual */}
+                  {/* Recent visitor activity (live) / sample sparkline (mock) */}
+                  {live && (
+                    <div className="pt-4 border-t border-slate-100">
+                      <div className="text-[11px] text-slate-500 font-medium mb-2">Recent Visitor Activity</div>
+                      {(businessStats.data?.recentActivity ?? []).length === 0 ? (
+                        <p className="text-[12px] text-slate-500">
+                          {businessStats.isLoading ? 'Loading…' : 'No visitor activity yet.'}
+                        </p>
+                      ) : (
+                        <div className="divide-y divide-slate-100">
+                          {(businessStats.data?.recentActivity ?? []).slice(0, 5).map((a) => (
+                            <div key={a.id} className="py-1.5 flex items-center justify-between text-[12px]">
+                              <span className="text-slate-800 font-medium">{a.visitorName}</span>
+                              <span className="text-slate-500">
+                                {a.branchName} • {formatDate(a.timestamp)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {!live && (
                   <div className="pt-4 border-t border-slate-100">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[11px] text-slate-500 font-medium">Weekly In-Store Footfall & POS Taps</span>
@@ -404,6 +543,7 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
                       />
                     </svg>
                   </div>
+                  )}
                 </div>
 
                 <div className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-xs flex flex-col gap-4">
@@ -411,7 +551,7 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
                   <div className="w-full h-44 bg-slate-100 rounded-lg relative overflow-hidden flex items-end p-3 bg-gradient-to-br from-blue-900/10 to-indigo-900/30">
                     <div className="bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-lg text-slate-800 text-[11px] shadow-sm flex items-center gap-1.5 font-semibold">
                       <span className="material-symbols-outlined text-[16px] text-[#0055c4]">pin_drop</span>
-                      <span>{selectedBusiness.cluster}</span>
+                      <span>{live ? selectedBusiness.state : selectedBusiness.cluster}</span>
                     </div>
                   </div>
                   <div className="text-[12px] space-y-1">
@@ -429,16 +569,24 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
               {/* Owner & Legal Contact Details */}
               <div className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-xs flex flex-col gap-4">
                 <div className="flex items-center gap-4">
-                  <img
-                    src={selectedBusiness.owner.avatarUrl}
-                    alt={selectedBusiness.owner.name}
-                    className="w-16 h-16 rounded-full object-cover shadow-sm border-2 border-slate-100"
-                  />
+                  {selectedBusiness.owner.avatarUrl ? (
+                    <img
+                      src={selectedBusiness.owner.avatarUrl}
+                      alt={selectedBusiness.owner.name}
+                      className="w-16 h-16 rounded-full object-cover shadow-sm border-2 border-slate-100"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-full bg-blue-50 text-[#0055c4] font-bold text-[18px] flex items-center justify-center shadow-sm border-2 border-slate-100">
+                      {selectedBusiness.owner.name.slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
                   <div>
                     <h4 className="font-bold text-[16px] text-slate-900">{selectedBusiness.owner.name}</h4>
                     <div className="text-[12px] text-slate-500 font-medium">{selectedBusiness.owner.role}</div>
                     <div className="text-[10px] font-bold text-[#0055c4] uppercase mt-1">
-                      Verified Identity (NIN/BVN)
+                      {live
+                        ? `Verification: ${(selectedBusiness.raw?.verificationStatus ?? 'unverified').replace(/_/g, ' ')}`
+                        : 'Verified Identity (NIN/BVN)'}
                     </div>
                   </div>
                 </div>
@@ -473,22 +621,34 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
                 <div className="space-y-3 text-[12px]">
                   <div className="flex justify-between py-2 border-b border-slate-100">
                     <span className="text-slate-500">Corporate Affairs Commission:</span>
-                    <span className="text-slate-900 font-bold">{selectedBusiness.cacRc} (Registered 2012)</span>
+                    <span className="text-slate-900 font-bold">
+                      {live ? selectedBusiness.cacRc : `${selectedBusiness.cacRc} (Registered 2012)`}
+                    </span>
                   </div>
                   <div className="flex justify-between py-2 border-b border-slate-100">
                     <span className="text-slate-500">Federal Tax Identification (TIN):</span>
-                    <span className="text-slate-900 font-semibold">{selectedBusiness.tin} (FIRS Vetted)</span>
+                    <span className="text-slate-900 font-semibold">
+                      {live ? selectedBusiness.tin : `${selectedBusiness.tin} (FIRS Vetted)`}
+                    </span>
                   </div>
                   <div className="flex justify-between py-2 border-b border-slate-100">
                     <span className="text-slate-500">Registered Entity Title:</span>
-                    <span className="text-slate-900 font-semibold">{selectedBusiness.name} Ltd</span>
+                    <span className="text-slate-900 font-semibold">{live ? selectedBusiness.name : `${selectedBusiness.name} Ltd`}</span>
                   </div>
+                  {live ? (
+                    <div className="flex justify-between py-2">
+                      <span className="text-slate-500">Documents on file:</span>
+                      <span className="text-slate-900 font-semibold">{selectedBusiness.raw?.documents?.length ?? 0}</span>
+                    </div>
+                  ) : (
                   <div className="flex justify-between py-2">
                     <span className="text-slate-500">Annual Audit Filing:</span>
                     <span className="text-emerald-600 font-semibold">FY 2024 Audited & Cleared</span>
                   </div>
+                  )}
                 </div>
 
+                {!live && (
                 <div className="bg-blue-50/70 p-4 rounded-xl border border-blue-100 flex items-center gap-3 mt-2">
                   <span className="material-symbols-outlined text-[#0055c4] text-[24px] shrink-0">verified</span>
                   <div className="text-[12px]">
@@ -498,6 +658,7 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
                     </span>
                   </div>
                 </div>
+                )}
               </div>
             </div>
           )}
@@ -509,7 +670,11 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
                 <div>
                   <h3 className="font-bold text-[15px] text-slate-900">Associated Branch Network</h3>
                   <p className="text-[12px] text-slate-500 mt-0.5">
-                    {selectedBusiness.branches.length || 8} Active operational hubs configured with geofencing boundaries
+                    {live
+                      ? `${selectedBusiness.branchCount} registered branch${selectedBusiness.branchCount === 1 ? '' : 'es'}${
+                          selectedBusiness.branches.length < selectedBusiness.branchCount ? ' (main branch shown)' : ''
+                        }`
+                      : `${selectedBusiness.branches.length || 8} Active operational hubs configured with geofencing boundaries`}
                   </p>
                 </div>
                 <button
@@ -522,6 +687,9 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {live && selectedBusiness.branches.length === 0 && (
+                  <p className="text-[12px] text-slate-500">No branches registered yet.</p>
+                )}
                 {selectedBusiness.branches.map((br) => (
                   <div
                     key={br.id}
@@ -572,7 +740,9 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
                     Assigned Staff & Privilege Hierarchy
                   </h3>
                   <p className="text-[12px] text-slate-500 mt-0.5">
-                    {selectedBusiness.staffCount} Active accounts mapped to corporate access levels
+                    {live
+                      ? 'Staff accounts are managed by the business'
+                      : `${selectedBusiness.staffCount} Active accounts mapped to corporate access levels`}
                   </p>
                 </div>
                 <select className="h-8 px-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-[11px] cursor-pointer">
@@ -595,6 +765,13 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-normal">
+                    {live && selectedBusiness.staff.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="py-6 px-4 text-center text-slate-500">
+                          No staff list is available for platform admins yet.
+                        </td>
+                      </tr>
+                    )}
                     {selectedBusiness.staff.map((st) => (
                       <tr key={st.id} className="hover:bg-slate-50 transition-colors">
                         <td className="py-3 px-4 flex items-center gap-3">
@@ -632,13 +809,20 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
                     Active SKU items synchronized with VEMTAP Discovery Feed
                   </p>
                 </div>
-                <span className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 px-3 py-1 rounded-lg text-[11px] font-medium">
-                  <span className="material-symbols-outlined text-[14px] text-emerald-600">sync</span>
-                  <span>ERP Live Sync: 4 mins ago</span>
-                </span>
+                {!live && (
+                  <span className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 px-3 py-1 rounded-lg text-[11px] font-medium">
+                    <span className="material-symbols-outlined text-[14px] text-emerald-600">sync</span>
+                    <span>ERP Live Sync: 4 mins ago</span>
+                  </span>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {live && selectedBusiness.catalogue.length === 0 && (
+                  <p className="text-[12px] text-slate-500">
+                    The catalogue is managed by the business; see Deals & Discovery for its published deals.
+                  </p>
+                )}
                 {selectedBusiness.catalogue.map((cat) => (
                   <div
                     key={cat.id}
@@ -682,21 +866,32 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-[16px] text-slate-900">Platform Good Standing</h3>
-                      <span className="bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase">
-                        Score: 98/100
-                      </span>
+                      <h3 className="font-bold text-[16px] text-slate-900">
+                        {live ? `Account ${selectedBusiness.complianceStatus}` : 'Platform Good Standing'}
+                      </h3>
+                      {!live && (
+                        <span className="bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase">
+                          Score: 98/100
+                        </span>
+                      )}
                     </div>
                     <p className="text-[12px] text-slate-500 mt-1">
-                      Zero unresolved consumer chargebacks, fraudulent filings, or POS irregularities recorded.
+                      {live
+                        ? selectedBusiness.complianceStatus === 'Suspended'
+                          ? `Reason: ${selectedBusiness.raw?.suspensionReason || NONE}`
+                          : `Status: ${String(selectedBusiness.raw?.status ?? NONE).toLowerCase()} • verified: ${
+                              selectedBusiness.raw?.isVerified ? 'yes' : 'no'
+                            }`
+                        : 'Zero unresolved consumer chargebacks, fraudulent filings, or POS irregularities recorded.'}
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <button
+                    disabled={suspendBusiness.isPending || reactivateBusiness.isPending}
                     onClick={() => handleToggleStatus(selectedBusiness.id)}
-                    className={`h-9 px-4 rounded-lg text-[12px] font-semibold transition-colors cursor-pointer ${
+                    className={`h-9 px-4 disabled:opacity-50 rounded-lg text-[12px] font-semibold transition-colors cursor-pointer ${
                       selectedBusiness.complianceStatus === 'Suspended'
                         ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                         : 'bg-red-50 hover:bg-red-100 text-red-700 border border-red-200'
@@ -707,7 +902,8 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
                 </div>
               </div>
 
-              {/* Compliance Audit Timeline */}
+              {/* Compliance Audit Timeline (sample history: mock mode only) */}
+              {!live && (
               <div className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-xs">
                 <h4 className="font-bold text-[14px] text-slate-900 mb-4">Compliance Inspection History</h4>
                 <div className="space-y-4">
@@ -746,11 +942,45 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
                   </div>
                 </div>
               </div>
+              )}
             </div>
           )}
 
           {/* 7. SUBSCRIPTION DETAILS PANE */}
-          {activeTab === 'subscription' && (
+          {activeTab === 'subscription' && live && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-[#0055c4] bg-blue-50 px-2 py-0.5 rounded border border-blue-100">Plan Tier</span>
+                  <h4 className="text-xl font-bold text-slate-900 mt-2">{selectedBusiness.tier}</h4>
+                  <div className="text-xl font-bold text-[#0055c4] mt-2">
+                    {selectedBusiness.raw?.mrr ? `${formatNaira(selectedBusiness.raw.mrr)} / month` : NONE}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 bg-slate-100 px-2 py-0.5 rounded">Next Billing Cycle</span>
+                  <h4 className="text-lg font-bold text-slate-900 mt-2">{formatDate(selectedBusiness.raw?.renewalDate)}</h4>
+                </div>
+              </div>
+
+              <div className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+                <div>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 bg-slate-100 px-2 py-0.5 rounded">Billing</span>
+                  <p className="text-[12px] text-slate-500 mt-2">Payment method details are not shared with platform admins.</p>
+                </div>
+                <button
+                  onClick={() => onNavigate('/admin/subscriptions/subscriptions')}
+                  className="mt-6 pt-3 border-t border-slate-100 text-left text-[#0055c4] text-[12px] font-semibold hover:underline cursor-pointer"
+                >
+                  Manage Billing Plan →
+                </button>
+              </div>
+            </div>
+          )}
+          {activeTab === 'subscription' && !live && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
                 <div>
@@ -799,7 +1029,12 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
           )}
 
           {/* 8. BUSINESS QR ASSETS PANE */}
-          {activeTab === 'qr' && (
+          {activeTab === 'qr' && live && (
+            <div className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-xs text-[12px] text-slate-500">
+              QR codes and NFC standees are created and downloaded by the business from its own dashboard.
+            </div>
+          )}
+          {activeTab === 'qr' && !live && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Merchant Master QR */}
               <div className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-xs flex flex-col items-center text-center">
@@ -921,6 +1156,17 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
           </button>
         </div>
       )}
+      {actionError && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-[12px] flex items-center justify-between shadow-2xs">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[17px] text-red-600">error</span>
+            <span>{actionError}</span>
+          </div>
+          <button onClick={() => setActionError(null)} className="text-red-600 hover:text-red-800 cursor-pointer">
+            <span className="material-symbols-outlined text-[15px]">close</span>
+          </button>
+        </div>
+      )}
 
       {/* Metric Badges & Title Block */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -940,22 +1186,22 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
           <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border border-slate-200/80 shadow-2xs">
             <span className="w-2 h-2 rounded-full bg-[#066cf4]"></span>
             <span className="text-[11px] text-slate-500 font-medium">Total:</span>
-            <span className="font-bold text-[13px] text-slate-900">3,840</span>
+            <span className="font-bold text-[13px] text-slate-900">{live ? formatCount(liveStats?.total ?? liveTotal) : '3,840'}</span>
           </div>
           <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border border-slate-200/80 shadow-2xs">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <span className="text-[11px] text-slate-500 font-medium">Verified:</span>
-            <span className="font-bold text-[13px] text-slate-900">2,910</span>
+            <span className="text-[11px] text-slate-500 font-medium">{live ? 'Active:' : 'Verified:'}</span>
+            <span className="font-bold text-[13px] text-slate-900">{live ? formatCount(liveStats?.active) : '2,910'}</span>
           </div>
           <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border border-slate-200/80 shadow-2xs">
             <span className="w-2 h-2 rounded-full bg-amber-500"></span>
             <span className="text-[11px] text-slate-500 font-medium">Pending:</span>
-            <span className="font-bold text-[13px] text-slate-900">184</span>
+            <span className="font-bold text-[13px] text-slate-900">{live ? formatCount(liveStats?.pending) : '184'}</span>
           </div>
           <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-full border border-slate-200/80 shadow-2xs">
             <span className="w-2 h-2 rounded-full bg-red-500"></span>
             <span className="text-[11px] text-slate-500 font-medium">Suspended:</span>
-            <span className="font-bold text-[13px] text-red-600">14</span>
+            <span className="font-bold text-[13px] text-red-600">{live ? formatCount(liveStats?.suspended) : '14'}</span>
           </div>
         </div>
       </div>
@@ -971,9 +1217,12 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setPage(1);
+              }}
               className="w-full h-9 pl-9 pr-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 text-[12px] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#0055c4] transition-all"
-              placeholder="Search by Business Name, Slug, or RC Number..."
+              placeholder={live ? 'Search by business name or owner email...' : 'Search by Business Name, Slug, or RC Number...'}
             />
           </div>
 
@@ -985,11 +1234,21 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
               className="w-full h-9 px-3 appearance-none rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-[12px] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#0055c4] transition-all cursor-pointer"
             >
               <option value="">All Categories</option>
-              <option value="electronics">Consumer Electronics</option>
-              <option value="dining">Dining & Hospitality</option>
-              <option value="pharma">Pharma & Health</option>
-              <option value="retail">Supermarket & Retail</option>
-              <option value="lifestyle">Lifestyle & Fashion</option>
+              {live ? (
+                categoryOptions.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="electronics">Consumer Electronics</option>
+                  <option value="dining">Dining & Hospitality</option>
+                  <option value="pharma">Pharma & Health</option>
+                  <option value="retail">Supermarket & Retail</option>
+                  <option value="lifestyle">Lifestyle & Fashion</option>
+                </>
+              )}
             </select>
             <span className="material-symbols-outlined absolute right-2.5 top-2.5 text-[16px] text-slate-400 pointer-events-none">
               expand_more
@@ -1004,11 +1263,15 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
               className="w-full h-9 px-3 appearance-none rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-[12px] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#0055c4] transition-all cursor-pointer"
             >
               <option value="">Cluster: All Territories</option>
-              <option value="ikeja">Ikeja Computer Village</option>
-              <option value="vi">Victoria Island Hub</option>
-              <option value="lekki">Lekki Commercial Zone</option>
-              <option value="abuja">Abuja Central Trade Ring</option>
-              <option value="port">Port Harcourt Gateway</option>
+              {!live && (
+                <>
+                  <option value="ikeja">Ikeja Computer Village</option>
+                  <option value="vi">Victoria Island Hub</option>
+                  <option value="lekki">Lekki Commercial Zone</option>
+                  <option value="abuja">Abuja Central Trade Ring</option>
+                  <option value="port">Port Harcourt Gateway</option>
+                </>
+              )}
             </select>
             <span className="material-symbols-outlined absolute right-2.5 top-2.5 text-[16px] text-slate-400 pointer-events-none">
               pin_drop
@@ -1019,7 +1282,10 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
           <div className="relative">
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(1);
+              }}
               className="w-full h-9 px-3 appearance-none rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-[12px] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#0055c4] transition-all cursor-pointer"
             >
               <option value="">Status: All Checks</option>
@@ -1041,10 +1307,20 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
               className="w-full h-9 px-3 appearance-none rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-[12px] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#0055c4] transition-all cursor-pointer"
             >
               <option value="">Tier: All Subscriptions</option>
-              <option value="Platinum">Platinum Enterprise</option>
-              <option value="Gold">Gold Merchant</option>
-              <option value="Silver">Silver Tier</option>
-              <option value="Basic">Basic Trial</option>
+              {live ? (
+                planOptions.map((plan) => (
+                  <option key={plan} value={plan}>
+                    {plan}
+                  </option>
+                ))
+              ) : (
+                <>
+                  <option value="Platinum">Platinum Enterprise</option>
+                  <option value="Gold">Gold Merchant</option>
+                  <option value="Silver">Silver Tier</option>
+                  <option value="Basic">Basic Trial</option>
+                </>
+              )}
             </select>
             <span className="material-symbols-outlined absolute right-2.5 top-2.5 text-[16px] text-slate-400 pointer-events-none">
               workspace_premium
@@ -1100,7 +1376,7 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
 
           <div className="flex items-center gap-3">
             <span className="text-slate-500 text-[11px]">
-              Showing {filteredBusinesses.length} of 3,840 records
+              Showing {filteredBusinesses.length} of {live ? formatCount(liveTotal) : '3,840'} records
             </span>
             <button
               onClick={handleExportCsv}
@@ -1131,6 +1407,17 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-normal">
+              {live && filteredBusinesses.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="py-8 px-4 text-center text-slate-500">
+                    {liveQuery.isLoading
+                      ? 'Loading businesses…'
+                      : liveQuery.isError
+                        ? `Couldn't load businesses: ${adminErrorMessage(liveQuery.error)}`
+                        : 'No businesses match these filters.'}
+                  </td>
+                </tr>
+              )}
               {filteredBusinesses.map((biz) => {
                 return (
                   <tr
@@ -1218,7 +1505,7 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
 
                     <td className="py-3 px-4">
                       <div className="text-slate-800 font-medium">{biz.billingPlan}</div>
-                      <div className="text-[11px] text-slate-400">GMV: {biz.monthlyGmv}</div>
+                      {!live && <div className="text-[11px] text-slate-400">GMV: {biz.monthlyGmv}</div>}
                     </td>
 
                     <td className="py-3 px-4 text-right">
@@ -1242,7 +1529,28 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
 
         {/* Table Footer */}
         <div className="px-4 py-3 bg-slate-50 flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-200/80">
-          <div>Displaying {filteredBusinesses.length} of 3,840 records</div>
+          <div>Displaying {filteredBusinesses.length} of {live ? formatCount(liveTotal) : '3,840'} records</div>
+          {live ? (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="w-7 h-7 rounded bg-white border border-slate-200 flex items-center justify-center disabled:opacity-40 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[15px]">chevron_left</span>
+              </button>
+              <span className="px-2 text-slate-700 font-semibold">
+                Page {page} of {lastPage}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
+                disabled={page >= lastPage}
+                className="w-7 h-7 rounded bg-white border border-slate-200 flex items-center justify-center disabled:opacity-40 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[15px]">chevron_right</span>
+              </button>
+            </div>
+          ) : (
           <div className="flex items-center gap-1">
             <button className="w-7 h-7 rounded bg-white border border-slate-200 flex items-center justify-center disabled:opacity-40" disabled>
               <span className="material-symbols-outlined text-[15px]">chevron_left</span>
@@ -1264,6 +1572,7 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
               <span className="material-symbols-outlined text-[15px]">chevron_right</span>
             </button>
           </div>
+          )}
         </div>
       </div>
     </div>

@@ -1,6 +1,12 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useDeferredValue } from 'react';
 import { ADMIN_CUSTOMERS, type AdminCustomer } from './adminData';
 import { AdminChatModal } from './AdminChatModal';
+import { hasApiConfig } from '../../services/api/client';
+import { adminService } from '../../services/adminService';
+import { formatCount, NONE, toAdminCustomer } from './adminLive';
+import { adminErrorMessage, useAdminAction, useAdminCustomerActivity, useAdminUsers } from './useAdminData';
+
+const LIVE_PAGE_SIZE = 25;
 
 interface AdminCustomersScreenProps {
   onNavigate: (path: string) => void;
@@ -9,8 +15,9 @@ interface AdminCustomersScreenProps {
 type CustomerTab = 'profile' | 'wallet' | 'saved' | 'history' | 'support';
 
 export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) {
-  const [customers, setCustomers] = useState<AdminCustomer[]>(ADMIN_CUSTOMERS);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>(ADMIN_CUSTOMERS[0].id);
+  const live = hasApiConfig();
+  const [mockCustomers, setCustomers] = useState<AdminCustomer[]>(ADMIN_CUSTOMERS);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>(live ? '' : ADMIN_CUSTOMERS[0].id);
   const [isProfileView, setIsProfileView] = useState<boolean>(false);
   const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<CustomerTab>('profile');
@@ -21,9 +28,27 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
   const [statusFilter, setStatusFilter] = useState('all');
   const [joinedFilter, setJoinedFilter] = useState('all');
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+
+  // Live API: customer accounts (role Customer), searched and paged on the server.
+  const deferredSearch = useDeferredValue(searchQuery.trim());
+  const liveStatus = statusFilter === 'Active' ? 'Active' : statusFilter === 'Suspended' ? 'Suspended' : undefined;
+  const liveQuery = useAdminUsers({ role: 'Customer', search: deferredSearch || undefined, status: liveStatus, page, limit: LIVE_PAGE_SIZE });
+  const activeCount = useAdminUsers({ role: 'Customer', status: 'Active', page: 1, limit: 1 }).data?.meta.total;
+  const suspendedCount = useAdminUsers({ role: 'Customer', status: 'Suspended', page: 1, limit: 1 }).data?.meta.total;
+  const allCount = useAdminUsers({ role: 'Customer', page: 1, limit: 1 }).data?.meta.total;
+  const liveCustomers = useMemo(() => (liveQuery.data?.data ?? []).map(toAdminCustomer), [liveQuery.data]);
+  const customers = live ? liveCustomers : mockCustomers;
+  const liveTotal = liveQuery.data?.meta.total ?? 0;
+  const lastPage = Math.max(1, liveQuery.data?.meta.lastPage ?? Math.ceil(liveTotal / LIVE_PAGE_SIZE));
+  const [liveOverrides, setLiveOverrides] = useState<Record<string, AdminCustomer['status']>>({});
+
+  const suspendUser = useAdminAction((id: string) => adminService.suspendUser(id));
+  const activateUser = useAdminAction((id: string) => adminService.activateUser(id));
 
   // Notes state
-  const [adminNote, setAdminNote] = useState('High-value consumer. Verified regular at Lekki and Ikeja corridors.');
+  const [adminNote, setAdminNote] = useState(live ? '' : 'High-value consumer. Verified regular at Lekki and Ikeja corridors.');
   const [notesHistory, setNotesHistory] = useState<Array<{ id: string; text: string; author: string; time: string }>>([
     {
       id: 'n1',
@@ -46,12 +71,26 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
   ]);
 
   const selectedCustomer = useMemo(() => {
-    return customers.find((c) => c.id === selectedCustomerId) ?? customers[0];
-  }, [customers, selectedCustomerId]);
+    const found = customers.find((c) => c.id === selectedCustomerId) ?? customers[0];
+    if (!found || !live || !liveOverrides[found.id]) return found;
+    const status = liveOverrides[found.id];
+    return { ...found, status, restrictionStatus: status === 'Suspended' ? 'Suspended' : 'None' };
+  }, [customers, selectedCustomerId, live, liveOverrides]);
+
+  // Real visits only (the detail endpoint's other fields are placeholders).
+  const activity = useAdminCustomerActivity(live && isProfileView ? selectedCustomer?.id : null);
+  const liveHistory: AdminCustomer['activityHistory'] = (activity.data?.activityTimeline ?? []).map((a, idx) => ({
+    id: `${a.time}-${idx}`,
+    type: a.action.startsWith('Purchased') ? 'saved_deal' : 'nfc_tap',
+    title: `${a.action} ${a.via}`,
+    timestamp: a.time,
+    description: a.via,
+  }));
+  const visitCount = activity.data?.stats?.totalVisits;
 
   const filteredCustomers = useMemo(() => {
     return customers.filter((c) => {
-      if (searchQuery.trim()) {
+      if (!live && searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matches =
           c.name.toLowerCase().includes(q) ||
@@ -63,14 +102,30 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
       if (clusterFilter !== 'all' && !c.cluster.toLowerCase().includes(clusterFilter.toLowerCase())) {
         return false;
       }
-      if (statusFilter !== 'all' && c.status.toLowerCase() !== statusFilter.toLowerCase()) {
+      if (statusFilter !== 'all' && (!live || statusFilter === 'Dormant') && c.status.toLowerCase() !== statusFilter.toLowerCase()) {
         return false;
       }
       return true;
     });
-  }, [customers, searchQuery, clusterFilter, statusFilter]);
+  }, [live, customers, searchQuery, clusterFilter, statusFilter]);
 
   const handleToggleCustomerStatus = (custId: string) => {
+    if (live) {
+      const target = customers.find((c) => c.id === custId);
+      if (!target) return;
+      const current = liveOverrides[custId] ?? target.status;
+      const reactivating = current === 'Suspended';
+      setActionError(null);
+      (reactivating ? activateUser : suspendUser).mutate(custId, {
+        onSuccess: () => {
+          setLiveOverrides((prev) => ({ ...prev, [custId]: reactivating ? 'Active' : 'Suspended' }));
+          setActionNotice(`Customer ${target.name} ${reactivating ? 'reactivated' : 'suspended'}.`);
+          setTimeout(() => setActionNotice(null), 3500);
+        },
+        onError: (error) => setActionError(adminErrorMessage(error)),
+      });
+      return;
+    }
     setCustomers((prev) =>
       prev.map((c) => {
         if (c.id !== custId) return c;
@@ -153,7 +208,7 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
       },
       savedPlaces: cust.savedPlaces,
       claimedDeals: cust.claimedDeals,
-      activityHistory: cust.activityHistory,
+      activityHistory: live ? liveHistory : cust.activityHistory,
       exportedAt: new Date().toISOString(),
     };
 
@@ -199,6 +254,17 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
           </button>
         </div>
       )}
+      {actionError && (
+        <div className="p-3.5 bg-red-50 border border-red-200 text-red-800 rounded-xl text-[12px] flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <span className="material-symbols-outlined text-[18px] text-red-600">error</span>
+            <span className="font-medium">{actionError}</span>
+          </div>
+          <button onClick={() => setActionError(null)} className="text-red-600 hover:text-red-900 transition-colors p-1">
+            <span className="material-symbols-outlined text-[16px]">close</span>
+          </button>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* FULL PAGE CUSTOMER PROFILE VIEW                                           */}
@@ -236,19 +302,22 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
 
             {/* Right Action Buttons */}
             <div className="flex items-center gap-2 flex-wrap self-end md:self-auto">
-              {/* Chat with Customer button */}
-              <button
-                onClick={() => setIsChatOpen(true)}
-                className="bg-[#0055c4] hover:bg-[#066cf4] text-white px-3.5 py-1.5 rounded-lg text-[12px] font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[16px]">chat</span>
-                <span>Chat with Customer</span>
-              </button>
+              {/* Chat with Customer button (admin chat has no backend yet: mock mode only) */}
+              {!live && (
+                <button
+                  onClick={() => setIsChatOpen(true)}
+                  className="bg-[#0055c4] hover:bg-[#066cf4] text-white px-3.5 py-1.5 rounded-lg text-[12px] font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-[16px]">chat</span>
+                  <span>Chat with Customer</span>
+                </button>
+              )}
 
               {/* Suspend / Reactivate button */}
               <button
+                disabled={suspendUser.isPending || activateUser.isPending}
                 onClick={() => handleToggleCustomerStatus(selectedCustomer.id)}
-                className={`px-3.5 py-1.5 rounded-lg text-[12px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                className={`disabled:opacity-50 px-3.5 py-1.5 rounded-lg text-[12px] font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
                   selectedCustomer.status === 'Suspended'
                     ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm'
                     : 'bg-white hover:bg-red-50 text-red-600 border border-red-200'
@@ -319,10 +388,14 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                       <span className="material-symbols-outlined text-[13px]">workspace_premium</span>
                       {selectedCustomer.tier}
                     </span>
+{!live && (
+<>
                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-semibold">
                       <span className="material-symbols-outlined text-[14px] text-emerald-600">verified_user</span>
                       <span>Verified BVN / NIN</span>
                     </span>
+</>
+)}
                   </div>
 
                   {/* Direct Contact & Meta Info */}
@@ -365,15 +438,19 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                     Lifetime Value
                   </span>
                   <span className="text-lg font-bold text-slate-900 mt-0.5 block">{selectedCustomer.lifetimeValue}</span>
-                  <span className="text-[10px] text-slate-400">{selectedCustomer.purchasesCount} Retail Purchases</span>
+                  <span className="text-[10px] text-slate-400">
+                    {live ? 'Not tracked yet' : `${selectedCustomer.purchasesCount} Retail Purchases`}
+                  </span>
                 </div>
 
                 <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                    Taps Recorded
+                    {live ? 'Recent Visits' : 'Taps Recorded'}
                   </span>
-                  <span className="text-lg font-bold text-[#0055c4] mt-0.5 block">{selectedCustomer.tapsRecorded}</span>
-                  <span className="text-[10px] text-slate-400">NFC Interactions</span>
+                  <span className="text-lg font-bold text-[#0055c4] mt-0.5 block">
+                    {live ? formatCount(visitCount) : selectedCustomer.tapsRecorded}
+                  </span>
+                  <span className="text-[10px] text-slate-400">{live ? 'Latest 5 shown' : 'NFC Interactions'}</span>
                 </div>
 
                 <div className="bg-slate-50 rounded-xl p-3 border border-slate-100">
@@ -381,10 +458,10 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                     Saved Places & Deals
                   </span>
                   <span className="text-lg font-bold text-slate-900 mt-0.5 block">
-                    {selectedCustomer.savedPlacesCount + selectedCustomer.savedDealsCount}
+                    {live ? NONE : selectedCustomer.savedPlacesCount + selectedCustomer.savedDealsCount}
                   </span>
                   <span className="text-[10px] text-slate-400">
-                    {selectedCustomer.savedPlacesCount} Hubs • {selectedCustomer.savedDealsCount} Vouchers
+                    {live ? 'Not available yet' : `${selectedCustomer.savedPlacesCount} Hubs • ${selectedCustomer.savedDealsCount} Vouchers`}
                   </span>
                 </div>
 
@@ -399,7 +476,9 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   >
                     {selectedCustomer.restrictionStatus}
                   </span>
-                  <span className="text-[10px] text-slate-400">Active {selectedCustomer.activeDays} Days</span>
+                  <span className="text-[10px] text-slate-400">
+                    {live ? `Last sign-in ${selectedCustomer.lastActive}` : `Active ${selectedCustomer.activeDays} Days`}
+                  </span>
                 </div>
               </div>
             </div>
@@ -466,9 +545,13 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                     <span className="text-[11px] text-slate-400 font-medium block">Mobile Phone</span>
                     <div className="flex items-center justify-between mt-0.5">
                       <span className="font-semibold text-slate-900 text-[13px]">{selectedCustomer.phone}</span>
+{!live && (
+<>
                       <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.2 rounded">
                         SMS OTP Active
                       </span>
+</>
+)}
                     </div>
                   </div>
 
@@ -476,9 +559,13 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                     <span className="text-[11px] text-slate-400 font-medium block">Email Address</span>
                     <div className="flex items-center justify-between mt-0.5">
                       <span className="font-semibold text-slate-900 text-[13px] truncate">{selectedCustomer.email}</span>
+{!live && (
+<>
                       <span className="text-[10px] text-[#0055c4] font-bold bg-blue-50 px-1.5 py-0.2 rounded">
                         Verified
                       </span>
+</>
+)}
                     </div>
                   </div>
 
@@ -505,12 +592,16 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                     <span className="material-symbols-outlined text-[18px] text-emerald-600">verified</span>
                     <h3 className="font-bold text-[14px] text-slate-900">KYC & Compliance Verification</h3>
                   </div>
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold">
-                    Tier 1 Verified
-                  </span>
+                  {!live && (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold">
+                      Tier 1 Verified
+                    </span>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[12px]">
+{!live && (
+<>
                   <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
                     <span className="text-[11px] text-slate-400 font-medium block">National Identity (NIN)</span>
                     <div className="flex items-center gap-1.5 mt-1">
@@ -540,6 +631,8 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                     </span>
                     <span className="text-[10px] text-slate-400">Clean standing across platform</span>
                   </div>
+</>
+)}
 
                   <div className="col-span-1 sm:col-span-2 p-3 bg-slate-50 rounded-lg border border-slate-100 flex items-center justify-between">
                     <div>
@@ -592,12 +685,12 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                     <span className="text-[11px] text-slate-400 font-medium block">NFC Hardware Spec</span>
                     <span className="font-semibold text-slate-800 text-[13px] mt-0.5 flex items-center gap-1">
                       <span className="material-symbols-outlined text-[15px] text-emerald-600">contactless</span>
-                      ISO 14443 Type-A / FeliCa
+                      {live ? NONE : 'ISO 14443 Type-A / FeliCa'}
                     </span>
                   </div>
 
                   <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                    <span className="text-[11px] text-slate-400 font-medium block">Last Network Handshake</span>
+                    <span className="text-[11px] text-slate-400 font-medium block">{live ? 'Last Sign-in' : 'Last Network Handshake'}</span>
                     <span className="font-semibold text-slate-800 text-[13px] mt-0.5 flex items-center gap-1">
                       <span className="material-symbols-outlined text-[15px] text-slate-400">wifi</span>
                       {selectedCustomer.lastActive}
@@ -609,7 +702,12 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
           )}
 
           {/* TAB 2: Wallet & Ledger */}
-          {activeTab === 'wallet' && (
+          {activeTab === 'wallet' && live && (
+            <div className="bg-white rounded-xl p-6 border border-slate-200/80 shadow-sm text-[12px] text-slate-500">
+              Customer wallet balances, payment instruments and transaction ledgers aren't available to platform admins yet.
+            </div>
+          )}
+          {activeTab === 'wallet' && !live && (
             <div className="space-y-6 animate-in fade-in duration-150">
               {/* Financial Metrics Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -791,7 +889,12 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
           )}
 
           {/* TAB 3: Saved Places & Deals */}
-          {activeTab === 'saved' && (
+          {activeTab === 'saved' && live && (
+            <div className="bg-white rounded-xl p-6 border border-slate-200/80 shadow-sm text-[12px] text-slate-500">
+              Saved places and claimed deals aren't available to platform admins yet.
+            </div>
+          )}
+          {activeTab === 'saved' && !live && (
             <div className="space-y-6 animate-in fade-in duration-150">
               {/* Saved Businesses Section */}
               <div className="bg-white rounded-xl p-5 border border-slate-200/80 shadow-sm space-y-4">
@@ -910,7 +1013,9 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   </div>
                   <div>
                     <span className="text-[11px] font-bold text-slate-400 uppercase block">Total Physical Taps</span>
-                    <span className="text-xl font-bold text-slate-900">{selectedCustomer.tapsRecorded} NFC Swipes</span>
+                    <span className="text-xl font-bold text-slate-900">
+                      {live ? `${formatCount(visitCount)} recent visits` : `${selectedCustomer.tapsRecorded} NFC Swipes`}
+                    </span>
                   </div>
                 </div>
 
@@ -920,7 +1025,7 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   </div>
                   <div>
                     <span className="text-[11px] font-bold text-slate-400 uppercase block">POS Signal Integrity</span>
-                    <span className="text-xl font-bold text-emerald-700">100% Authenticated</span>
+                    <span className="text-xl font-bold text-emerald-700">{live ? NONE : '100% Authenticated'}</span>
                   </div>
                 </div>
 
@@ -930,7 +1035,7 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   </div>
                   <div>
                     <span className="text-[11px] font-bold text-slate-400 uppercase block">Most Active Window</span>
-                    <span className="text-xl font-bold text-slate-900">13:00 – 16:00 WAT</span>
+                    <span className="text-xl font-bold text-slate-900">{live ? NONE : '13:00 – 16:00 WAT'}</span>
                   </div>
                 </div>
               </div>
@@ -948,7 +1053,12 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                 </div>
 
                 <div className="divide-y divide-slate-100">
-                  {selectedCustomer.activityHistory.map((act) => (
+                  {live && liveHistory.length === 0 && (
+                    <p className="py-4 text-[12px] text-slate-500">
+                      {activity.isLoading ? 'Loading visits…' : activity.isError ? "Couldn't load visits." : 'No visits recorded yet.'}
+                    </p>
+                  )}
+                  {(live ? liveHistory : selectedCustomer.activityHistory).map((act) => (
                     <div key={act.id} className="py-3.5 flex items-start gap-3 text-[12px]">
                       <div
                         className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
@@ -997,6 +1107,8 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
           {/* TAB 5: Support & Admin Notes */}
           {activeTab === 'support' && (
             <div className="space-y-6 animate-in fade-in duration-150">
+{!live && (
+<>
               {/* Quick Communication & Chat Prompt Banner */}
               <div className="bg-gradient-to-r from-blue-900 to-[#0055c4] rounded-2xl p-6 text-white shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div className="space-y-1">
@@ -1016,8 +1128,16 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   <span>Launch Chat Session</span>
                 </button>
               </div>
+</>
+)}
 
-              {/* Admin Notes Section */}
+              {/* Admin Notes Section (notes are not stored by the backend yet: mock mode only) */}
+              {live && (
+                <div className="bg-white rounded-xl p-5 border border-slate-200/80 shadow-sm text-[12px] text-slate-500">
+                  Internal admin notes can't be saved yet: there is no backend for them.
+                </div>
+              )}
+              {!live && (
               <div className="bg-white rounded-xl p-5 border border-slate-200/80 shadow-sm space-y-4">
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                   <div className="flex items-center gap-2">
@@ -1063,11 +1183,14 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   ))}
                 </div>
               </div>
+              )}
 
               {/* Administrative Governance Actions */}
               <div className="bg-white rounded-xl p-5 border border-slate-200/80 shadow-sm space-y-3">
                 <h3 className="font-bold text-[13px] text-slate-900">Governance & Security Interventions</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[12px]">
+{!live && (
+<>
                   <button
                     onClick={() => {
                       setActionNotice('Device authentication tokens revoked. Consumer will be prompted for OTP on next launch.');
@@ -1089,10 +1212,13 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                     <span className="font-bold text-slate-800 block">Issue Goodwill V-Points</span>
                     <span className="text-[11px] text-slate-400 block mt-0.5">Dispatches 500 promotional loyalty points</span>
                   </button>
+</>
+)}
 
                   <button
+                    disabled={suspendUser.isPending || activateUser.isPending}
                     onClick={() => handleToggleCustomerStatus(selectedCustomer.id)}
-                    className={`p-3 rounded-xl border text-left transition-colors cursor-pointer ${
+                    className={`disabled:opacity-50 p-3 rounded-xl border text-left transition-colors cursor-pointer ${
                       selectedCustomer.status === 'Suspended'
                         ? 'bg-emerald-50 hover:bg-emerald-100 border-emerald-200'
                         : 'bg-red-50 hover:bg-red-100 border-red-200'
@@ -1136,7 +1262,7 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                 Module 02 • Customer Intelligence
               </span>
               <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-              <span className="text-[12px] text-slate-400">Real-Time Registry Feed (Sync 14s ago)</span>
+              <span className="text-[12px] text-slate-400">{live ? 'Live registry' : 'Real-Time Registry Feed (Sync 14s ago)'}</span>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -1145,6 +1271,7 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   setStatusFilter('all');
                   setJoinedFilter('all');
                   setSearchQuery('');
+                  setPage(1);
                 }}
                 className="h-8 px-3 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[11px] font-medium transition-colors flex items-center gap-1 shadow-2xs cursor-pointer"
               >
@@ -1178,6 +1305,8 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   Platform-wide consumer directory, engagement telemetry, saved places, and customer activity history across commercial clusters.
                 </p>
               </div>
+{!live && (
+<>
               <div className="pt-4 mt-4 flex items-center gap-4 border-t border-slate-100">
                 <div>
                   <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Coverage</span>
@@ -1194,6 +1323,8 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   <span className="font-bold text-[14px] text-slate-900">99.98%</span>
                 </div>
               </div>
+</>
+)}
             </div>
 
             {/* 4 Cards */}
@@ -1206,57 +1337,74 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   </div>
                 </div>
                 <div className="mt-2">
-                  <div className="text-2xl font-bold text-slate-900 tracking-tight">142,850</div>
-                  <div className="flex items-center gap-1 mt-1">
-                    <span className="material-symbols-outlined text-[#0055c4] text-[14px]">trending_up</span>
-                    <span className="text-[11px] font-semibold text-[#0055c4]">+12.4%</span>
-                    <span className="text-[11px] text-slate-400">MoM</span>
+                  <div className="text-2xl font-bold text-slate-900 tracking-tight">{live ? formatCount(allCount) : '142,850'}</div>
+                  {!live && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <span className="material-symbols-outlined text-[#0055c4] text-[14px]">trending_up</span>
+                      <span className="text-[11px] font-semibold text-[#0055c4]">+12.4%</span>
+                      <span className="text-[11px] text-slate-400">MoM</span>
+                    </div>
+                  )}
+                </div>
+                {!live && (
+                  <div className="w-full bg-slate-100 h-1 rounded-full mt-3 overflow-hidden">
+                    <div className="bg-[#0055c4] h-full w-[88%] rounded-full"></div>
                   </div>
-                </div>
-                <div className="w-full bg-slate-100 h-1 rounded-full mt-3 overflow-hidden">
-                  <div className="bg-[#0055c4] h-full w-[88%] rounded-full"></div>
-                </div>
+                )}
               </div>
 
               <div className="bg-white rounded-xl p-4 border border-slate-200/80 shadow-sm flex flex-col justify-between">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Active This Month</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">{live ? 'Active Accounts' : 'Active This Month'}</span>
                   <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center text-[#066cf4]">
                     <span className="material-symbols-outlined text-[16px]">bolt</span>
                   </div>
                 </div>
                 <div className="mt-2">
-                  <div className="text-2xl font-bold text-slate-900 tracking-tight">98,240</div>
+                  <div className="text-2xl font-bold text-slate-900 tracking-tight">{live ? formatCount(activeCount) : '98,240'}</div>
                   <div className="flex items-center gap-1 mt-1">
                     <span className="material-symbols-outlined text-emerald-600 text-[14px]">check_circle</span>
-                    <span className="text-[11px] font-semibold text-emerald-600">68.7%</span>
+                    <span className="text-[11px] font-semibold text-emerald-600">
+                      {live
+                        ? allCount && activeCount !== undefined
+                          ? `${Math.round((activeCount / allCount) * 100)}%`
+                          : NONE
+                        : '68.7%'}
+                    </span>
                     <span className="text-[11px] text-slate-400">actives</span>
                   </div>
                 </div>
                 <div className="w-full bg-slate-100 h-1 rounded-full mt-3 overflow-hidden">
-                  <div className="bg-[#066cf4] h-full w-[68%] rounded-full"></div>
+                  <div
+                    className="bg-[#066cf4] h-full rounded-full"
+                    style={{ width: live ? `${allCount && activeCount !== undefined ? Math.round((activeCount / allCount) * 100) : 0}%` : '68%' }}
+                  ></div>
                 </div>
               </div>
 
               <div className="bg-white rounded-xl p-4 border border-slate-200/80 shadow-sm flex flex-col justify-between">
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Total Saved Items</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">{live ? 'Suspended Accounts' : 'Total Saved Items'}</span>
                   <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
                     <span className="material-symbols-outlined text-[16px]">bookmark_added</span>
                   </div>
                 </div>
                 <div className="mt-2">
-                  <div className="text-2xl font-bold text-slate-900 tracking-tight">348,900</div>
-                  <div className="flex items-center gap-1 mt-1">
-                    <span className="text-[11px] font-bold text-slate-800">2.44</span>
-                    <span className="text-[11px] text-slate-400">saved items / user</span>
-                  </div>
+                  <div className="text-2xl font-bold text-slate-900 tracking-tight">{live ? formatCount(suspendedCount) : '348,900'}</div>
+                  {!live && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <span className="text-[11px] font-bold text-slate-800">2.44</span>
+                      <span className="text-[11px] text-slate-400">saved items / user</span>
+                    </div>
+                  )}
                 </div>
+                {!live && (
                 <div className="mt-3 h-3 w-full flex items-center">
                   <svg className="w-full h-full text-[#0055c4]" fill="none" preserveAspectRatio="none" viewBox="0 0 100 20">
                     <path d="M0,16 Q20,18 35,9 T70,12 T100,2" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
                   </svg>
                 </div>
+                )}
               </div>
 
               <div className="bg-white rounded-xl p-4 border border-slate-200/80 shadow-sm flex flex-col justify-between">
@@ -1267,15 +1415,17 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   </div>
                 </div>
                 <div className="mt-2">
-                  <div className="text-2xl font-bold text-slate-900 tracking-tight">64.2%</div>
+                  <div className="text-2xl font-bold text-slate-900 tracking-tight">{live ? NONE : '64.2%'}</div>
                   <div className="flex items-center gap-1 mt-1">
                     <span className="material-symbols-outlined text-emerald-600 text-[14px]">storefront</span>
-                    <span className="text-[11px] text-slate-400">across merchant nodes</span>
+                    <span className="text-[11px] text-slate-400">{live ? 'Not tracked yet' : 'across merchant nodes'}</span>
                   </div>
                 </div>
-                <div className="w-full bg-slate-100 h-1 rounded-full mt-3 overflow-hidden">
-                  <div className="bg-emerald-500 h-full w-[64.2%] rounded-full"></div>
-                </div>
+                {!live && (
+                  <div className="w-full bg-slate-100 h-1 rounded-full mt-3 overflow-hidden">
+                    <div className="bg-emerald-500 h-full w-[64.2%] rounded-full"></div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1288,12 +1438,17 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                 <input
                   type="text"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Filter by customer name, phone, email, or customer ID..."
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setPage(1);
+                  }}
+                  placeholder={live ? 'Filter by customer name or email...' : 'Filter by customer name, phone, email, or customer ID...'}
                   className="w-full h-9 pl-9 pr-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 text-[12px] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#0055c4] transition-all"
                 />
               </div>
 
+{!live && (
+<>
               {/* Cluster Pills */}
               <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-[11px] font-medium overflow-x-auto">
                 {[
@@ -1317,13 +1472,18 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   </button>
                 ))}
               </div>
+</>
+)}
             </div>
 
             <div className="flex items-center gap-2">
               <div className="relative">
                 <select
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value);
+                    setPage(1);
+                  }}
                   className="h-9 pl-3 pr-8 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-[12px] appearance-none focus:outline-none cursor-pointer"
                 >
                   <option value="all">Status: All Accounts</option>
@@ -1336,6 +1496,8 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                 </span>
               </div>
 
+{!live && (
+<>
               <div className="relative">
                 <select
                   value={joinedFilter}
@@ -1351,6 +1513,8 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   calendar_today
                 </span>
               </div>
+</>
+)}
             </div>
           </div>
 
@@ -1360,7 +1524,7 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
               <div className="flex items-center gap-2.5">
                 <span className="font-bold text-[14px] text-slate-900">Registered Consumers</span>
                 <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-[#0055c4] text-[10px] font-bold border border-blue-100">
-                  142,850 Records
+                  {live ? formatCount(liveTotal) : '142,850'} Records
                 </span>
               </div>
               <span className="text-slate-400 text-[12px]">Filtered Results: {filteredCustomers.length}</span>
@@ -1383,8 +1547,19 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-normal">
+                  {live && filteredCustomers.length === 0 && (
+                    <tr>
+                      <td colSpan={10} className="py-8 px-4 text-center text-slate-500">
+                        {liveQuery.isLoading
+                          ? 'Loading customers…'
+                          : liveQuery.isError
+                            ? `Couldn't load customers: ${adminErrorMessage(liveQuery.error)}`
+                            : 'No customers match these filters.'}
+                      </td>
+                    </tr>
+                  )}
                   {filteredCustomers.map((cust) => {
-                    const isSelected = selectedCustomer.id === cust.id;
+                    const isSelected = selectedCustomer?.id === cust.id;
                     return (
                       <tr
                         key={cust.id}
@@ -1465,22 +1640,22 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                         {/* 6. Lifetime Value */}
                         <td className="py-3.5 px-3 whitespace-nowrap">
                           <span className="font-bold text-slate-900">{cust.lifetimeValue}</span>
-                          <span className="text-[10px] text-slate-400 block">{cust.purchasesCount} orders</span>
+                          {!live && <span className="text-[10px] text-slate-400 block">{cust.purchasesCount} orders</span>}
                         </td>
 
                         {/* 7. Total Taps Recorded */}
                         <td className="py-3.5 px-3 whitespace-nowrap">
                           <div className="flex items-center gap-1 text-[#0055c4] font-bold">
                             <span className="material-symbols-outlined text-[15px]">contactless</span>
-                            <span>{cust.tapsRecorded}</span>
+                            <span>{live ? NONE : cust.tapsRecorded}</span>
                           </div>
                           <span className="text-[10px] text-slate-400">NFC interactions</span>
                         </td>
 
                         {/* 8. Saved Places & Deals */}
                         <td className="py-3.5 px-3 whitespace-nowrap">
-                          <div className="font-semibold text-slate-800">{cust.savedPlacesCount} Places</div>
-                          <div className="text-[11px] text-slate-400">{cust.savedDealsCount} Deals</div>
+                          <div className="font-semibold text-slate-800">{live ? NONE : `${cust.savedPlacesCount} Places`}</div>
+                          {!live && <div className="text-[11px] text-slate-400">{cust.savedDealsCount} Deals</div>}
                         </td>
 
                         {/* 9. Last Active */}
@@ -1513,7 +1688,31 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
 
             {/* Table Footer */}
             <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-500">
-              <span>Displaying {filteredCustomers.length} of 142,850 verified consumer accounts</span>
+              <span>
+                Displaying {filteredCustomers.length} of {live ? formatCount(liveTotal) : '142,850'}{' '}
+                {live ? 'customer accounts' : 'verified consumer accounts'}
+              </span>
+              {live ? (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page <= 1}
+                    className="w-7 h-7 rounded bg-white border border-slate-200 flex items-center justify-center disabled:opacity-40 cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">chevron_left</span>
+                  </button>
+                  <span className="px-2 text-slate-700 font-semibold">
+                    Page {page} of {lastPage}
+                  </span>
+                  <button
+                    onClick={() => setPage((p) => Math.min(lastPage, p + 1))}
+                    disabled={page >= lastPage}
+                    className="w-7 h-7 rounded bg-white border border-slate-200 flex items-center justify-center disabled:opacity-40 cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[15px]">chevron_right</span>
+                  </button>
+                </div>
+              ) : (
               <div className="flex items-center gap-1">
                 <button
                   className="w-7 h-7 rounded bg-white border border-slate-200 flex items-center justify-center disabled:opacity-40"
@@ -1531,6 +1730,7 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   <span className="material-symbols-outlined text-[15px]">chevron_right</span>
                 </button>
               </div>
+              )}
             </div>
           </div>
         </div>

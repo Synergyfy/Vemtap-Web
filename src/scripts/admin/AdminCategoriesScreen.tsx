@@ -1,4 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { hasApiConfig } from '../../services/api/client';
+import { adminService, type AdminPlatformCategory } from '../../services/adminService';
+import { formatCount, NONE } from './adminLive';
+import { adminErrorMessage, useAdminAction, useAdminBusinessSummary, useAdminCategories } from './useAdminData';
 
 interface Subcategory {
   id: string;
@@ -18,7 +22,39 @@ interface Category {
   discoveryStyle: string;
   fee: string;
   iconBg: string;
+  /** Live: the category description and full subcategory records. */
+  description?: string;
+  liveSubcategories?: Array<{ id: string; name: string; description?: string | null }>;
 }
+
+const SUBCATEGORY_PREVIEW = 4;
+
+function toCategory(category: AdminPlatformCategory): Category {
+  const subs = category.subcategories ?? [];
+  return {
+    id: category.id,
+    name: category.name,
+    code: category.id.slice(0, 8).toUpperCase(),
+    icon: 'category',
+    iconBg: 'bg-[#d9e2ff] text-[#0055c4]',
+    subcategories: subs.slice(0, SUBCATEGORY_PREVIEW).map((sub) => ({ id: sub.id, label: sub.name })),
+    extraCount: Math.max(0, subs.length - SUBCATEGORY_PREVIEW),
+    merchantsCount: 0,
+    pctNetwork: 0,
+    discoveryBadge: '',
+    discoveryStyle: '',
+    fee: '',
+    description: category.description ?? '',
+    liveSubcategories: subs,
+  };
+}
+
+/** What the inspector is editing in live mode. */
+type Editing =
+  | { kind: 'category' }
+  | { kind: 'subcategory'; id: string }
+  | { kind: 'new-category' }
+  | { kind: 'new-subcategory' };
 
 const CATEGORIES: Category[] = [
   {
@@ -119,9 +155,66 @@ interface AdminCategoriesScreenProps {
 }
 
 export function AdminCategoriesScreen({ onNavigate: _onNavigate }: AdminCategoriesScreenProps) {
-  const [selectedCategory, setSelectedCategory] = useState<Category>(CATEGORIES[0]);
+  const live = hasApiConfig();
+  const [mockSelected, setMockSelected] = useState<Category>(CATEGORIES[0]);
   const [filterQuery, setFilterQuery] = useState('');
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Live API: platform business categories with their subcategories.
+  const categoriesQuery = useAdminCategories();
+  const activeBusinesses = useAdminBusinessSummary().data?.totalActiveBusiness;
+  const liveCategories = useMemo(() => (categoriesQuery.data?.items ?? []).map(toCategory), [categoriesQuery.data]);
+  const allCategories = live ? liveCategories : CATEGORIES;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const liveSelected = liveCategories.find((c) => c.id === selectedId) ?? liveCategories[0] ?? null;
+  const selectedCategory: Category | null = live ? liveSelected : mockSelected;
+  const setSelectedCategory = (cat: Category) => {
+    if (!live) return setMockSelected(cat);
+    setSelectedId(cat.id);
+    startEditing({ kind: 'category' }, cat);
+  };
+  const subcategoryTotal = liveCategories.reduce((sum, c) => sum + (c.liveSubcategories?.length ?? 0), 0);
+
+  const [editing, setEditing] = useState<Editing>({ kind: 'category' });
+  const [draftName, setDraftName] = useState('');
+  const [draftDescription, setDraftDescription] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [draftFor, setDraftFor] = useState<string | null>(null);
+
+  const startEditing = (next: Editing, cat: Category | null = selectedCategory) => {
+    setEditing(next);
+    setConfirmDelete(false);
+    setActionError(null);
+    const sub = next.kind === 'subcategory' ? cat?.liveSubcategories?.find((x) => x.id === next.id) : undefined;
+    setDraftName(next.kind === 'category' ? cat?.name ?? '' : sub?.name ?? '');
+    setDraftDescription(next.kind === 'category' ? cat?.description ?? '' : sub?.description ?? '');
+    setDraftFor(cat?.id ?? null);
+  };
+  // Load the first category into the editor once the list arrives.
+  if (live && liveSelected && draftFor === null && editing.kind === 'category') {
+    startEditing({ kind: 'category' }, liveSelected);
+  }
+
+  const notify = (message: string) => {
+    setActionNotice(message);
+    setTimeout(() => setActionNotice(null), 3500);
+  };
+  const saveCategory = useAdminAction(async () => {
+    const name = draftName.trim();
+    const description = draftDescription.trim();
+    if (editing.kind === 'new-category') return adminService.createCategory({ name, description });
+    if (editing.kind === 'new-subcategory' && selectedCategory)
+      return adminService.createSubcategory({ name, description: description || undefined, categoryId: selectedCategory.id });
+    if (editing.kind === 'subcategory') return adminService.updateSubcategory(editing.id, { name, description });
+    if (selectedCategory) return adminService.updateCategory(selectedCategory.id, { name, description });
+    return undefined;
+  });
+  const deleteEntry = useAdminAction(async () => {
+    if (editing.kind === 'subcategory') return adminService.deleteSubcategory(editing.id);
+    if (editing.kind === 'category' && selectedCategory) return adminService.deleteCategory(selectedCategory.id);
+    return undefined;
+  });
 
   // Toggles state
   const [nafdac, setNafdac] = useState(true);
@@ -130,13 +223,65 @@ export function AdminCategoriesScreen({ onNavigate: _onNavigate }: AdminCategori
   const [dietary, setDietary] = useState(false);
 
   const handleSave = () => {
+    if (live) {
+      if (!draftName.trim()) return setActionError('Enter a name.');
+      if ((editing.kind === 'new-category' || editing.kind === 'category') && !draftDescription.trim()) {
+        return setActionError('Categories need a description.');
+      }
+      setActionError(null);
+      saveCategory.mutate(undefined, {
+        onSuccess: (saved) => {
+          notify(`"${draftName.trim()}" saved.`);
+          if (editing.kind === 'new-category' && saved && typeof saved === 'object' && 'id' in saved) {
+            setSelectedId(String((saved as { id: string }).id));
+            setEditing({ kind: 'category' });
+          } else if (editing.kind === 'new-subcategory' && saved && typeof saved === 'object' && 'id' in saved) {
+            setEditing({ kind: 'subcategory', id: String((saved as { id: string }).id) });
+          }
+        },
+        onError: (error) => setActionError(adminErrorMessage(error)),
+      });
+      return;
+    }
+    if (!selectedCategory) return;
     setActionNotice(`"${selectedCategory.name}" category attributes saved successfully.`);
     setTimeout(() => setActionNotice(null), 3500);
   };
 
-  const filteredCategories = CATEGORIES.filter((cat) =>
-    cat.name.toLowerCase().includes(filterQuery.toLowerCase()) ||
-    cat.subcategories.some((s) => s.label.toLowerCase().includes(filterQuery.toLowerCase()))
+  const handleDelete = () => {
+    if (!confirmDelete) return setConfirmDelete(true);
+    setConfirmDelete(false);
+    deleteEntry.mutate(undefined, {
+      onSuccess: () => {
+        notify(editing.kind === 'subcategory' ? 'Subcategory deleted.' : 'Category deleted.');
+        if (editing.kind === 'category') setSelectedId(null);
+        setDraftFor(null);
+        setEditing({ kind: 'category' });
+      },
+      onError: (error) => setActionError(adminErrorMessage(error)),
+    });
+  };
+
+  const handleExportTree = () => {
+    const tree = liveCategories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      description: c.description,
+      subcategories: (c.liveSubcategories ?? []).map((sub) => ({ id: sub.id, name: sub.name, description: sub.description })),
+    }));
+    const url = URL.createObjectURL(new Blob([JSON.stringify(tree, null, 2)], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vemtap-business-categories-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const query = filterQuery.toLowerCase();
+  const filteredCategories = allCategories.filter((cat) =>
+    cat.name.toLowerCase().includes(query) ||
+    (live ? cat.liveSubcategories ?? [] : []).some((sub) => sub.name.toLowerCase().includes(query)) ||
+    cat.subcategories.some((s) => s.label.toLowerCase().includes(query))
   );
 
   return (
@@ -150,6 +295,17 @@ export function AdminCategoriesScreen({ onNavigate: _onNavigate }: AdminCategori
           </div>
           <button onClick={() => setActionNotice(null)}>
             <span className="material-symbols-outlined text-[15px] text-emerald-600">close</span>
+          </button>
+        </div>
+      )}
+      {actionError && (
+        <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-[12px] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[17px] text-red-600">error</span>
+            <span>{actionError}</span>
+          </div>
+          <button onClick={() => setActionError(null)}>
+            <span className="material-symbols-outlined text-[15px] text-red-600">close</span>
           </button>
         </div>
       )}
@@ -170,15 +326,24 @@ export function AdminCategoriesScreen({ onNavigate: _onNavigate }: AdminCategori
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+{!live && (
+<>
           <button className="h-9 px-3 rounded-lg bg-[#f2f4f6] text-[#4a5e88] hover:bg-[#e6e8ea] hover:text-[#191c1e] text-[12px] font-medium flex items-center gap-1.5 transition-colors">
             <span className="material-symbols-outlined text-[18px]">drag_indicator</span>
             Reorder Taxonomies
           </button>
-          <button className="h-9 px-3 rounded-lg bg-[#f2f4f6] text-[#4a5e88] hover:bg-[#e6e8ea] hover:text-[#191c1e] text-[12px] font-medium flex items-center gap-1.5 transition-colors">
+</>
+)}
+          <button
+            onClick={live ? handleExportTree : undefined}
+            className="h-9 px-3 rounded-lg bg-[#f2f4f6] text-[#4a5e88] hover:bg-[#e6e8ea] hover:text-[#191c1e] text-[12px] font-medium flex items-center gap-1.5 transition-colors"
+          >
             <span className="material-symbols-outlined text-[18px]">file_download</span>
             Export Tree
           </button>
-          <button className="h-9 px-3 rounded-lg bg-[#066cf4] text-white text-[12px] font-medium hover:bg-[#0055c4] flex items-center gap-1.5 shadow-sm transition-colors">
+          <button
+            onClick={live ? () => startEditing({ kind: 'new-category' }) : undefined}
+            className="h-9 px-3 rounded-lg bg-[#066cf4] text-white text-[12px] font-medium hover:bg-[#0055c4] flex items-center gap-1.5 shadow-sm transition-colors">
             <span className="material-symbols-outlined text-[18px]">add</span>
             Create New Category
           </button>
@@ -192,18 +357,22 @@ export function AdminCategoriesScreen({ onNavigate: _onNavigate }: AdminCategori
           <div className="flex items-start justify-between">
             <div className="flex flex-col">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#4a5e88]">Active Primaries</span>
-              <div className="text-[28px] font-bold text-[#191c1e] mt-1">18</div>
+              <div className="text-[28px] font-bold text-[#191c1e] mt-1">{live ? formatCount(liveCategories.length) : '18'}</div>
             </div>
             <div className="w-10 h-10 rounded-lg bg-[#d9e2ff] flex items-center justify-center text-[#0055c4]">
               <span className="material-symbols-outlined text-[22px]">category</span>
             </div>
           </div>
           <div className="mt-3 flex items-center gap-2 text-[11px]">
+{!live && (
+<>
             <span className="text-[#0055c4] font-medium flex items-center gap-0.5">
               <span className="material-symbols-outlined text-[14px]">check_circle</span>100% Published
             </span>
             <span className="text-[#4a5e88]">•</span>
             <span className="text-[#4a5e88]">0 In Draft</span>
+</>
+)}
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#066cf4] scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
         </div>
@@ -213,16 +382,20 @@ export function AdminCategoriesScreen({ onNavigate: _onNavigate }: AdminCategori
           <div className="flex items-start justify-between">
             <div className="flex flex-col">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#4a5e88]">Subcategories & Offerings</span>
-              <div className="text-[28px] font-bold text-[#191c1e] mt-1">142</div>
+              <div className="text-[28px] font-bold text-[#191c1e] mt-1">{live ? formatCount(subcategoryTotal) : '142'}</div>
             </div>
             <div className="w-10 h-10 rounded-lg bg-[#dae2fd] flex items-center justify-center text-[#4a5e88]">
               <span className="material-symbols-outlined text-[22px]">account_tree</span>
             </div>
           </div>
           <div className="mt-3 flex items-center gap-2 text-[11px]">
-            <span className="text-[#0055c4] font-medium">+14 recently added</span>
-            <span className="text-[#4a5e88]">•</span>
-            <span className="text-[#4a5e88]">Avg 7.8 per category</span>
+            {!live && <span className="text-[#0055c4] font-medium">+14 recently added</span>}
+            {!live && <span className="text-[#4a5e88]">•</span>}
+            <span className="text-[#4a5e88]">
+              {live
+                ? `Avg ${liveCategories.length ? (subcategoryTotal / liveCategories.length).toFixed(1) : '0'} per category`
+                : 'Avg 7.8 per category'}
+            </span>
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#4a5e88] scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
         </div>
@@ -232,15 +405,21 @@ export function AdminCategoriesScreen({ onNavigate: _onNavigate }: AdminCategori
           <div className="flex items-start justify-between">
             <div className="flex flex-col">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#4a5e88]">Catalogued SKUs Tagged</span>
-              <div className="text-[28px] font-bold text-[#191c1e] mt-1">184,920</div>
+              <div className="text-[28px] font-bold text-[#191c1e] mt-1">{live ? NONE : '184,920'}</div>
             </div>
             <div className="w-10 h-10 rounded-lg bg-[#ffdbce] flex items-center justify-center text-[#c94a03]">
               <span className="material-symbols-outlined text-[22px]">inventory_2</span>
             </div>
           </div>
           <div className="mt-3 flex items-center gap-2 text-[11px]">
-            <span className="text-[#0055c4] font-medium">+9.4% MoM</span>
-            <span className="text-[#4a5e88]">catalog penetration</span>
+            {live ? (
+              <span className="text-[#4a5e88]">Not tracked yet</span>
+            ) : (
+              <>
+                <span className="text-[#0055c4] font-medium">+9.4% MoM</span>
+                <span className="text-[#4a5e88]">catalog penetration</span>
+              </>
+            )}
           </div>
           <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#c94a03] scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
         </div>
@@ -251,13 +430,15 @@ export function AdminCategoriesScreen({ onNavigate: _onNavigate }: AdminCategori
             <div className="flex flex-col">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#4a5e88]">Merchant Density</span>
               <div className="text-[28px] font-bold text-[#191c1e] mt-1">
-                3,490 <span className="text-[14px] text-[#4a5e88] font-normal">Active</span>
+                {live ? formatCount(activeBusinesses) : '3,490'} <span className="text-[14px] text-[#4a5e88] font-normal">Active</span>
               </div>
             </div>
             <div className="w-10 h-10 rounded-lg bg-[#e6e8ea] flex items-center justify-center text-[#4a5e88]">
               <span className="material-symbols-outlined text-[22px]">pie_chart</span>
             </div>
           </div>
+{!live && (
+<>
           <div className="mt-3 flex flex-col gap-1.5">
             <div className="w-full h-2 rounded-full bg-[#f2f4f6] flex overflow-hidden">
               <div className="h-full bg-[#066cf4]" style={{ width: '34%' }} title="Food & Dining: 34%" />
@@ -271,6 +452,8 @@ export function AdminCategoriesScreen({ onNavigate: _onNavigate }: AdminCategori
               <span><span className="inline-block w-2 h-2 rounded-full bg-[#c94a03] mr-1" />Style 21%</span>
             </div>
           </div>
+</>
+)}
           <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#c2c6d7] scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
         </div>
       </div>
@@ -292,14 +475,18 @@ export function AdminCategoriesScreen({ onNavigate: _onNavigate }: AdminCategori
                   onChange={(e) => setFilterQuery(e.target.value)}
                 />
               </div>
+{!live && (
+<>
               <button className="h-9 px-3 rounded-lg bg-[#f2f4f6] text-[#4a5e88] hover:bg-[#e6e8ea] hover:text-[#191c1e] text-[12px] font-medium flex items-center gap-1.5 transition-colors">
                 <span className="material-symbols-outlined text-[16px]">filter_list</span>
                 All Statuses
                 <span className="material-symbols-outlined text-[14px]">expand_more</span>
               </button>
+</>
+)}
             </div>
             <div className="flex items-center gap-2 text-[11px] text-[#4a5e88]">
-              <span>Displaying {filteredCategories.length} of 18 Primaries</span>
+              <span>Displaying {filteredCategories.length} of {live ? liveCategories.length : 18} Primaries</span>
               <button className="w-7 h-7 rounded hover:bg-[#f2f4f6] flex items-center justify-center" title="Collapse All">
                 <span className="material-symbols-outlined text-[18px]">unfold_less</span>
               </button>
@@ -325,8 +512,19 @@ export function AdminCategoriesScreen({ onNavigate: _onNavigate }: AdminCategori
                 </tr>
               </thead>
               <tbody className="text-[#191c1e]">
+                {live && filteredCategories.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-8 px-4 text-center text-[#4a5e88]">
+                      {categoriesQuery.isLoading
+                        ? 'Loading categories…'
+                        : categoriesQuery.isError
+                          ? `Couldn't load categories: ${adminErrorMessage(categoriesQuery.error)}`
+                          : 'No categories yet.'}
+                    </td>
+                  </tr>
+                )}
                 {filteredCategories.map((cat) => {
-                  const isSelected = selectedCategory.id === cat.id;
+                  const isSelected = selectedCategory?.id === cat.id;
                   return (
                     <tr
                       key={cat.id}
@@ -358,7 +556,9 @@ export function AdminCategoriesScreen({ onNavigate: _onNavigate }: AdminCategori
                               {cat.name}
                               {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-[#066cf4]" />}
                             </div>
-                            <span className="text-[11px] text-[#4a5e88]">Code: {cat.code} • {cat.subcategories.length + cat.extraCount} Subcategories</span>
+                            <span className="text-[11px] text-[#4a5e88]">
+                              {live ? 'ID' : 'Code'}: {cat.code} • {cat.subcategories.length + cat.extraCount} Subcategories
+                            </span>
                           </div>
                         </div>
                       </td>
@@ -377,10 +577,13 @@ export function AdminCategoriesScreen({ onNavigate: _onNavigate }: AdminCategori
                         </div>
                       </td>
                       <td className="py-3 px-4 align-top">
-                        <div className="text-[13px] font-medium text-[#191c1e]">{cat.merchantsCount.toLocaleString()}</div>
-                        <span className="text-[11px] text-[#4a5e88]">{cat.pctNetwork}% of network</span>
+                        <div className="text-[13px] font-medium text-[#191c1e]">{live ? NONE : cat.merchantsCount.toLocaleString()}</div>
+                        {!live && <span className="text-[11px] text-[#4a5e88]">{cat.pctNetwork}% of network</span>}
                       </td>
                       <td className="py-3 px-4 align-top">
+                        {live ? (
+                          <span className="text-[11px] text-[#4a5e88] line-clamp-2">{cat.description || NONE}</span>
+                        ) : (
                         <div className="flex flex-col gap-1">
                           <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full w-max ${cat.discoveryStyle}`}>
                             <span className="w-1.5 h-1.5 rounded-full bg-[#066cf4]" />
@@ -388,18 +591,27 @@ export function AdminCategoriesScreen({ onNavigate: _onNavigate }: AdminCategori
                           </span>
                           <span className="text-[11px] text-[#4a5e88]">{cat.fee}</span>
                         </div>
+                        )}
                       </td>
                       <td className="py-3 px-4 align-top text-right">
                         <div className="flex items-center justify-end gap-1">
                           <button
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!live) return;
+                              setSelectedId(cat.id);
+                              startEditing({ kind: 'new-subcategory' }, cat);
+                            }}
                             className="w-8 h-8 rounded-lg hover:bg-[#f2f4f6] flex items-center justify-center text-[#4a5e88]"
                             title="Add Subcategory"
                           >
                             <span className="material-symbols-outlined text-[18px]">add_circle</span>
                           </button>
                           <button
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (live) setSelectedCategory(cat);
+                            }}
                             className="w-8 h-8 rounded-lg hover:bg-[#f2f4f6] flex items-center justify-center text-[#4a5e88]"
                             title="Edit Category"
                           >
@@ -414,7 +626,8 @@ export function AdminCategoriesScreen({ onNavigate: _onNavigate }: AdminCategori
             </table>
           </div>
 
-          {/* Pagination Footer */}
+          {/* Pagination Footer (live: every category loads at once) */}
+          {!live && (
           <div className="p-3 bg-[#f2f4f6]/50 flex flex-col sm:flex-row items-center justify-between gap-2 text-[#4a5e88] text-[11px]">
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
@@ -437,9 +650,121 @@ export function AdminCategoriesScreen({ onNavigate: _onNavigate }: AdminCategori
               </button>
             </div>
           </div>
+          )}
         </div>
 
         {/* RIGHT: Subcategory Configuration Inspector (4 cols) */}
+        {live && (
+          <div className="lg:col-span-4 bg-white rounded-xl shadow-sm flex flex-col overflow-hidden">
+            <div className="p-4 bg-[#f2f4f6] flex items-start justify-between border-b border-[#e6e8ea]">
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#066cf4]" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#4a5e88]">
+                    {editing.kind === 'new-category'
+                      ? 'New Category'
+                      : editing.kind === 'new-subcategory'
+                        ? 'New Subcategory'
+                        : editing.kind === 'subcategory'
+                          ? 'Subcategory Configuration'
+                          : 'Category Configuration'}
+                  </span>
+                </div>
+                <h2 className="text-[15px] font-semibold text-[#191c1e] mt-1">{draftName || 'Untitled'}</h2>
+                {editing.kind !== 'new-category' && selectedCategory && (
+                  <span className="text-[11px] text-[#4a5e88]">
+                    {editing.kind === 'category' ? `${selectedCategory.liveSubcategories?.length ?? 0} subcategories` : `Parent: ${selectedCategory.name}`}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 flex flex-col gap-5 overflow-y-auto">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[12px] font-semibold text-[#191c1e]">Name</label>
+                <input
+                  className="h-9 px-3 rounded-lg bg-[#f2f4f6] text-[#191c1e] text-[12px] focus:outline-none focus:ring-2 focus:ring-[#066cf4]/30"
+                  type="text"
+                  value={draftName}
+                  onChange={(e) => setDraftName(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[12px] font-semibold text-[#191c1e]">
+                  Description{editing.kind === 'subcategory' || editing.kind === 'new-subcategory' ? ' (optional)' : ''}
+                </label>
+                <textarea
+                  rows={3}
+                  className="px-3 py-2 rounded-lg bg-[#f2f4f6] text-[#191c1e] text-[12px] focus:outline-none focus:ring-2 focus:ring-[#066cf4]/30"
+                  value={draftDescription}
+                  onChange={(e) => setDraftDescription(e.target.value)}
+                />
+              </div>
+
+              {selectedCategory && editing.kind !== 'new-category' && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12px] font-semibold text-[#191c1e]">Subcategories</span>
+                    <button
+                      onClick={() => startEditing({ kind: 'new-subcategory' })}
+                      className="text-[11px] text-[#066cf4] hover:underline"
+                    >
+                      + Add subcategory
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      onClick={() => startEditing({ kind: 'category' })}
+                      className={`px-2 py-0.5 rounded text-[11px] ${
+                        editing.kind === 'category' ? 'bg-[#066cf4] text-white' : 'bg-[#f2f4f6] text-[#4a5e88]'
+                      }`}
+                    >
+                      {selectedCategory.name}
+                    </button>
+                    {(selectedCategory.liveSubcategories ?? []).map((sub) => (
+                      <button
+                        key={sub.id}
+                        onClick={() => startEditing({ kind: 'subcategory', id: sub.id })}
+                        className={`px-2 py-0.5 rounded text-[11px] ${
+                          editing.kind === 'subcategory' && editing.id === sub.id
+                            ? 'bg-[#066cf4] text-white'
+                            : 'bg-[#f2f4f6] text-[#4a5e88] hover:bg-[#e6e8ea]'
+                        }`}
+                      >
+                        {sub.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  onClick={handleSave}
+                  disabled={saveCategory.isPending}
+                  className="flex-1 h-10 rounded-lg bg-[#066cf4] text-white text-[13px] font-semibold hover:bg-[#0055c4] transition-colors flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined text-[18px]">save</span>
+                  {editing.kind === 'new-category' || editing.kind === 'new-subcategory' ? 'Create' : 'Save Changes'}
+                </button>
+                {(editing.kind === 'category' || editing.kind === 'subcategory') && (
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleteEntry.isPending}
+                    title={confirmDelete ? 'Click again to delete' : 'Delete'}
+                    className={`h-10 px-3 rounded-lg flex items-center justify-center gap-1 transition-colors text-[12px] font-medium disabled:opacity-50 ${
+                      confirmDelete ? 'bg-[#ffdad6] text-[#93000a]' : 'bg-[#f2f4f6] hover:bg-[#e6e8ea] text-[#4a5e88]'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[18px]">delete</span>
+                    {confirmDelete && 'Confirm'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        {!live && selectedCategory && (
         <div className="lg:col-span-4 bg-white rounded-xl shadow-sm flex flex-col overflow-hidden">
           {/* Editor Header */}
           <div className="p-4 bg-[#f2f4f6] flex items-start justify-between border-b border-[#e6e8ea]">
@@ -576,6 +901,7 @@ export function AdminCategoriesScreen({ onNavigate: _onNavigate }: AdminCategori
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

@@ -1,5 +1,9 @@
 import { useState, useEffect, type ReactNode } from 'react';
-import { clearAdminSession, getAdminSession, type AdminUser, SUPER_ADMIN_USER } from './adminAuth';
+import { adminUserFromSession, clearAdminSession, getAdminSession, type AdminUser, SUPER_ADMIN_USER } from './adminAuth';
+import { hasApiConfig } from '../../services/api/client';
+import { useSessionUser } from '../../hooks/useSessionUser';
+import { useAuth } from '../../context/AuthContext';
+import { useAdminPendingVerification } from './useAdminData';
 
 export interface AdminLayoutProps {
   currentPath: string;
@@ -135,7 +139,23 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export function AdminLayout({ currentPath, onNavigate, children, breadcrumb }: AdminLayoutProps) {
-  const [adminUser] = useState<AdminUser>(() => getAdminSession() ?? SUPER_ADMIN_USER);
+  const live = hasApiConfig();
+  const { signOut } = useAuth();
+  const sessionUser = useSessionUser().data;
+  const [mockAdminUser] = useState<AdminUser>(() => getAdminSession() ?? SUPER_ADMIN_USER);
+  // Live: the signed-in admin account. Mock mode keeps the sample admin.
+  const adminUser: AdminUser = live
+    ? sessionUser
+      ? adminUserFromSession(sessionUser)
+      : { ...SUPER_ADMIN_USER, id: '', name: '…', email: '', initials: '…', role: 'Admin', permissions: [] }
+    : mockAdminUser;
+  const pendingCount = useAdminPendingVerification({ page: 1, limit: 1 }).data?.meta.total;
+  // Live badges show real counts; sample badges are for mock mode only.
+  const badgeFor = (child: { id: string; badge?: string }) => {
+    if (!live) return child.badge;
+    if (child.id === 'verification-status') return pendingCount ? String(pendingCount) : undefined;
+    return undefined;
+  };
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [quickNewOpen, setQuickNewOpen] = useState(false);
@@ -160,8 +180,15 @@ export function AdminLayout({ currentPath, onNavigate, children, breadcrumb }: A
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     clearAdminSession();
+    if (live) {
+      try {
+        await signOut();
+      } catch {
+        // signOut clears the local session even when the logout call fails
+      }
+    }
     onNavigate('/admin/login');
   };
 
@@ -434,13 +461,13 @@ export function AdminLayout({ currentPath, onNavigate, children, breadcrumb }: A
                       <span className="absolute left-0 top-1 bottom-1 w-[3px] bg-[#066cf4] rounded-r" />
                     )}
                     <span className="truncate">{child.label}</span>
-                    {child.badge && (
+                    {badgeFor(child) && (
                       <span
                         className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1 ${
                           isActive ? 'bg-[#066cf4] text-white' : 'bg-slate-100 text-slate-600'
                         }`}
                       >
-                        {child.badge}
+                        {badgeFor(child)}
                       </span>
                     )}
                   </button>
@@ -566,7 +593,7 @@ export function AdminLayout({ currentPath, onNavigate, children, breadcrumb }: A
               >
                 <span className="material-symbols-outlined text-[20px]">notifications</span>
               </button>
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#ba1a1a]" />
+              {!live && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#ba1a1a]" />}
             </div>
 
             {/* User */}

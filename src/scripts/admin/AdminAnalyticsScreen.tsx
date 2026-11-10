@@ -1,4 +1,6 @@
 import { AdminAnalyticsPlatformPerformance } from './AdminAnalyticsPlatformPerformance';
+import { hasApiConfig } from '../../services/api/client';
+import { AdminLiveUnavailable } from './AdminLiveUnavailable';
 import { AdminAnalyticsGrowth } from './AdminAnalyticsGrowth';
 import { AdminAnalyticsClusters } from './AdminAnalyticsClusters';
 import { AdminAnalyticsDealsPerformance } from './AdminAnalyticsDealsPerformance';
@@ -58,11 +60,19 @@ export function AdminAnalyticsScreen({ onNavigate, subpage }: AdminAnalyticsScre
       </div>
 
       {/* Render Active Analytics View */}
-      {activeSubpage === 'platform-performance' && <AdminAnalyticsPlatformPerformance onNavigate={onNavigate} />}
-      {activeSubpage === 'customer-and-business-growth' && <AdminAnalyticsGrowth onNavigate={onNavigate} />}
-      {activeSubpage === 'deals-and-discovery-performance' && <AdminAnalyticsDealsPerformance onNavigate={onNavigate} />}
-      {activeSubpage === 'clusters-and-locations-performance' && <AdminAnalyticsClusters onNavigate={onNavigate} />}
-      {activeSubpage === 'revenue-and-advertising-reports' && <AdminAnalyticsRevenueReports onNavigate={onNavigate} />}
+      {/* The backend has only headline counts (/analytics/admin/summary, shown on the Overview);
+          these reports need time-series admin analytics endpoints. */}
+      {hasApiConfig() && (
+        <AdminLiveUnavailable
+          title="Analytics reports"
+          needs="time-series admin analytics (growth, deal and cluster performance, revenue) — today only /analytics/admin/summary exists, shown on the Overview"
+        />
+      )}
+      {!hasApiConfig() && activeSubpage === 'platform-performance' && <AdminAnalyticsPlatformPerformance onNavigate={onNavigate} />}
+      {!hasApiConfig() && activeSubpage === 'customer-and-business-growth' && <AdminAnalyticsGrowth onNavigate={onNavigate} />}
+      {!hasApiConfig() && activeSubpage === 'deals-and-discovery-performance' && <AdminAnalyticsDealsPerformance onNavigate={onNavigate} />}
+      {!hasApiConfig() && activeSubpage === 'clusters-and-locations-performance' && <AdminAnalyticsClusters onNavigate={onNavigate} />}
+      {!hasApiConfig() && activeSubpage === 'revenue-and-advertising-reports' && <AdminAnalyticsRevenueReports onNavigate={onNavigate} />}
     </div>
   );
 }
