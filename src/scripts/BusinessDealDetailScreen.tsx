@@ -6,8 +6,10 @@ import { useCatalogueItems } from '../hooks/business/useCatalogueItems';
 import { apiErrorMessage } from '../services/errorMessages';
 import type { BusinessOffer, DealGroupStats, OfferGroupBranchPricing } from '../services/offersService';
 import type { CatalogueItem } from '../services/catalogueItemsService';
-import { dealBadgeLabel, isOfferPaused, offerClaimStats, pricingTypeLabel, redemptionWindowLabel } from './catalogueLive';
+import { dealBadgeLabel, isOfferPaused, offerClaimStats, offerSlot, pricingTypeLabel, redemptionWindowLabel } from './catalogueLive';
+import { DealEndDialog, type DealEndRequest } from '../components/DealEndDialog';
 import { Icon } from '../components/ui/Icon';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessDealDetailScreenProps {
   /** Live: the deal group to show; demo shows the sample deal. */
@@ -17,6 +19,8 @@ interface BusinessDealDetailScreenProps {
   onEditAssignment: () => void;
   /** Opens the deal studio so the whole deal can be edited. */
   onEditDeal?: () => void;
+  /** Live: the deal was deleted — leave this page. */
+  onDeleted?: () => void;
 }
 
 const HERO_IMG =
@@ -190,6 +194,7 @@ export function BusinessDealDetailScreen({
   onBoost,
   onEditAssignment,
   onEditDeal,
+  onDeleted,
 }: BusinessDealDetailScreenProps) {
   // Live: the deal's real stats, branches and copy; demo keeps the sample deal.
   const live = hasApiConfig() && Boolean(dealGroupId);
@@ -207,6 +212,12 @@ export function BusinessDealDetailScreen({
   const pricing = group.pricing.data;
   const view = live && offer ? liveDealView(offer, stats, pricing, itemsQuery.data ?? []) : DEMO_VIEW;
   const paused = live && offer ? isOfferPaused(offer) : false;
+  // Closed = ended early or past its end date; it can't be resumed or closed again.
+  const closed = live && offer ? offerSlot(offer) === 'expired' : false;
+  const claimCount = (pricing?.branches ?? []).reduce((sum, row) => sum + (row.claimedCount ?? 0), 0);
+  const [endRequest, setEndRequest] = useState<DealEndRequest | null>(null);
+  const askToEnd = (kind: DealEndRequest['kind']) =>
+    live && dealGroupId ? setEndRequest({ kind, dealGroupId, name: offer?.name ?? 'This deal' }) : undefined;
   const setStatus = (status: 'active' | 'inactive', done: string) =>
     groupMutations.setStatus.mutate(status, {
       onSuccess: () => showToast(done),
@@ -236,8 +247,8 @@ export function BusinessDealDetailScreen({
             >
               <Icon name="more_vert" className="text-[22px]" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>
@@ -288,6 +299,7 @@ export function BusinessDealDetailScreen({
             <button
               className="h-11 rounded-lg bg-surface-container-high text-on-surface font-button-secondary text-button-secondary flex items-center justify-center gap-1 active:bg-surface-variant transition-colors"
               type="button"
+              disabled={closed}
               onClick={live ? () => setStatus(paused ? 'active' : 'inactive', paused ? 'Deal resumed.' : 'Deal paused.') : undefined}
             >
               <Icon name={paused ? 'play_circle' : 'pause_circle'} className="text-[18px]" />
@@ -302,14 +314,26 @@ export function BusinessDealDetailScreen({
               <span>Edit</span>
             </button>
             <button
-              className="h-11 rounded-lg bg-error-container text-on-error-container font-button-secondary text-button-secondary flex items-center justify-center gap-1 active:opacity-90 transition-opacity"
+              className="h-11 rounded-lg bg-error-container text-on-error-container font-button-secondary text-button-secondary flex items-center justify-center gap-1 active:opacity-90 transition-opacity disabled:opacity-40"
               type="button"
-              onClick={live ? () => setStatus('inactive', 'Deal ended. Existing claims are kept.') : undefined}
+              disabled={closed}
+              onClick={() => askToEnd('close')}
             >
-              <Icon name="cancel" className="text-[18px]" />
-              <span>End</span>
+              <Icon name="stop_circle" className="text-[18px]" />
+              <span>{closed ? 'Closed' : 'Close'}</span>
             </button>
           </div>
+          {live && (
+            <button
+              className="w-full h-10 rounded-lg text-error font-button-secondary text-button-secondary flex items-center justify-center gap-1 hover:bg-error-container/20 transition-colors disabled:opacity-40"
+              type="button"
+              disabled={claimCount > 0}
+              onClick={() => askToEnd('delete')}
+            >
+              <Icon name="delete" className="text-[18px]" />
+              <span>{claimCount > 0 ? `Delete unavailable — ${claimCount} claim${claimCount === 1 ? '' : 's'} (close it instead)` : 'Delete Deal'}</span>
+            </button>
+          )}
         </div>
 
         {/* Pricing & Settlement */}
@@ -555,6 +579,15 @@ export function BusinessDealDetailScreen({
           {toast}
         </div>
       )}
+      <DealEndDialog
+        request={endRequest}
+        onClose={() => setEndRequest(null)}
+        onDone={(message, kind) => {
+          showToast(message);
+          if (kind === 'delete') onDeleted?.();
+        }}
+        onError={showToast}
+      />
     </AppScreen>
   );
 }

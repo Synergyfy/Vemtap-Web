@@ -3,6 +3,7 @@ import { hasApiConfig } from '../services/api/client';
 import { naira, useLivePos } from './posLive';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessPosOfflineCheckoutScreenProps {
   onBack: () => void;
@@ -104,8 +105,8 @@ export function BusinessPosOfflineCheckoutScreen({ onBack, onOpenQueue }: Busine
               </div>
             </div>
           </div>
-          <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-            <Icon name="person" className="text-on-primary text-[17px]" />
+          <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 overflow-hidden">
+            <UserAvatar textClassName="text-on-primary text-[13px]" />
           </span>
         </div>
       </header>

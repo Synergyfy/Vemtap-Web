@@ -5,6 +5,7 @@ import { Icon } from '../components/ui/Icon';
 import { CartSheet } from '../components/sheets/CartSheet';
 import { useCart } from '../context/CartContext';
 import { MENU_PRODUCT_ID, naira, nairaToNumber, type CatalogueProduct } from './catalogueData';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface MenuProductsScreenProps {
   onBack: () => void;
@@ -215,8 +216,8 @@ export function MenuProductsScreen({ onBack, onOpenDeals, onGridView, onOpenProd
                 </span>
               )}
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 ml-space-2xs">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 ml-space-2xs overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>
@@ -240,7 +241,7 @@ export function MenuProductsScreen({ onBack, onOpenDeals, onGridView, onOpenProd
         title="Your Table Order"
       />
       {toast && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {toast}
         </div>
       )}

@@ -17,10 +17,32 @@ export const analyticsRange = (days: number) => {
   };
 };
 
-export function useBusinessAnalytics<M extends AnalyticsModule>(module: M, days: number, branchId?: string) {
+/** The per-module filters the analytics filter screen sets; each module only sends its own. */
+export interface AnalyticsModuleFilters {
+  dealStatus?: string[];
+  paymentMethod?: string[];
+  tillId?: string[];
+  cohort?: string | null;
+}
+
+const moduleParams = (module: AnalyticsModule, filters: AnalyticsModuleFilters = {}) => {
+  const list = (values?: string[]) => (values && values.length ? values.join(',') : undefined);
+  if (module === 'deals') return { dealStatus: list(filters.dealStatus) };
+  if (module === 'pos') return { paymentMethod: list(filters.paymentMethod), tillId: list(filters.tillId) };
+  if (module === 'customers') return { cohort: filters.cohort ?? undefined };
+  return {};
+};
+
+export function useBusinessAnalytics<M extends AnalyticsModule>(
+  module: M,
+  days: number,
+  branchId?: string,
+  filters?: AnalyticsModuleFilters,
+) {
+  const extra = moduleParams(module, filters);
   return useQuery({
-    queryKey: ['business-analytics', module, days, branchId ?? 'all'],
-    queryFn: () => businessAnalyticsService.get(module, { ...analyticsRange(days), branchId }),
+    queryKey: ['business-analytics', module, days, branchId ?? 'all', extra],
+    queryFn: () => businessAnalyticsService.get(module, { ...analyticsRange(days), branchId, ...extra }),
     // Keep the last result while a new range loads, but never across modules —
     // each module has its own response shape.
     placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[1] === module ? previous : undefined),

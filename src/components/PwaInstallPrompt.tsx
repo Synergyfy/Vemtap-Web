@@ -11,6 +11,18 @@ export function PwaInstallPrompt() {
   const [isVisible, setIsVisible] = useState<boolean>(false);
   const [isIOS, setIsIOS] = useState<boolean>(false);
   const [showIosGuide, setShowIosGuide] = useState<boolean>(false);
+  // Sheets and dialogs share the banner's layer; it steps aside while one is open
+  // so it never covers their actions (e.g. "Apply Location & Radius").
+  const [dialogOpen, setDialogOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!isVisible) return undefined;
+    const update = () => setDialogOpen(Boolean(document.querySelector('[role="dialog"][aria-modal="true"]')));
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [isVisible]);
 
   useEffect(() => {
     // Check if already running as installed standalone PWA
@@ -88,7 +100,7 @@ export function PwaInstallPrompt() {
     }
   };
 
-  if (!isVisible) return null;
+  if (!isVisible || dialogOpen) return null;
 
   return (
     <>

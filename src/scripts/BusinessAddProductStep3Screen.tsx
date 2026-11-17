@@ -1,9 +1,9 @@
-import { useState } from 'react';
 import { hasApiConfig } from '../services/api/client';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { ProductDraft } from './productDraft';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessAddProductStep3ScreenProps {
   draft: ProductDraft;
@@ -64,8 +64,11 @@ export function BusinessAddProductStep3Screen({
           stock: '—',
         }))
     : SELECTABLE_BRANCHES;
-  const [pickup, setPickup] = useState(true);
-  const [delivery, setDelivery] = useState(true);
+  // Saved on the draft so it reaches the API; older drafts default to both.
+  const pickup = draft.fulfillment?.pickup ?? true;
+  const delivery = draft.fulfillment?.delivery ?? true;
+  const setFulfillment = (patch: Partial<{ pickup: boolean; delivery: boolean }>) =>
+    onDraftChange({ fulfillment: { pickup, delivery, ...patch } });
 
   const activeBranches = selectableBranches.filter((branch) => draft.branches[branch.key]);
   const allSelected = activeBranches.length === selectableBranches.length;
@@ -107,8 +110,8 @@ export function BusinessAddProductStep3Screen({
             >
               Draft
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>
@@ -313,7 +316,7 @@ export function BusinessAddProductStep3Screen({
                   checked={pickup}
                   className="sr-only peer"
                   type="checkbox"
-                  onChange={() => setPickup((current) => !current)}
+                  onChange={() => setFulfillment({ pickup: !pickup })}
                 />
                 <div className="w-5 h-5 mt-0.5 rounded-md bg-surface-container-high peer-checked:bg-primary-container flex items-center justify-center transition-colors">
                   <Icon className="text-on-primary text-[15px] font-bold" name="check" />
@@ -337,7 +340,7 @@ export function BusinessAddProductStep3Screen({
                   checked={delivery}
                   className="sr-only peer"
                   type="checkbox"
-                  onChange={() => setDelivery((current) => !current)}
+                  onChange={() => setFulfillment({ delivery: !delivery })}
                 />
                 <div className="w-5 h-5 mt-0.5 rounded-md bg-surface-container-high peer-checked:bg-primary-container flex items-center justify-center transition-colors">
                   <Icon className="text-on-primary text-[15px] font-bold" name="check" />

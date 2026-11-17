@@ -10,7 +10,7 @@ import { hasApiConfig } from '../../services/api/client';
 interface DesktopBusinessMessagesWorkspaceScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   /** Opens the customer's full CRM profile (Customers page) from a chat header. */
-  onViewCustomerProfile?: (name: string) => void;
+  onViewCustomerProfile?: (name: string, customerId?: string | null) => void;
 }
 
 export function DesktopBusinessMessagesWorkspaceScreen({ onNav, onViewCustomerProfile }: DesktopBusinessMessagesWorkspaceScreenProps) {

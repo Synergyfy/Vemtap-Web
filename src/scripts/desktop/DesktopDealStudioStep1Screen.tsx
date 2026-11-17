@@ -6,9 +6,12 @@ import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
 import type { ProductDraft } from './desktopProductDraft';
 import type { DealStudioDraft, DealStrategy } from './desktopDealStudio';
-import { DEAL_TYPE_OPTIONS, DEFAULT_BUNDLE_CATALOG, resolveDealPricing, validateDealConfiguration } from '../deals/dealStudioShared';
+import { DEAL_TYPE_OPTIONS, resolveDealPricing, validateDealConfiguration } from '../deals/dealStudioShared';
+import { useDealBranches, useDealBundleCatalog } from '../../hooks/business/useDealStudioLive';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
 import type { ComboProduct } from '../deals/dealStudioShared';
 import { DealTypeConfigurator, DealTypeSelector } from '../deals/DealStudioConfigurator';
+import { draftImage, draftImageAlt } from './draftImage';
 
 interface DesktopDealStudioStep1ScreenProps {
   draft: ProductDraft;
@@ -67,10 +70,15 @@ export function DesktopDealStudioStep1Screen({
   const liveBranch = useLiveDealBranch();
   const activeBranchCount = Object.values(draft.branches).filter(Boolean).length;
 
-  const bundleCatalog: ComboProduct[] = [
-    { id: 'current', name: draft.title, price: basePrice },
-    ...DEFAULT_BUNDLE_CATALOG,
-  ];
+  const bundleCatalog: ComboProduct[] = useDealBundleCatalog(draft.title, basePrice);
+  // Live: where the deal runs and whose card customers see; demo keeps the samples.
+  const dealBranches = useDealBranches(studio);
+  const business = useMyBusiness().data;
+  const runsAt =
+    dealBranches.selected.length > 1
+      ? `Runs at ${dealBranches.selected.length} branches`
+      : `Runs at ${dealBranches.selected[0]?.name ?? liveBranch.name}`;
+  const businessLabel = [business?.name, business?.subcategory?.name ?? business?.category?.name].filter(Boolean).join(' • ');
   const activeStrategy = DEAL_TYPE_OPTIONS.find((item) => item.id === studio.strategy);
   const configErrors = studio.strategy ? validateDealConfiguration(studio, basePrice, bundleCatalog) : [];
   // Live preview math for whatever type is selected (percentage before a type is chosen).
@@ -202,7 +210,7 @@ export function DesktopDealStudioStep1Screen({
         <div className="w-full bg-surface-canvas rounded-2xl p-space-sm mb-space-lg shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-space-md">
           <div className="flex items-center gap-space-md min-w-0">
             <div className="relative w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-surface-container">
-              <img className="w-full h-full object-cover" alt={ITEM_IMAGE[0].alt} src={ITEM_IMAGE[0].src} />
+              <img className="w-full h-full object-cover" alt={draftImageAlt(draft.title, ITEM_IMAGE[0].alt)} src={draftImage(draft.mainImage, ITEM_IMAGE[0].src)} />
               <div className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-primary text-on-primary flex items-center justify-center shadow">
                 <Icon name="restaurant" className="text-[12px]" />
               </div>
@@ -224,7 +232,7 @@ export function DesktopDealStudioStep1Screen({
                 <span>•</span>
                 <span className="flex items-center gap-1">
                   <Icon name="storefront" className="text-[15px] text-badge-discount-text" />{' '}
-                  {liveBranch.live ? `Runs at ${liveBranch.name}` : `${activeBranchCount} Active Branches (Wuse II & Garki II)`}
+                  {liveBranch.live ? runsAt : `${activeBranchCount} Active Branches (Wuse II & Garki II)`}
                 </span>
                 <span>•</span>
                 <span className="flex items-center gap-1 text-on-surface-variant">
@@ -292,6 +300,8 @@ export function DesktopDealStudioStep1Screen({
               </div>
             )}
 
+            {/* Sample market benchmark — there's no live source for it, so it's demo-only. */}
+            {!liveBranch.live && (
             <div className="rounded-2xl bg-gradient-to-r from-surface-tint-blue to-surface-canvas p-space-md shadow-sm flex items-start gap-space-md">
               <div className="w-12 h-12 rounded-xl bg-primary text-on-primary flex items-center justify-center shrink-0 shadow-md">
                 <Icon name="radar" className="text-[26px]" />
@@ -306,7 +316,7 @@ export function DesktopDealStudioStep1Screen({
                   </span>
                 </div>
                 <p className="font-body-md text-body-md text-on-surface mt-1">
-                  {liveBranch.live ? 'Deals near you' : 'Steakhouse deals in'} <strong>{liveBranch.live ? liveBranch.area : 'Wuse II & Maitama'}</strong> offering{' '}
+                  Steakhouse deals in <strong>Wuse II &amp; Maitama</strong> offering{' '}
                   <strong>20% – 25% discount</strong> convert <strong>3.6x faster</strong> and average{' '}
                   <strong>+42 additional diners per week</strong> compared to discounts under 15%.
                 </p>
@@ -315,6 +325,7 @@ export function DesktopDealStudioStep1Screen({
                 </div>
               </div>
             </div>
+            )}
           </div>
 
           <div className="lg:col-span-5 flex flex-col gap-space-lg lg:sticky lg:top-20">
@@ -339,8 +350,8 @@ export function DesktopDealStudioStep1Screen({
                   <div className="relative h-44 w-full bg-surface-container overflow-hidden">
                     <img
                       className="w-full h-full object-cover"
-                      alt={PREVIEW_IMAGES[0].alt}
-                      src={PREVIEW_IMAGES[0].src}
+                      alt={draftImageAlt(draft.title, PREVIEW_IMAGES[0].alt)}
+                      src={draftImage(draft.mainImage, PREVIEW_IMAGES[0].src)}
                     />
                     <div className="absolute top-3 left-3 px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shadow-sm flex items-center gap-1">
                       <Icon name="bolt" className="text-[14px]" />
@@ -348,23 +359,29 @@ export function DesktopDealStudioStep1Screen({
                     </div>
                     <div className="absolute top-3 right-3 px-space-xs py-space-2xs rounded-full bg-inverse-surface/80 text-inverse-on-surface backdrop-blur font-caption text-caption flex items-center gap-1">
                       <Icon name="location_on" className="text-[13px]" />
-                      <span>{liveBranch.live ? liveBranch.area : '0.4 km • Wuse II'}</span>
+                      <span>{liveBranch.live ? dealBranches.selected[0]?.area || liveBranch.area : '0.4 km • Wuse II'}</span>
                     </div>
                   </div>
                   <div className="p-space-md flex flex-col gap-space-xs">
                     <div className="flex items-center justify-between">
                       <span className="font-caption text-caption text-secondary font-medium tracking-wide uppercase">
-                        Artisan Steakhouse &amp; Grill
+                        {liveBranch.live ? businessLabel || 'Your business' : 'Artisan Steakhouse & Grill'}
                       </span>
-                      <div className="flex items-center gap-1 text-tertiary">
-                        <Icon name="star" className="text-[15px]" filled />
-                        <span className="font-label-sm text-label-sm font-bold text-on-surface">4.8</span>
-                        <span className="font-caption text-caption text-on-surface-variant">(180+)</span>
-                      </div>
+                      {!liveBranch.live && (
+                        <div className="flex items-center gap-1 text-tertiary">
+                          <Icon name="star" className="text-[15px]" filled />
+                          <span className="font-label-sm text-label-sm font-bold text-on-surface">4.8</span>
+                          <span className="font-caption text-caption text-on-surface-variant">(180+)</span>
+                        </div>
+                      )}
                     </div>
                     <h3 className="font-heading-sm text-heading-sm text-on-surface font-bold">{draft.title}</h3>
                     <p className="font-caption text-caption text-on-surface-variant line-clamp-1">
-                      {studio.strategy ? 'Deal configured in the Deal Studio' : '350g prime rib cut with garlic rosemary glaze & side greens'}
+                      {studio.strategy
+                        ? 'Deal configured in the Deal Studio'
+                        : liveBranch.live
+                          ? draft.description || 'Pick a discount strategy to preview the deal'
+                          : '350g prime rib cut with garlic rosemary glaze & side greens'}
                     </p>
                     <div className="flex items-baseline gap-space-xs mt-space-2xs pt-space-2xs">
                       <span className="font-heading-md text-heading-md font-bold text-primary">
@@ -397,6 +414,8 @@ export function DesktopDealStudioStep1Screen({
               </div>
             </div>
 
+            {/* Sample forecast — no live data behind it, so it's demo-only. */}
+            {!liveBranch.live && (
             <div className="bg-surface-canvas rounded-2xl p-space-md shadow-sm">
               <div className="flex items-center justify-between mb-space-sm">
                 <span className="font-label-md text-label-md text-on-surface font-bold">Projected Deal Velocity</span>
@@ -454,6 +473,7 @@ export function DesktopDealStudioStep1Screen({
                 <span>Zero-Risk Guarantee: No upfront merchant fees. Direct payout at counter.</span>
               </div>
             </div>
+            )}
           </div>
         </div>
 

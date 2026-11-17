@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { hasApiConfig } from '../services/api/client';
 import { useSessionUser } from '../hooks/useSessionUser';
-import { useVerificationActions } from '../hooks/business/useVerification';
+import { useVerificationActions, useVerificationStatus } from '../hooks/business/useVerification';
 import { VerificationIntroScreen } from './VerificationIntroScreen';
 import { VerificationIdTypeScreen } from './VerificationIdTypeScreen';
 import { VerificationIdFormScreen } from './VerificationIdFormScreen';
@@ -55,6 +55,10 @@ export function BusinessVerificationScreen({
   onQrStands?: () => void;
 }) {
   const [step, setStep] = useState<VerificationStep>('intro');
+  // Live: a flow resumed from the intro skips earlier steps, so its Back returns to the intro.
+  const [resumedAt, setResumedAt] = useState<VerificationStep | null>(null);
+  const backTo = (resumed: VerificationStep, previous: VerificationStep) => () => setStep(resumedAt === resumed ? 'intro' : previous);
+  const verificationStatus = useVerificationStatus();
   const setupNav = useBusinessSetupNav();
   const session = useSessionUser();
   const verification = useVerificationActions();
@@ -76,6 +80,12 @@ export function BusinessVerificationScreen({
     window.scrollTo(0, 0);
   }, [step]);
 
+  // Resuming after the CAC check: show its (masked) number rather than a blank.
+  useEffect(() => {
+    const masked = verificationStatus.data?.business?.maskedId;
+    if (hasApiConfig() && masked) setDraft((current) => (current.cacNumber ? current : { ...current, cacNumber: masked }));
+  }, [verificationStatus.data]);
+
   const updateDraft = (patch: Partial<VerificationDraft>) => {
     setDraft((current) => ({ ...current, ...patch }));
   };
@@ -91,7 +101,10 @@ export function BusinessVerificationScreen({
   const renderStep = () => {
     switch (step) {
     case 'intro':
-      return <VerificationIntroScreen onBack={onBack} onStart={() => setStep('idType')} onLater={onComplete} />;
+      return <VerificationIntroScreen onBack={onBack} onStart={(from) => {
+            setResumedAt(from ?? null);
+            setStep(from ?? 'idType');
+          }} onLater={onComplete} />;
     case 'idType':
       return (
         <VerificationIdTypeScreen
@@ -131,7 +144,7 @@ export function BusinessVerificationScreen({
     case 'cacStatus':
       return (
         <VerificationCacStatusScreen
-          onBack={() => setStep('idSuccess')}
+          onBack={backTo('cacStatus', 'idSuccess')}
           registered={draft.cacRegistered}
           onRegisteredChange={(registered) => updateDraft({ cacRegistered: registered })}
           onContinue={() => setStep(draft.cacRegistered ? 'cacForm' : 'unregistered')}
@@ -160,7 +173,7 @@ export function BusinessVerificationScreen({
     case 'inReview':
       return (
         <VerificationReviewScreen
-          onBack={() => setStep('cacSuccess')}
+          onBack={backTo('inReview', 'cacSuccess')}
           onReviewComplete={() => setStep('complete')}
           onCatalog={onConfigureStorefront}
           onDeals={onCreateDeal}
@@ -172,7 +185,7 @@ export function BusinessVerificationScreen({
     case 'complete':
       return (
         <VerificationCompleteScreen
-          onBack={() => setStep('inReview')}
+          onBack={backTo('complete', 'inReview')}
           onActivate={onActivate}
           onPreviewStorefront={onPreviewStorefront}
           legalName={draft.legalName}

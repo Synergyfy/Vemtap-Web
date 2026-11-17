@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useOnboardingSync } from '../hooks/business/useOnboardingSync';
+import { DealSourceContext } from '../hooks/business/useDealStudioLive';
 import { useLiveDealPublish } from '../hooks/business/useLiveDealPublish';
 import { toPrice, type CatalogueItem } from '../services/catalogueItemsService';
 import { useMyBusiness } from '../hooks/business/useMyBusiness';
 import { hasApiConfig } from '../services/api/client';
 import { useProfile } from '../context/ProfileContext';
-import { BusinessAddBranchScreen } from './BusinessAddBranchScreen';
 import { BusinessAddProductStep1Screen } from './BusinessAddProductStep1Screen';
 import { BusinessAddProductStep2Screen } from './BusinessAddProductStep2Screen';
 import { BusinessAddProductImageScreen } from './BusinessAddProductImageScreen';
@@ -13,8 +13,6 @@ import { BusinessAddProductStep3Screen } from './BusinessAddProductStep3Screen';
 import { BusinessAddServiceStep1Screen } from './BusinessAddServiceStep1Screen';
 import { BusinessAddServiceStep2Screen } from './BusinessAddServiceStep2Screen';
 import { BusinessAddServiceStep3Screen } from './BusinessAddServiceStep3Screen';
-import { BusinessBranchesScreen } from './BusinessBranchesScreen';
-import type { BusinessBranch } from './BusinessBranchesScreen';
 import { BusinessBusinessQrScreen } from './BusinessBusinessQrScreen';
 import { BusinessCatalogScreen } from './BusinessCatalogScreen';
 import { BusinessDealAutoImportScreen } from './BusinessDealAutoImportScreen';
@@ -24,6 +22,8 @@ import { BusinessDealStudioStep3Screen } from './BusinessDealStudioStep3Screen';
 import { BusinessDealStudioStep4Screen } from './BusinessDealStudioStep4Screen';
 import { BusinessIntroScreen } from './BusinessIntroScreen';
 import { BusinessLocationScreen } from './BusinessLocationScreen';
+import { BusinessOfferingsScreen } from './BusinessOfferingsScreen';
+import { useBusinessOfferings } from '../context/BusinessOfferingsContext';
 import { BusinessProductDealScreen } from './BusinessProductDealScreen';
 import { BusinessProductPublishedScreen } from './BusinessProductPublishedScreen';
 import { BusinessProductReviewScreen } from './BusinessProductReviewScreen';
@@ -35,14 +35,16 @@ import { BusinessServiceReviewScreen } from './BusinessServiceReviewScreen';
 import { SEED_DESCRIPTION } from './businessOnboardingSeed';
 import { BusinessSetupProgress } from '../components/BusinessSetupProgress';
 import {
+  getBusinessSetupResumeStep,
   getBusinessSetupSnapshot,
   getSectionStates,
+  recordBusinessSetupAdvance,
   saveBusinessSetupSnapshot,
   setBusinessSetupVerificationState,
   type BusinessSetupSectionId,
   type VerificationSectionState,
 } from './businessSetup';
-import { INITIAL_DEAL_STUDIO_DRAFT } from './dealStudio';
+import { INITIAL_DEAL_STUDIO_DRAFT, LIVE_DEAL_STUDIO_DRAFT } from './dealStudio';
 import type { DealStudioDraft } from './dealStudio';
 import { BLANK_PRODUCT_DRAFT, INITIAL_PRODUCT_DRAFT } from './productDraft';
 import type { ProductDraft } from './productDraft';
@@ -62,6 +64,10 @@ export interface BusinessProfileDraft {
   whatsapp: string;
   x: string;
   prefs: { inApp: boolean; whatsapp: boolean };
+  /** Primary business location (always free) captured on the location step. */
+  primaryLocation?: { street: string; landmark: string };
+  /** Business offerings selected on the offerings onboarding step. */
+  offerings?: { hasProducts: boolean; hasServices: boolean };
 }
 
 /**
@@ -140,24 +146,6 @@ const PROFILE_STEPS: readonly BusinessOnboardingStep[] = [
   'addBranch',
 ];
 
-const NEW_BRANCH_IMAGES = [
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuANJsmk1CZ7kqu-LkWt0xVGy3vQvAAan2Uh7Ae-lqlm1Rb8RiLOXtVOsxfmEPOizvnkLCegPcvq3NuOtbzguW_cqVTZV7750yTTpjC89dxUFwN3hFP4roCjyXSypNYEmwIgel6-zKkx9izBn56_TuVnPMWYVUx2G_5Axi-hkLlDfm8UQlIel1tu2ulnv3nGiT3Vtm8zhh7UaXbbP83y0fenbLPpvzRNj0A7mbkLzZpE7qRna9LuP2INkg',
-    alt: 'Cozy bistro cafe storefront in a bustling commercial mall with warm ambient terrace lighting, artisan coffee counter, chalkboard specials, and potted plants under crisp modern architectural illumination.',
-  },
-];
-
-const NEW_BRANCH: BusinessBranch = {
-  id: 'garki-flagship',
-  name: '3 — Garki District Flagship',
-  subtitle: 'Urban Grill & Bistro • Garki District, FCT',
-  address: 'Plot 742, Tafawa Balewa Way, Area 11',
-  phone: '+234 809 111 4455',
-  hours: '· 8:00 AM – 10:00 PM (Mon–Sun)',
-  image: NEW_BRANCH_IMAGES[0].src,
-  imageAlt: NEW_BRANCH_IMAGES[0].alt,
-};
-
 const serviceToDealDraft = (service: ServiceDraft): ProductDraft => ({
   ...INITIAL_PRODUCT_DRAFT,
   title: service.title,
@@ -200,33 +188,43 @@ export function BusinessOnboardingScreen({
   initialStep?: 'intro' | 'basic';
 }) {
   const profile = useProfile();
+  const { offerings: currentOfferings, setOfferings } = useBusinessOfferings();
   // Restore saved progress from the module snapshot (if any) so returning from
   // verification (or another route) resumes where the merchant left off.
   const stored = getBusinessSetupSnapshot();
-  const [stepIndex, setStepIndex] = useState(() => {
+  // A saved run reopens on the page after the last one completed.
+  const [stepIndex, setStepIndexState] = useState(() => {
     if (stored) {
-      const index = (STEPS as readonly string[]).indexOf(stored.step);
+      const index = (STEPS as readonly string[]).indexOf(getBusinessSetupResumeStep(stored) ?? '');
       if (index >= 0) return index;
     }
     return initialStep === 'basic' ? 1 : 0;
   });
+  // Moving forward completes the page being left (Back changes nothing saved).
+  const setStepIndex = (next: number) => {
+    if (next > stepIndex) recordBusinessSetupAdvance(STEPS[stepIndex], STEPS[next]);
+    setStepIndexState(next);
+  };
   const [draft, setDraft] = useState<BusinessProfileDraft>(
     () => (stored?.data.draft as BusinessProfileDraft | undefined) ?? createInitialDraft(profile.email),
   );
-  const [extraBranches, setExtraBranches] = useState<BusinessBranch[]>(
-    () => (stored?.data.extraBranches as BusinessBranch[] | undefined) ?? [],
+  const [extraBranches] = useState<Record<string, unknown>[]>(
+    () => (stored?.data.extraBranches as Record<string, unknown>[] | undefined) ?? [],
   );
+  // Additional locations whose simulated checkout already succeeded in an
+  // earlier run. Kept only so restoring an older saved draft still knows which
+  // entries were already paid; nothing new can be added during sign-up.
   const [productDraft, setProductDraft] = useState<ProductDraft>(
     () => (stored?.data.productDraft as ProductDraft | undefined) ?? (hasApiConfig() ? BLANK_PRODUCT_DRAFT : INITIAL_PRODUCT_DRAFT),
   );
   const [dealDraft, setDealDraft] = useState<ProductDraft>(
-    () => (stored?.data.dealDraft as ProductDraft | undefined) ?? INITIAL_PRODUCT_DRAFT,
+    () => (stored?.data.dealDraft as ProductDraft | undefined) ?? (hasApiConfig() ? BLANK_PRODUCT_DRAFT : INITIAL_PRODUCT_DRAFT),
   );
   const [serviceDraft, setServiceDraft] = useState<ServiceDraft>(
     () => (stored?.data.serviceDraft as ServiceDraft | undefined) ?? (hasApiConfig() ? BLANK_SERVICE_DRAFT : INITIAL_SERVICE_DRAFT),
   );
   const [dealStudio, setDealStudio] = useState<DealStudioDraft>(
-    () => (stored?.data.dealStudio as DealStudioDraft | undefined) ?? INITIAL_DEAL_STUDIO_DRAFT,
+    () => (stored?.data.dealStudio as DealStudioDraft | undefined) ?? (hasApiConfig() ? LIVE_DEAL_STUDIO_DRAFT : INITIAL_DEAL_STUDIO_DRAFT),
   );
   const [verificationState, setVerificationState] = useState<VerificationSectionState>(
     () => stored?.verificationState ?? 'not-started',
@@ -260,7 +258,11 @@ export function BusinessOnboardingScreen({
 
   const sync = useOnboardingSync();
   // Live: deals are built on a real catalogue item and published to the API.
-  const liveDeal = useLiveDealPublish(() => setStepIndex(25), (stored?.data.dealSource as CatalogueItem | undefined) ?? null);
+  const liveDeal = useLiveDealPublish(
+    () => setStepIndex(25), (stored?.data.dealSource as CatalogueItem | undefined) ?? null,
+    // Remember the published deal so going back and publishing again updates it.
+    (patch) => setDealStudio((prev) => ({ ...prev, ...patch })),
+  );
   // Saved after the deal hook so the picked item survives a reload too.
   useEffect(() => {
     saveBusinessSetupSnapshot(STEPS[stepIndex], {
@@ -275,6 +277,10 @@ export function BusinessOnboardingScreen({
   }, [stepIndex, draft, extraBranches, productDraft, dealDraft, serviceDraft, dealStudio, liveDeal.source]);
 
   const startLiveDeal = (item: CatalogueItem) => {
+    // A different item is a new deal: forget the one published for the last item.
+    if (liveDeal.source?.id !== item.id) {
+      setDealStudio((prev) => ({ ...prev, branchIds: undefined, publishedDealGroupId: undefined, publishedBranchIds: undefined }));
+    }
     liveDeal.pick(item);
     setDealDraft((prev) => ({
       ...prev,
@@ -391,28 +397,33 @@ export function BusinessOnboardingScreen({
         />
       );
     case 'branches':
+      // "What does your business offer?" step: merchants choose Products, Services, or Both.
       return (
-        <BusinessBranchesScreen
-          extraBranches={extraBranches}
+        <BusinessOfferingsScreen
+          businessName={draft.name}
+          initialOfferings={draft.offerings ?? currentOfferings}
           onBack={() => setStepIndex(4)}
-          onAddBranch={() => setStepIndex(6)}
-          onNext={() => setStepIndex(7)}
+          onNext={(selectedOfferings) => {
+            updateDraft({ offerings: selectedOfferings });
+            setOfferings(selectedOfferings);
+            setStepIndex(7);
+          }}
           onSaveDraft={onBack}
         />
       );
     case 'addBranch':
+      // Legacy saved-draft step: resume at the offerings step instead.
       return (
-        <BusinessAddBranchScreen
-          onBack={() => setStepIndex(5)}
-          onSaved={(saved) => {
-            // Live branches come from the API; the sample new branch is demo-only.
-            if (!saved) {
-              setExtraBranches((current) =>
-                current.some((branch) => branch.id === NEW_BRANCH.id) ? current : [...current, NEW_BRANCH],
-              );
-            }
-            setStepIndex(5);
+        <BusinessOfferingsScreen
+          businessName={draft.name}
+          initialOfferings={draft.offerings ?? currentOfferings}
+          onBack={() => setStepIndex(4)}
+          onNext={(selectedOfferings) => {
+            updateDraft({ offerings: selectedOfferings });
+            setOfferings(selectedOfferings);
+            setStepIndex(7);
           }}
+          onSaveDraft={onBack}
         />
       );
     case 'catalog':
@@ -421,7 +432,14 @@ export function BusinessOnboardingScreen({
           onAddProduct={() => setStepIndex(8)}
           onAddService={() => setStepIndex(15)}
           onBack={() => setStepIndex(5)}
-          onNext={() => setStepIndex(20)}
+          onNext={(dealItem) => {
+            // Live deals are built on a real item; with none picked, deals wait until later.
+            if (hasApiConfig()) {
+              if (!dealItem) return setStepIndex(25);
+              startLiveDeal(dealItem);
+            }
+            setStepIndex(20);
+          }}
           onSaveDraft={onBack}
         />
       );
@@ -476,7 +494,12 @@ export function BusinessOnboardingScreen({
           onEditBranches={() => setStepIndex(11)}
           onEditFulfillment={() => setStepIndex(11)}
           onEditDescription={() => setStepIndex(8)}
-          onPublish={() => sync.publishProduct(productDraft, () => setStepIndex(13))}
+          onPublish={() =>
+            sync.publishProduct(productDraft, (item) => {
+              if (item) updateProductDraft({ publishedItemId: item.id });
+              setStepIndex(13);
+            })
+          }
           onSaveDraft={onBack}
         />
       );
@@ -490,7 +513,11 @@ export function BusinessOnboardingScreen({
             setStepIndex(14);
           }}
           onViewCatalog={() => setStepIndex(7)}
-          onAddAnother={() => setStepIndex(8)}
+          onAddAnother={() => {
+            // Live: a fresh, blank item — the one just published stays as it is.
+            if (hasApiConfig()) setProductDraft(BLANK_PRODUCT_DRAFT);
+            setStepIndex(8);
+          }}
         />
       );
     case 'productDeal':
@@ -542,7 +569,12 @@ export function BusinessOnboardingScreen({
           onEditBasics={() => setStepIndex(15)}
           onEditPricing={() => setStepIndex(16)}
           onEditBranches={() => setStepIndex(17)}
-          onPublish={() => sync.publishService(serviceDraft, () => setStepIndex(19))}
+          onPublish={() =>
+            sync.publishService(serviceDraft, (item) => {
+              if (item) updateServiceDraft({ publishedItemId: item.id });
+              setStepIndex(19);
+            })
+          }
           onSaveDraft={onBack}
         />
       );
@@ -556,7 +588,10 @@ export function BusinessOnboardingScreen({
             setStepIndex(14);
           }}
           onViewCatalog={() => setStepIndex(7)}
-          onAddAnother={() => setStepIndex(15)}
+          onAddAnother={() => {
+            if (hasApiConfig()) setServiceDraft(BLANK_SERVICE_DRAFT);
+            setStepIndex(15);
+          }}
         />
       );
     case 'dealStudio1':
@@ -631,11 +666,11 @@ export function BusinessOnboardingScreen({
         </div>
       )}
       {apiError && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {apiError}
         </div>
       )}
-      {renderStep()}
+      <DealSourceContext.Provider value={liveDeal.source}>{renderStep()}</DealSourceContext.Provider>
     </div>
   );
 }

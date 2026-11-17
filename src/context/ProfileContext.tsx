@@ -1,3 +1,5 @@
+import { useAuth } from './AuthContext';
+import { useSessionUser } from '../hooks/useSessionUser';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { hasApiConfig } from '../lib/api';
 import { accountService } from '../services';
@@ -22,6 +24,8 @@ export interface ProfileData {
 export interface ProfileContextValue extends ProfileData {
   fullName: string;
   initials: string;
+  /** The signed-in user's profile photo, or null to show their initials. */
+  avatarUrl: string | null;
   /** First name, last name and a syntactically valid email are all present. */
   isComplete: boolean;
   hasPhone: boolean;
@@ -139,6 +143,30 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // The signed-in user is the source of truth: follow every sign-in, sign-out
+  // and shell switch without needing a page reload.
+  const { authed } = useAuth();
+  const sessionUser = useSessionUser().data;
+  useEffect(() => {
+    if (!hasApiConfig()) return;
+    if (!authed) {
+      setProfile(DEFAULT_PROFILE);
+      return;
+    }
+    if (!sessionUser) return;
+    setProfile((current) => {
+      const next = {
+        firstName: sessionUser.firstName?.trim() || 'User',
+        lastName: sessionUser.lastName?.trim() || '',
+        email: sessionUser.email?.trim() || '',
+        phone: sessionUser.phone?.trim() || '',
+        createdAt: current.createdAt,
+      };
+      writeProfile(next);
+      return next;
+    });
+  }, [authed, sessionUser]);
+
   const update = useCallback((patch: Partial<ProfileData>) => {
     setProfile((current) => {
       const next = { ...current, ...patch };
@@ -158,6 +186,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       ...profile,
       fullName,
       initials,
+      avatarUrl: (authed && hasApiConfig() && sessionUser?.avatar?.trim()) || null,
       isComplete: Boolean(
         profile.firstName.trim() && profile.lastName.trim() && isValidEmail(profile.email),
       ),
@@ -165,7 +194,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       maskedPhone: masked,
       update,
     };
-  }, [profile, update]);
+  }, [profile, update, authed, sessionUser]);
 
   return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;
 }

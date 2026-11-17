@@ -1,8 +1,14 @@
+import { useCanSwitchToBusiness } from '../hooks/useCanSwitchToBusiness';
+import { useSessionUser } from '../hooks/useSessionUser';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
 import { AccountRowButton, RowGroup, type AccountRow, type AccountTarget } from '../components/AccountRows';
+import { activeVouchers, useClaims } from '../context/ClaimsContext';
 import { useProfile } from '../context/ProfileContext';
+import { useTotalSaved } from '../hooks/useCustomerDashboard';
+import { hasApiConfig } from '../services/api/client';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 export type { AccountTarget };
 
@@ -81,7 +87,18 @@ const UTILITY_ROWS: AccountRow[] = [
 ];
 
 export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenProps) {
-  const { fullName, email, initials, phone } = useProfile();
+  const canSwitch = useCanSwitchToBusiness();
+  const { fullName, email, phone } = useProfile();
+  // Live: real figures here; the rows' sample badges stay out until they are wired. Demo keeps them.
+  const live = hasApiConfig();
+  const sessionUser = useSessionUser().data;
+  // Live: the tick shows only once the email is verified; the demo keeps it.
+  const verified = !live || sessionUser?.emailVerified === true;
+  const totalSaved = useTotalSaved();
+  const { claims, claimsLoading } = useClaims();
+  const activeDeals = activeVouchers(claims).length;
+  const totalSavedLabel = new Intl.NumberFormat('en-NG', { style: 'currency', currency: 'NGN', maximumFractionDigits: 0 }).format(totalSaved);
+  const activityRows = live ? ACTIVITY_ROWS.map(({ badge: _badge, trail: _trail, ...row }) => row) : ACTIVITY_ROWS;
 
   return (
     <AppScreen>
@@ -111,8 +128,8 @@ export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenPro
             >
               <Icon name="help_outline" className="text-[24px]" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>
@@ -124,20 +141,22 @@ export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenPro
             <div className="flex items-start justify-between">
               <div className="flex items-center gap-space-sm min-w-0">
                 <div className="relative shrink-0">
-                  <div className="w-14 h-14 rounded-full bg-primary-fixed flex items-center justify-center text-on-primary-fixed font-heading-sm text-heading-sm font-bold shadow-inner">
-                    {initials || 'U'}
+                  <div className="w-14 h-14 rounded-full bg-primary-fixed flex items-center justify-center text-on-primary-fixed font-heading-sm text-heading-sm font-bold shadow-inner overflow-hidden">
+                    <UserAvatar textClassName="" />
                   </div>
-                  <span
-                    className="absolute bottom-0 right-0 w-4 h-4 bg-badge-discount-text rounded-full flex items-center justify-center text-surface shadow"
-                    title="Verified Customer"
-                  >
-                    <Icon name="check" className="text-[11px]" filled />
-                  </span>
+                  {verified && (
+                    <span
+                      className="absolute bottom-0 right-0 w-4 h-4 bg-badge-discount-text rounded-full flex items-center justify-center text-surface shadow"
+                      title="Verified Customer"
+                    >
+                      <Icon name="check" className="text-[11px]" filled />
+                    </span>
+                  )}
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-space-2xs">
                     <h2 className="font-heading-md text-heading-md text-on-surface truncate">{fullName || 'User'}</h2>
-                    <Icon name="verified" className="text-primary-container text-[18px]" filled />
+                    {verified && <Icon name="verified" className="text-primary-container text-[18px]" filled />}
                   </div>
                   <p className="font-body-md text-body-md text-text-secondary truncate">{phone || 'No phone number'}</p>
                   <p className="font-caption text-caption text-text-tertiary truncate">{email || 'No email'}</p>
@@ -161,7 +180,7 @@ export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenPro
                 </div>
                 <div className="min-w-0">
                   <span className="font-caption text-caption text-text-secondary block">Total Saved</span>
-                  <span className="font-label-md text-label-md font-bold text-badge-discount-text">₦18,500</span>
+                  <span className="font-label-md text-label-md font-bold text-badge-discount-text">{live ? totalSavedLabel : '₦18,500'}</span>
                 </div>
               </div>
               <div className="bg-surface-subtle p-space-xs rounded-lg flex items-center gap-space-xs">
@@ -170,14 +189,14 @@ export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenPro
                 </div>
                 <div className="min-w-0">
                   <span className="font-caption text-caption text-text-secondary block">Active Deals</span>
-                  <span className="font-label-md text-label-md font-bold text-on-surface">3 Live</span>
+                  <span className="font-label-md text-label-md font-bold text-on-surface">{live ? (claimsLoading ? '—' : `${activeDeals} Live`) : '3 Live'}</span>
                 </div>
               </div>
             </div>
           </section>
 
           <RowGroup title="Activity & Deals">
-            {ACTIVITY_ROWS.map((row) => (
+            {activityRows.map((row) => (
               <AccountRowButton key={row.label} row={row} onSelect={onNavigate} />
             ))}
           </RowGroup>
@@ -192,14 +211,14 @@ export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenPro
             <div className="p-space-md rounded-xl bg-surface-subtle flex flex-col items-center text-center">
               <div className="flex items-center gap-space-2xs text-text-secondary">
                 <Icon name="storefront" className="text-[18px]" />
-                <span className="font-label-md text-label-md">Own a business in Nigeria?</span>
+                <span className="font-label-md text-label-md">{canSwitch ? 'Your business is on VEMTAP' : 'Own a business in Nigeria?'}</span>
               </div>
               <button
                 type="button"
                 onClick={() => onNavigate('business-onboarding')}
                 className="mt-space-2xs text-primary-container font-label-md text-label-md font-semibold inline-flex items-center gap-1 hover:underline"
               >
-                Set up your business on VEMTAP
+                {canSwitch ? 'Switch to Business' : 'Set up your business on VEMTAP'}
                 <Icon name="arrow_forward" className="text-[16px]" />
               </button>
             </div>
@@ -215,7 +234,7 @@ export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenPro
               Sign Out
             </button>
             <p className="font-caption text-caption text-text-tertiary text-center">
-              VEMTAP Consumer v2.4.0 • Made with pride in Abuja
+              VEMTAP Consumer • Made with pride in Abuja
             </p>
           </section>
         </div>

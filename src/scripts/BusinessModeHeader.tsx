@@ -1,3 +1,4 @@
+import { Logo } from '../components/ui/Logo';
 import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 
 export function BusinessModeHeader({ title }: { title: string }) {
@@ -5,8 +6,9 @@ export function BusinessModeHeader({ title }: { title: string }) {
     <header className="sticky top-0 z-40 bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
       <div className="h-16 px-margin flex items-center justify-between">
         <div className="flex items-center gap-space-sm">
-          <div className="w-9 h-9 rounded-xl bg-primary-container flex items-center justify-center text-on-primary font-heading-sm text-heading-sm">
-            V
+          <div className="w-9 h-9 rounded-xl bg-primary-container flex items-center justify-center overflow-hidden shrink-0">
+            {/* The mark image has built-in padding, so it fills the tile and is scaled up slightly. */}
+            <Logo variant="mark-white" className="w-full h-full object-contain scale-125" />
           </div>
           <div className="flex flex-col">
             <span className="font-caption text-caption text-text-secondary uppercase tracking-wider">

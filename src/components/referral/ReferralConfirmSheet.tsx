@@ -118,8 +118,8 @@ function ReferralConfirmBody({
               autoComplete="off"
               className="w-full bg-transparent border-none outline-none font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:ring-0 tracking-[0.08em] uppercase"
               id="referral-code-confirm"
-              maxLength={12}
-              placeholder="e.g. VEMTAP1234"
+              maxLength={16}
+              placeholder="e.g. VEM-8OGUU4"
               spellCheck={false}
               type="text"
               value={draft}
@@ -142,8 +142,8 @@ function ReferralConfirmBody({
         </span>
 
         <p className="font-caption text-caption text-text-tertiary leading-relaxed">
-          Codes are 4–12 letters and numbers, shown exactly as entered. VEMTAP checks them on our servers once the
-          referral programme is activated — nothing here is verified yet.
+          Codes are 4–16 letters, numbers and dashes. VEMTAP checks them on our servers when you finish — an unknown
+          code never blocks your sign-up.
         </p>
       </div>
 

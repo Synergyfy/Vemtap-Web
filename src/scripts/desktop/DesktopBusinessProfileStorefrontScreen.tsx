@@ -932,6 +932,7 @@ export function DesktopBusinessProfileStorefrontScreen({
                     </button>
                     <button
                       type="button"
+                      onClick={() => onNav('business-catalog')}
                       className="py-2 rounded-xl bg-surface-tint-blue text-primary-container flex flex-col items-center justify-center gap-0.5 hover:bg-secondary-container transition-colors"
                     >
                       <Icon name="menu_book" className="text-[18px]" />
@@ -939,6 +940,7 @@ export function DesktopBusinessProfileStorefrontScreen({
                     </button>
                     <button
                       type="button"
+                      onClick={() => onNav('business-deals')}
                       className="py-2 rounded-xl bg-badge-discount-bg text-badge-discount-text flex flex-col items-center justify-center gap-0.5 hover:opacity-90 transition-opacity"
                     >
                       <Icon name="loyalty" className="text-[18px]" />
@@ -949,15 +951,23 @@ export function DesktopBusinessProfileStorefrontScreen({
                   <div className="pt-2 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                       <span className="font-label-sm text-label-sm font-bold text-text-primary">Featured Today</span>
-                      <span className="font-caption text-caption text-primary-container font-semibold cursor-pointer">
+                      <button
+                        type="button"
+                        onClick={() => onNav('business-catalog')}
+                        className="font-caption text-caption text-primary-container font-semibold cursor-pointer hover:underline"
+                      >
                         {view.itemCount != null ? `View All (${view.itemCount})` : 'View All'}
-                      </span>
+                      </button>
                     </div>
                     <div className="flex flex-col gap-2">
                       {view.featured.length === 0 && (
-                        <p className="p-2 rounded-xl bg-surface-canvas font-caption text-caption text-text-tertiary">
-                          Your active products and services appear here.
-                        </p>
+                        <button
+                          type="button"
+                          onClick={() => onNav('business-catalog')}
+                          className="p-2 rounded-xl bg-surface-canvas font-caption text-caption text-text-tertiary text-left hover:text-primary transition-colors"
+                        >
+                          Your active products and services appear here. <span className="text-primary font-semibold">Add one →</span>
+                        </button>
                       )}
                       {view.featured.map((item) => (
                         <div

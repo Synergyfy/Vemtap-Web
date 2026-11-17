@@ -61,6 +61,41 @@ export interface CreateRewardInput {
 const asList = <T>(res: T[] | { data?: T[] | null }) => (Array.isArray(res) ? res : res.data ?? []);
 const scope = (branchId?: string) => ({ params: branchId ? { branchId } : {} });
 
+export interface GivePointsInput {
+  customerId: string;
+  branchId: string;
+  points: number;
+  reason: string;
+}
+
+/** `POST /loyalty/points/deduct` — a staff correction, never below the balance at this business. */
+export interface DeductPointsInput {
+  customerId: string;
+  branchId: string;
+  points: number;
+  reason: string;
+}
+
+/** `POST /loyalty/customers` — add a customer at the counter (found by email/phone, or created pending). */
+export interface RegisterCustomerInput {
+  firstName: string;
+  lastName?: string;
+  phone: string;
+  email?: string;
+  welcomePoints?: number;
+  branchId: string;
+}
+
+export interface RegisteredCustomer {
+  userId: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  pointsBalance: number;
+  tier: string;
+  isNewCustomer: boolean;
+}
+
 /** Owner-side loyalty: earning rules, branch rewards, stats and the points ledger. */
 export const loyaltyService = {
   stats: (branchId?: string) => api.get<LoyaltyStats>('/loyalty/business-stats', scope(branchId)),
@@ -72,6 +107,9 @@ export const loyaltyService = {
   updateReward: (id: string, patch: Partial<Omit<CreateRewardInput, 'branchId' | 'category'>> & { isActive?: boolean }) =>
     api.patch<LoyaltyReward>(`/loyalty/rewards/${id}`, patch),
   removeReward: (id: string) => api.del<unknown>(`/loyalty/rewards/${id}`),
+  givePoints: (input: GivePointsInput) => api.post<unknown>('/loyalty/points/give', input),
+  deductPoints: (input: DeductPointsInput) => api.post<{ success: boolean; newBalance: number }>('/loyalty/points/deduct', input),
+  registerCustomer: (input: RegisterCustomerInput) => api.post<RegisteredCustomer>('/loyalty/customers', input),
   logs: (businessId: string, branchId?: string) =>
     api
       .get<{ data?: PointLog[] | null }>('/loyalty/points/business-logs', { params: { businessId, ...(branchId ? { branchId } : {}), page: 1, limit: 20 } })

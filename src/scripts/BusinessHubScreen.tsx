@@ -42,6 +42,7 @@ export function BusinessHubScreen({
   onBackCustomerProfile,
   onOpenAnalytics,
   onPreviewInvite,
+  onAddLocation,
 }: {
   initialStep?: BusinessHubStep;
   onTab: (tab: BusinessTabKey) => void;
@@ -56,6 +57,8 @@ export function BusinessHubScreen({
   onBackCustomerProfile?: () => void;
   onOpenAnalytics?: () => void;
   onPreviewInvite?: (url: string) => void;
+  /** "Add Location" on the locations step — opens the paid add-location flow. */
+  onAddLocation?: () => void;
 }) {
   const [step, setStep] = useState<BusinessHubStep>(initialStep);
   const [assignmentItem, setAssignmentItem] = useState('Woodfire Aged Ribeye Steak');
@@ -65,7 +68,7 @@ export function BusinessHubScreen({
   const [dealSource, setDealSource] = useState<CatalogueItem | null>(null);
   const [dealGroupId, setDealGroupId] = useState<string | null>(null);
   const [catalogNotice, setCatalogNotice] = useState<string | null>(null);
-  const [profileCustomer, setProfileCustomer] = useState(initialCustomer ?? 'Michael James');
+  const [profileCustomer, setProfileCustomer] = useState(initialCustomer ?? (hasApiConfig() ? '' : 'Michael James'));
   const [profileCustomerId, setProfileCustomerId] = useState<string | null>(initialCustomerId ?? null);
 
   useEffect(() => {
@@ -90,7 +93,7 @@ export function BusinessHubScreen({
       case 'hub':
         return <BusinessHubHomeScreen onTab={handleTab} onOpenModule={onOpenModule} />;
       case 'locations':
-        return <BusinessLocationsScreen onTab={handleTab} onAddBranch={() => setStep('addBranch')} />;
+        return <BusinessLocationsScreen onTab={handleTab} onAddBranch={() => setStep('addBranch')} onAddLocation={onAddLocation} />;
       case 'addBranch':
         return <BusinessAddBranchScreen onBack={() => setStep('locations')} onSaved={() => setStep('locations')} />;
       case 'catalog':
@@ -146,6 +149,7 @@ export function BusinessHubScreen({
             onBoost={() => onBoost('Weekend Prime Lunch Combo')}
             onEditAssignment={() => setStep('dealAssignment')}
             onEditDeal={() => setStep('dealCreate')}
+            onDeleted={() => setStep('deals')}
           />
         );
       case 'dealCreate':

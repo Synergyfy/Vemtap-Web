@@ -437,7 +437,7 @@ export function DesktopPosCartScreen({
                   Checkout Deck
                 </span>
                 <span className="font-caption text-caption px-space-xs py-0.5 rounded-full bg-surface-tint-blue text-primary font-semibold">
-                  Card Terminal 01
+                  {live ? (pos.isOpen ? pos.tillName : 'No till open') : 'Card Terminal 01'}
                 </span>
               </div>
 

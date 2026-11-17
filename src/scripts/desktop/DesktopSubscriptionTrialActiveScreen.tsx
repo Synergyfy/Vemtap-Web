@@ -1,3 +1,4 @@
+import { useBusinessAnalytics } from '../../hooks/business/useBusinessAnalytics';
 import { Icon } from '../../components/ui/Icon';
 import { hasApiConfig } from '../../services/api/client';
 import { useActiveSubscription, useSubscriptionPlans } from '../../hooks/business/useSubscription';
@@ -15,7 +16,7 @@ const TRIAL_INCLUDES = [
   {
     icon: 'check',
     title: 'Multiple business locations active',
-    sub: 'Apo, Wuse II branches live and verifiable',
+    sub: 'Every branch live and verifiable',
     stacked: true,
   },
   { icon: 'check', title: 'Products & services catalog' },
@@ -66,6 +67,21 @@ export function DesktopSubscriptionTrialActiveScreen({
     ? new Date(sub.startDate).toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' })
     : null;
   const endText = renewalDate(sub?.trialEndsAt ?? sub?.endDate);
+  // Live: the last 7 days of visits, and this week's against the week before.
+  const fortnight = useBusinessAnalytics('overview', 14).data;
+  const days = (fortnight?.series ?? []).slice(-14);
+  const thisWeek = days.slice(-7);
+  const visitsThisWeek = thisWeek.reduce((sum, point) => sum + point.visits, 0);
+  const visitsLastWeek = days.slice(0, Math.max(0, days.length - 7)).reduce((sum, point) => sum + point.visits, 0);
+  const weekChange = visitsLastWeek ? Math.round(((visitsThisWeek - visitsLastWeek) / visitsLastWeek) * 100) : null;
+  const peak = Math.max(1, ...thisWeek.map((point) => point.visits));
+  const footfall = live
+    ? thisWeek.map((point) => ({
+        day: new Date(point.date).toLocaleDateString('en-NG', { weekday: 'short' }),
+        value: Math.round((point.visits / peak) * 100),
+        count: point.visits,
+      }))
+    : WEEKLY_FOOTFALL.map((bar) => ({ ...bar, count: bar.value }));
 
   return (
     <SubscriptionChrome
@@ -239,8 +255,14 @@ export function DesktopSubscriptionTrialActiveScreen({
                   </div>
                   <div className="flex flex-col gap-space-2xs">
                     <span className="font-label-sm text-label-sm text-text-primary font-semibold">Table passes live</span>
-                    <span className="font-caption text-caption text-text-secondary">128 scans this week</span>
-                    <span className="font-caption text-caption text-badge-discount-text font-semibold">+18% vs last</span>
+                    <span className="font-caption text-caption text-text-secondary">
+                      {live ? (fortnight ? `${visitsThisWeek} visits this week` : '—') : '128 scans this week'}
+                    </span>
+                    {(!live || weekChange !== null) && (
+                      <span className="font-caption text-caption text-badge-discount-text font-semibold">
+                        {live ? `${weekChange! >= 0 ? '+' : ''}${weekChange}% vs last week` : '+18% vs last'}
+                      </span>
+                    )}
                   </div>
                 </div>
               </section>
@@ -251,12 +273,12 @@ export function DesktopSubscriptionTrialActiveScreen({
                   <Icon name="insights" className="text-primary text-[20px]" />
                 </div>
                 <div className="flex items-end justify-between gap-space-2xs h-20">
-                  {WEEKLY_FOOTFALL.map((bar) => (
+                  {footfall.map((bar) => (
                     <div key={bar.day} className="flex flex-col items-center gap-space-2xs flex-1">
                       <div
                         className="w-full rounded-t bg-primary-container/80"
                         style={{ height: `${bar.value}%` }}
-                        title={`${bar.value}`}
+                        title={`${bar.count}`}
                       />
                       <span className="font-caption text-caption text-text-tertiary">{bar.day}</span>
                     </div>

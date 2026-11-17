@@ -5,6 +5,7 @@ import { MultiSelectDropdown } from '../../components/ui/MultiSelectDropdown';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import type { BusinessProfileDraft } from './DesktopBusinessOnboardingScreen';
 import { useBusinessCategoryOptions } from '../../hooks/business/useBusinessCategoryOptions';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
 import {
   BUSINESS_CATEGORIES,
   MAX_CATEGORY_SELECTIONS,
@@ -35,6 +36,9 @@ export function DesktopBusinessProfileBasicScreen({
   onNext,
   onSaveDraft,
 }: DesktopBusinessProfileBasicScreenProps) {
+  // Live: the business's own cover photo (if any) instead of the sample bistro photo.
+  const live = hasApiConfig();
+  const coverImage = useMyBusiness().data?.coverImage ?? null;
   const [showErrors, setShowErrors] = useState(false);
   const categoryData = useBusinessCategoryOptions(BUSINESS_CATEGORIES);
   const CATEGORY_OPTIONS = categoryData.options.map((category) => ({ value: category.label, label: category.label }));
@@ -345,18 +349,33 @@ export function DesktopBusinessProfileBasicScreen({
 
             <div className="w-full bg-surface-canvas rounded-2xl shadow-xl overflow-hidden group">
               <div className="relative h-56 w-full overflow-hidden bg-surface-container">
-                <img
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                  alt="An inviting, high-end warm bistro and grill interior with exposed wooden beams, glowing ambient filament lamps, sizzling charcoal grill kitchen in soft bokeh background, and elegant dining tables."
-                  src={PREVIEW_IMAGE}
-                />
+                {!live ? (
+                  <img
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                    alt="Sample storefront photo"
+                    src={PREVIEW_IMAGE}
+                  />
+                ) : coverImage ? (
+                  <img
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                    alt={`${draft.name.trim() || 'Your business'} cover photo`}
+                    src={coverImage}
+                  />
+                ) : (
+                  // Live: no stock photo — the cover photo is added on the next step (Branding).
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-space-2xs text-text-tertiary">
+                    <Icon name="add_photo_alternate" className="text-[40px]" />
+                    <span className="font-caption text-caption">Your cover photo appears here</span>
+                  </div>
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-inverse-surface/80 via-inverse-surface/20 to-transparent" />
-                <div className="absolute top-space-md left-space-md flex items-center gap-space-xs">
+                {!live && (<div className="absolute top-space-md left-space-md flex items-center gap-space-xs">
                   <span className="px-space-sm py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-caption font-bold shadow-sm flex items-center gap-space-2xs">
                     <Icon name="local_fire_department" className="text-[14px]" />
                     <span>Trending District Spot</span>
                   </span>
                 </div>
+                )}
                 <div className="absolute top-space-md right-space-md w-9 h-9 rounded-full bg-surface-canvas/90 backdrop-blur-md flex items-center justify-center text-text-secondary shadow-sm">
                   <Icon name="favorite" className="text-[18px]" />
                 </div>
@@ -376,10 +395,11 @@ export function DesktopBusinessProfileBasicScreen({
                       </span>
                     </div>
                   </div>
-                  <div className="px-space-xs py-space-2xs rounded-lg bg-inverse-surface/80 backdrop-blur-md font-label-sm text-caption font-semibold flex items-center gap-space-2xs">
+                  {!live && (<div className="px-space-xs py-space-2xs rounded-lg bg-inverse-surface/80 backdrop-blur-md font-label-sm text-caption font-semibold flex items-center gap-space-2xs">
                     <Icon name="near_me" className="text-[14px] text-badge-discount-text" />
                     <span>0.3 mi</span>
                   </div>
+                  )}
                 </div>
               </div>
 

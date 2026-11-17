@@ -57,9 +57,13 @@ function bindRealtime(queryClient: QueryClient) {
   };
 
   const handlers: [string, (...args: any[]) => void][] = [
-    ['inboxUpdate', (event: { threadId?: string }) => {
+    ['inboxUpdate', (event: { threadId?: string; message?: { id?: string; direction?: string } }) => {
       void refreshThreads();
       refreshThread(event?.threadId);
+      // Reached this device: the customer's message gets its second tick.
+      if (event?.threadId && event.message?.id && event.message.direction?.toUpperCase() === 'INBOUND') {
+        socketService.emit(NS, 'markDelivered', { threadId: event.threadId, messageId: event.message.id });
+      }
     }],
     ['newMessage', (message: { threadId?: string }) => refreshThread(message?.threadId)],
     ['messageUpdate', (event: { threadId?: string }) => refreshThread(event?.threadId)],
@@ -117,9 +121,17 @@ export function useThreadRealtime(threadId: string | null) {
   useEffect(() => {
     if (!threadId || !authed || !socketService.hasConfig()) return;
     let timer: number | undefined;
-    const join = () => socketService.emit(NS, 'joinThread', { threadId });
+    // Having the chat open reads it: the customer's ticks turn blue.
+    const markRead = () => socketService.emit(NS, 'markRead', { threadId });
+    const join = () => {
+      socketService.emit(NS, 'joinThread', { threadId });
+      markRead();
+    };
     join();
     const offConnect = socketService.on(NS, 'connect', join);
+    const offMessage = socketService.on(NS, 'newMessage', (message: { threadId?: string; direction?: string }) => {
+      if (message?.threadId === threadId && message.direction?.toUpperCase() === 'INBOUND') markRead();
+    });
     const offTyping = socketService.on(NS, 'userTyping', (event: { threadId?: string; isTyping?: boolean }) => {
       if (event?.threadId !== threadId) return;
       window.clearTimeout(timer);
@@ -130,6 +142,7 @@ export function useThreadRealtime(threadId: string | null) {
     return () => {
       window.clearTimeout(timer);
       offConnect();
+      offMessage();
       offTyping();
       socketService.emit(NS, 'leaveThread', { threadId });
       setCustomerTyping(false);

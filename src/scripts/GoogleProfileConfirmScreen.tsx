@@ -159,7 +159,8 @@ export function GoogleProfileConfirmScreen({ onBack, onContinue }: GoogleProfile
           </button>
 
           <p className="font-caption text-caption text-text-tertiary text-center leading-relaxed">
-            Google authentication isn’t changed by this screen, and no referral code is verified by a server yet.
+            Google authentication isn’t changed by this screen. A referral code entered here is applied to your new
+            account once you continue.
           </p>
         </div>
       </div>

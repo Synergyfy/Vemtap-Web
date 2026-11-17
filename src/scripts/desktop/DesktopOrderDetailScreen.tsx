@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { NO_IMAGE } from '../../utils/homeOffer';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { OrderQrArt } from '../../components/ui/OrderQrArt';
@@ -18,20 +19,15 @@ interface DesktopOrderDetailScreenProps {
   orderRef?: string;
   onNav: (key: DesktopNavKey) => void;
   onBack: () => void;
+  /** Opens the chat with this branch. */
+  onChat?: (branchId: string) => void;
 }
-
-const URBAN_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuCta-AVcjCZDWInIcUOJAuZYV2oAQHyTKLW5eoRshVGRfv8UJJbZ9ZCzBn61chEDIfTHAGW1GJtmX2WtS91OqMMUuKu_rwDf5fhd87TDW44tR2GYusQ1Q0A_EdzsPpIuPe9Ka3jV_pnY_4A-0zbBoXeaXu8h257sUKg1LWCudIZeklCl2b_QS7i_d4Cq3p8rIm-xBCEHufzUuVhTBN4Z6tLGW_WUhyJZBbwR8YVUOYg';
-const URBAN_ALT =
-  'Plated gourmet woodfire steak dinner at Urban Grill and Bistro Abuja with warm ambient restaurant spotlighting';
-
-const DIRECTIONS_URL = 'https://www.google.com/maps/search/?api=1&query=Apo%20Boulevard%2C%20Abuja';
 
 const FULFILLMENT_LABELS = { pickup: 'Pickup', delivery: 'Delivery' } as const;
 
 const money = (value: number) => `₦${value.toLocaleString('en-US')}`;
 
-export function DesktopOrderDetailScreen({ orderRef, onNav, onBack }: DesktopOrderDetailScreenProps) {
+export function DesktopOrderDetailScreen({ orderRef, onNav, onBack, onChat }: DesktopOrderDetailScreenProps) {
   const [toast, setToast] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
@@ -70,9 +66,15 @@ export function DesktopOrderDetailScreen({ orderRef, onNav, onBack }: DesktopOrd
     );
   }
 
+  const directionsUrl =
+    order.merchantLatitude != null && order.merchantLongitude != null
+      ? `https://www.google.com/maps/search/?api=1&query=${order.merchantLatitude},${order.merchantLongitude}`
+      : order.merchantAddress
+        ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.merchantAddress)}`
+        : null;
+
   const timeline = orderTimeline(order.status);
   const paymentCleared = isPaymentCleared(order.paymentStatus);
-  const pickupPin = (order.ref.replace(/\D/g, '') + '0000').slice(-4);
   const readyByLabel = order.readyByLabel ?? 'Shortly';
 
   const steps = [
@@ -333,68 +335,41 @@ export function DesktopOrderDetailScreen({ orderRef, onNav, onBack }: DesktopOrd
                 </p>
               </section>
 
-              <section className="bg-surface-tint-blue rounded-2xl shadow-md p-6">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="font-label-sm text-label-sm font-semibold text-primary uppercase tracking-wider">
-                    Counter Pickup PIN
-                  </span>
-                  <Icon name="pin" className="text-primary text-[20px]" filled />
-                </div>
-                <div className="flex items-center justify-between bg-surface-canvas rounded-xl px-4 py-3 shadow-sm">
-                  <span className="font-mono text-heading-lg text-heading-lg font-bold tracking-[0.3em] text-text-primary">
-                    {pickupPin}
-                  </span>
-                  <button
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-surface-subtle hover:bg-surface-tint-blue hover:text-primary text-text-secondary font-label-sm text-label-sm font-semibold transition-colors"
-                    onClick={() => copyValue(pickupPin, 'Pickup PIN')}
-                    type="button"
-                  >
-                    <Icon name={copied === pickupPin ? 'check' : 'content_copy'} className="text-[16px]" />
-                    <span>{copied === pickupPin ? 'Copied' : 'Copy PIN'}</span>
-                  </button>
-                </div>
-                <p className="font-caption text-caption text-text-secondary mt-3 leading-relaxed">
-                  Show this PIN when you collect your order at the {order.merchantName} counter. It replaces a printed
-                  ticket.
-                </p>
-              </section>
-
               <section className="bg-surface-canvas rounded-2xl shadow-md p-6 flex flex-col gap-4">
                 <div className="flex items-center gap-3">
-                  <img alt={URBAN_ALT} className="w-14 h-14 rounded-xl object-cover shadow-sm" src={URBAN_IMG} />
+                  <img alt={order.merchantName} className="w-14 h-14 rounded-xl object-cover shadow-sm" src={order.merchantLogo || NO_IMAGE} />
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
                       <h3 className="font-heading-sm text-heading-sm text-text-primary font-bold truncate">
                         {order.merchantName}
                       </h3>
-                      <Icon name="verified" filled className="text-primary text-[16px]" />
                     </div>
                     <span className="font-caption text-caption text-text-secondary block truncate">
-                      Plot 14 Apo Boulevard, Abuja • 0.8 km
-                    </span>
-                    <span className="font-caption text-caption text-badge-discount-text font-semibold">
-                      Open until 10:30 PM
+{order.merchantAddress}
                     </span>
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
-                  <a
-                    href="tel:+2348039204491"
+                  {order.merchantPhone ? (
+<a
+ href={`tel:${order.merchantPhone}`}
                     className="h-10 rounded-xl bg-surface-subtle hover:bg-surface-tint-blue hover:text-primary text-text-secondary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1.5 transition-colors"
                   >
                     <Icon name="call" className="text-[16px]" />
                     <span>Call</span>
                   </a>
+) : null}
                   <button
                     className="h-10 rounded-xl bg-surface-subtle hover:bg-surface-tint-blue hover:text-primary text-text-secondary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1.5 transition-colors"
-                    onClick={() => onNav('messages')}
+                    onClick={() => (onChat ? onChat(order.merchantId) : onNav('messages'))}
                     type="button"
                   >
                     <Icon name="chat" className="text-[16px]" />
                     <span>Chat</span>
                   </button>
-                  <a
-                    href={DIRECTIONS_URL}
+                  {directionsUrl ? (
+<a
+ href={directionsUrl}
                     target="_blank"
                     rel="noreferrer"
                     className="h-10 rounded-xl bg-surface-subtle hover:bg-surface-tint-blue hover:text-primary text-text-secondary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1.5 transition-colors"
@@ -402,13 +377,14 @@ export function DesktopOrderDetailScreen({ orderRef, onNav, onBack }: DesktopOrd
                     <Icon name="near_me" className="text-[16px]" />
                     <span>Directions</span>
                   </a>
+) : null}
                 </div>
               </section>
 
               <section className="bg-surface-canvas rounded-2xl shadow-md p-6 flex flex-col gap-3">
                 <button
                   className="w-full h-12 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary shadow-md hover:opacity-95 transition-all flex items-center justify-center gap-2"
-                  onClick={() => onNav('storefront')}
+                  onClick={() => onNav('discover')}
                   type="button"
                 >
                   <Icon name="refresh" className="text-[20px]" />
@@ -436,7 +412,7 @@ export function DesktopOrderDetailScreen({ orderRef, onNav, onBack }: DesktopOrd
                            .join('')}
                          <tr class="total"><td>Total</td><td>${money(order.total)}</td></tr>
                        </tbody></table>
-                       <p class="foot">Vemtap receipt — proof of order. Pickup PIN ${pickupPin}.</p>`
+                       <p class="foot">Vemtap receipt — proof of order.</p>`
                     );
                     showToast('Receipt opened — save it as PDF from the print dialog');
                   }}

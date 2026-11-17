@@ -592,7 +592,7 @@ export function ClusterBoostListScreen({
       <BusinessPortalChrome activeNav="cluster-system" onNav={() => undefined}>
         {content}
         {loadError && (
-          <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-on-surface-inverse px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
+          <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-inverse-on-surface px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
             {loadError}
           </div>
         )}
@@ -603,7 +603,7 @@ export function ClusterBoostListScreen({
     <AppScreen surface="bg-surface-canvas">
       {content}
       {loadError && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {loadError}
         </div>
       )}

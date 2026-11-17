@@ -28,10 +28,8 @@ export function MerchantShell({ children, activeNav = 'catalog', onNav, onSignOu
     else onNav?.(key);
   };
 
-  // Store Front pages live inside POS now: the main business rail collapses to an
-  // icon strip and the POS menu (with the Store Front group) opens beside it.
-  // Messages works the same way — the Messages menu (In-App Chat / SMS / Email)
-  // opens beside the collapsed main rail.
+  // POS and Messages use secondary rails beside the collapsed main rail.
+  // Store Front remains a separate section in the main business rail.
   const { sectionKey, itemKey } = resolveSidebarActive(activeNav);
   const posMode = sectionKey === 'pos';
   const messagesMode = sectionKey === 'messages';

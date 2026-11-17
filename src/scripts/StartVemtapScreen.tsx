@@ -17,7 +17,7 @@ export function StartVemtapScreen({
   onBusinessSetup,
 }: StartVemtapScreenProps) {
   return (
-    <AppScreen>
+    <AppScreen fit>
       <div className="flex flex-col w-full px-6 justify-between flex-1 pb-4">
         <div className="flex items-center justify-between w-full pt-2">
           <button
@@ -34,8 +34,8 @@ export function StartVemtapScreen({
           </button>
         </div>
 
-        <div className="relative w-full h-[240px] flex items-center justify-center my-auto select-none overflow-hidden">
-          <div className="relative w-[300px] h-[300px] shrink-0 scale-[0.68] flex items-center justify-center">
+        <div className="relative w-full flex-1 min-h-0 max-h-[240px] flex items-center justify-center my-auto select-none overflow-hidden">
+          <div className="relative w-[300px] h-[300px] shrink-0 scale-[0.68] [@media(max-height:700px)]:scale-[0.6] [@media(max-height:620px)]:scale-[0.54] flex items-center justify-center">
             <div className="absolute inset-0 rounded-full bg-surface-container-high/40 animate-ping opacity-20 duration-1000" />
             <div className="absolute w-[280px] h-[280px] rounded-full bg-surface-container-low" />
             <div className="absolute w-[210px] h-[210px] rounded-full bg-surface-container" />
@@ -78,7 +78,7 @@ export function StartVemtapScreen({
           </div>
         </div>
 
-        <div className="flex flex-col w-full space-y-6">
+        <div className="flex flex-col w-full space-y-6 [@media(max-height:700px)]:space-y-4 shrink-0">
           <div className="flex flex-col text-center space-y-2.5 px-2">
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
               Let's find what's near you.

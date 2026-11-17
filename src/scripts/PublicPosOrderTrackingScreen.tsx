@@ -5,6 +5,7 @@ import { naira } from './catalogueData';
 import { publicCartTotals, type PublicCartLine } from './publicPosData';
 import { apiErrorMessage } from '../services/errorMessages';
 import { GUEST_NO_IMAGE, trackingSteps, useGuestTracking } from './publicPosLive';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface PublicPosOrderTrackingScreenProps {
   cart: PublicCartLine[];
@@ -99,8 +100,8 @@ export function PublicPosOrderTrackingScreen({ cart, onBack, onReopenMenu }: Pub
             </button>
             <h1 className="font-heading-sm text-heading-sm text-text-primary truncate">Public POS Order Tracking</h1>
           </div>
-          <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-            <Icon name="person" className="text-on-primary text-[17px]" />
+          <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 overflow-hidden">
+            <UserAvatar textClassName="text-on-primary text-[13px]" />
           </span>
         </div>
       </header>

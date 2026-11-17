@@ -8,7 +8,8 @@ export interface GiftRecipientValues {
   lastName: string;
   email: string;
   phone: string;
-  channel: 'whatsapp' | 'email' | 'sms';
+  /** The sender's message; sent with the gift email. */
+  note: string;
 }
 
 export interface GiftRecipientDetailsModalProps {
@@ -27,46 +28,20 @@ export interface GiftRecipientDetailsModalProps {
   } | null;
 }
 
-type Channel = 'whatsapp' | 'email' | 'sms';
-type Theme = 'celebration' | 'treat' | 'thankyou';
-
-const CHANNELS: Array<{ value: Channel; label: string; icon: string }> = [
-  { value: 'whatsapp', label: 'WhatsApp', icon: 'chat' },
-  { value: 'email', label: 'Email', icon: 'mail' },
-  { value: 'sms', label: 'SMS Pass', icon: 'sms' },
-];
-
-const THEMES: Array<{ value: Theme; emoji: string; label: string }> = [
-  { value: 'celebration', emoji: '🎉', label: 'Celebration' },
-  { value: 'treat', emoji: '🍽️', label: 'Treat a Friend' },
-  { value: 'thankyou', emoji: '❤️', label: 'Thank You' },
-];
-
-const CHANNEL_FIELDS: Record<Channel, { label: string; placeholder: string; type: string; pill: boolean }> = {
-  whatsapp: { label: "Recipient's WhatsApp Phone Number", placeholder: '0802 345 6789', type: 'tel', pill: true },
-  email: { label: "Recipient's Email Address", placeholder: 'samuel.adeleke@example.com', type: 'email', pill: false },
-  sms: { label: "Recipient's Mobile Number (SMS)", placeholder: '0802 345 6789', type: 'tel', pill: true },
-};
-
-const DEFAULT_MESSAGE = 'Enjoy this lunch on me! Hope you love the woodfire steaks at Urban Grill.';
+const DEFAULT_MESSAGE = 'Enjoy this deal on me! Hope you love it.';
 
 export function GiftRecipientDetailsModal({ open, onClose, onContinue, deal }: GiftRecipientDetailsModalProps) {
-  const [channel, setChannel] = useState<Channel>('whatsapp');
-  const [theme, setTheme] = useState<Theme>('celebration');
-  const [scheduled, setScheduled] = useState(false);
-  const dealTitle = deal?.title || 'Prime 3-Course Lunch Combo';
+  const dealTitle = deal?.title || 'This deal';
   const businessName = deal?.business?.trim() || 'This local partner';
   const dealPrice = parsePrice(deal?.price);
-  const dealImage = deal?.image || 'https://lh3.googleusercontent.com/aida-public/AB6AXuAJMHIARfSRdfmLjooNWrnoGUTZ6S-X-jLmnOg-Yq6LUQXHL9VZRrdMdsIwVV1MnZI6KXGPg-o_JVXHQ7ziQ4WiIfdhJKMjAx7uNK6Phr3p715JBX-rFxFy3vIdKME6C500V8Os_OUkDa7-WBQLg3Ok_5u6aoU4oP18dg7KvlFXL9pU5SNXArhRWWK1tHPerh7nf9YFsjUtdq-ZTWRoIxfOy8KB7FO-t0Ztojlpy6On';
+  const dealImage = deal?.image ?? '';
   const defaultMessage = deal?.title
     ? `Enjoy this ${dealTitle.toLowerCase()} on me! Hope you love it at ${businessName}.`
     : DEFAULT_MESSAGE;
   const [message, setMessage] = useState(defaultMessage);
-  const [fullName, setFullName] = useState('Samuel Adeleke');
-  const [email, setEmail] = useState('samuel.adeleke@example.com');
-  const [phone, setPhone] = useState('0802 345 6789');
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
 
-  const field = CHANNEL_FIELDS[channel];
   const [firstName = '', ...rest] = fullName.trim().split(/\s+/);
   const lastName = rest.join(' ');
 
@@ -150,8 +125,8 @@ export function GiftRecipientDetailsModal({ open, onClose, onContinue, deal }: G
             firstName: firstName.trim(),
             lastName: lastName.trim(),
             email: email.trim(),
-            phone: phone.trim(),
-            channel,
+            phone: '',
+            note: message.trim(),
           });
         }}
       >
@@ -164,7 +139,7 @@ export function GiftRecipientDetailsModal({ open, onClose, onContinue, deal }: G
             <Icon name="badge" className="absolute left-3.5 text-text-tertiary text-[20px]" />
             <input
               className="w-full h-[50px] pl-11 pr-4 rounded-xl bg-surface-subtle text-on-surface font-body-md text-body-md placeholder:text-text-tertiary focus:bg-surface-canvas focus:outline-none transition-all"
-              placeholder="e.g. Samuel Adeleke"
+              placeholder="Recipient's full name"
               type="text"
               required
               value={fullName}
@@ -173,82 +148,17 @@ export function GiftRecipientDetailsModal({ open, onClose, onContinue, deal }: G
           </div>
         </div>
 
-        <div className="flex flex-col gap-2">
-          <label className="font-label-sm text-label-sm text-on-surface font-semibold">Delivery Method</label>
-          <div className="grid grid-cols-3 gap-1.5 p-1 bg-surface-container rounded-xl text-center">
-            {CHANNELS.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                onClick={() => setChannel(item.value)}
-                className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg font-label-sm text-label-sm transition-all ${
-                  channel === item.value
-                    ? 'bg-surface-canvas text-primary font-semibold shadow-sm'
-                    : 'text-text-secondary hover:text-on-surface'
-                }`}
-              >
-                <Icon name={item.icon} className="text-[18px]" />
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
         <div className="flex flex-col gap-1.5">
-          <label className="font-label-sm text-label-sm text-on-surface font-semibold">{field.label}</label>
-          <div className="flex items-center gap-2">
-            {field.pill ? (
-              <div className="h-[50px] px-3.5 rounded-xl bg-surface-subtle flex items-center gap-2 shrink-0 select-none">
-                <span className="text-[18px]">🇳🇬</span>
-                <span className="font-label-sm text-label-sm font-semibold text-on-surface">+234</span>
-              </div>
-            ) : null}
-            <div className="relative flex-1 flex items-center">
-              <input
-                className="w-full h-[50px] px-4 rounded-xl bg-surface-subtle text-on-surface font-body-md text-body-md placeholder:text-text-tertiary focus:bg-surface-canvas focus:outline-none transition-all tracking-wide"
-                placeholder={field.placeholder}
-                type={field.type}
-                required
-                value={channel === 'email' ? email : phone}
-                onChange={(event) =>
-                  channel === 'email' ? setEmail(event.target.value) : setPhone(event.target.value)
-                }
-              />
-              <span className="absolute right-3.5 flex items-center text-badge-discount-text">
-                <Icon name="check_circle" filled className="text-[18px]" />
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <label className="font-label-sm text-label-sm text-on-surface font-semibold">Gift Card Theme</label>
-            <span className="font-caption text-caption text-text-tertiary">Select greeting style</span>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {THEMES.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                onClick={() => setTheme(item.value)}
-                className={`flex flex-col items-center justify-center p-2.5 rounded-xl transition-all text-center ${
-                  theme === item.value
-                    ? 'bg-surface-tint-blue text-primary'
-                    : 'bg-surface-subtle text-text-secondary hover:text-on-surface hover:bg-surface-container'
-                }`}
-              >
-                <span className="text-xl mb-0.5">{item.emoji}</span>
-                <span
-                  className={`font-label-sm text-label-sm ${
-                    theme === item.value ? 'font-semibold' : 'font-medium'
-                  }`}
-                >
-                  {item.label}
-                </span>
-              </button>
-            ))}
-          </div>
+          <label className="font-label-sm text-label-sm text-on-surface font-semibold">Recipient's Email Address</label>
+          <input
+            className="w-full h-[50px] px-4 rounded-xl bg-surface-subtle text-on-surface font-body-md text-body-md placeholder:text-text-tertiary focus:bg-surface-canvas focus:outline-none transition-all"
+            placeholder="Enter email address"
+            type="email"
+            required
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+          <span className="font-caption text-caption text-text-tertiary">The gift and how to claim it are sent to this email.</span>
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -268,45 +178,10 @@ export function GiftRecipientDetailsModal({ open, onClose, onContinue, deal }: G
           />
         </div>
 
-        <div className="p-3.5 rounded-xl bg-surface-container-low flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-surface-tint-blue flex items-center justify-center text-primary shrink-0">
-              <Icon name={scheduled ? 'calendar_today' : 'bolt'} className="text-[20px]" />
-            </div>
-            <div className="flex flex-col">
-              <span className="font-label-sm text-label-sm font-semibold text-on-surface">
-                {scheduled ? 'Schedule Delivery Date' : 'Deliver Immediately'}
-              </span>
-              <span className="font-caption text-caption text-text-secondary">
-                {scheduled
-                  ? 'Choose an upcoming birthday, anniversary, or surprise day'
-                  : 'Voucher link unlocks right after confirmation'}
-              </span>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            role="switch"
-            aria-checked={scheduled}
-            aria-label="Schedule delivery"
-            onClick={() => setScheduled((value) => !value)}
-            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
-              scheduled ? 'bg-primary-container' : 'bg-outline-variant'
-            }`}
-          >
-            <span
-              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface-canvas shadow-sm transition duration-200 ease-in-out ${
-                scheduled ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
-        </div>
-
         <div className="flex flex-col gap-3">
           <button
             type="submit"
-            className="w-full h-[52px] rounded-xl bg-primary-container text-on-primary-container font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-lg shadow-primary-container/20 hover:bg-surface-tint active:scale-[0.99] transition-all"
+            className="w-full h-[52px] rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-lg shadow-primary-container/20 hover:bg-surface-tint active:scale-[0.99] transition-all"
           >
             <span>Continue to Gift Review</span>
             <Icon name="arrow_forward" className="text-[20px]" />

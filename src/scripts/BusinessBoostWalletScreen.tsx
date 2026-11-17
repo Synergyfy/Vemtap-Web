@@ -610,6 +610,7 @@ export function BusinessBoostWalletScreen({ onBack, onTab }: BusinessBoostWallet
                 className={`w-12 h-7 rounded-full relative shrink-0 mt-1 transition-colors ${
                   autoReloadOn ? 'bg-primary-container' : 'bg-surface-container-highest'
                 }`}
+                role="switch"
                 type="button"
                 onClick={() => (live ? wallet.autoReload.mutate(!autoReloadOn) : setAutoReload((value) => !value))}
               >

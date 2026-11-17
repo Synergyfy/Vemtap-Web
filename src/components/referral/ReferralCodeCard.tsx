@@ -11,7 +11,7 @@ import {
 } from '../../scripts/referralData';
 
 export interface ReferralCodeCardProps {
-  /** Preview code. Always rendered with a "Preview" badge while backend-less. */
+  /** The account's referral code. */
   code: string;
   link: string;
   /** Who the invitation is *for* — drives the share message wording. */
@@ -27,15 +27,17 @@ export interface ReferralCodeCardProps {
   description?: string;
   /** Hides the QR + share channels (used where space is tight). */
   compact?: boolean;
+  /** True for demo-mode preview codes — shows the "Preview" badge. */
+  isPreview?: boolean;
   className?: string;
 }
 
 /**
  * The shared "your referral code & link" card: code, link preview, Copy Link,
- * Share, sharing channels, QR preview and the benefits popup.
+ * Share, sharing channels, QR code and the benefits popup.
  *
- * Every figure on this card is a preview generated in the browser — the card
- * says so, so nothing here reads as an active, trackable referral.
+ * In live mode the code is the one stored on the account, so anyone who signs
+ * up through the link or QR is recorded against it.
  */
 export function ReferralCodeCard({
   code,
@@ -45,6 +47,7 @@ export function ReferralCodeCard({
   title,
   description,
   compact = false,
+  isPreview = false,
   className = '',
 }: ReferralCodeCardProps) {
   const [copied, setCopied] = useState<'code' | 'link' | null>(null);
@@ -99,10 +102,12 @@ export function ReferralCodeCard({
       <div className="rounded-xl bg-surface-subtle border border-border-subtle p-space-sm flex flex-col gap-space-xs">
         <div className="flex items-center justify-between gap-space-xs">
           <span className="font-caption text-caption text-text-secondary">Referral code</span>
-          <span className="inline-flex items-center gap-1 px-space-xs py-0.5 rounded-full bg-surface-container-high text-text-secondary font-caption text-caption">
-            <Icon name="visibility" className="text-[12px]" />
-            <span>Preview</span>
-          </span>
+          {isPreview && (
+            <span className="inline-flex items-center gap-1 px-space-xs py-0.5 rounded-full bg-surface-container-high text-text-secondary font-caption text-caption">
+              <Icon name="visibility" className="text-[12px]" />
+              <span>Preview</span>
+            </span>
+          )}
         </div>
         <div className="flex items-center justify-between gap-space-xs">
           <span className="font-heading-md text-heading-md text-primary font-bold tracking-[0.14em] truncate">

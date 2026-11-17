@@ -1,11 +1,15 @@
 import { useState } from 'react';
 import { Icon } from '../ui/Icon';
+import { dealEndsLabel, type DealDetail } from '../../hooks/useDealDetail';
+import { NO_IMAGE } from '../../utils/homeOffer';
 import { SheetShell } from './SheetShell';
 
 export interface GiftRecipientDetailsSheetProps {
+  /** The live deal this sheet is for. */
+  detail?: DealDetail | null;
   open: boolean;
   onClose: () => void;
-  onContinue: (values: { firstName: string; lastName: string; email: string; phone: string }) => void;
+  onContinue: (values: { firstName: string; lastName: string; email: string; phone: string; note: string }) => void;
 }
 
 function formatPhone(value: string): string {
@@ -15,7 +19,7 @@ function formatPhone(value: string): string {
   return digits;
 }
 
-export function GiftRecipientDetailsSheet({ open, onClose, onContinue }: GiftRecipientDetailsSheetProps) {
+export function GiftRecipientDetailsSheet({ open, onClose, onContinue, detail }: GiftRecipientDetailsSheetProps) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -59,24 +63,26 @@ export function GiftRecipientDetailsSheet({ open, onClose, onContinue }: GiftRec
             <div className="relative w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-surface-variant">
               <img
                 className="w-full h-full object-cover"
-                alt="Warm gourmet grilled lunch platter with skewers, fresh herbs, roasted vegetables and craft iced beverage on a rustic cafe table, golden hour light, high detail commercial food photography"
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuBQW9aG5q7nNlUWib-HC8W81eZHeQ_mtDMyXyo2n4NaG5zIgCMSJ6ooIvIXuEUKhAhGoM4SIJPLTM444_5iJz-u8RyMywnxrrhBR4Wv8R_uVxOiatVCjWPW1KoyUVjAQ4krWfGm8AUkJxHvAgqueA6JnJHFLgtj7aelXu6W8tYz7nAH2dEhMNz3UyH9AHQv0gV-XngtwiOMto0t57dl9JIRcNvQFkt9Xayd10JOfGte"
+                alt={detail?.title ?? ''}
+                src={detail?.image ?? NO_IMAGE}
               />
-              <span className="absolute top-1 left-1 bg-badge-discount-bg text-badge-discount-text font-caption text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-                -20%
-              </span>
+              {detail && detail.discountPercent > 0 && (
+                <span className="absolute top-1 left-1 bg-badge-discount-bg text-badge-discount-text font-caption text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                  -{detail.discountPercent}%
+                </span>
+              )}
             </div>
             <div className="flex flex-col min-w-0 flex-1">
               <div className="flex items-center space-x-1">
                 <span className="font-label-sm text-label-sm text-primary font-semibold truncate">
-                  Local dining partner
+                  {detail?.businessName}
                 </span>
-                <Icon name="verified" className="text-primary text-[14px]" filled />
+                {detail?.verified && <Icon name="verified" className="text-primary text-[14px]" filled />}
               </div>
-              <h4 className="font-heading-sm text-heading-sm text-text-primary truncate">Featured local deal</h4>
+              <h4 className="font-heading-sm text-heading-sm text-text-primary truncate">{detail?.title}</h4>
               <div className="flex items-center text-text-tertiary font-caption text-caption mt-0.5 space-x-1">
                 <Icon name="schedule" className="text-[13px]" />
-                <span>Valid for 30 days • Instant delivery</span>
+                <span>{detail ? `${dealEndsLabel(detail.endDate) ?? 'No end date'} • ` : ''}Instant delivery</span>
               </div>
             </div>
           </div>
@@ -92,7 +98,7 @@ export function GiftRecipientDetailsSheet({ open, onClose, onContinue }: GiftRec
           className="px-margin flex flex-col space-y-space-md pb-space-xl"
           onSubmit={(event) => {
             event.preventDefault();
-            onContinue({ firstName, lastName, email, phone });
+            onContinue({ firstName, lastName, email, phone, note: messageOpen ? message.trim() : '' });
           }}
         >
           <div className="grid grid-cols-2 gap-space-sm">
@@ -248,7 +254,7 @@ export function GiftRecipientDetailsSheet({ open, onClose, onContinue }: GiftRec
             </button>
             <div className="flex items-center space-x-1 text-text-tertiary font-caption text-caption">
               <Icon name="lock" className="text-[14px]" />
-              <span>Secure checkout • Instant SMS &amp; Email notification</span>
+              <span>Secure checkout • Sent by email</span>
             </div>
           </div>
         </form>

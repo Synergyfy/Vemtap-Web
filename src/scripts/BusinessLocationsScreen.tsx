@@ -7,10 +7,16 @@ import { hasApiConfig } from '../services/api/client';
 import { useBranchCatalogueCounts, useBranches } from '../hooks/business/useBranchesAndTeam';
 import { branchAddressLabel, branchHoursLabel, branchOpenLabel } from './branchLive';
 
+import { getAddedBusinessLocations } from './businessLocationsStore';
+import { formatNaira } from './locationPricing';
+import { useBusinessOfferings } from '../context/BusinessOfferingsContext';
+
 interface BusinessLocationsScreenProps {
   onTab: (tab: BusinessTabKey) => void;
   /** Live: opens the add-branch form. */
   onAddBranch?: () => void;
+  /** Demo: opens the paid add-location flow. */
+  onAddLocation?: () => void;
 }
 
 const LIVE_IMAGE_PLACEHOLDER =
@@ -71,7 +77,7 @@ const BRANCHES: {
   },
 ];
 
-export function BusinessLocationsScreen({ onTab, onAddBranch }: BusinessLocationsScreenProps) {
+export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: BusinessLocationsScreenProps) {
   // Live: the business's real branches and what each one sells; demo keeps the samples.
   const live = hasApiConfig();
   const branchesQuery = useBranches();
@@ -100,9 +106,15 @@ export function BusinessLocationsScreen({ onTab, onAddBranch }: BusinessLocation
         },
       }))
     : BRANCHES;
+  const { getEffectiveBranchOfferings } = useBusinessOfferings();
   const [dismissed, setDismissed] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
+  // Locations bought from the dashboard (seeded demo entries match the two
+  // cards below, so only real additions are rendered as extra cards).
+  const [addedLocations] = useState(() =>
+    getAddedBusinessLocations().filter((location) => !location.id.startsWith('seed-')),
+  );
 
   useEffect(
     () => () => {
@@ -134,7 +146,11 @@ export function BusinessLocationsScreen({ onTab, onAddBranch }: BusinessLocation
           <button
             className="shrink-0 h-[42px] px-space-md bg-primary-container text-on-primary font-button-secondary text-button-secondary rounded-xl flex items-center gap-space-2xs shadow-[0_4px_14px_rgba(6,108,244,0.22)] active:scale-95 transition-all"
             type="button"
-            onClick={() => (live && onAddBranch ? onAddBranch() : showToast('New branch wizard opening...'))}
+            onClick={() => {
+              if (live && onAddBranch) onAddBranch();
+              else if (onAddLocation) onAddLocation();
+              else showToast('New branch wizard opening...');
+            }}
           >
             <Icon name="add_location_alt" className="text-[19px]" />
             <span>Add Location</span>
@@ -169,11 +185,25 @@ export function BusinessLocationsScreen({ onTab, onAddBranch }: BusinessLocation
               <div className="p-space-md">
                 <div className="flex items-start justify-between gap-space-xs mb-space-xs">
                   <div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <h3 className="font-heading-sm text-heading-sm text-text-primary">{branch.name}</h3>
                       <span className={`px-1.5 py-0.5 rounded font-caption text-caption font-semibold ${branch.badgeClass}`}>
                         {branch.badge}
                       </span>
+                      {/* Offering tags per branch */}
+                      {(() => {
+                        const eff = getEffectiveBranchOfferings(branch.id);
+                        return (
+                          <>
+                            {eff.includes('products') && (
+                              <span className="px-1.5 py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption font-semibold">Products</span>
+                            )}
+                            {eff.includes('services') && (
+                              <span className="px-1.5 py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption font-semibold">Services</span>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                     <p className="font-caption text-caption text-text-secondary mt-1 flex items-start gap-1">
                       <Icon name="location_on" className="text-[15px] text-text-tertiary shrink-0 mt-0.5" />
@@ -241,6 +271,76 @@ export function BusinessLocationsScreen({ onTab, onAddBranch }: BusinessLocation
                     <Icon name="map" className="text-[20px]" />
                   </button>
                 </div>
+              </div>
+            </article>
+          ))}
+
+          {/* Locations added from the dashboard (paid ₦2,000 each) */}
+          {addedLocations.map((location) => (
+            <article
+              className="bg-surface-canvas rounded-xl shadow-[0_4px_16px_-2px_rgba(13,37,76,0.06)] p-space-md"
+              key={location.id}
+            >
+              <div className="flex items-start justify-between gap-space-xs">
+                <div className="flex items-start gap-space-sm min-w-0">
+                  <div className="w-11 h-11 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+                    <Icon name="add_location_alt" className="text-[21px]" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <h3 className="font-heading-sm text-heading-sm text-text-primary truncate">
+                        {location.name}
+                      </h3>
+                      <span className="px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold shrink-0">
+                        Active
+                      </span>
+                      {(() => {
+                        const eff = getEffectiveBranchOfferings(location.id || location.name);
+                        return (
+                          <>
+                            {eff.includes('products') && (
+                              <span className="px-1.5 py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption font-semibold shrink-0">Products</span>
+                            )}
+                            {eff.includes('services') && (
+                              <span className="px-1.5 py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption font-semibold shrink-0">Services</span>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                    <p className="font-caption text-caption text-text-secondary mt-1 flex items-start gap-1">
+                      <Icon name="location_on" className="text-[15px] text-text-tertiary shrink-0 mt-0.5" />
+                      <span className="truncate">{location.address}</span>
+                    </p>
+                    <p className="font-caption text-caption text-text-tertiary mt-0.5 truncate">
+                      {location.district}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  aria-label="Branch Options"
+                  className="w-8 h-8 rounded-full text-text-secondary hover:bg-surface-container-low flex items-center justify-center shrink-0 transition-colors"
+                  type="button"
+                  onClick={() => showToast(`${location.name} options opening...`)}
+                >
+                  <Icon name="more_vert" className="text-[20px]" />
+                </button>
+              </div>
+              <div className="flex items-center justify-between bg-surface-subtle rounded-lg p-space-xs mt-space-sm">
+                <span className="font-caption text-caption text-text-secondary flex items-center gap-1">
+                  <Icon name="payments" className="text-[14px] text-primary" />
+                  {location.feePaid > 0
+                    ? `${formatNaira(location.feePaid)} one-time location fee paid`
+                    : 'Included with your plan'}
+                </span>
+                <button
+                  className="h-9 px-space-sm rounded-lg bg-surface-container-low text-primary-container font-button-secondary text-button-secondary hover:bg-surface-container-high transition-colors flex items-center gap-1"
+                  type="button"
+                  onClick={() => showToast(`Editing ${location.name}...`)}
+                >
+                  <Icon name="edit_location" className="text-[17px]" />
+                  Edit
+                </button>
               </div>
             </article>
           ))}

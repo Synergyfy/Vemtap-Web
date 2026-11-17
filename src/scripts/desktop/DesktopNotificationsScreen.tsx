@@ -2,6 +2,10 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { notificationService, type NotificationItem } from '../../services/notificationService';
+import {
+  resolveCustomerNotificationDestination,
+  type CustomerNotificationDestination,
+} from '../../utils/customerNotificationDestination';
 
 interface DesktopNotificationsScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -12,6 +16,7 @@ interface DesktopNotificationsScreenProps {
   onOpenRewards: () => void;
   onBrowseDeals: () => void;
   onOpenPreferences: () => void;
+  onOpenDestination?: (destination: CustomerNotificationDestination) => void;
 }
 
 type NotificationCategory = 'deals' | 'bookings' | 'rewards' | 'system';
@@ -31,6 +36,7 @@ interface FeedItem {
   note?: ReactNode;
   unread: boolean;
   action: ItemAction;
+  destination?: CustomerNotificationDestination;
 }
 
 
@@ -56,6 +62,7 @@ export function DesktopNotificationsScreen({
   onOpenRewards,
   onBrowseDeals,
   onOpenPreferences,
+  onOpenDestination,
 }: DesktopNotificationsScreenProps) {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [filter, setFilter] = useState<NotificationCategory | 'all'>('all');
@@ -85,7 +92,8 @@ export function DesktopNotificationsScreen({
           time: item.createdAt ? new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Recently',
           body: item.message || item.body || 'You have a new update.',
           unread: Boolean(item.unread),
-          action: item.type === 'reward' ? 'rewards' : item.type === 'booking' ? 'booking' : 'deals',
+          action: item.category === 'rewards' ? 'rewards' : item.category === 'bookings' ? 'booking' : 'deals',
+          destination: resolveCustomerNotificationDestination(item),
         }));
 
         setItems(mapped);
@@ -116,7 +124,8 @@ export function DesktopNotificationsScreen({
   const openItem = (item: FeedItem) => {
     setItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, unread: false } : entry)));
     void notificationService.markAsRead(item.id).catch(() => undefined);
-    if (item.action === 'pass') onOpenPass();
+    if (onOpenDestination && item.destination) onOpenDestination(item.destination);
+    else if (item.action === 'pass') onOpenPass();
     else if (item.action === 'booking') onOpenBooking();
     else if (item.action === 'gift') onOpenGift();
     else if (item.action === 'rewards') onOpenRewards();
@@ -165,8 +174,7 @@ export function DesktopNotificationsScreen({
                 Notification Preferences
               </h1>
               <p className="font-body-lg text-body-lg text-text-secondary mt-2">
-                Your inbox for deal claims, bookings, gifts, and reward drops — tailored to the nearby saved areas and
-                claims on your Apo hyper-local grid.
+                Your inbox for deal claims, bookings, gifts, and reward drops from the businesses you use.
               </p>
             </div>
             <button

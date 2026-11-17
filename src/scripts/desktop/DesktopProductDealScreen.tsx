@@ -3,6 +3,7 @@ import { Icon } from '../../components/ui/Icon';
 import { getActiveVariants } from '../productVariants';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import type { ProductDraft } from './desktopProductDraft';
+import { draftImage, draftImageAlt } from './draftImage';
 
 interface DesktopProductDealScreenProps {
   draft: ProductDraft;
@@ -99,8 +100,8 @@ export function DesktopProductDealScreen({
             <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden flex-shrink-0 bg-surface-container">
               <img
                 className="w-full h-full object-cover"
-                alt={DEAL_IMAGES[0].alt}
-                src={DEAL_IMAGES[0].src}
+                alt={draftImageAlt(draft.title, DEAL_IMAGES[0].alt)}
+                src={draftImage(draft.mainImage, DEAL_IMAGES[0].src)}
               />
             </div>
             <div className="flex flex-col">

@@ -22,7 +22,8 @@ interface DesktopBusinessMessagesOrderContextScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onView: (view: MessagesWorkspaceView) => void;
   /** Opens the customer's full CRM profile (Customers page) from the chat header menu. */
-  onViewCustomerProfile?: (name: string) => void;
+  /** Opens the customer's CRM profile; live chats pass their user id. */
+  onViewCustomerProfile?: (name: string, customerId?: string | null) => void;
   /** Live: the Booking / Deal / Search / Compose views open this workspace pre-set. */
   initialFilter?: ConvFilter;
   focusSearch?: boolean;
@@ -497,7 +498,7 @@ export function DesktopBusinessMessagesOrderContextScreen({
                 <div className="flex items-center gap-space-xs">
                   <MessagesChatActions
                     customerName={selected.name}
-                    onViewProfile={() => onViewCustomerProfile?.(selected.name)}
+                    onViewProfile={() => onViewCustomerProfile?.(selected.name, customerId)}
                     onSearch={() => searchInputRef.current?.focus()}
                   />
                 </div>
@@ -805,7 +806,7 @@ export function DesktopBusinessMessagesOrderContextScreen({
                 </div>
 
                 <div className="p-space-sm">
-                  <button type="button" onClick={() => onViewCustomerProfile?.(selected.name)} className="w-full h-11 rounded-xl border border-primary text-primary font-label-sm text-label-sm hover:bg-surface-tint-blue flex items-center justify-center gap-space-2xs">
+                  <button type="button" onClick={() => onViewCustomerProfile?.(selected.name, customerId)} className="w-full h-11 rounded-xl border border-primary text-primary font-label-sm text-label-sm hover:bg-surface-tint-blue flex items-center justify-center gap-space-2xs">
                     <Icon name="person" className="text-[16px]" />
                     View Full Customer CRM Profile
                   </button>
@@ -876,7 +877,7 @@ export function DesktopBusinessMessagesOrderContextScreen({
         />
       )}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-on-surface-inverse px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
+        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-inverse-on-surface px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
           {toast}
         </div>
       )}

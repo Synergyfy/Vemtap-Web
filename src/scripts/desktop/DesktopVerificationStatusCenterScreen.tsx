@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { VerificationCheckSheet } from '../../components/sheets/VerificationCheckSheet';
 import { useVerificationSummary } from '../../hooks/business/useVerification';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
 
@@ -15,10 +17,13 @@ const BUSINESS_IMG =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuAarvXxTllFjmrWyAjU5r7WGOLEVTVViBsVPPNlhFRphLcv0Z7YdvavE8rHwYPrICOXnmIIMOTZP2yCGFTlolJS0gofjiXITYhskM4KxHKHAw3C6s8QdmXQ_S3f0Y6h0p8bEkMrbZfbUiyUEH27srpYBYX3BApkdj7-9zvgaJl9F1N9KSFDRZxl8gaB9aUz970lYlFFysMlg9PTwAN3l8OhELBK5-n0a6Wf5xdMtiXxDkcAYCcOZYOvXw';
 
 const RAIL_CHECKS = [
-  { label: 'Legal Entity Validated (CAC)' },
-  { label: '2 Physical Hubs Inspected (Apo & Wuse II)' },
-  { label: 'Protection Protocol (NDPR Active)' },
+  { label: 'Legal Entity Validated (CAC)', ok: true },
+  { label: '2 Physical Hubs Inspected (Apo & Wuse II)', ok: true },
+  { label: 'Protection Protocol (NDPR Active)', ok: true },
 ];
+
+/** Sample certificate for demo mode only. */
+const DEMO_CERTIFICATE = { cacNumber: 'BN-3491820', businessName: 'Urban Grill & Bistro' };
 
 const TRUST_PATH = 'M0 40 L30 36 L60 38 L90 28 L120 32 L150 18 L180 20 L210 12 L240 16 L270 8 L300 4';
 
@@ -32,6 +37,25 @@ export function DesktopVerificationStatusCenterScreen({
   // Live: the real status from `GET /verification/status`; demo keeps the sample copy.
   const summary = useVerificationSummary();
   const live = summary.live;
+  const [sheet, setSheet] = useState<'id' | 'cac' | null>(null);
+  const [letterRequested, setLetterRequested] = useState(false);
+  const branchCount = summary.locations.length;
+  const branchNames = summary.locations.map((branch) => branch.name).join(' & ');
+  const railChecks = live
+    ? [
+        {
+          label: summary.registration.ok ? 'Legal Entity Validated (CAC)' : `Legal Entity (CAC): ${summary.registration.label}`,
+          ok: summary.registration.ok,
+        },
+        {
+          label: branchCount
+            ? `${branchCount} Active ${branchCount === 1 ? 'Location' : 'Locations'} (${branchNames})`
+            : 'No locations added yet',
+          ok: branchCount > 0,
+        },
+        { label: 'Protection Protocol (NDPR Active)', ok: true },
+      ]
+    : RAIL_CHECKS;
   const pill = (ok: boolean) =>
     ok || !live ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary';
   return (
@@ -42,14 +66,22 @@ export function DesktopVerificationStatusCenterScreen({
           <div className="p-space-xl flex flex-col lg:flex-row lg:items-center justify-between gap-space-lg relative z-10">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-space-lg">
               <div className="relative">
-                <img
-                  alt="Urban Grill and Bistro dining hall"
-                  className="w-20 h-20 rounded-xl object-cover shadow-sm ring-2 ring-primary/20"
-                  src={BUSINESS_IMG}
-                />
-                <div className="absolute -bottom-2 -right-2 bg-badge-discount-bg text-badge-discount-text w-7 h-7 rounded-full flex items-center justify-center shadow-sm">
-                  <Icon name="verified" filled className="text-[18px]" />
-                </div>
+                {!live || summary.image ? (
+                  <img
+                    alt={live ? summary.businessName : 'Urban Grill and Bistro dining hall'}
+                    className="w-20 h-20 rounded-xl object-cover shadow-sm ring-2 ring-primary/20"
+                    src={live ? (summary.image ?? '') : BUSINESS_IMG}
+                  />
+                ) : (
+                  <div className="w-20 h-20 rounded-xl bg-surface-container ring-2 ring-primary/20 flex items-center justify-center text-text-tertiary">
+                    <Icon name="storefront" className="text-[32px]" />
+                  </div>
+                )}
+                {(!live || summary.verified) && (
+                  <div className="absolute -bottom-2 -right-2 bg-badge-discount-bg text-badge-discount-text w-7 h-7 rounded-full flex items-center justify-center shadow-sm">
+                    <Icon name="verified" filled className="text-[18px]" />
+                  </div>
+                )}
               </div>
               <div className="flex flex-col gap-space-2xs">
                 <div className="flex flex-wrap items-center gap-space-xs">
@@ -71,9 +103,13 @@ export function DesktopVerificationStatusCenterScreen({
                     )}
                   </span>
                   <span className="text-text-tertiary">•</span>
-                  <span className="text-badge-discount-text font-medium flex items-center gap-space-2xs">
-                    <Icon name="check_circle" className="text-[16px]" />
-                    {live ? (summary.verified ? 'Compliant' : 'In progress') : '100% Compliant'}
+                  <span
+                    className={`font-medium flex items-center gap-space-2xs ${
+                      !live || summary.verified ? 'text-badge-discount-text' : 'text-text-secondary'
+                    }`}
+                  >
+                    <Icon name={!live || summary.verified ? 'check_circle' : summary.submitted ? 'schedule' : 'pending'} className="text-[16px]" />
+                    {live ? summary.progressLabel : '100% Compliant'}
                   </span>
                 </p>
               </div>
@@ -81,13 +117,20 @@ export function DesktopVerificationStatusCenterScreen({
             <div className="grid grid-cols-3 gap-space-sm bg-surface-container-low/70 rounded-xl p-space-sm sm:self-auto self-stretch">
               <div className="flex flex-col items-center justify-center px-space-sm py-space-2xs text-center">
                 <span className="font-caption text-caption text-text-secondary">Legal Standing</span>
-                <span className="font-label-md text-label-md text-badge-discount-text font-semibold flex items-center gap-1">
-                  <Icon name="shield_with_heart" className="text-[14px]" /> Validated
+                <span
+                  className={`font-label-md text-label-md font-semibold flex items-center gap-1 ${
+                    !live || summary.registration.ok ? 'text-badge-discount-text' : 'text-text-secondary'
+                  }`}
+                >
+                  <Icon name={!live || summary.registration.ok ? 'shield_with_heart' : 'schedule'} className="text-[14px]" />
+                  {!live || summary.registration.ok ? 'Validated' : summary.registration.label}
                 </span>
               </div>
               <div className="flex flex-col items-center justify-center px-space-sm py-space-2xs text-center">
-                <span className="font-caption text-caption text-text-secondary">Audited Hubs</span>
-                <span className="font-label-md text-label-md text-text-primary font-semibold">2 Locations</span>
+                <span className="font-caption text-caption text-text-secondary">{live ? 'Active Locations' : 'Audited Hubs'}</span>
+                <span className="font-label-md text-label-md text-text-primary font-semibold">
+                  {live ? (summary.locationsLoading ? '…' : `${branchCount} ${branchCount === 1 ? 'Location' : 'Locations'}`) : '2 Locations'}
+                </span>
               </div>
               <div className="flex flex-col items-center justify-center px-space-sm py-space-2xs text-center">
                 <span className="font-caption text-caption text-text-secondary">Security Vault</span>
@@ -99,14 +142,22 @@ export function DesktopVerificationStatusCenterScreen({
           </div>
           <div className="bg-surface-subtle px-space-xl py-space-md flex flex-wrap items-center justify-between gap-space-md">
             <div className="flex flex-wrap items-center gap-space-lg text-text-secondary font-label-sm text-label-sm">
-              {RAIL_CHECKS.map((check) => (
+              {railChecks.map((check) => (
                 <div className="flex items-center gap-space-2xs" key={check.label}>
-                  <Icon name="check_circle" filled className="text-badge-discount-text text-[18px]" />
+                  <Icon
+                    name={check.ok ? 'check_circle' : 'pending'}
+                    filled={check.ok}
+                    className={`text-[18px] ${check.ok ? 'text-badge-discount-text' : 'text-text-tertiary'}`}
+                  />
                   <span className="text-text-primary font-medium">{check.label}</span>
                 </div>
               ))}
             </div>
-            <span className="font-caption text-caption text-text-tertiary">Permanent Credential Ref: VMT-7749-ABJ</span>
+            {(!live || summary.credentialRef) && (
+              <span className="font-caption text-caption text-text-tertiary">
+                Permanent Credential Ref: {live ? summary.credentialRef : 'VMT-7749-ABJ'}
+              </span>
+            )}
           </div>
         </section>
 
@@ -136,7 +187,7 @@ export function DesktopVerificationStatusCenterScreen({
                       </span>
                     </div>
                     <p className="font-body-md text-body-md text-text-primary font-medium mt-space-2xs">
-                      {live ? (summary.identity.name ?? 'Account holder') : 'Zainab Ahmed'}
+                      {live ? (summary.identity.name ?? (summary.identity.submitted ? 'Account holder' : 'No ID submitted')) : 'Zainab Ahmed'}
                     </p>
                     <p className="font-label-sm text-label-sm text-text-secondary">
                       {live
@@ -150,6 +201,7 @@ export function DesktopVerificationStatusCenterScreen({
                 <button
                   className="font-label-sm text-label-sm text-primary hover:text-surface-tint font-semibold flex items-center gap-1 group whitespace-nowrap"
                   type="button"
+                  onClick={() => setSheet('id')}
                 >
                   <span>View Details</span>
                   <Icon name="arrow_forward" className="text-[16px] transition-transform group-hover:translate-x-0.5" />
@@ -157,7 +209,10 @@ export function DesktopVerificationStatusCenterScreen({
               </div>
               <div className="bg-surface-subtle p-space-sm rounded-lg flex items-center justify-between text-text-secondary font-caption text-caption">
                 <span className="flex items-center gap-space-2xs">
-                  <Icon name="verified" className="text-badge-discount-text text-[16px]" />
+                  <Icon
+                    name={!live || summary.identity.ok ? 'verified' : 'schedule'}
+                    className={`text-[16px] ${!live || summary.identity.ok ? 'text-badge-discount-text' : 'text-text-tertiary'}`}
+                  />
                   {live ? (summary.identity.note ?? 'Gov-issued ID & selfie check') : 'Gov-issued ID & Biometric Facial Check Passed'}
                 </span>
                 <span className="text-text-tertiary">{live ? (summary.identity.date ?? '') : 'Verified Dec 2023'}</span>
@@ -188,6 +243,7 @@ export function DesktopVerificationStatusCenterScreen({
                 <button
                   className="font-label-sm text-label-sm text-primary hover:text-surface-tint font-semibold flex items-center gap-1 group whitespace-nowrap"
                   type="button"
+                  onClick={() => setSheet('cac')}
                 >
                   <span>View Certificate</span>
                   <Icon name="arrow_forward" className="text-[16px] transition-transform group-hover:translate-x-0.5" />
@@ -195,7 +251,10 @@ export function DesktopVerificationStatusCenterScreen({
               </div>
               <div className="bg-surface-subtle p-space-sm rounded-lg flex flex-wrap items-center justify-between gap-space-xs text-text-secondary font-caption text-caption">
                 <span className="flex items-center gap-space-2xs">
-                  <Icon name="task_alt" className="text-badge-discount-text text-[16px]" />
+                  <Icon
+                    name={!live || summary.registration.ok ? 'task_alt' : 'schedule'}
+                    className={`text-[16px] ${!live || summary.registration.ok ? 'text-badge-discount-text' : 'text-text-tertiary'}`}
+                  />
                   {live
                     ? (summary.registration.note ?? (summary.registration.date ? `Checked ${summary.registration.date}` : 'CAC register check'))
                     : 'Registered 14 May 2021 • Category: Hospitality & Dining'}
@@ -214,14 +273,20 @@ export function DesktopVerificationStatusCenterScreen({
                     <div className="flex items-center gap-space-xs">
                       <h3 className="font-label-md text-label-md text-text-primary font-bold">Physical Business Locations</h3>
                       <span className="px-space-2xs py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
-                        2 Inspected
+                        {live ? (branchCount ? `${branchCount} Active` : 'None yet') : '2 Inspected'}
                       </span>
                     </div>
                     <p className="font-body-md text-body-md text-text-primary font-medium mt-space-2xs">
-                      Apo Grand Hub &amp; Wuse II Flagship
+                      {live
+                        ? branchCount
+                          ? branchNames
+                          : summary.locationsLoading
+                            ? 'Loading branches…'
+                            : 'No branches added yet'
+                        : 'Apo Grand Hub & Wuse II Flagship'}
                     </p>
                     <p className="font-label-sm text-label-sm text-text-secondary">
-                      Geofenced GPS Beacon active with verified storefront photos
+                      {live ? 'Branches customers can find you at on Vemtap' : 'Geofenced GPS Beacon active with verified storefront photos'}
                     </p>
                   </div>
                 </div>
@@ -234,26 +299,46 @@ export function DesktopVerificationStatusCenterScreen({
                   <Icon name="arrow_forward" className="text-[16px] transition-transform group-hover:translate-x-0.5" />
                 </button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-xs">
-                <div className="p-space-xs rounded-lg bg-surface-subtle flex items-center gap-space-xs">
-                  <div className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                  <div className="flex flex-col min-w-0">
-                    <span className="font-label-sm text-label-sm text-text-primary font-medium truncate">
-                      Plot 182, Apo District
-                    </span>
-                    <span className="font-caption text-caption text-text-secondary">Audit Pass: On-site Agent VMT-90</span>
+              {live ? (
+                branchCount > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-xs">
+                    {summary.locations.map((branch) => (
+                      <div className="p-space-xs rounded-lg bg-surface-subtle flex items-center gap-space-xs" key={branch.id}>
+                        <div className="w-2 h-2 rounded-full bg-badge-discount-text shrink-0" />
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-label-sm text-label-sm text-text-primary font-medium truncate">
+                            {branch.address ?? branch.name}
+                          </span>
+                          <span className="font-caption text-caption text-text-secondary truncate">
+                            {branch.isMain ? `${branch.name} • Main branch` : branch.name}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-xs">
+                  <div className="p-space-xs rounded-lg bg-surface-subtle flex items-center gap-space-xs">
+                    <div className="w-2 h-2 rounded-full bg-badge-discount-text" />
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-label-sm text-label-sm text-text-primary font-medium truncate">
+                        Plot 182, Apo District
+                      </span>
+                      <span className="font-caption text-caption text-text-secondary">Audit Pass: On-site Agent VMT-90</span>
+                    </div>
+                  </div>
+                  <div className="p-space-xs rounded-lg bg-surface-subtle flex items-center gap-space-xs">
+                    <div className="w-2 h-2 rounded-full bg-badge-discount-text" />
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-label-sm text-label-sm text-text-primary font-medium truncate">
+                        42 Adetokunbo Ademola, Wuse II
+                      </span>
+                      <span className="font-caption text-caption text-text-secondary">Audit Pass: GPS &amp; Utility Receipt</span>
+                    </div>
                   </div>
                 </div>
-                <div className="p-space-xs rounded-lg bg-surface-subtle flex items-center gap-space-xs">
-                  <div className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                  <div className="flex flex-col min-w-0">
-                    <span className="font-label-sm text-label-sm text-text-primary font-medium truncate">
-                      42 Adetokunbo Ademola, Wuse II
-                    </span>
-                    <span className="font-caption text-caption text-text-secondary">Audit Pass: GPS &amp; Utility Receipt</span>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
 
             <div className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm flex flex-col gap-space-md transition-all hover:shadow-md">
@@ -265,17 +350,25 @@ export function DesktopVerificationStatusCenterScreen({
                   <div className="flex flex-col">
                     <div className="flex items-center gap-space-xs">
                       <h3 className="font-label-md text-label-md text-text-primary font-bold">Storefront Standing</h3>
-                      <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
-                        In Good Standing
-                      </span>
+                      {live && summary.suspended ? (
+                        <span className="px-space-xs py-space-2xs rounded-full bg-error-container text-on-error-container font-caption text-caption font-bold">
+                          Suspended
+                        </span>
+                      ) : (
+                        <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
+                          In Good Standing
+                        </span>
+                      )}
                     </div>
                     <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
-                      Full merchant rights unlocked: Hyper-local customer discovery, direct deal publishing, real-time
-                      tap reservations, and instant customer pass redemption.
+                      {live && summary.suspended
+                        ? (summary.suspensionReason ?? 'Your storefront is paused. Contact Vemtap support to restore it.')
+                        : 'Full merchant rights unlocked: Hyper-local customer discovery, direct deal publishing, real-time tap reservations, and instant customer pass redemption.'}
                     </p>
                   </div>
                 </div>
               </div>
+              {!live && (
               <div className="flex items-center gap-space-md pt-space-xs text-text-secondary font-caption text-caption">
                 <span className="flex items-center gap-1 text-badge-discount-text font-semibold">
                   <Icon name="thumb_up" className="text-[16px]" /> 0 Customer Disputes
@@ -285,6 +378,7 @@ export function DesktopVerificationStatusCenterScreen({
                 <span className="text-text-tertiary">•</span>
                 <span>Fraud Risk: Minimal</span>
               </div>
+              )}
             </div>
           </div>
 
@@ -306,6 +400,8 @@ export function DesktopVerificationStatusCenterScreen({
                   within 5km radius.
                 </p>
               </div>
+              {!live && (
+              <>
               <div className="bg-surface-subtle p-space-md rounded-xl flex flex-col gap-space-sm">
                 <div className="flex items-center justify-between font-label-md text-label-md">
                   <span className="text-text-primary font-bold">Platform Trust Score</span>
@@ -332,6 +428,8 @@ export function DesktopVerificationStatusCenterScreen({
                   />
                 </svg>
               </div>
+              </>
+              )}
             </div>
 
             <div className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm flex flex-col gap-space-md">
@@ -363,10 +461,20 @@ export function DesktopVerificationStatusCenterScreen({
                 commercial leases?
               </p>
               <button
-                className="font-label-sm text-label-sm text-primary hover:text-surface-tint font-bold flex items-center gap-1 pt-space-2xs self-start"
+                className={`font-label-sm text-label-sm font-bold flex items-center gap-1 pt-space-2xs self-start ${
+                  letterRequested ? 'text-badge-discount-text' : 'text-primary hover:text-surface-tint'
+                }`}
                 type="button"
+                disabled={letterRequested}
+                onClick={() => setLetterRequested(true)}
               >
-                <span>Request Official Verification Letter →</span>
+                <span>
+                  {letterRequested
+                    ? live
+                      ? 'Official verification letters are coming soon'
+                      : 'Verification Letter Sent to admin@urbangrillbistro.ng'
+                    : 'Request Official Verification Letter →'}
+                </span>
               </button>
             </div>
 
@@ -383,6 +491,7 @@ export function DesktopVerificationStatusCenterScreen({
           </div>
         </div>
 
+        {!live && (
         <div className="rounded-xl bg-surface-container-lowest px-space-lg py-space-md shadow-sm flex flex-col sm:flex-row items-center justify-between gap-space-sm text-text-secondary font-label-sm text-label-sm">
           <div className="flex items-center gap-space-xs">
             <span className="w-2.5 h-2.5 rounded-full bg-badge-discount-text" />
@@ -397,6 +506,7 @@ export function DesktopVerificationStatusCenterScreen({
             </button>
           </div>
         </div>
+        )}
 
         <div className="flex items-center justify-center">
           <button
@@ -409,6 +519,17 @@ export function DesktopVerificationStatusCenterScreen({
           </button>
         </div>
       </div>
+      {sheet && (
+        <VerificationCheckSheet
+          centered
+          kind={sheet}
+          check={sheet === 'cac' ? summary.registration : summary.identity}
+          live={live}
+          demo={DEMO_CERTIFICATE}
+          onClose={() => setSheet(null)}
+          onStart={onUpdateInfo}
+        />
+      )}
     </BusinessPortalChrome>
   );
 }

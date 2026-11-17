@@ -1,11 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { Toast } from '../components/ui/Toast';
+import { hasApiConfig } from '../services/api/client';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
 
 interface ManualLocationScreenProps {
   onBack: () => void;
-  onContinue: (area: string) => void;
+  /** Live: resolves once the typed area is found and saved; rejects with a customer-facing message. */
+  onContinue: (area: string) => Promise<void> | void;
+  /** Live: detect and save the browser's position (same as the permission step). */
+  onUseCurrentLocation?: () => Promise<void> | void;
   onBusinessSetup: () => void;
 }
 
@@ -26,13 +31,39 @@ const AREAS: Area[] = [
 const MAP_PREVIEW =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuB3Eip6-YwMGMr2STXR6NjlkIqAII-LD6sDRlFtXw1cLegLNfxlrmjWW3_R4ir5If1ILMCOKRblbw-mPNO5b4ZqiYtRZTW4fx3DfV3OJP1xkSpbZi-3n4nhrNamAFwmWpn6j-iMdtSwNtst62BEsQIhY-iFIHUFeoVlc1WMw6MXAFuRMlfE5nRb9_W9qU-SugFifXcvYXdLR_4slYxxsMxl-XAzfoS4_q9U0gzdusyvc5fnBJBGBHcTMQ';
 
-export function ManualLocationScreen({ onBack, onContinue, onBusinessSetup }: ManualLocationScreenProps) {
-  const [query, setQuery] = useState('Apo');
-  const [selected, setSelected] = useState('Apo');
+export function ManualLocationScreen({ onBack, onContinue, onUseCurrentLocation, onBusinessSetup }: ManualLocationScreenProps) {
+  // Live: the customer types their own area; demo keeps the sample Abuja picker.
+  const live = hasApiConfig();
+  const [query, setQuery] = useState(live ? '' : 'Apo');
+  const [selected, setSelected] = useState(live ? '' : 'Apo');
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+  }, []);
+
+  const runLive = (action: () => Promise<void> | void) => {
+    if (busy) return;
+    setBusy(true);
+    Promise.resolve(action())
+      .catch((error: unknown) => {
+        setToast(error instanceof Error && error.message ? error.message : "We couldn't find that area.");
+        if (toastTimer.current) window.clearTimeout(toastTimer.current);
+        toastTimer.current = window.setTimeout(() => setToast(null), 3200);
+      })
+      .finally(() => setBusy(false));
+  };
+  const target = live ? query.trim() : selected;
 
   const filtered = AREAS.filter((area) => area.name.toLowerCase().includes(query.trim().toLowerCase()));
 
   const handleUseCurrentLocation = () => {
+    if (live && onUseCurrentLocation) {
+      runLive(onUseCurrentLocation);
+      return;
+    }
     setQuery('Apo');
     setSelected('Apo');
   };
@@ -81,6 +112,7 @@ export function ManualLocationScreen({ onBack, onContinue, onBusinessSetup }: Ma
             </div>
           </div>
 
+          {!live && (
           <div className="w-full h-24 rounded-xl overflow-hidden mb-space-lg relative shadow-sm">
             <div
               className="w-full h-full bg-cover bg-center"
@@ -99,6 +131,7 @@ export function ManualLocationScreen({ onBack, onContinue, onBusinessSetup }: Ma
               </span>
             </div>
           </div>
+          )}
 
           <div className="w-full mb-space-lg">
             <button
@@ -106,6 +139,7 @@ export function ManualLocationScreen({ onBack, onContinue, onBusinessSetup }: Ma
               id="use-current-location-btn"
               type="button"
               onClick={handleUseCurrentLocation}
+              disabled={busy}
             >
               <div className="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center text-primary shrink-0 shadow-sm">
                 <Icon name="my_location" filled className="text-[20px]" />
@@ -120,6 +154,8 @@ export function ManualLocationScreen({ onBack, onContinue, onBusinessSetup }: Ma
             </button>
           </div>
 
+          {!live && (
+          <>
           <div className="flex items-center justify-between mb-space-sm">
             <span className="font-label-sm text-label-sm text-text-tertiary uppercase tracking-wider font-semibold">
               Suggested Areas
@@ -204,6 +240,8 @@ export function ManualLocationScreen({ onBack, onContinue, onBusinessSetup }: Ma
               </p>
             </div>
           </div>
+          </>
+          )}
         </div>
 
         <div className="sticky bottom-0 w-full px-margin pt-space-xs pb-space-lg bg-gradient-to-t from-surface via-surface/95 to-transparent backdrop-blur-md mt-auto">
@@ -212,10 +250,14 @@ export function ManualLocationScreen({ onBack, onContinue, onBusinessSetup }: Ma
               className="w-full h-[54px] rounded-xl bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary font-semibold flex items-center justify-center gap-space-xs shadow-[0_8px_24px_-4px_rgba(6,108,244,0.3)] active:scale-[0.98] transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
               id="continue-cta-btn"
               type="button"
-              disabled={!selected}
-              onClick={() => selected && onContinue(selected)}
+              disabled={!target || busy}
+              onClick={() => {
+                if (!target) return;
+                if (live) runLive(() => onContinue(target));
+                else onContinue(target);
+              }}
             >
-              <span>Continue with {selected || 'an area'}</span>
+              <span>{busy ? 'Finding your area…' : `Continue with ${target || 'an area'}`}</span>
               <Icon name="arrow_forward" className="text-[20px]" />
             </button>
             <div className="flex items-center justify-center pt-space-2xs">
@@ -232,6 +274,7 @@ export function ManualLocationScreen({ onBack, onContinue, onBusinessSetup }: Ma
           </div>
         </div>
       </div>
+      <Toast message={toast} icon="location_off" />
     </AppScreen>
   );
 }

@@ -7,6 +7,7 @@ import { useBranches } from '../hooks/business/useBranchesAndTeam';
 import { apiErrorMessage } from '../services/errorMessages';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessProductAssignmentScreenProps {
   onBack: () => void;
@@ -135,8 +136,8 @@ export function BusinessProductAssignmentScreen({ onBack, itemName, itemId }: Bu
               Product Assignment
             </h1>
           </div>
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-            <Icon name="person" className="text-on-primary text-[18px]" />
+          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+            <UserAvatar textClassName="text-on-primary text-[13px]" />
           </div>
         </div>
       </header>
@@ -352,20 +353,18 @@ export function BusinessProductAssignmentScreen({ onBack, itemName, itemId }: Bu
               </div>
               <button
                 aria-checked={maitamaOn}
-                className={`w-12 h-7 rounded-full p-0.5 flex items-center transition-colors shrink-0 ${
-                  maitamaOn ? 'bg-primary justify-end' : 'bg-surface-container-highest justify-start'
+                className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
+                  maitamaOn ? 'bg-primary' : 'bg-surface-container-highest'
                 }`}
                 role="switch"
                 type="button"
                 onClick={() => setMaitamaOn((on) => !on)}
               >
-                <span className="w-6 h-6 rounded-full bg-surface-container-lowest shadow-md flex items-center justify-center">
-                  <Icon
-                    name={maitamaOn ? 'check' : 'close'}
-                    filled={maitamaOn}
-                    className={`text-[14px] ${maitamaOn ? 'text-primary' : 'text-outline'}`}
-                  />
-                </span>
+                <span
+                  className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                    maitamaOn ? 'translate-x-3.5' : 'translate-x-0'
+                  }`}
+                />
               </button>
             </div>
             <div className="grid grid-cols-2 gap-space-xs">
@@ -429,20 +428,18 @@ export function BusinessProductAssignmentScreen({ onBack, itemName, itemId }: Bu
               </div>
               <button
                 aria-checked={victoriaOn}
-                className={`w-12 h-7 rounded-full p-0.5 flex items-center transition-colors shrink-0 ${
-                  victoriaOn ? 'bg-primary justify-end' : 'bg-surface-container-highest justify-start'
+                className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
+                  victoriaOn ? 'bg-primary' : 'bg-surface-container-highest'
                 }`}
                 role="switch"
                 type="button"
                 onClick={() => setVictoriaOn((on) => !on)}
               >
-                <span className="w-6 h-6 rounded-full bg-surface-container-lowest shadow-md flex items-center justify-center">
-                  <Icon
-                    name={victoriaOn ? 'check' : 'close'}
-                    filled={victoriaOn}
-                    className={`text-[14px] ${victoriaOn ? 'text-primary' : 'text-outline'}`}
-                  />
-                </span>
+                <span
+                  className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                    victoriaOn ? 'translate-x-3.5' : 'translate-x-0'
+                  }`}
+                />
               </button>
             </div>
             <div className="grid grid-cols-2 gap-space-xs">
@@ -530,14 +527,18 @@ export function BusinessProductAssignmentScreen({ onBack, itemName, itemId }: Bu
                     </div>
                     <button
                       aria-checked={dealLink}
-                      className={`w-9 h-5 rounded-full p-0.5 flex items-center shrink-0 transition-colors ${
-                        dealLink ? 'bg-primary justify-end' : 'bg-surface-container-highest justify-start'
+                      className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
+                        dealLink ? 'bg-primary' : 'bg-surface-container-highest'
                       }`}
                       role="switch"
                       type="button"
                       onClick={() => setDealLink((on) => !on)}
                     >
-                      <span className="w-4 h-4 rounded-full bg-surface-container-lowest shadow-sm" />
+                      <span
+                        className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                          dealLink ? 'translate-x-3.5' : 'translate-x-0'
+                        }`}
+                      />
                     </button>
                   </div>
                 </>
@@ -562,20 +563,18 @@ export function BusinessProductAssignmentScreen({ onBack, itemName, itemId }: Bu
               </div>
               <button
                 aria-checked={garkiOn}
-                className={`w-12 h-7 rounded-full p-0.5 flex items-center transition-colors shrink-0 ${
-                  garkiOn ? 'bg-primary justify-end' : 'bg-surface-container-highest justify-start'
+                className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
+                  garkiOn ? 'bg-primary' : 'bg-surface-container-highest'
                 }`}
                 role="switch"
                 type="button"
                 onClick={() => setGarkiOn((on) => !on)}
               >
-                <span className="w-6 h-6 rounded-full bg-surface-container-lowest shadow-md flex items-center justify-center">
-                  <Icon
-                    name={garkiOn ? 'check' : 'close'}
-                    filled={garkiOn}
-                    className={`text-[14px] ${garkiOn ? 'text-primary' : 'text-outline'}`}
-                  />
-                </span>
+                <span
+                  className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                    garkiOn ? 'translate-x-3.5' : 'translate-x-0'
+                  }`}
+                />
               </button>
             </div>
             <div className="bg-surface-container rounded-lg p-space-sm flex items-start gap-space-xs">
@@ -684,7 +683,7 @@ export function BusinessProductAssignmentScreen({ onBack, itemName, itemId }: Bu
         </div>
       </div>
       {liveError && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {liveError}
         </div>
       )}

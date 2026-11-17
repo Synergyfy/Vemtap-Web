@@ -174,7 +174,7 @@ export function ForgotPinForm({ state, onBackToSignIn }: { state: ForgotPinState
   return (
     <form className="flex flex-col gap-space-md" onSubmit={handleSubmit} noValidate>
       {state.error && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {state.error}
         </div>
       )}

@@ -5,7 +5,16 @@ import { DesktopBusinessBookingsScreen } from './DesktopBusinessBookingsScreen';
 import { DesktopBusinessOrderDetailScreen } from './DesktopBusinessOrderDetailScreen';
 import { type StoreOrder, type StoreOrderOrigin } from '../../scripts/storeOrderingData';
 import { useStoreOrdering } from '../../context/StoreOrderingContext';
+import { useBusinessFeatures } from '../../context/BusinessFeaturesContext';
 import { OrderCompletionModal } from '../../components/desktop/dialogs/OrderCompletionModal';
+import { useBranches } from '../../hooks/business/useBranchesAndTeam';
+import { hasApiConfig } from '../../services/api/client';
+
+/** Sample branches, only for running without an API. */
+const DEMO_BRANCHES = [
+  { id: 'wuse-2', name: 'Wuse II Flagship' },
+  { id: 'maitama', name: 'Maitama Heights' },
+];
 
 interface DesktopBusinessOrdersScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -27,6 +36,7 @@ export function DesktopBusinessOrdersScreen({
   initialView = 'orders',
 }: DesktopBusinessOrdersScreenProps) {
   const { orders, updateOrderStatus, setActivePosHandoffOrderId, settings, lastError, clearLastError } = useStoreOrdering();
+  const { features } = useBusinessFeatures();
 
   const [view, setView] = useState<'orders' | 'bookings' | 'detail'>(
     initialView === 'bookings' ? 'bookings' : 'orders'
@@ -42,6 +52,11 @@ export function DesktopBusinessOrdersScreen({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortNewest, setSortNewest] = useState<boolean>(true);
   const [branchMenuOpen, setBranchMenuOpen] = useState<boolean>(false);
+  const branchesQuery = useBranches();
+  // Live: the business's own branches, so the filter matches each order's `branchId`.
+  const branchOptions = hasApiConfig()
+    ? (branchesQuery.data ?? []).map((branch) => ({ id: branch.id, name: branch.name }))
+    : DEMO_BRANCHES;
   const [attentionSilenced, setAttentionSilenced] = useState<boolean>(false);
   const [toast, setToast] = useState<string | null>(null);
   const [paymentModalOrder, setPaymentModalOrder] = useState<StoreOrder | null>(null);
@@ -215,11 +230,7 @@ export function DesktopBusinessOrdersScreen({
                 >
                   <Icon name="store" className="text-[16px] text-primary" />
                   <span>
-                    {branchFilter === 'wuse-2'
-                      ? 'Wuse II Flagship'
-                      : branchFilter === 'maitama'
-                        ? 'Maitama Heights'
-                        : 'All Branches (Abuja)'}
+                    {branchOptions.find((branch) => branch.id === branchFilter)?.name ?? 'All Branches'}
                   </span>
                   <Icon name="expand_more" className="text-[14px]" />
                 </button>
@@ -237,28 +248,20 @@ export function DesktopBusinessOrdersScreen({
                       <span>All Branches</span>
                       {branchFilter === 'all' && <Icon name="check" className="text-[16px] text-primary" />}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBranchFilter('wuse-2');
-                        setBranchMenuOpen(false);
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-surface-subtle text-on-surface font-body-md text-body-md flex items-center justify-between"
-                    >
-                      <span>Wuse II Flagship</span>
-                      {branchFilter === 'wuse-2' && <Icon name="check" className="text-[16px] text-primary" />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setBranchFilter('maitama');
-                        setBranchMenuOpen(false);
-                      }}
-                      className="w-full px-3 py-2 text-left hover:bg-surface-subtle text-on-surface font-body-md text-body-md flex items-center justify-between"
-                    >
-                      <span>Maitama Heights</span>
-                      {branchFilter === 'maitama' && <Icon name="check" className="text-[16px] text-primary" />}
-                    </button>
+                    {branchOptions.map((branch) => (
+                      <button
+                        key={branch.id}
+                        type="button"
+                        onClick={() => {
+                          setBranchFilter(branch.id);
+                          setBranchMenuOpen(false);
+                        }}
+                        className="w-full px-3 py-2 text-left hover:bg-surface-subtle text-on-surface font-body-md text-body-md flex items-center justify-between"
+                      >
+                        <span>{branch.name}</span>
+                        {branchFilter === branch.id && <Icon name="check" className="text-[16px] text-primary" />}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
@@ -363,21 +366,23 @@ export function DesktopBusinessOrdersScreen({
                 </span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setTab('bookings');
-                  setView('bookings');
-                }}
-                className={`px-space-md py-2 rounded-lg font-label-md text-label-md transition-all flex items-center gap-2 ${
-                  tab === 'bookings'
-                    ? 'bg-surface text-primary font-bold shadow-xs'
-                    : 'text-on-surface-variant hover:text-on-surface'
-                }`}
-              >
-                <Icon name="calendar_month" className="text-[18px]" />
-                <span>Bookings &amp; Tables</span>
-              </button>
+              {features.bookings && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTab('bookings');
+                    setView('bookings');
+                  }}
+                  className={`px-space-md py-2 rounded-lg font-label-md text-label-md transition-all flex items-center gap-2 ${
+                    tab === 'bookings'
+                      ? 'bg-surface text-primary font-bold shadow-xs'
+                      : 'text-on-surface-variant hover:text-on-surface'
+                  }`}
+                >
+                  <Icon name="calendar_month" className="text-[18px]" />
+                  <span>Bookings &amp; Tables</span>
+                </button>
+              )}
             </div>
 
             {/* Search and Sort controls */}

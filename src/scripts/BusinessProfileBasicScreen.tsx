@@ -13,6 +13,7 @@ import {
   MOCKUP_SEED_CHAR_COUNT,
   SEED_DESCRIPTION,
 } from './businessOnboardingSeed';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessProfileBasicScreenProps {
   draft: BusinessProfileDraft;
@@ -95,8 +96,8 @@ export function BusinessProfileBasicScreen({
             <h1 className="font-heading-sm text-heading-sm text-on-surface truncate max-w-[210px]">Basic Information</h1>
           </div>
           <div className="flex items-center">
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

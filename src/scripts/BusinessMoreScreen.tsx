@@ -4,14 +4,20 @@ import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { useBusinessFeatures } from '../context/BusinessFeaturesContext';
+import type { FeatureId } from './businessFeatures';
 import { URBAN_BUSINESS } from './businessData';
 import { hasApiConfig } from '../services/api/client';
 import { useMyBusiness } from '../hooks/business/useMyBusiness';
 import { useActiveSubscription } from '../hooks/business/useSubscription';
 import { useLivePos } from './posLive';
+import { useMoreSummary } from '../hooks/business/useMoreSummary';
+import { useVerificationSummary } from '../hooks/business/useVerification';
 
 interface BusinessMoreScreenProps {
   onTab: (tab: BusinessTabKey) => void;
+  onOpenPos?: () => void;
+  onOpenStorefront?: (sub?: 'dashboard' | 'qr' | 'settings') => void;
   onOpenAnalytics: () => void;
   onOpenMarketing: () => void;
   onOpenSubscription: () => void;
@@ -55,6 +61,8 @@ const ERROR_BADGE = 'bg-error-container text-on-error-container';
 
 export function BusinessMoreScreen({
   onTab,
+  onOpenPos,
+  onOpenStorefront,
   onOpenAnalytics,
   onOpenMarketing,
   onOpenSubscription,
@@ -68,6 +76,11 @@ export function BusinessMoreScreen({
   onSignOut,
 }: BusinessMoreScreenProps) {
   const { branch } = useBusinessBranch();
+  // Live: the plan, unread count, cluster, reviews and verification from the API; demo keeps the samples.
+  const more = useMoreSummary();
+  const verification = useVerificationSummary();
+  const liveMore = more.live;
+  const { features } = useBusinessFeatures();
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -84,9 +97,64 @@ export function BusinessMoreScreen({
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
-  // Order mirrors the desktop More side-menu list — keep both in sync.
-  // POS and Store Front now live in the POS menu (Overview quick action).
-  const sections: SectionData[] = [
+  // Section order on mobile More:
+  // 1. Point of Sale (POS)
+  // 2. Store Front
+  // 3. Cluster System
+  // followed by Marketing, Analytics, Subscription, Notifications, Verification, Support, Settings.
+  const allSections: SectionData[] = [
+    {
+      key: 'pos',
+      label: 'Point of Sale',
+      badge: 'Active',
+      badgeClass: GREEN_BADGE,
+      rows: [
+        {
+          key: 'pos-terminal',
+          icon: 'point_of_sale',
+          iconClass: 'bg-primary-container text-on-primary',
+          title: 'Point of Sale (POS)',
+          sub: 'Counter till, new sales, receipt printing & daily audits',
+          badge: 'Till 01',
+          badgeClass: 'bg-surface-container text-on-surface-variant',
+          onClick: onOpenPos || (() => {}),
+        },
+      ],
+    },
+    {
+      key: 'storefront',
+      label: 'Store Front',
+      badge: 'Live',
+      badgeClass: GREEN_BADGE,
+      rows: [
+        {
+          key: 'store-ordering-dashboard',
+          icon: 'qr_code_scanner',
+          iconClass: 'bg-surface-tint-blue text-primary',
+          title: 'Store Front Dashboard',
+          sub: 'Contactless table ordering, digital menu & orders',
+          badge: 'Live',
+          badgeClass: GREEN_BADGE,
+          onClick: () => onOpenStorefront?.('dashboard'),
+        },
+        {
+          key: 'store-ordering-qr',
+          icon: 'qr_code_2',
+          iconClass: 'bg-surface-container text-on-surface-variant',
+          title: 'QR Codes & Placement',
+          sub: 'Generate table tent stickers & stand QR displays',
+          onClick: () => onOpenStorefront?.('qr'),
+        },
+        {
+          key: 'store-ordering-settings',
+          icon: 'tune',
+          iconClass: 'bg-surface-container text-on-surface-variant',
+          title: 'Store Front Settings',
+          sub: 'Service charges, VAT tax & kitchen print preferences',
+          onClick: () => onOpenStorefront?.('settings'),
+        },
+      ],
+    },
     {
       key: 'cluster',
       label: 'Cluster System',
@@ -97,7 +165,7 @@ export function BusinessMoreScreen({
           iconClass: 'bg-surface-tint-blue text-primary',
           title: 'Cluster System',
           sub: 'Mall network, shared QR & deal rotator pool',
-          badge: 'Amaka Mall',
+          badge: liveMore ? more.clusterName ?? undefined : 'Amaka Mall',
           badgeClass: GREEN_BADGE,
           onClick: onOpenCluster || (() => {}),
         },
@@ -140,7 +208,7 @@ export function BusinessMoreScreen({
           icon: 'credit_card',
           iconClass: 'bg-surface-container text-on-surface-variant',
           title: 'Subscription & Billing',
-          sub: 'Growth Tier · ₦5,000/mo · Next renewal Nov 14',
+          sub: liveMore ? more.planLine ?? 'No plan yet' : 'Growth Tier · ₦5,000/mo · Next renewal Nov 14',
           onClick: onOpenSubscription,
         },
         {
@@ -163,7 +231,7 @@ export function BusinessMoreScreen({
           iconClass: 'bg-surface-container text-on-surface-variant',
           title: 'Notifications Center',
           sub: 'Till alerts, payout updates & staff clock-ins',
-          badge: '4 unread',
+          badge: liveMore ? (more.unread ? `${more.unread} unread` : undefined) : '4 unread',
           badgeClass: ERROR_BADGE,
           onClick: onOpenNotifications,
         },
@@ -178,8 +246,8 @@ export function BusinessMoreScreen({
           icon: 'verified_user',
           iconClass: GREEN_BADGE,
           title: 'Business Verification',
-          sub: 'CAC, Director ID & Bank Settlement Approved',
-          badge: 'Tier 3',
+          sub: liveMore ? verification.statusLabel : 'CAC, Director ID & Bank Settlement Approved',
+          badge: liveMore ? (verification.verified ? 'Verified' : undefined) : 'Tier 3',
           badgeClass: GREEN_BADGE,
           onClick: onOpenVerification,
         },
@@ -214,6 +282,19 @@ export function BusinessMoreScreen({
       ],
     },
   ];
+
+  // Sections that belong to a switched-off tool are removed from the list.
+  const SECTION_FEATURE: Partial<Record<string, FeatureId>> = {
+    pos: 'pos',
+    storefront: 'storefront',
+    cluster: 'cluster',
+    marketing: 'deals',
+    analytics: 'analytics',
+  };
+  const sections = allSections.filter((section) => {
+    const feature = SECTION_FEATURE[section.key];
+    return feature === undefined || Boolean(features[feature]);
+  });
 
   const renderRow = (row: RowData) => (
     <button

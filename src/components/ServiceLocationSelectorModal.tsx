@@ -5,6 +5,12 @@ import { SERVICE_LOCATIONS, type ServiceLocation } from '../scripts/serviceStudi
 interface ServiceLocationSelectorModalProps {
   isOpen: boolean;
   selectedLocations: string[];
+  /**
+   * Live: the business's own branches to pick from. When omitted (or empty),
+   * the demo-only sample list is used so the dev build without an API stays
+   * usable; real deployments always pass their branches.
+   */
+  locations?: ServiceLocation[];
   onSave: (locations: string[]) => void;
   onClose: () => void;
 }
@@ -12,6 +18,7 @@ interface ServiceLocationSelectorModalProps {
 export function ServiceLocationSelectorModal({
   isOpen,
   selectedLocations,
+  locations,
   onSave,
   onClose,
 }: ServiceLocationSelectorModalProps) {
@@ -23,7 +30,9 @@ export function ServiceLocationSelectorModal({
 
   if (!isOpen) return null;
 
-  const eligibleLocations = SERVICE_LOCATIONS.filter((loc) => loc.eligible);
+  const availableLocations =
+    locations && locations.length > 0 ? locations : SERVICE_LOCATIONS;
+  const eligibleLocations = availableLocations.filter((loc) => loc.eligible);
   const allEligibleSelected =
     eligibleLocations.length > 0 &&
     eligibleLocations.every((loc) => selected.includes(loc.id));
@@ -40,7 +49,8 @@ export function ServiceLocationSelectorModal({
   const handleSelectAll = () => {
     if (allEligibleSelected) {
       // Keep at least the first eligible location so selection is never empty
-      setSelected([eligibleLocations[0]?.id || 'main']);
+      const firstId = eligibleLocations[0]?.id;
+      setSelected(firstId ? [firstId] : []);
     } else {
       setSelected(eligibleLocations.map((loc) => loc.id));
     }
@@ -101,7 +111,7 @@ export function ServiceLocationSelectorModal({
           </div>
 
           <div className="flex flex-col gap-2.5">
-            {SERVICE_LOCATIONS.map((loc) => {
+            {availableLocations.map((loc) => {
               const isSelected = selected.includes(loc.id);
               return (
                 <div

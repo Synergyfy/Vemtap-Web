@@ -1,4 +1,6 @@
+import { useProfile } from '../../../context/ProfileContext';
 import { Icon } from '../../ui/Icon';
+import { dealEndsLabel, type DealDetail } from '../../../hooks/useDealDetail';
 import { parsePrice } from '../../../utils/format';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
 
@@ -14,21 +16,23 @@ export interface ClaimConfirmationModalProps {
     oldPrice?: number | string;
     discountLabel?: string;
   } | null;
+  /** The live deal, for its validity and redemption hours. */
+  detail?: DealDetail | null;
 }
 
-const REDEMPTION: Array<{ icon: string; label: string; value: string }> = [
-  { icon: 'schedule', label: 'Validity Window:', value: 'Valid for 48 hours from claim time' },
-  { icon: 'today', label: 'Operational Hours:', value: 'Check local business hours for the selected merchant' },
-  { icon: 'place', label: 'Location:', value: 'Nearby local branch • Your selected area' },
-];
-
-export function ClaimConfirmationModal({ open, onClose, onConfirm, deal }: ClaimConfirmationModalProps) {
+export function ClaimConfirmationModal({ open, onClose, onConfirm, deal, detail }: ClaimConfirmationModalProps) {
+  const holder = useProfile();
   const dealTitle = deal?.title || 'This deal';
   const businessName = deal?.business?.trim() || 'This business';
   const dealLocation = deal?.location?.trim() || 'Your selected location';
   const price = parsePrice(deal?.price);
   const oldPrice = parsePrice(deal?.oldPrice) || price;
   const discountLabel = deal?.discountLabel || 'Instant savings';
+  const redemption = [
+    { icon: 'schedule', label: 'Validity Window:', value: detail ? dealEndsLabel(detail.endDate) : null },
+    { icon: 'today', label: 'Redemption Hours:', value: detail?.windowLabel },
+    { icon: 'place', label: 'Location:', value: detail?.address ?? deal?.location },
+  ].filter((row): row is { icon: string; label: string; value: string } => Boolean(row.value));
 
   return (
     <DesktopModal
@@ -115,15 +119,15 @@ export function ClaimConfirmationModal({ open, onClose, onConfirm, deal }: Claim
         <div className="bg-surface-container-low p-space-sm rounded-xl flex items-center justify-between gap-space-sm">
           <div className="flex items-center gap-space-sm min-w-0">
             <div className="w-10 h-10 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-semibold text-label-md shrink-0">
-              ZA
+              {holder.initials}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="font-label-md text-label-md text-on-surface font-semibold truncate">Zainab Ahmed</span>
+                <span className="font-label-md text-label-md text-on-surface font-semibold truncate">{holder.fullName}</span>
                 <Icon name="verified" className="text-primary-container text-[16px]" filled />
               </div>
               <p className="font-caption text-caption text-text-secondary truncate">
-                zainab.ahmed@example.com • +234 803 555 0192
+                {[holder.email, holder.phone].filter(Boolean).join(' • ')}
               </p>
             </div>
           </div>
@@ -133,7 +137,7 @@ export function ClaimConfirmationModal({ open, onClose, onConfirm, deal }: Claim
         </div>
 
         <div className="bg-surface-subtle rounded-xl p-space-md space-y-space-xs">
-          {REDEMPTION.map((row) => (
+          {redemption.map((row) => (
             <div key={row.label} className="flex items-start gap-space-sm">
               <Icon name={row.icon} className="text-primary-container text-[18px] mt-0.5" />
               <div className="font-body-md text-body-md text-text-secondary">

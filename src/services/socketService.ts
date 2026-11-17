@@ -16,6 +16,12 @@ const normalizeBaseUrl = (value: string): string => {
     return trimmed.replace(/\/+$/, '');
   }
 
+  // A relative API URL ("/api") means the backend is behind this page's own origin.
+  if (trimmed.startsWith('/')) {
+    const origin = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
+    return `${origin}${trimmed.replace(/\/api(\/v\d+)?\/?$/i, '')}`.replace(/\/+$/, '');
+  }
+
   if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
     return trimmed.replace(/\/+$/, '');
   }

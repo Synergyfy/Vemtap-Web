@@ -1,12 +1,21 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useRef, useState, type FormEvent } from 'react';
 import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
+import { MessageActions, MessageContent } from '../../components/ui/MessageContent';
+import { MessageTicks } from '../../components/ui/MessageTicks';
+import { useOrders } from '../../context/OrdersContext';
+import { todayHours, usePublicBusiness } from '../../hooks/usePublicBusiness';
+import { currentVoucher, useClaims } from '../../context/ClaimsContext';
+import { useBooking } from '../../context/BookingContext';
+import { useChatThread } from '../../hooks/useChatThread';
 import { messageService, type MessageThread } from '../../services/messageService';
 
 interface DesktopMessagesScreenProps {
   onNav: (key: DesktopNavKey) => void;
   initialThread?: string;
+  /** Starts a new chat: pick a business, then its message box opens ready to send. */
+  onNewChat?: () => void;
 }
 
 interface ThreadStrip {
@@ -66,27 +75,14 @@ interface Thread {
   dossier: MerchantDossierData;
 }
 
-interface ChatMessage {
-  id: string | number;
-  sender: 'merchant' | 'you';
-  author: string;
-  time: string;
-  body: string;
-  badge?: string;
-  avatar?: string;
-  avatarAlt?: string;
-  delivered?: boolean;
-}
-
-const SMART_REPLIES = ['Yes, please!', 'On my way now', 'Can I change my time?', 'Table for 2 confirmed'];
 
 const emptyDossier = (): MerchantDossierData => ({
   category: 'Business messaging',
-  email: 'support@vemtap.com',
-  engagement: { visits: '0', orders: '0', deals: '0', points: '0' },
-  telemetry: { avgReply: '—', hours: '—', dealRedemption: 'Pending API sync', tier: 'Member', progress: 0 },
-  popularItems: ['No data yet'],
-  notes: [{ icon: 'info', label: 'Status', value: 'Waiting for backend thread data' }],
+  email: '—',
+  engagement: { visits: '—', orders: '—', deals: '—', points: '—' },
+  telemetry: { avgReply: '—', hours: '—', dealRedemption: '—', tier: '—', progress: 0 },
+  popularItems: [],
+  notes: [],
 });
 
 const mapThreadToDesktopThread = (thread: MessageThread): Thread => ({
@@ -101,13 +97,13 @@ const mapThreadToDesktopThread = (thread: MessageThread): Thread => ({
   avatar: thread.avatar ?? '',
   alt: thread.alt ?? thread.name,
   unread: thread.unread,
-  location: thread.location ?? 'Location pending',
+  location: thread.location ?? '',
   replies: '—',
   status: thread.status ?? 'Active',
   statusTone: 'bg-surface-container text-on-surface-variant font-medium',
   callLabel: 'Call',
-  phone: thread.phone ?? '+0000000000',
-  whatsapp: thread.phone ?? '+0000000000',
+  phone: thread.phone ?? '',
+  whatsapp: thread.phone ?? '',
   dossier: emptyDossier(),
   strip: thread.deal
     ? {
@@ -122,27 +118,8 @@ const mapThreadToDesktopThread = (thread: MessageThread): Thread => ({
     : undefined,
 });
 
-const mapMessages = (thread: MessageThread): ChatMessage[] =>
-  (thread.messages ?? []).map((message, index) => ({
-    id: message.id ?? `msg-${index}`,
-    sender: message.sender === 'you' ? 'you' : 'merchant',
-    author: message.author,
-    time: message.time,
-    body: message.body,
-    badge: message.badge,
-    avatar: message.avatar,
-    avatarAlt: message.avatarAlt,
-    delivered: message.delivered ?? message.sender === 'you',
-  }));
-
-function nowTime(): string {
-  const now = new Date();
-  let hours = now.getHours();
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  hours = hours % 12 || 12;
-  return `${hours}:${minutes} ${ampm}`;
-}
+/** A dossier value the API actually filled in. */
+const hasValue = (value: string | undefined | null) => Boolean(value && value !== '—');
 
 function threadInitials(name: string): string {
   const words = name.split(' ').filter((word) => word.length > 2 && word !== 'And');
@@ -153,13 +130,12 @@ function threadInitials(name: string): string {
     .toUpperCase();
 }
 
-export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesScreenProps) {
+export function DesktopMessagesScreen({ onNav, initialThread, onNewChat }: DesktopMessagesScreenProps) {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [selectedId, setSelectedId] = useState(initialThread ?? '');
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState('');
-  const [typing, setTyping] = useState(false);
   const [readIds, setReadIds] = useState<string[]>([]);
   const streamRef = useRef<HTMLDivElement>(null);
 
@@ -173,12 +149,11 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
 
         const mapped = nextThreads.map((thread) => mapThreadToDesktopThread(thread));
         setThreads(mapped);
-        if (mapped.length > 0) {
-          const fallbackId = initialThread && mapped.some((thread) => thread.id === initialThread)
-            ? initialThread
-            : mapped[0].id;
-          setSelectedId(fallbackId);
-        }
+        setSelectedId((current) => {
+          if (current && mapped.some((thread) => thread.id === current)) return current;
+          if (initialThread && mapped.some((thread) => thread.id === initialThread)) return initialThread;
+          return mapped[0]?.id ?? '';
+        });
       } catch {
         if (isMounted) {
           setThreads([]);
@@ -188,75 +163,61 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
     };
 
     loadThreads();
+    // New messages and deleted chats reorder the list and its unread badges.
+    const onRealtime = (event: Event) => {
+      const { type } = (event as CustomEvent<{ type: string }>).detail;
+      if (type === 'newMessage' || type === 'threadDeleted') void loadThreads();
+    };
+    window.addEventListener('vemtap:messaging', onRealtime);
     return () => {
       isMounted = false;
+      window.removeEventListener('vemtap:messaging', onRealtime);
     };
   }, [initialThread]);
 
-  useEffect(() => {
-    if (!selectedId) return;
-
-    let isMounted = true;
-
-    const loadSelectedThread = async () => {
-      try {
-        const nextThread = await messageService.getThread(selectedId);
-        if (!isMounted || !nextThread) return;
-        setThreads((current) => {
-          const next = current.length > 0 ? current : [mapThreadToDesktopThread(nextThread)];
-          const exists = next.some((thread) => thread.id === selectedId);
-          if (exists) {
-            return next.map((thread) => (thread.id === selectedId ? mapThreadToDesktopThread(nextThread) : thread));
-          }
-          return [...next, mapThreadToDesktopThread(nextThread)];
-        });
-        setTyping(false);
-      } catch {
-        if (isMounted) setTyping(false);
-      }
-    };
-
-    loadSelectedThread();
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedId]);
-
-  const [messageStore, setMessageStore] = useState<Record<string, ChatMessage[]>>({});
+  const { thread: liveThread, messages, typing, online, send, sendFile, editMessage, deleteMessage, notifyTyping } = useChatThread(selectedId || null);
+  const { business, products, services } = usePublicBusiness(liveThread?.businessCode);
+  const { orders } = useOrders();
+  const [actionsFor, setActionsFor] = useState<string | number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const { claims } = useClaims();
+  const { appointments } = useBooking();
+  const [sendError, setSendError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!selectedId) return;
+    streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages.length, typing]);
 
-    let isMounted = true;
-
-    const loadSelectedMessages = async () => {
-      try {
-        const nextThread = await messageService.getThread(selectedId);
-        if (!isMounted) return;
-
-        setMessageStore((current) => ({
-          ...current,
-          [selectedId]: nextThread ? mapMessages(nextThread) : current[selectedId] ?? [],
-        }));
-      } catch {
-        if (isMounted) {
-          setMessageStore((current) => ({
-            ...current,
-            [selectedId]: current[selectedId] ?? [],
-          }));
-        }
+  const selectedThread = threads.find((thread) => thread.id === selectedId) ?? null;
+  // Only what the API knows about this business and this customer; the rest stays "—".
+  const hours = business ? todayHours(business.hours) : null;
+  const dossier: MerchantDossierData = selectedThread
+    ? {
+        ...selectedThread.dossier,
+        category: business?.category ?? selectedThread.dossier.category,
+        email: business?.email ?? selectedThread.dossier.email,
+        engagement: {
+          ...selectedThread.dossier.engagement,
+          orders: String(orders.filter((order) => order.merchantName === selectedThread.name).length),
+          deals: String(claims.filter((claim) => claim.dealBusiness === selectedThread.name).length),
+        },
+        telemetry: {
+          ...selectedThread.dossier.telemetry,
+          hours: hours?.today.closed ? 'Closed today' : hours?.today.open ? `${hours.today.open} – ${hours.today.close}` : '—',
+        },
+        popularItems: [...products, ...services].slice(0, 4).map((item) => item.name),
+        notes: [
+          business?.address ? { icon: 'location_on', label: 'Address', value: business.address } : null,
+          business?.website ? { icon: 'language', label: 'Website', value: business.website } : null,
+        ].filter((note): note is { icon: string; label: string; value: string } => Boolean(note)),
       }
-    };
+    : emptyDossier();
+  const selected = selectedThread ? { ...selectedThread, dossier, phone: selectedThread.phone || business?.phone || '', location: selectedThread.location || business?.address || '' } : null;
 
-    loadSelectedMessages();
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedId]);
-
-  const selected = threads.find((thread) => thread.id === selectedId) ?? null;
-  const messages = selectedId ? (messageStore[selectedId] ?? []) : [];
-
+  const telemetryRows = selected
+    ? [selected.dossier.telemetry.avgReply, selected.dossier.telemetry.hours, selected.dossier.telemetry.dealRedemption, selected.dossier.telemetry.tier].filter(hasValue).length
+    : 0;
   const isUnread = (t: Thread) => t.unread && !readIds.includes(t.id);
   const unreadCount = threads.filter(isUnread).length;
 
@@ -270,7 +231,7 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
 
   const handleSelectThread = (id: string) => {
     setSelectedId(id);
-    setTyping(false);
+    setSendError(null);
     if (!readIds.includes(id)) {
       setReadIds((prev) => [...prev, id]);
     }
@@ -278,35 +239,27 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
   };
 
   const sendMessage = async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed || !selectedId) return;
-
-    const msg: ChatMessage = {
-      id: `m${Date.now()}`,
-      sender: 'you',
-      author: 'You',
-      time: nowTime(),
-      body: trimmed,
-      delivered: true,
-    };
-
-    setMessageStore((prev) => ({
-      ...prev,
-      [selectedId]: [...(prev[selectedId] ?? []), msg],
-    }));
+    if (!text.trim() || !selectedId) return;
     setDraft('');
-    setTyping(false);
-
-    try {
-      await messageService.sendReply(selectedId, trimmed);
-    } catch {
-      setMessageStore((prev) => ({
-        ...prev,
-        [selectedId]: [...(prev[selectedId] ?? []), { ...msg, id: `m${Date.now()}-retry`, body: `${msg.body} (pending sync)` }],
-      }));
+    setSendError(null);
+    if (editingId) {
+      const id = editingId;
+      setEditingId(null);
+      setSendError(await editMessage(id, text.trim()));
+      return;
     }
+    if (!(await send(text))) setSendError('Message could not be sent. Please retry.');
+  };
 
-    window.setTimeout(() => streamRef.current?.scrollTo({ top: streamRef.current.scrollHeight, behavior: 'smooth' }), 50);
+  const startEdit = (id: string, body: string) => {
+    setEditingId(id);
+    setDraft(body);
+    setActionsFor(null);
+  };
+
+  const removeMessage = (id: string) => {
+    setActionsFor(null);
+    void deleteMessage(id).then(setSendError);
   };
 
   const handleSubmit = (e: FormEvent) => {
@@ -316,14 +269,21 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
 
   const quickAttach = (kind: 'voucher' | 'booking' | 'location') => {
     if (kind === 'voucher') {
-      void sendMessage(selected?.voucher ? `Attached Deal Pass ${selected.voucher} for this order.` : 'Attached active deal voucher for redemption.');
+      const voucher = currentVoucher(claims);
+      if (voucher?.code) void sendMessage(`Attached Deal Pass ${voucher.code} (${voucher.dealTitle}).`);
+      else setSendError('You have no voucher to attach.');
       return;
     }
     if (kind === 'booking') {
-      void sendMessage(selected?.booking ? `Booking reference ${selected.booking} shared with you.` : 'I would like to reference my upcoming reservation.');
+      const booking = appointments.find((item) => item.status === 'confirmed');
+      if (booking) void sendMessage(`Booking reference ${booking.ref} (${[booking.dateShort, booking.time].filter(Boolean).join(' ')}).`);
+      else setSendError('You have no upcoming booking to share.');
       return;
     }
-    void sendMessage('Location pin shared: Apo, Abuja (Within 2 km).');
+    navigator.geolocation?.getCurrentPosition(
+      ({ coords }) => void sendMessage(`My location: https://www.google.com/maps/search/?api=1&query=${coords.latitude},${coords.longitude}`),
+      () => setSendError('Your location couldn’t be read.'),
+    );
   };
 
   if (!selected) {
@@ -381,7 +341,7 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
             />
             <button
               type="button"
-              onClick={() => onNav('discover')}
+              onClick={() => (onNewChat ? onNewChat() : onNav('discover'))}
               className="h-9 px-space-sm rounded-xl bg-primary text-on-primary font-label-sm text-label-sm hover:opacity-90 flex items-center gap-space-2xs shadow-sm transition-colors"
             >
               <Icon name="edit" className="text-[16px]" />
@@ -552,7 +512,7 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                     </div>
                     <div className="flex items-center gap-space-2xs font-caption text-caption text-on-surface-variant">
                       <span className="px-space-2xs rounded bg-badge-discount-bg text-badge-discount-text font-semibold">
-                        Online now
+                        {typing ? 'typing…' : online ? 'Online now' : 'Offline'}
                       </span>
                       <span>{selected.status}</span>
                     </div>
@@ -631,33 +591,47 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
 
               {/* Message Stream */}
               <div ref={streamRef} className="flex-1 overflow-y-auto p-space-md space-y-space-sm bg-surface-subtle/30">
-                <div className="flex justify-center">
-                  <span className="px-space-xs py-space-2xs rounded-full bg-surface border border-border font-caption text-caption text-text-tertiary">
-                    Today · Oct 11, 2026
-                  </span>
-                </div>
-
-                {messages.map((m) => {
+                {messages.map((m, index) => {
                   const isYou = m.sender === 'you';
+                  const divider =
+                    m.day && m.day !== messages[index - 1]?.day ? (
+                      <div className="flex items-center justify-center my-space-2xs">
+                        <span className="px-3 py-1 rounded-full bg-surface-container-high font-caption text-caption text-text-secondary font-medium">
+                          {m.day}
+                        </span>
+                      </div>
+                    ) : null;
                   return isYou ? (
-                    <div key={m.id} className="flex gap-space-xs justify-end">
+                    <Fragment key={m.id}>
+                      {divider}
+                    <div className="flex gap-space-xs justify-end">
                       <div className="max-w-[75%]">
-                        <div className="px-space-sm py-space-xs rounded-2xl rounded-br-md bg-primary text-on-primary">
-                          <p className="font-body-md text-body-md whitespace-pre-wrap">{m.body}</p>
-                        </div>
+                        <button
+                          type="button"
+                          className="px-space-sm py-space-xs rounded-2xl rounded-br-md bg-primary text-on-primary text-left"
+                          onClick={() => setActionsFor((current) => (current === m.id ? null : m.id))}
+                        >
+                          <MessageContent message={m} className="font-body-md text-body-md whitespace-pre-wrap" />
+                        </button>
                         <div className="font-caption text-caption text-text-tertiary mt-1 flex items-center justify-end gap-1">
                           {m.time}
-                          {m.delivered && (
-                            <>
-                              <Icon name="done_all" className="text-[14px] text-primary" filled />
-                              <span>Delivered</span>
-                            </>
-                          )}
+                          {m.edited ? ' • Edited' : ''}
+                          <MessageTicks tick={m.tick} size={14} />
                         </div>
+                        {actionsFor === m.id && typeof m.id === 'string' && !m.id.startsWith('local-') && !m.deleted ? (
+                          <MessageActions
+                            canEdit={Boolean(m.body)}
+                            onEdit={() => startEdit(String(m.id), m.body)}
+                            onDelete={() => removeMessage(String(m.id))}
+                          />
+                        ) : null}
                       </div>
                     </div>
+                    </Fragment>
                   ) : (
-                    <div key={m.id} className="flex gap-space-xs justify-start">
+                    <Fragment key={m.id}>
+                      {divider}
+                    <div className="flex gap-space-xs justify-start">
                       {selected.avatar ? (
                         <img src={selected.avatar} alt="" className="w-8 h-8 rounded-full object-cover self-end" />
                       ) : (
@@ -675,11 +649,15 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                               </span>
                             </div>
                           )}
-                          <p className="font-body-md text-body-md whitespace-pre-wrap">{m.body}</p>
+                          <MessageContent message={m} className="font-body-md text-body-md whitespace-pre-wrap" />
                         </div>
-                        <div className="font-caption text-caption text-text-tertiary mt-1">{m.time}</div>
+                        <div className="font-caption text-caption text-text-tertiary mt-1">
+                          {m.time}
+                          {m.edited ? ' • Edited' : ''}
+                        </div>
                       </div>
                     </div>
+                    </Fragment>
                   );
                 })}
 
@@ -697,7 +675,7 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                       <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
                       <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
                       <span className="font-body-sm text-body-sm text-on-surface-variant ml-1">
-                        {selected.name} staff is active
+                        {selected.name} is typing…
                       </span>
                     </div>
                   </div>
@@ -708,7 +686,7 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
               <div className="p-space-sm border-t border-border space-y-space-xs">
                 {/* Smart Replies */}
                 <div className="flex flex-wrap gap-space-2xs">
-                  {SMART_REPLIES.map((r) => (
+                  {(liveThread?.quickReplies ?? []).map((r) => (
                     <button
                       key={r}
                       type="button"
@@ -722,8 +700,49 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                 </div>
 
                 {/* Input area */}
+                {sendError ? (
+                  <p role="alert" className="font-caption text-caption text-error mb-space-2xs">
+                    {sendError}
+                  </p>
+                ) : null}
+                {editingId ? (
+                  <div className="flex items-center justify-between font-label-sm text-label-sm text-text-secondary mb-space-2xs">
+                    <span>Editing message</span>
+                    <button
+                      type="button"
+                      className="text-primary font-semibold"
+                      onClick={() => {
+                        setEditingId(null);
+                        setDraft('');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : null}
+                <input
+                  ref={fileInput}
+                  type="file"
+                  hidden
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  aria-label="Choose a file to send"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (file) void sendFile(file).then(setSendError);
+                  }}
+                />
                 <form onSubmit={handleSubmit} className="flex items-end gap-space-xs">
                   <div className="flex items-center gap-space-2xs">
+                    <button
+                      type="button"
+                      aria-label="Attach Photo or PDF"
+                      onClick={() => fileInput.current?.click()}
+                      className="w-9 h-9 rounded-xl flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle hover:text-primary transition-colors"
+                      title="Attach Photo or PDF"
+                    >
+                      <Icon name="attach_file" className="text-[18px]" />
+                    </button>
                     <button
                       type="button"
                       aria-label="Attach Voucher"
@@ -755,7 +774,10 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                   <textarea
                     rows={1}
                     value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
+                    onChange={(e) => {
+                      setDraft(e.target.value);
+                      if (e.target.value) notifyTyping();
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
@@ -812,20 +834,26 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
 
                   {/* Contact items */}
                   <div className="mt-space-sm space-y-space-2xs font-body-sm text-body-sm text-on-surface-variant">
-                    <div className="flex items-center gap-space-xs truncate">
-                      <Icon name="call" className="text-[14px] text-primary shrink-0" />
-                      <a href={`tel:${selected.phone}`} className="hover:underline">
-                        {selected.phone}
-                      </a>
-                    </div>
-                    <div className="flex items-center gap-space-xs truncate">
-                      <Icon name="mail" className="text-[14px] text-primary shrink-0" />
-                      <span>{selected.dossier.email}</span>
-                    </div>
-                    <div className="flex items-center gap-space-xs truncate">
-                      <Icon name="location_on" className="text-[14px] text-primary shrink-0" />
-                      <span>{selected.location}</span>
-                    </div>
+                    {selected.phone && (
+                      <div className="flex items-center gap-space-xs truncate">
+                        <Icon name="call" className="text-[14px] text-primary shrink-0" />
+                        <a href={`tel:${selected.phone}`} className="hover:underline">
+                          {selected.phone}
+                        </a>
+                      </div>
+                    )}
+                    {hasValue(selected.dossier.email) && (
+                      <div className="flex items-center gap-space-xs truncate">
+                        <Icon name="mail" className="text-[14px] text-primary shrink-0" />
+                        <span>{selected.dossier.email}</span>
+                      </div>
+                    )}
+                    {selected.location && (
+                      <div className="flex items-center gap-space-xs truncate">
+                        <Icon name="location_on" className="text-[14px] text-primary shrink-0" />
+                        <span>{selected.location}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -840,7 +868,9 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                       { label: 'Orders', value: selected.dossier.engagement.orders },
                       { label: 'Deals Used', value: selected.dossier.engagement.deals },
                       { label: 'Tap Points', value: selected.dossier.engagement.points },
-                    ].map((s) => (
+                    ]
+                      .filter((s) => hasValue(s.value))
+                      .map((s) => (
                       <div key={s.label} className="p-space-xs rounded-xl bg-surface-subtle border border-border">
                         <div className="font-caption text-caption text-on-surface-variant">{s.label}</div>
                         <div className="font-heading-sm text-heading-sm text-on-surface">{s.value}</div>
@@ -850,6 +880,7 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                 </div>
 
                 {/* Relationship Telemetry */}
+                {telemetryRows > 0 && (
                 <div className="p-space-sm">
                   <div className="font-label-sm text-label-sm text-on-surface-variant mb-space-xs">
                     Merchant Telemetry
@@ -860,13 +891,16 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                       { label: 'Operating hours', value: selected.dossier.telemetry.hours },
                       { label: 'Deal redemption', value: selected.dossier.telemetry.dealRedemption },
                       { label: 'Patron tier', value: selected.dossier.telemetry.tier },
-                    ].map((r) => (
+                    ]
+                      .filter((r) => hasValue(r.value))
+                      .map((r) => (
                       <div key={r.label} className="flex items-center justify-between">
                         <span className="text-on-surface-variant">{r.label}</span>
                         <span className="text-on-surface font-medium">{r.value}</span>
                       </div>
                     ))}
                   </div>
+                  {hasValue(selected.dossier.telemetry.tier) && (
                   <div className="mt-space-sm">
                     <div className="flex items-center justify-between font-label-sm text-label-sm mb-space-2xs">
                       <span className="text-on-surface-variant">Tier Progress</span>
@@ -879,9 +913,13 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                       />
                     </div>
                   </div>
+                  )}
                 </div>
 
+                )}
+
                 {/* Popular / Signature Items */}
+                {(selected.dossier.popularItems.length > 0 || selected.verified) && (
                 <div className="p-space-sm">
                   <div className="font-label-sm text-label-sm text-on-surface-variant mb-space-xs">
                     Popular Items
@@ -896,11 +934,14 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                       </span>
                     ))}
                   </div>
-                  <div className="mt-space-sm flex items-center gap-space-xs px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text w-fit">
-                    <Icon name="verified" className="text-[14px]" filled />
-                    <span className="font-caption text-caption font-semibold">VEMTAP Tap-Pass verified</span>
-                  </div>
+                  {selected.verified && (
+                    <div className="mt-space-sm flex items-center gap-space-xs px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text w-fit">
+                      <Icon name="verified" className="text-[14px]" filled />
+                      <span className="font-caption text-caption font-semibold">VEMTAP verified business</span>
+                    </div>
+                  )}
                 </div>
+                )}
 
                 {/* Storefront button */}
                 <div className="p-space-sm">
@@ -915,6 +956,7 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                 </div>
 
                 {/* Notes and Policies */}
+                {selected.dossier.notes.length > 0 && (
                 <div className="p-space-sm">
                   <div className="flex items-center justify-between mb-space-xs">
                     <span className="font-label-sm text-label-sm text-on-surface-variant">Merchant Information</span>
@@ -931,6 +973,7 @@ export function DesktopMessagesScreen({ onNav, initialThread }: DesktopMessagesS
                     ))}
                   </ul>
                 </div>
+                )}
               </div>
 
               {/* Bottom Quick Actions */}

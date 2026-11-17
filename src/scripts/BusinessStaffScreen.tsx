@@ -404,7 +404,7 @@ export function BusinessStaffScreen({ onTab, onInvite }: BusinessStaffScreenProp
                   Cancel
                 </button>
                 <button
-                  className="h-8 px-space-xs rounded-lg bg-badge-discount text-white font-label-sm text-label-sm font-semibold"
+                  className="h-8 px-space-xs rounded-lg bg-badge-discount-text text-white font-label-sm text-label-sm font-semibold"
                   type="button"
                   onClick={() => removeMember(member)}
                 >

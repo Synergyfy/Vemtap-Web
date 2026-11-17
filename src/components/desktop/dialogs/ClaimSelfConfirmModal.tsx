@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useProfile } from '../../../context/ProfileContext';
 import { Icon } from '../../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
+import { UserAvatar } from '../../ui/UserAvatar';
 
 export interface ClaimSelfConfirmModalProps {
   open: boolean;
@@ -13,7 +14,7 @@ export interface ClaimSelfConfirmModalProps {
 }
 
 export function ClaimSelfConfirmModal({ open, onClose, onConfirm, onCompleteProfile }: ClaimSelfConfirmModalProps) {
-  const { fullName, email, maskedPhone, initials, hasPhone, isComplete } = useProfile();
+  const { fullName, email, maskedPhone, hasPhone, isComplete } = useProfile();
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,8 +70,8 @@ export function ClaimSelfConfirmModal({ open, onClose, onConfirm, onCompleteProf
       <div className="px-6 flex flex-col gap-4 overflow-y-auto">
         <div className="p-4 rounded-xl bg-surface-container-low shadow-sm">
           <div className="flex items-center gap-3.5 pb-3 border-b border-outline-variant/40">
-            <div className="w-14 h-14 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-heading-sm text-heading-sm font-semibold shrink-0">
-              {initials || 'VT'}
+            <div className="w-14 h-14 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-heading-sm text-heading-sm font-semibold shrink-0 overflow-hidden">
+              <UserAvatar textClassName="" />
             </div>
             <div className="flex flex-col min-w-0">
               <span className="font-heading-sm text-heading-sm text-on-surface font-semibold truncate">

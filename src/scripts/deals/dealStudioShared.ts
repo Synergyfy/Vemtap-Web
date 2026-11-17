@@ -217,7 +217,14 @@ export interface DealStudioDraft {
   pickup: boolean;
   reservation: boolean;
   autoPause: boolean;
+  /** Demo outlets only; live deals use `branchIds`. */
   branches: { wuseII: boolean; garkiII: boolean; maitama: boolean };
+  /** Live: the business's branches the deal runs at (unset = the active branch). */
+  branchIds?: string[];
+  /** Live: the deal group this draft already published — publishing again updates it. */
+  publishedDealGroupId?: string;
+  /** Live: the branches it was published at, so a re-publish can add or pause branches. */
+  publishedBranchIds?: string[];
   days: { mon: boolean; tue: boolean; wed: boolean; thu: boolean; fri: boolean; sat: boolean; sun: boolean };
   redeemAllDay: boolean;
   redeemStart: string;
@@ -263,12 +270,95 @@ export const INITIAL_DEAL_STUDIO_DRAFT: DealStudioDraft = {
   ],
 };
 
+/**
+ * Live starting point: same rules as the sample, but claim steps and terms that
+ * fit any business (no restaurant wording or fixed hours) for the owner to edit.
+ */
+export const LIVE_DEAL_STUDIO_DRAFT: DealStudioDraft = {
+  ...INITIAL_DEAL_STUDIO_DRAFT,
+  claimSteps: [
+    'Show your VEMTAP voucher at the counter before you pay',
+    'The deal price is applied to the eligible item',
+    'Pay any balance directly with the business',
+  ],
+  terms: ['Show your voucher code before you pay', 'Not combinable with other promotions'],
+};
+
+/* ------------------------------------------------------------------ */
+/* Validity period                                                     */
+/* ------------------------------------------------------------------ */
+
+export const DEAL_DURATION_DAYS: Record<DealDuration, number | null> = {
+  '7-days': 7,
+  '14-days': 14,
+  '30-days': 30,
+  '3-months': 91,
+  '6-months': 182,
+  forever: null,
+};
+
+const endOfDay = (date: Date) => {
+  const copy = new Date(date);
+  copy.setHours(23, 59, 59, 0);
+  return copy;
+};
+
+/**
+ * When the deal runs if published now: happy-hour deals use their own dates,
+ * the rest start today and last the chosen duration (no end when "forever").
+ */
+export function dealValidityRange(studio: DealStudioDraft, now = new Date()): { start: Date; end?: Date } {
+  const start = studio.strategy === 'tiered' && studio.flash.startDate ? new Date(`${studio.flash.startDate}T00:00:00`) : now;
+  if (studio.strategy === 'tiered' && studio.flash.endDate) return { start, end: endOfDay(new Date(`${studio.flash.endDate}T00:00:00`)) };
+  const days = DEAL_DURATION_DAYS[studio.duration];
+  return { start, end: days === null ? undefined : endOfDay(new Date(start.getTime() + days * 86_400_000)) };
+}
+
+/** "29 Oct – 12 Nov 2026 (14 Days)" / "Always On — No Fixed Expiry". */
+export function formatDealValidity(studio: DealStudioDraft, now = new Date()) {
+  const { start, end } = dealValidityRange(studio, now);
+  if (!end) return 'Always On — No Fixed Expiry';
+  const day = (date: Date, withYear: boolean) =>
+    date.toLocaleDateString('en-NG', { day: 'numeric', month: 'short', ...(withYear ? { year: 'numeric' } : {}) });
+  const label = studio.strategy === 'tiered' ? 'Happy hour' : dealDurationLabel(studio.duration);
+  return `${day(start, start.getFullYear() !== end.getFullYear())} – ${day(end, true)} (${label})`;
+}
+
 /** Customer-facing claim restriction label (distinct from quantity & per-order limits). */
 export const claimLimitLabel = (studio: DealStudioDraft) => {
   if (studio.claimOnce) return '1 Per Customer';
   if (studio.unlimitedClaims) return 'Unlimited Per Customer';
-  return `${studio.maxClaims} Per Customer`;
+  return `${studio.maxClaims} Per Customer / Month`;
 };
+
+/**
+ * The window the per-customer cap is counted over, as the API names it:
+ * "once" is once ever, a numeric cap is per calendar month (as the studio shows).
+ */
+export const claimLimitPeriod = (studio: DealStudioDraft): 'lifetime' | 'month' | undefined =>
+  studio.claimOnce ? 'lifetime' : studio.unlimitedClaims ? undefined : 'month';
+
+/** The headline badge customers see for this deal ("20% Off", "₦2,500 Off", …). */
+export function dealBadgeLabel(studio: DealStudioDraft, savingsPct?: number) {
+  switch (studio.strategy) {
+    case 'fixed':
+      return `₦${formatDealAmount(studio.fixed.amountOff)} Off`;
+    case 'combo':
+      return savingsPct && savingsPct > 0 ? `Combo • Save ${savingsPct}%` : 'Combo Deal';
+    case 'tiered':
+      return `${studio.flash.discountPct}% Off Happy Hour`;
+    default:
+      return `${studio.discountPct}% Off`;
+  }
+}
+
+/** Minimum bill for the deal, when it has one (only fixed-amount deals do). */
+export const dealMinSpend = (studio: DealStudioDraft) =>
+  studio.strategy === 'fixed' && studio.fixed.minSpend > 0 ? studio.fixed.minSpend : 0;
+
+/** "Dine-in • Pickup • Reservation" from the redemption modes switched on. */
+export const redemptionModesLabel = (studio: DealStudioDraft) =>
+  [studio.dineIn && 'Dine-in', studio.pickup && 'Pickup', studio.reservation && 'Reservation'].filter(Boolean).join(' • ');
 
 /* ------------------------------------------------------------------ */
 /* Pricing math                                                        */

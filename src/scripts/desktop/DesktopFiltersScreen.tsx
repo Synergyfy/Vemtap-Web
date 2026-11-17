@@ -1,7 +1,12 @@
-import { useState } from 'react';
+import { useMemo } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { useLocation } from '../../context/LocationContext';
+import { useHomeDealCategories } from '../../hooks/useHomeDealCategories';
+import { useFilterDraft } from '../../hooks/useFilterDraft';
+import { offerDiscountLabel, offerImage, offerLocationLabel } from '../../utils/homeOffer';
+import { naira } from '../catalogueData';
 
 interface DesktopFiltersScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -9,157 +14,59 @@ interface DesktopFiltersScreenProps {
 }
 
 const RADIUS_PILLS: Array<{ label: string; value: number | null }> = [
-  { label: 'Near Me', value: 8 },
+  { label: 'Near Me', value: null },
   { label: '1 km', value: 1 },
   { label: '5 km', value: 5 },
   { label: '10 km', value: 10 },
-  { label: 'Custom', value: null },
 ];
 
-const CATEGORIES: Array<{ label: string; icon: string }> = [
-  { label: 'Food & Drinks', icon: 'restaurant' },
-  { label: 'Beauty & Spa', icon: 'spa' },
-  { label: 'Fashion & Apparel', icon: 'checkroom' },
-  { label: 'Electronics & Gadgets', icon: 'devices' },
-  { label: 'Health & Fitness', icon: 'fitness_center' },
-  { label: 'Groceries & Store', icon: 'shopping_basket' },
-  { label: 'Home & Living', icon: 'cottage' },
-  { label: 'Automotive & Auto', icon: 'directions_car' },
+const PRICE_CHIPS: Array<{ label: string; min?: number; max?: number }> = [
+  { label: 'Any Price' },
+  { label: 'Under ₦5,000', max: 5000 },
+  { label: '₦5,000 – ₦20,000', min: 5000, max: 20000 },
+  { label: 'Above ₦20,000', min: 20000 },
+];
+const DISCOUNT_CHIPS: Array<{ label: string; value?: number }> = [
+  { label: 'Any Discount' },
+  { label: '10%+', value: 10 },
+  { label: '20%+', value: 20 },
+  { label: '30%+', value: 30 },
 ];
 
-const PRICE_CHIPS = ['Any Price', 'Under ₦5,000', '₦5,000 – ₦20,000', 'Above ₦20,000'];
-const DISCOUNT_CHIPS = ['Any Discount', '10%+', '20%+', '30%+'];
-const PRICE_BONUS = [0, 4, 6, 3];
-const DISCOUNT_BONUS = [0, 1, 2, 4];
-
-const TIMING_OPTIONS: Array<{ key: string; label: string; copy: string }> = [
-  {
-    key: 'available',
-    label: 'Available Now',
-    copy: 'Immediate voucher redemption ready today',
-  },
-  {
-    key: 'ending',
-    label: 'Ending Soon',
-    copy: 'Expiring within 24 hours • High rush',
-  },
-  {
-    key: 'walkins',
-    label: 'Walk-ins Accepted',
-    copy: 'No prior telephone reservation required',
-  },
-  {
-    key: 'weekend',
-    label: 'Weekend Only Deals',
-    copy: 'Valid strictly on Saturday & Sunday',
-  },
+/** Timing is checked against each offer's own start and end dates. */
+const TIMING_OPTIONS: Array<{ key: 'availableNow' | 'endingSoon'; label: string; copy: string }> = [
+  { key: 'availableNow', label: 'Available Now', copy: 'Already started and ready to claim' },
+  { key: 'endingSoon', label: 'Ending Soon', copy: 'Expiring within 24 hours' },
 ];
-
-interface PreviewDeal {
-  image: string;
-  imageAlt: string;
-  discount: string;
-  meta: string;
-  store: string;
-  copy: string;
-  price: string;
-  oldPrice: string;
-}
-
-const PREVIEW_DEALS: PreviewDeal[] = [
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuDz95_KAnhv6h0ofwLuA1JjatMk_zXTnDmoEctg3TRVxD25g1Fwdo-nDrBUJk3gd0m11QLGXNdEhDYGmxNVCt98DVH6t6f6_Zxj1YoxE0335EyWFeNSNOLtIRHoYMxVCtVBAEEcKq3F2lG1hdRuYx9LrcbLc3SFEaJKPVT1vmeFfe19Wa8ioGIhguF5NDpsGfqMqvuszNmO9LaVpaLDX8W8WhWA6KQfUS3xhsIzFv7q',
-    imageAlt:
-      'A brightly lit artisanal wood-fired pizza and Italian pasta table spread in a modern Abuja bistro with warm sunlight and fresh basil garnish',
-    discount: '25% OFF',
-    meta: 'Food • 1.2km',
-    store: 'Trattoria Bella Vista',
-    copy: '2-Course Lunch Promo',
-    price: '₦7,500',
-    oldPrice: '₦10,000',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuDwu3icHz37W52xCP3CzGtUxNMaOgmOS98KolpJD-ohB5sY3IUUCu5PKaO-qlVqlX-MG-ghbq904YJS3C_xtY8Xa_xvsu_XlpZT80gytVHa4thgW_rEE5IWMoDfx-SV9NuzgzSc5QkN43b7STNWAj-GYch1rbmX7rkb2O38ii-5a7QqiFBbqpDh6L6jYvtFdYB25WK9utK0nDTiizroDYU0kbH3RK9Bf3STW3Qpagig',
-    imageAlt:
-      'A serene luxury wellness spa interior in Apo Abuja with aromatic stone massage oils, bamboo elements, and relaxing warm ambient lighting',
-    discount: '20% OFF',
-    meta: 'Beauty & Spa • 3.4km',
-    store: 'Aura Botanical Spa',
-    copy: 'Aromatherapy Ritual',
-    price: '₦14,400',
-    oldPrice: '₦18,000',
-  },
-  {
-    image:
-      'https://lh3.googleusercontent.com/aida-public/AB6AXuCQz__PoPBH8c3iUhAMpKEgG80qjhsUwa8lWOPlVBBeRlR0hYvCTDFY1hvOQpDqgDYavGFAdSVcR9wy-KRNjodyjci_2V4M2Nfhtulj9U9U5plZMLcTw04lE1-VCZ3dbM4OonVD_-tYv4P49R9CIOIBiOT7sGYHHa12vGmHnibsBfWAxt2p3UdpSYE8g-AnhIu1R1fWryKKoQNmE9WDWQsfGTFm6tJSmto48S-GU8OT',
-    imageAlt:
-      'Freshly pressed green juices, organic fruit bowls and healthy snacks at an upscale health bar in Abuja Nigeria with minimalist wood and steel interior',
-    discount: '30% OFF',
-    meta: 'Food • 4.1km',
-    store: 'Raw & Pure Wellness Bar',
-    copy: 'Detox Juice Trio',
-    price: '₦5,250',
-    oldPrice: '₦7,500',
-  },
-];
-
-const DEFAULT_CATEGORIES = ['Food & Drinks', 'Beauty & Spa'];
 
 export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenProps) {
   const { city, district } = useLocation();
-  const [radius, setRadius] = useState(8);
-  const [radiusPill, setRadiusPill] = useState('Near Me');
-  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
-  const [priceIndex, setPriceIndex] = useState(2);
-  const [minPrice, setMinPrice] = useState('5,000');
-  const [maxPrice, setMaxPrice] = useState('20,000');
-  const [discountIndex, setDiscountIndex] = useState(2);
-  const [timing, setTiming] = useState<Record<string, boolean>>({
-    available: true,
-    ending: false,
-    walkins: false,
-    weekend: false,
-  });
-
-  const dealCount = Math.max(
-    2,
-    Math.round(radius * 1.5) +
-      categories.length * 4 +
-      (timing.available ? 6 : 0) +
-      PRICE_BONUS[priceIndex] +
-      DISCOUNT_BONUS[discountIndex] +
-      (timing.ending ? 1 : 0) +
-      (timing.walkins ? 1 : 0) +
-      (timing.weekend ? 1 : 0)
+  const { categories: liveCategories } = useHomeDealCategories();
+  const categories = liveCategories.filter((category) => category.id !== null);
+  const filter = useFilterDraft(onClose);
+  const { draft, radius, preview } = filter;
+  const radiusPill = !draft.strictDistance ? 'Near Me' : RADIUS_PILLS.find((pill) => pill.value === radius)?.label ?? 'Custom';
+  const priceIndex = PRICE_CHIPS.findIndex((chip) => chip.min === draft.minPrice && chip.max === draft.maxPrice);
+  const discountIndex = DISCOUNT_CHIPS.findIndex((chip) => chip.value === draft.minDiscount);
+  const previewDeals = useMemo(
+    () =>
+      preview.deals.map((offer) => {
+        const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};
+        const price = Number(offer.calculatedPrice ?? 0) || 0;
+        const original = Number(offer.originalPrice ?? 0) || 0;
+        return {
+          id: String(offer.id),
+          image: offerImage(offer),
+          title: typeof offer.name === 'string' ? offer.name : 'Deal',
+          store: typeof business.name === 'string' ? business.name : '',
+          discount: offerDiscountLabel(offer),
+          meta: [typeof offer.categoryName === 'string' ? offer.categoryName : null, offerLocationLabel(offer)].filter(Boolean).join(' • '),
+          price: price > 0 ? naira(price) : '',
+          oldPrice: original > price ? naira(original) : '',
+        };
+      }),
+    [preview.deals],
   );
-
-  const activeFilterText = `${Math.max(1, categories.length)} active`;
-
-  const toggleCategory = (label: string) => {
-    setCategories((prev) =>
-      prev.includes(label) ? prev.filter((item) => item !== label) : [...prev, label]
-    );
-  };
-
-  const selectRadius = (pill: { label: string; value: number | null }) => {
-    setRadiusPill(pill.label);
-    if (pill.value !== null) {
-      setRadius(pill.value);
-    }
-  };
-
-  const resetAll = () => {
-    setRadius(8);
-    setRadiusPill('Near Me');
-    setCategories(DEFAULT_CATEGORIES);
-    setPriceIndex(2);
-    setMinPrice('5,000');
-    setMaxPrice('20,000');
-    setDiscountIndex(2);
-    setTiming({ available: true, ending: false, walkins: false, weekend: false });
-  };
 
   const chipClass = (active: boolean) =>
     `px-space-md py-space-xs rounded-full font-label-md text-label-md transition-all ${
@@ -179,13 +86,11 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
               </div>
               <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Filters</h1>
               <span className="px-space-xs py-0.5 rounded-full bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold">
-                {activeFilterText}
+                {filter.activeCount} active
               </span>
             </div>
             <p className="font-body-md text-body-md text-text-secondary">
-              3 active filters applied • Matching{' '}
-              <span className="font-semibold text-primary-container">{dealCount} local verified promotions</span>{' '}
-              (Active)
+              <span className="font-semibold text-primary-container">{filter.matchText}</span>
             </p>
           </div>
 
@@ -193,7 +98,7 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
             <button
               className="px-space-md py-space-xs rounded-xl text-text-secondary hover:text-text-primary hover:bg-surface-subtle transition-all font-button-secondary text-button-secondary flex items-center gap-space-2xs"
               type="button"
-              onClick={resetAll}
+              onClick={filter.reset}
             >
               <Icon name="restart_alt" className="text-[18px]" />
               <span>Reset all</span>
@@ -201,9 +106,9 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
             <button
               className="px-space-lg py-space-xs bg-primary-container hover:bg-primary text-on-primary rounded-xl font-button-primary text-button-primary transition-all shadow-md shadow-primary-container/20 flex items-center gap-space-xs"
               type="button"
-              onClick={onClose}
+              onClick={filter.apply}
             >
-              <span>Apply to {dealCount} Deals</span>
+              <span>Apply Filters</span>
               <Icon name="done" className="text-[18px]" />
             </button>
           </div>
@@ -219,8 +124,13 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
                     <h2 className="font-heading-sm text-heading-sm text-text-primary">Distance &amp; Radius</h2>
                   </div>
                   <p className="font-body-md text-body-md text-text-secondary">
-                    Show deals within your immediate range •{' '}
-                    <span className="font-semibold text-primary">Within {radius}km</span>
+                    {filter.hasCoordinates ? (
+                      <>
+                        Show deals within your immediate range • <span className="font-semibold text-primary">Within {radius}km</span>
+                      </>
+                    ) : (
+                      'Set your location on the home page to filter by distance'
+                    )}
                   </p>
                 </div>
                 <span className="px-space-xs py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center gap-1 w-fit">
@@ -235,7 +145,8 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
                     key={pill.label}
                     className={chipClass(radiusPill === pill.label)}
                     type="button"
-                    onClick={() => selectRadius(pill)}
+                    disabled={!filter.hasCoordinates}
+                    onClick={() => filter.chooseDistance(pill.value)}
                   >
                     {radiusPill === pill.label ? `${pill.label} (Active)` : pill.label}
                   </button>
@@ -250,10 +161,8 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
                     min={1}
                     type="range"
                     value={radius}
-                    onChange={(event) => {
-                      setRadius(Number(event.target.value));
-                      setRadiusPill('Custom');
-                    }}
+                    disabled={!filter.hasCoordinates}
+                    onChange={(event) => filter.chooseDistance(Number(event.target.value))}
                   />
                 </div>
                 <div className="flex justify-between items-center text-text-tertiary font-caption text-caption gap-space-sm">
@@ -277,27 +186,27 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
                     <h2 className="font-heading-sm text-heading-sm text-text-primary">Categories</h2>
                   </div>
                   <p className="font-body-md text-body-md text-text-secondary">
-                    Pick single or multiple local business sectors
+                    Pick a local business sector
                   </p>
                 </div>
-                <span className="font-label-sm text-label-sm text-text-tertiary">{categories.length} Selected</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-space-xs">
-                {CATEGORIES.map((category) => {
-                  const selected = categories.includes(category.label);
+                {categories.map((category) => {
+                  const selected = draft.categoryId === category.id;
                   return (
                     <button
-                      key={category.label}
+                      key={category.id}
+                      aria-pressed={selected}
                       className={`group flex items-center justify-between p-space-sm rounded-xl transition-all text-left ${
                         selected ? 'bg-surface-tint-blue text-primary' : 'bg-surface-subtle text-text-secondary hover:text-text-primary hover:bg-surface-container'
                       }`}
                       type="button"
-                      onClick={() => toggleCategory(category.label)}
+                      onClick={() => filter.patch({ categoryId: selected ? null : category.id })}
                     >
                       <div className="flex items-center gap-space-xs min-w-0">
                         <Icon
-                          name={category.icon}
+                          name={category.icon ?? 'category'}
                           className={`text-[20px] shrink-0 ${selected ? 'text-primary-container' : 'text-outline'}`}
                         />
                         <span
@@ -332,12 +241,12 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
               <div className="flex flex-wrap gap-space-xs">
                 {PRICE_CHIPS.map((chip, index) => (
                   <button
-                    key={chip}
+                    key={chip.label}
                     className={chipClass(priceIndex === index)}
                     type="button"
-                    onClick={() => setPriceIndex(index)}
+                    onClick={() => filter.setPrices(chip.min, chip.max)}
                   >
-                    {priceIndex === index ? `${chip} (Active)` : chip}
+                    {priceIndex === index ? `${chip.label} (Active)` : chip.label}
                   </button>
                 ))}
               </div>
@@ -352,8 +261,11 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
                     <input
                       className="w-full h-12 pl-space-xs pr-space-md bg-transparent text-text-primary font-heading-sm text-heading-sm font-semibold outline-none"
                       type="text"
-                      value={minPrice}
-                      onChange={(event) => setMinPrice(event.target.value)}
+                      inputMode="numeric"
+                      placeholder="0"
+                      aria-label="Minimum price"
+                      value={filter.minPrice}
+                      onChange={(event) => filter.typeMin(event.target.value)}
                     />
                   </div>
                 </div>
@@ -366,8 +278,11 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
                     <input
                       className="w-full h-12 pl-space-xs pr-space-md bg-transparent text-text-primary font-heading-sm text-heading-sm font-semibold outline-none"
                       type="text"
-                      value={maxPrice}
-                      onChange={(event) => setMaxPrice(event.target.value)}
+                      inputMode="numeric"
+                      placeholder="No limit"
+                      aria-label="Maximum price"
+                      value={filter.maxPrice}
+                      onChange={(event) => filter.typeMax(event.target.value)}
                     />
                   </div>
                 </div>
@@ -387,16 +302,16 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
                 <div className="grid grid-cols-2 gap-space-xs pt-space-2xs">
                   {DISCOUNT_CHIPS.map((chip, index) => (
                     <button
-                      key={chip}
+                      key={chip.label}
                       className={`py-space-sm px-space-md rounded-xl font-label-md text-label-md transition-all text-center ${
                         discountIndex === index
                           ? 'bg-surface-tint-blue text-primary font-semibold'
                           : 'bg-surface-subtle text-text-secondary hover:text-text-primary hover:bg-surface-container'
                       }`}
                       type="button"
-                      onClick={() => setDiscountIndex(index)}
+                      onClick={() => filter.patch({ minDiscount: chip.value })}
                     >
-                      {discountIndex === index ? `${chip} (Active)` : chip}
+                      {discountIndex === index ? `${chip.label} (Active)` : chip.label}
                     </button>
                   ))}
                 </div>
@@ -413,7 +328,7 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
 
                 <div className="space-y-space-xs pt-space-2xs">
                   {TIMING_OPTIONS.map((option) => {
-                    const checked = Boolean(timing[option.key]);
+                    const checked = draft[option.key];
                     return (
                       <label
                         key={option.key}
@@ -423,9 +338,7 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
                           className="mt-1 w-5 h-5 rounded text-primary-container accent-primary-container cursor-pointer"
                           type="checkbox"
                           checked={checked}
-                          onChange={(event) =>
-                            setTiming((prev) => ({ ...prev, [option.key]: event.target.checked }))
-                          }
+                          onChange={(event) => filter.patch({ [option.key]: event.target.checked })}
                         />
                         <div className="min-w-0">
                           <div
@@ -434,7 +347,7 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
                             }`}
                           >
                             <span>{option.label}</span>
-                            {option.key === 'available' ? (
+                            {option.key === 'availableNow' ? (
                               <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
                             ) : null}
                           </div>
@@ -452,43 +365,45 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
             <div className="bg-surface-canvas rounded-2xl p-space-lg shadow-sm space-y-space-md">
               <div className="flex items-center justify-between pb-space-2xs">
                 <h3 className="font-heading-sm text-heading-sm text-text-primary">Live Match Preview</h3>
-                <span className="font-caption text-caption font-semibold text-primary">{dealCount} Deals Nearby</span>
+                <span className="font-caption text-caption font-semibold text-primary">{preview.loading ? '…' : `${preview.count ?? 0} Deal${preview.count === 1 ? '' : 's'}`}</span>
               </div>
 
-              {PREVIEW_DEALS.map((deal) => (
+              {preview.loading && previewDeals.length === 0 ? (
+                [0, 1, 2].map((key) => <Skeleton key={key} className="h-[96px] w-full rounded-xl" />)
+              ) : previewDeals.length === 0 ? (
+                <p className="font-body-md text-body-md text-text-secondary text-center py-space-md">No live deals match these filters.</p>
+              ) : previewDeals.map((deal) => (
                 <div
-                  key={deal.store}
+                  key={deal.id}
                   className="flex gap-space-sm p-space-xs rounded-xl bg-surface-subtle hover:bg-surface-container-low transition-colors"
                 >
                   <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 relative bg-surface-container">
-                    <img className="w-full h-full object-cover" alt={deal.imageAlt} src={deal.image} />
+                    <img className="w-full h-full object-cover" alt={deal.title} src={deal.image} />
                     <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-[11px] font-bold">
                       {deal.discount}
                     </span>
                   </div>
                   <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
                     <div>
-                      <p className="font-caption text-caption text-text-tertiary uppercase tracking-wider font-semibold">
-                        {deal.meta}
-                      </p>
-                      <h4 className="font-label-md text-label-md font-semibold text-text-primary truncate">
-                        {deal.store}
-                      </h4>
-                      <p className="font-body-md text-body-md text-text-secondary text-sm">{deal.copy}</p>
+                      <p className="font-caption text-caption text-text-tertiary uppercase tracking-wider font-semibold truncate">{deal.meta}</p>
+                      <h4 className="font-label-md text-label-md font-semibold text-text-primary truncate">{deal.store}</h4>
+                      <p className="font-body-md text-body-md text-text-secondary text-sm truncate">{deal.title}</p>
                     </div>
                     <div className="flex items-center gap-space-xs text-primary font-label-sm text-label-sm font-semibold">
                       <span>{deal.price}</span>
-                      <span className="text-text-tertiary line-through text-xs font-normal">{deal.oldPrice}</span>
+                      {deal.oldPrice ? <span className="text-text-tertiary line-through text-xs font-normal">{deal.oldPrice}</span> : null}
                     </div>
                   </div>
                 </div>
               ))}
 
-              <div className="pt-space-2xs text-center">
-                <span className="font-caption text-caption text-text-tertiary">
-                  + {Math.max(0, dealCount - 3)} more deals matching current selection
-                </span>
-              </div>
+              {(preview.count ?? 0) > previewDeals.length ? (
+                <div className="pt-space-2xs text-center">
+                  <span className="font-caption text-caption text-text-tertiary">
+                    + {(preview.count ?? 0) - previewDeals.length} more matching your selection
+                  </span>
+                </div>
+              ) : null}
             </div>
 
             <div className="bg-surface-canvas rounded-2xl p-space-xl shadow-sm relative overflow-hidden space-y-space-md">
@@ -543,9 +458,9 @@ export function DesktopFiltersScreen({ onNav, onClose }: DesktopFiltersScreenPro
             <button
               className="flex-1 sm:flex-initial px-space-2xl py-3.5 bg-primary-container hover:bg-primary text-on-primary rounded-xl font-button-primary text-button-primary transition-all shadow-lg shadow-primary-container/25 flex items-center justify-center gap-space-xs text-center"
               type="button"
-              onClick={onClose}
+              onClick={filter.apply}
             >
-              <span>Show {dealCount} Deals</span>
+              <span>{filter.showLabel}</span>
               <Icon name="arrow_forward" className="text-[20px]" />
             </button>
           </div>

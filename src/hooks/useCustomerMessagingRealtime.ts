@@ -11,6 +11,7 @@ import {
 
 type MessagingRealtimeEvent =
   | 'connect'
+  | 'disconnect'
   | 'newMessage'
   | 'notification'
   | 'messageStatus'
@@ -54,6 +55,8 @@ export function useCustomerMessagingRealtime(enabled: boolean) {
 
     const onMessageStatus = (payload: unknown) => dispatchRealtimeEvent('messageStatus', payload);
     const onMessageRead = (payload: unknown) => dispatchRealtimeEvent('messageRead', payload);
+    const onMessageUpdate = (payload: unknown) => dispatchRealtimeEvent('messageUpdate', payload);
+    const onDisconnect = (payload: unknown) => dispatchRealtimeEvent('disconnect', payload);
     const onThreadDeleted = (payload: unknown) => dispatchRealtimeEvent('threadDeleted', payload);
     const onUserTyping = (payload: unknown) => dispatchRealtimeEvent('userTyping', payload);
     const onPresenceUpdate = (payload: unknown) => dispatchRealtimeEvent('presence:update', payload);
@@ -69,6 +72,8 @@ export function useCustomerMessagingRealtime(enabled: boolean) {
     socket.on('notification', onNotification);
     socket.on('messageStatus', onMessageStatus);
     socket.on('messageRead', onMessageRead);
+    socket.on('messageUpdate', onMessageUpdate);
+    socket.on('disconnect', onDisconnect);
     socket.on('threadDeleted', onThreadDeleted);
     socket.on('userTyping', onUserTyping);
     socket.on('presence:update', onPresenceUpdate);
@@ -88,6 +93,8 @@ export function useCustomerMessagingRealtime(enabled: boolean) {
       socket.off('notification', onNotification);
       socket.off('messageStatus', onMessageStatus);
       socket.off('messageRead', onMessageRead);
+      socket.off('messageUpdate', onMessageUpdate);
+      socket.off('disconnect', onDisconnect);
       socket.off('threadDeleted', onThreadDeleted);
       socket.off('userTyping', onUserTyping);
       socket.off('presence:update', onPresenceUpdate);

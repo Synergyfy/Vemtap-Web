@@ -1,9 +1,11 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
+import { useBusinessFeatures } from '../context/BusinessFeaturesContext';
+import { getNavKeyFeature } from './businessFeatures';
 
 interface BusinessPosMenuScreenProps {
-  /** Navigates to a POS / Store Front page (keys match the desktop sidebar config). */
+  /** Navigates to a POS page (keys match the desktop sidebar config). */
   onOpenPage: (key: string) => void;
   onBack: () => void;
   onTab?: (tab: BusinessTabKey) => void;
@@ -25,12 +27,6 @@ const POS_ROWS: PosRow[] = [
   { key: 'orders-bookings', icon: 'calendar_month', title: 'Bookings', sub: 'Reservations & table assignments' },
   { key: 'pos-transactions', icon: 'receipt', title: 'Transactions', sub: 'Receipts, refunds & payment history' },
   { key: 'pos-settings', icon: 'settings', title: 'POS Settings', sub: 'Business info, receipts, tax, alerts & loyalty' },
-];
-
-const STORE_FRONT_ROWS: PosRow[] = [
-  { key: 'store-ordering-dashboard', icon: 'dashboard', title: 'Store Front Dashboard', sub: 'Live customer orders from QR & storefront', badge: 'Live', badgeClass: 'bg-badge-discount-bg text-badge-discount-text' },
-  { key: 'store-ordering-qr', icon: 'qr_code_2', title: 'QR Codes & Placement', sub: 'Store, section, product & table codes' },
-  { key: 'store-ordering-settings', icon: 'tune', title: 'Store Front Settings', sub: 'Pickup lead times, branch policies & rules' },
 ];
 
 function PosMenuSection({
@@ -88,10 +84,18 @@ function PosMenuSection({
 
 /**
  * Mobile POS menu — the POS landing page opened from the Overview quick action.
- * Lists the same pages as the desktop POS side menu, grouped into
- * "Point of Sale" and "Store Front" (mirrors BUSINESS_SIDEBAR_SECTIONS).
+ * Lists the same pages as the desktop POS side menu.
  */
 export function BusinessPosMenuScreen({ onOpenPage, onBack, onTab }: BusinessPosMenuScreenProps) {
+  const { features } = useBusinessFeatures();
+
+  // Rows for tools the business has switched off are dropped.
+  const rowVisible = (row: PosRow) => {
+    const feature = getNavKeyFeature(row.key);
+    return feature === undefined || Boolean(features[feature]);
+  };
+  const posRows = POS_ROWS.filter(rowVisible);
+
   return (
     <div className="biz-flow">
       <AppScreen>
@@ -108,7 +112,7 @@ export function BusinessPosMenuScreen({ onOpenPage, onBack, onTab }: BusinessPos
             <div className="flex flex-col min-w-0 flex-1">
               <h1 className="font-heading-sm text-heading-sm text-on-surface tracking-tight truncate">Point of Sale</h1>
               <span className="font-caption text-caption text-on-surface-variant truncate">
-                Register, orders &amp; store front
+                Register, orders &amp; transactions
               </span>
             </div>
           </div>
@@ -120,14 +124,7 @@ export function BusinessPosMenuScreen({ onOpenPage, onBack, onTab }: BusinessPos
               label="Point of Sale"
               badge="Active"
               badgeClass="bg-badge-discount-bg text-badge-discount-text"
-              rows={POS_ROWS}
-              onOpenPage={onOpenPage}
-            />
-            <PosMenuSection
-              label="Store Front"
-              badge="Live"
-              badgeClass="bg-badge-discount-bg text-badge-discount-text"
-              rows={STORE_FRONT_ROWS}
+              rows={posRows}
               onOpenPage={onOpenPage}
             />
           </div>

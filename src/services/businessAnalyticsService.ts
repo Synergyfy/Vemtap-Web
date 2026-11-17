@@ -25,6 +25,14 @@ export interface AnalyticsQuery {
   from?: string;
   to?: string;
   branchId?: string;
+  /** Deals: comma-separated `active,scheduled,expired,paused`. */
+  dealStatus?: string;
+  /** POS: comma-separated `card,transfer,cash`. */
+  paymentMethod?: string;
+  /** POS: comma-separated till ids. */
+  tillId?: string;
+  /** Customers: `new` | `returning` | `lapsed` | `vip` (top-customers list). */
+  cohort?: string;
 }
 
 export interface OverviewAnalytics {
@@ -58,7 +66,7 @@ export interface CustomersAnalytics {
   visitsPerActiveCustomer: number;
   segments: Record<'vip' | 'regular' | 'new' | 'lapsed', { count: number; share: number; spend: number }>;
   growth: { weekStart: string; new: number; returning: number }[];
-  topCustomers: { userId: string; name: string; visits: number; spend: number; lastVisitAt: string | null; tier: string | null }[];
+  topCustomers: { userId: string; name: string; avatarUrl?: string | null; visits: number; spend: number; lastVisitAt: string | null; tier: string | null }[];
   /** Sales and visits by local weekday (0 = Sunday) and hour. */
   heatmap?: ActivityCell[];
 }

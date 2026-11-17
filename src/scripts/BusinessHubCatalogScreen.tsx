@@ -17,6 +17,11 @@ import { BusinessAddProductStep2Screen } from './BusinessAddProductStep2Screen';
 import { BusinessAddProductImageScreen } from './BusinessAddProductImageScreen';
 import { BusinessAddProductStep3Screen } from './BusinessAddProductStep3Screen';
 import { BusinessProductReviewScreen } from './BusinessProductReviewScreen';
+import { BusinessAddServiceStep1Screen } from './BusinessAddServiceStep1Screen';
+import { BusinessAddServiceStep2Screen } from './BusinessAddServiceStep2Screen';
+import { BusinessAddServiceStep3Screen } from './BusinessAddServiceStep3Screen';
+import { BusinessServiceReviewScreen } from './BusinessServiceReviewScreen';
+import { BLANK_SERVICE_DRAFT, INITIAL_SERVICE_DRAFT, type ServiceDraft } from './serviceDraft';
 import { BLANK_PRODUCT_DRAFT, INITIAL_PRODUCT_DRAFT } from './productDraft';
 import { hasApiConfig } from '../services/api/client';
 import { useCatalogueItemMutations, useCatalogueItems } from '../hooks/business/useCatalogueItems';
@@ -24,7 +29,7 @@ import { useOffers } from '../hooks/business/useOffers';
 import { useOnboardingSync } from '../hooks/business/useOnboardingSync';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { apiErrorMessage } from '../services/errorMessages';
-import type { CatalogueItem as LiveCatalogueItem } from '../services/catalogueItemsService';
+import { itemToProductDraft, itemToServiceDraft, type CatalogueItem as LiveCatalogueItem } from '../services/catalogueItemsService';
 import type { BusinessOffer } from '../services/offersService';
 import {
   activeDealFor,
@@ -274,6 +279,24 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
   // Manual add-product flow: reuses the same onboarding wizard steps.
   const [manualStep, setManualStep] = useState<0 | 1 | 2 | 3 | 4 | 5>(0);
   const [manualDraft, setManualDraft] = useState<ProductDraft>({ ...INITIAL_PRODUCT_DRAFT });
+  // Add / edit a service: the same four steps as onboarding, published into the catalogue.
+  const [serviceStep, setServiceStep] = useState<0 | 1 | 2 | 3 | 4>(0);
+  const [serviceDraft, setServiceDraft] = useState<ServiceDraft>({ ...INITIAL_SERVICE_DRAFT });
+  const startService = () => {
+    setAddOpen(false);
+    setServiceDraft({ ...(live ? BLANK_SERVICE_DRAFT : INITIAL_SERVICE_DRAFT) });
+    setServiceStep(1);
+  };
+  /** Live: open a saved item in the form that created it; publishing then updates it. */
+  const editLiveItem = (item: LiveCatalogueItem) => {
+    if (item.itemType === 'service') {
+      setServiceDraft({ ...BLANK_SERVICE_DRAFT, ...itemToServiceDraft(item) });
+      setServiceStep(1);
+    } else {
+      setManualDraft({ ...BLANK_PRODUCT_DRAFT, ...itemToProductDraft(item) });
+      setManualStep(1);
+    }
+  };
 
   const importedItems = importedProducts.map(importedToItem);
   const importedKeys = new Set(importedProducts.map((product) => product.id));
@@ -363,6 +386,90 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
     );
   }
 
+  if (serviceStep > 0) {
+    const changeServiceDraft = (patch: Partial<ServiceDraft>) => setServiceDraft((previous) => ({ ...previous, ...patch }));
+    const closeService = () => setServiceStep(0);
+    const handleServicePublish = () => {
+      const name = serviceDraft.title || 'Service';
+      if (!live) {
+        closeService();
+        showToast(`“${name}” published to your catalogue.`);
+        return;
+      }
+      const edited = Boolean(serviceDraft.publishedItemId);
+      sync.publishService(
+        serviceDraft,
+        () => {
+          closeService();
+          setServiceDraft({ ...BLANK_SERVICE_DRAFT });
+          showToast(`“${name}” ${edited ? 'updated' : 'published to your catalogue'}.`);
+        },
+        { asDraft: false },
+      );
+    };
+    /** Live: keep the work as a hidden service (needs a name); otherwise just close. */
+    const saveServiceDraft = () => {
+      const name = serviceDraft.title.trim();
+      if (!live || !name) return closeService();
+      sync.publishService(
+        serviceDraft,
+        () => {
+          closeService();
+          setServiceDraft({ ...BLANK_SERVICE_DRAFT });
+          showToast(`“${name}” saved as a draft — hidden from customers until you publish it.`);
+        },
+        { asDraft: true },
+      );
+    };
+    return (
+      <AppScreen>
+        {serviceStep === 1 && (
+          <BusinessAddServiceStep1Screen
+            draft={serviceDraft}
+            onDraftChange={changeServiceDraft}
+            onBack={closeService}
+            onNext={() => setServiceStep(2)}
+            onSaveDraft={saveServiceDraft}
+          />
+        )}
+        {serviceStep === 2 && (
+          <BusinessAddServiceStep2Screen
+            draft={serviceDraft}
+            onDraftChange={changeServiceDraft}
+            onBack={() => setServiceStep(1)}
+            onNext={() => setServiceStep(3)}
+            onSaveDraft={saveServiceDraft}
+          />
+        )}
+        {serviceStep === 3 && (
+          <BusinessAddServiceStep3Screen
+            draft={serviceDraft}
+            onDraftChange={changeServiceDraft}
+            onBack={() => setServiceStep(2)}
+            onNext={() => setServiceStep(4)}
+            onSaveDraft={saveServiceDraft}
+          />
+        )}
+        {serviceStep === 4 && (
+          <BusinessServiceReviewScreen
+            draft={serviceDraft}
+            onBack={() => setServiceStep(3)}
+            onEditBasics={() => setServiceStep(1)}
+            onEditPricing={() => setServiceStep(2)}
+            onEditBranches={() => setServiceStep(3)}
+            onPublish={handleServicePublish}
+            onSaveDraft={saveServiceDraft}
+          />
+        )}
+        {sync.error && (
+          <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-[80] bg-inverse-surface text-inverse-on-surface px-space-md py-space-xs rounded-xl shadow-2xl font-label-md text-label-md max-w-[90vw] text-center">
+            {sync.error}
+          </div>
+        )}
+      </AppScreen>
+    );
+  }
+
   // Manual add-product: same five steps as onboarding, published into the catalogue.
   if (manualStep > 0) {
     const changeManualDraft = (patch: Partial<ProductDraft>) =>
@@ -370,11 +477,21 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
     const handleManualPublish = () => {
       if (live) {
         // Live: the same publish as setup — the active branch plus any branches ticked.
-        sync.publishProduct(manualDraft, () => {
-          setManualStep(0);
-          setManualDraft({ ...BLANK_PRODUCT_DRAFT });
-          showToast(`“${manualDraft.title || 'Product'}” published to your catalogue.`);
-        });
+        const edited = Boolean(manualDraft.publishedItemId);
+        const perBranch = manualDraft.pricingMode === 'custom';
+        sync.publishProduct(
+          manualDraft,
+          () => {
+            setManualStep(0);
+            setManualDraft({ ...BLANK_PRODUCT_DRAFT });
+            showToast(
+              `“${manualDraft.title || 'Product'}” ${edited ? 'updated' : 'published to your catalogue'}.${
+                perBranch ? ' Set its branch prices in the item options → Manage Location Pricing.' : ''
+              }`,
+            );
+          },
+          { asDraft: false },
+        );
         return;
       }
       const { saved } = saveImportedProducts(
@@ -408,6 +525,20 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
       setManualDraft({ ...INITIAL_PRODUCT_DRAFT });
       showToast(saved.length > 0 ? `“${manualDraft.title || 'Product'}” published to your catalogue.` : 'This product already exists (same SKU).');
     };
+    /** Live: keep the work as a hidden product (needs a name); otherwise just close. */
+    const saveManualDraft = () => {
+      const name = manualDraft.title.trim();
+      if (!live || !name) return setManualStep(0);
+      sync.publishProduct(
+        manualDraft,
+        () => {
+          setManualStep(0);
+          setManualDraft({ ...BLANK_PRODUCT_DRAFT });
+          showToast(`“${name}” saved as a draft — hidden from customers until you publish it.`);
+        },
+        { asDraft: true },
+      );
+    };
     return (
       <AppScreen>
         {manualStep === 1 && (
@@ -416,7 +547,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
             onDraftChange={changeManualDraft}
             onBack={() => setManualStep(0)}
             onNext={() => setManualStep(2)}
-            onSaveDraft={() => setManualStep(0)}
+            onSaveDraft={saveManualDraft}
           />
         )}
         {manualStep === 2 && (
@@ -425,7 +556,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
             onDraftChange={changeManualDraft}
             onBack={() => setManualStep(1)}
             onNext={() => setManualStep(3)}
-            onSaveDraft={() => setManualStep(0)}
+            onSaveDraft={saveManualDraft}
           />
         )}
         {manualStep === 3 && (
@@ -434,7 +565,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
             onDraftChange={changeManualDraft}
             onBack={() => setManualStep(2)}
             onNext={() => setManualStep(4)}
-            onSaveDraft={() => setManualStep(0)}
+            onSaveDraft={saveManualDraft}
           />
         )}
         {manualStep === 4 && (
@@ -443,7 +574,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
             onDraftChange={changeManualDraft}
             onBack={() => setManualStep(3)}
             onNext={() => setManualStep(5)}
-            onSaveDraft={() => setManualStep(0)}
+            onSaveDraft={saveManualDraft}
           />
         )}
         {manualStep === 5 && (
@@ -457,7 +588,8 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
             onEditFulfillment={() => setManualStep(4)}
             onEditDescription={() => setManualStep(1)}
             onPublish={handleManualPublish}
-            onSaveDraft={() => setManualStep(0)}
+            publishing={sync.saving}
+            onSaveDraft={saveManualDraft}
           />
         )}
         {sync.error && (
@@ -474,39 +606,39 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
       <BusinessHubHeader />
       <div className="flex flex-col w-full flex-1 pb-24">
         {/* Add New — location is picked from the persistent top-bar icon */}
-        <div className="px-margin pt-space-xs pb-space-sm flex items-center justify-end gap-space-xs">
+        <div className="px-margin pt-space-xs pb-space-xs flex items-center justify-end gap-space-xs">
           {/* Split Add Action */}
           <div className="relative">
             {addOpen && <div className="fixed inset-0 z-30" onClick={() => setAddOpen(false)} />}
             <button
-              className="flex items-center gap-space-2xs bg-primary-container text-on-primary-container pl-space-sm pr-space-xs py-space-2xs rounded-full shadow-md active:scale-95 transition-all"
+              className="h-8 flex items-center gap-1.5 bg-primary text-on-primary pl-2.5 pr-2 py-1 rounded-lg shadow-xs active:scale-95 transition-all text-label-sm font-semibold"
               type="button"
               onClick={() => setAddOpen((open) => !open)}
             >
-              <Icon name="add" className="text-[18px]" />
-              <span className="font-button-secondary text-button-secondary font-semibold">Add New</span>
-              <span className="w-[1px] h-4 bg-on-primary-container/20 mx-space-2xs" />
-              <Icon name="arrow_drop_down" className="text-[18px]" />
+              <Icon name="add" className="text-[16px]" />
+              <span>Add New</span>
+              <span className="w-[1px] h-3 bg-white/30 mx-0.5" />
+              <Icon name="arrow_drop_down" className="text-[16px]" />
             </button>
             {addOpen && (
-              <div className="absolute right-0 top-full mt-1 w-48 bg-surface-canvas rounded-xl shadow-xl z-40 p-space-xs flex flex-col gap-space-2xs">
+              <div className="absolute right-0 top-full mt-1 w-44 bg-surface-canvas rounded-xl shadow-lg z-40 p-1 border border-border-subtle flex flex-col gap-0.5">
                 <button
-                  className="w-full text-left px-space-sm py-space-xs rounded-lg hover:bg-surface-container text-text-primary font-label-sm text-label-sm flex items-center gap-space-xs"
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-surface-container text-text-primary text-[12px] font-medium flex items-center gap-2"
                   type="button"
                   onClick={() => {
                     setAddOpen(false);
                     setAddMethodsOpen(true);
                   }}
                 >
-                  <Icon name="inventory_2" className="text-primary text-[18px]" />
+                  <Icon name="inventory_2" className="text-primary text-[16px]" />
                   <span>+ Add Product</span>
                 </button>
                 <button
-                  className="w-full text-left px-space-sm py-space-xs rounded-lg hover:bg-surface-container text-text-primary font-label-sm text-label-sm flex items-center gap-space-xs"
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-surface-container text-text-primary text-[12px] font-medium flex items-center gap-2"
                   type="button"
-                  onClick={() => setAddOpen(false)}
+                  onClick={startService}
                 >
-                  <Icon name="room_service" className="text-tertiary-container text-[18px]" />
+                  <Icon name="room_service" className="text-tertiary-container text-[16px]" />
                   <span>+ Add Service</span>
                 </button>
               </div>
@@ -515,8 +647,8 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
         </div>
 
         {/* Segmented Tabs */}
-        <div className="px-margin mb-space-sm">
-          <div className="flex items-center bg-surface-container-high p-[3px] rounded-full">
+        <div className="px-margin mb-space-xs">
+          <div className="flex items-center bg-surface-container-high p-0.5 rounded-lg">
             {[
               { key: 'products', label: live ? `Products (${liveCount('product')})` : 'Products (28)' },
               { key: 'services', label: live ? `Services (${liveCount('service')})` : 'Services (14)' },
@@ -525,8 +657,8 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
               const active = tab === catalogTab.key;
               return (
                 <button
-                  className={`flex-1 py-space-2xs text-center rounded-full font-label-md text-label-md transition-all ${
-                    active ? 'bg-surface-canvas text-primary font-semibold shadow-sm' : 'text-text-secondary hover:text-text-primary'
+                  className={`flex-1 py-1 text-center rounded-md font-label-sm text-label-sm transition-all ${
+                    active ? 'bg-surface-canvas text-primary font-semibold shadow-xs' : 'text-text-secondary hover:text-text-primary'
                   }`}
                   key={catalogTab.key}
                   type="button"
@@ -564,11 +696,11 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
         )}
 
         {/* Search & Quick Filter */}
-        <div className="px-margin flex flex-col gap-space-xs mb-space-md">
+        <div className="px-margin flex flex-col gap-1.5 mb-space-sm">
           <div className="relative flex items-center w-full">
-            <Icon name="search" className="absolute left-space-sm text-outline text-[20px] pointer-events-none" />
+            <Icon name="search" className="absolute left-3 text-outline text-[18px] pointer-events-none" />
             <input
-              className="w-full bg-surface-canvas text-text-primary pl-10 pr-space-xl py-space-xs rounded-xl shadow-sm font-body-md text-body-md placeholder:text-text-tertiary focus:outline-none focus:bg-surface-tint-blue transition-all"
+              className="w-full bg-surface-canvas text-text-primary pl-9 pr-9 py-2 rounded-xl shadow-xs font-label-sm text-label-sm placeholder:text-text-tertiary focus:outline-none focus:bg-surface-tint-blue transition-all"
               placeholder="Search items, SKU, category..."
               type="text"
               value={search}
@@ -577,10 +709,10 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
             <FilterMenu
               align="right"
               ariaLabel="Filter catalogue by category"
-              buttonClassName="absolute right-space-sm top-1/2 -translate-y-1/2 flex items-center justify-center w-8 h-8 rounded-lg text-outline hover:text-text-primary transition-colors"
+              buttonClassName="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center w-7 h-7 rounded-lg text-outline hover:text-text-primary transition-colors"
               choices={categoryChoices}
               icon="tune"
-              iconClassName="text-[18px]"
+              iconClassName="text-[16px]"
               label={null}
               onChange={setCategory}
               title="Filter by category"
@@ -592,9 +724,9 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
               const active = chip === filterChip;
               return (
                 <button
-                  className={`flex-shrink-0 px-space-sm py-1 rounded-full font-label-sm text-label-sm font-medium transition-colors ${
+                  className={`flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
                     active
-                      ? 'bg-primary-fixed text-on-primary-fixed'
+                      ? 'bg-primary-fixed text-on-primary-fixed font-semibold'
                       : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest'
                   }`}
                   key={filterChip}
@@ -609,80 +741,80 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
         </div>
 
         {/* Items Catalogue List */}
-        <div className="px-margin flex flex-col gap-space-sm pb-space-2xl">
+        <div className="px-margin flex flex-col gap-2 pb-space-2xl">
           {visibleItems.map((item) => (
             <div
-              className="bg-surface-canvas rounded-xl p-space-sm shadow-sm flex flex-col gap-space-xs relative overflow-hidden"
+              className="bg-surface-canvas rounded-xl p-3 shadow-xs border border-border-subtle/50 flex flex-col gap-2 relative overflow-hidden"
               key={item.key}
             >
               {/* Top Meta Bar */}
-              <div className="flex items-center justify-between font-caption text-caption text-text-secondary">
+              <div className="flex items-center justify-between text-[11px] text-text-secondary">
                 <span className="flex items-center gap-1">
-                  <span className="font-medium text-text-primary">{item.category}</span>
+                  <span className="font-semibold text-text-primary">{item.category}</span>
                   <span>•</span>
-                  <span className="font-mono text-outline">{item.sku}</span>
+                  <span className="font-mono text-outline text-[10px]">{item.sku}</span>
                 </span>
                 <div className="flex items-center gap-1">
-                  <span className={`w-2 h-2 rounded-full ${item.statusDot}`} />
+                  <span className={`w-1.5 h-1.5 rounded-full ${item.statusDot}`} />
                   <span className={`font-medium ${item.statusClass}`}>{item.statusLabel}</span>
                 </div>
               </div>
               {/* Main Row */}
-              <div className="flex gap-space-sm items-start">
-                <div className="relative w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-surface-container">
+              <div className="flex gap-2.5 items-start">
+                <div className="relative w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-surface-container shadow-xs">
                   <img
                     alt={item.alt}
                     className={`w-full h-full object-cover ${item.thumbOverlay ? 'grayscale-[40%]' : ''}`}
                     src={item.img}
                   />
                   {item.thumbBadge && (
-                    <span className="absolute bottom-1 right-1 bg-surface-canvas/90 px-1 py-0.5 rounded font-caption text-[10px] font-semibold flex items-center">
-                      <Icon name="local_fire_department" className={`text-[10px] mr-0.5 ${item.thumbBadgeClass}`} />
+                    <span className="absolute bottom-0.5 right-0.5 bg-surface-canvas/90 px-1 py-0.2 rounded text-[9px] font-semibold flex items-center">
+                      <Icon name="local_fire_department" className={`text-[9px] mr-0.5 ${item.thumbBadgeClass}`} />
                       {item.thumbBadge}
                     </span>
                   )}
                   {item.thumbOverlay && (
                     <div className="absolute inset-0 bg-surface-dim/40 flex items-center justify-center">
-                      <Icon name="pause_circle" className="text-on-surface text-[18px]" />
+                      <Icon name="pause_circle" className="text-on-surface text-[16px]" />
                     </div>
                   )}
                 </div>
                 <div className="flex-1 min-w-0 flex flex-col justify-between">
                   <div>
                     <h2
-                      className={`font-heading-sm text-heading-sm truncate ${
+                      className={`font-label-md text-label-md font-semibold truncate ${
                         item.key === 'bread' ? 'text-text-secondary' : 'text-text-primary'
                       }`}
                     >
                       {item.name}
                     </h2>
-                    <div className="flex items-baseline gap-space-xs mt-0.5">
+                    <div className="flex items-baseline gap-1.5 mt-0.5">
                       <span
-                        className={`font-heading-sm text-heading-sm font-bold ${
+                        className={`font-label-md text-label-md font-bold ${
                           item.key === 'bread' ? 'text-text-secondary' : 'text-text-primary'
                         }`}
                       >
                         {item.price}
                       </span>
                       {item.comparePrice && (
-                        <span className="font-caption text-caption text-text-tertiary line-through">
+                        <span className="text-[11px] text-text-tertiary line-through">
                           {item.comparePrice}
                         </span>
                       )}
                       {item.baseNote && (
-                        <span className="font-caption text-caption text-text-secondary font-medium">{item.baseNote}</span>
+                        <span className="text-[11px] text-text-secondary font-medium">{item.baseNote}</span>
                       )}
                     </div>
                   </div>
                   {item.dealBadge && (
-                    <div className="mt-space-2xs inline-flex items-center gap-1 bg-badge-discount-bg text-badge-discount-text px-2 py-0.5 rounded-full self-start">
-                      <Icon name="local_offer" className="text-[13px]" />
-                      <span className="font-caption text-caption font-semibold">{item.dealBadge}</span>
+                    <div className="mt-1 inline-flex items-center gap-1 bg-badge-discount-bg text-badge-discount-text px-1.5 py-0.5 rounded-full self-start">
+                      <Icon name="local_offer" className="text-[11px]" />
+                      <span className="text-[10px] font-semibold">{item.dealBadge}</span>
                     </div>
                   )}
                   {item.note && (
-                    <span className={`font-caption text-caption mt-1 flex items-center gap-1 ${item.noteClass ?? 'text-text-secondary'}`}>
-                      {item.noteIcon && <Icon name={item.noteIcon} className="text-[14px]" />}
+                    <span className={`text-[11px] mt-0.5 flex items-center gap-1 ${item.noteClass ?? 'text-text-secondary'}`}>
+                      {item.noteIcon && <Icon name={item.noteIcon} className="text-[12px]" />}
                       {item.note}
                     </span>
                   )}
@@ -696,24 +828,24 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
                     setSheetKey(item.key);
                   }}
                 >
-                  <Icon name="more_vert" className="text-[20px]" />
+                  <Icon name="more_vert" className="text-[18px]" />
                 </button>
               </div>
               {/* Location Availability Pill */}
               <div
-                className={`px-space-xs py-1 rounded-lg flex items-center gap-1.5 font-caption text-caption ${item.pillClass}`}
+                className={`px-2 py-0.5 rounded-md flex items-center gap-1 text-[11px] ${item.pillClass}`}
               >
-                <Icon name={item.pillIcon} className="text-[15px]" />
+                <Icon name={item.pillIcon} className="text-[13px]" />
                 <span className="font-medium truncate">{item.availabilityPill}</span>
                 {item.pillExtra && (
-                  <span className="ml-auto bg-surface-canvas text-secondary text-[11px] px-1.5 py-0.5 rounded shadow-xs font-medium shrink-0">
+                  <span className="ml-auto bg-surface-canvas text-secondary text-[10px] px-1.5 py-0.2 rounded shadow-xs font-medium shrink-0">
                     {item.pillExtra}
                   </span>
                 )}
               </div>
               {/* Quick Action Deck */}
-              <div className="flex items-center justify-between pt-space-2xs bg-surface-container-low/50 -mx-space-sm -mb-space-sm px-space-sm py-2 rounded-b-xl">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between pt-1 bg-surface-container-low/40 -mx-3 -mb-3 px-3 py-1.5 rounded-b-xl border-t border-border-subtle/30">
+                <div className="flex items-center gap-1.5">
                   <button
                     aria-label={`Toggle stock for ${item.name}`}
                     className={`w-9 h-5 rounded-full transition-colors ${(live ? item.stockOn : stock[item.key] ?? item.stockOn) ? 'bg-primary-container' : 'bg-surface-dim'}`}
@@ -734,24 +866,26 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
                     {(live ? item.stockOn : stock[item.key] ?? item.stockOn) ? item.stockLabel : 'Off Shelf'}
                   </span>
                 </div>
-                <div className="flex items-center gap-space-2xs">
+                <div className="flex items-center gap-1.5">
                   <button
-                    className="flex items-center gap-1 px-space-xs py-1 rounded-md bg-primary-container shadow-sm text-on-primary font-label-sm text-label-sm font-semibold hover:bg-primary transition-colors"
+                    className="flex items-center gap-1 px-2 py-1 rounded bg-primary-container shadow-xs text-on-primary text-[11px] font-semibold hover:bg-primary transition-colors"
                     type="button"
                     onClick={() => onBoost(item.name)}
                   >
-                    <Icon name="rocket_launch" className="text-[15px]" />
+                    <Icon name="rocket_launch" className="text-[13px]" />
                     <span>Boost</span>
                   </button>
                   <button
-                    className="flex items-center gap-1 px-space-xs py-1 rounded-md bg-surface-canvas shadow-sm text-primary font-label-sm text-label-sm font-medium hover:bg-surface-container-high transition-colors"
+                    className="flex items-center gap-1 px-2 py-1 rounded bg-surface-canvas shadow-xs text-primary text-[11px] font-medium hover:bg-surface-container-high transition-colors border border-border-subtle/40"
                     type="button"
                     onClick={() => {
+                      const liveItem = live ? liveById.get(item.key) : undefined;
                       if (importedKeys.has(item.key)) setView('importReview');
+                      else if (liveItem && item.actionLabel === 'Edit') editLiveItem(liveItem);
                       else onOpenAssignment(live ? item.key : item.name);
                     }}
                   >
-                    <Icon name={item.actionIcon} className="text-[15px]" />
+                    <Icon name={item.actionIcon} className="text-[13px]" />
                     <span>{item.actionLabel}</span>
                   </button>
                 </div>
@@ -808,10 +942,16 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
               </button>
             </div>
             {[
-              ...(live ? [{ icon: 'local_offer', iconClass: 'text-badge-discount-text', label: 'Make a Deal' }] : []),
+              ...(live
+                ? [
+                    { icon: 'edit', iconClass: 'text-primary', label: 'Edit Details' },
+                    { icon: 'local_offer', iconClass: 'text-badge-discount-text', label: 'Make a Deal' },
+                  ]
+                : []),
               { icon: 'content_copy', iconClass: 'text-primary', label: 'Duplicate Product' },
               { icon: 'price_change', iconClass: 'text-primary-container', label: 'Manage Location Pricing' },
-              { icon: 'qr_code_2', iconClass: 'text-secondary', label: 'View Table Order QR' },
+              // No table-order QR per item yet — sample only.
+              ...(live ? [] : [{ icon: 'qr_code_2', iconClass: 'text-secondary', label: 'View Table Order QR' }]),
               { icon: 'archive', iconClass: 'text-error', label: 'Archive from Catalogue', danger: true },
             ].map((action) => (
               <button
@@ -825,6 +965,9 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
                   if (action.label === 'Manage Location Pricing') {
                     setSheetItem(null);
                     onOpenAssignment(liveItem ? liveItem.id : sheetItem);
+                  } else if (liveItem && action.label === 'Edit Details') {
+                    setSheetItem(null);
+                    editLiveItem(liveItem);
                   } else if (liveItem && action.label === 'Make a Deal') {
                     setSheetItem(null);
                     onMakeDeal?.(liveItem);
@@ -867,6 +1010,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
           <button
             className="flex items-center gap-1.5 px-space-sm py-2 rounded-full bg-surface-container-high text-on-surface font-label-md text-label-md font-semibold hover:bg-surface-container-highest active:scale-95 transition-all"
             type="button"
+            onClick={startService}
           >
             <Icon name="design_services" className="text-[18px] text-tertiary-container" />
             <span>+ Add Service</span>

@@ -420,9 +420,8 @@ export function OrderCompletionModal({
         <div className="fixed inset-0 z-60 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="relative w-full max-w-sm bg-white text-zinc-900 rounded-2xl shadow-2xl p-6 border border-zinc-200 font-mono text-[12px] space-y-3">
             <div className="text-center pb-2 border-b border-dashed border-zinc-300">
-              <h2 className="font-bold text-[16px] tracking-tight">URBAN GRILL &amp; BISTRO</h2>
+              <h2 className="font-bold text-[16px] tracking-tight">{order.branchName || 'VEMTAP Order'}</h2>
               <p className="text-[11px] text-zinc-600">{order.branchName}</p>
-              <p className="text-[10px] text-zinc-500">Plot 104 Apo Blvd, Abuja • +234 802 345 6789</p>
               <p className="mt-1 font-bold text-zinc-800 text-[13px]">ORDER RECEIPT #{order.orderRef}</p>
               <p className="text-[10px] text-zinc-500">{new Date().toLocaleString()}</p>
             </div>

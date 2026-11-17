@@ -9,6 +9,14 @@ export interface OrderLine {
   image: string;
   options?: string;
   instructions?: string;
+  /** The branch this line is ordered from. */
+  branchId?: string;
+  merchantName?: string;
+  merchantLogo?: string;
+  merchantPhone?: string;
+  merchantAddress?: string;
+  merchantLatitude?: number;
+  merchantLongitude?: number;
 }
 
 export interface OrderSummary {

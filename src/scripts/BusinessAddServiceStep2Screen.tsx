@@ -1,6 +1,7 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { ServiceDraft } from './serviceDraft';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessAddServiceStep2ScreenProps {
   draft: ServiceDraft;
@@ -73,8 +74,8 @@ export function BusinessAddServiceStep2Screen({
             >
               Draft
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>
@@ -169,6 +170,29 @@ export function BusinessAddServiceStep2Screen({
                   <Icon name="local_offer" className="text-text-tertiary text-[20px]" />
                 </div>
               </div>
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="font-label-sm text-label-sm text-text-secondary font-medium" htmlFor="service-loyalty-points">
+                    Reward Points Awarded <span className="font-caption text-caption text-text-tertiary">(Optional)</span>
+                  </label>
+                  <span className="font-caption text-[10px] text-primary font-bold bg-surface-tint-blue px-2 py-0.5 rounded-full">
+                    Loyalty Perk
+                  </span>
+                </div>
+                <div className="flex items-center bg-surface-container-low rounded-xl px-space-md h-[48px]">
+                  <Icon name="stars" className="text-primary text-[18px] mr-2" />
+                  <input
+                    className="w-full bg-transparent font-body-md text-body-md text-text-primary focus:outline-none"
+                    id="service-loyalty-points"
+                    inputMode="numeric"
+                    placeholder="e.g. 90 (leave empty for default store formula)"
+                    type="text"
+                    value={draft.loyaltyPoints || ''}
+                    onChange={(event) => onDraftChange({ loyaltyPoints: event.target.value })}
+                  />
+                  <span className="text-text-tertiary font-caption text-[11px] font-semibold">pts</span>
+                </div>
+              </div>
             </div>
             <div className="flex flex-col gap-2 pt-2">
               <div className="flex items-center justify-between">
@@ -234,7 +258,7 @@ export function BusinessAddServiceStep2Screen({
               </div>
               <button
                 aria-checked={draft.tiersEnabled}
-                className={`w-12 h-7 rounded-full p-0.5 flex items-center transition-colors focus:outline-none ${
+                className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
                   draft.tiersEnabled ? 'bg-primary' : 'bg-surface-container-highest'
                 }`}
                 id="tier-toggle"
@@ -243,8 +267,8 @@ export function BusinessAddServiceStep2Screen({
                 onClick={() => onDraftChange({ tiersEnabled: !draft.tiersEnabled })}
               >
                 <span
-                  className={`w-6 h-6 rounded-full bg-surface shadow-md transform transition-transform ${
-                    draft.tiersEnabled ? 'translate-x-5' : 'translate-x-0'
+                  className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                    draft.tiersEnabled ? 'translate-x-3.5' : 'translate-x-0'
                   }`}
                 />
               </button>
@@ -332,75 +356,11 @@ export function BusinessAddServiceStep2Screen({
               </div>
             </div>
 
-            <div className="bg-surface-container-low p-space-sm rounded-xl flex flex-col gap-space-sm">
-              <div className="flex items-center justify-between">
-                <span className="font-label-sm text-label-sm text-text-primary font-semibold">Weekly Available Days</span>
-                <span className="font-caption text-caption text-text-secondary">6 days active</span>
-              </div>
-              <div className="grid grid-cols-7 gap-1.5">
-                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-                  <button
-                    key={day}
-                    className="h-9 rounded-lg bg-primary text-on-primary font-label-sm text-label-sm font-semibold flex items-center justify-center shadow-sm active:scale-95 transition-all"
-                    type="button"
-                  >
-                    {day}
-                  </button>
-                ))}
-                <button
-                  className="h-9 rounded-lg bg-surface-container-highest/60 text-text-tertiary font-label-sm text-label-sm flex items-center justify-center active:scale-95 transition-all"
-                  type="button"
-                >
-                  Sun
-                </button>
-              </div>
-              <div className="mt-1 flex flex-col gap-1.5">
-                <label className="font-caption text-caption text-text-secondary font-medium">Available Daily Hours</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="flex items-center justify-between bg-surface-container-lowest rounded-lg px-3 py-2 border border-border-subtle">
-                    <div className="flex flex-col">
-                      <span className="font-caption text-[11px] text-text-tertiary uppercase">Start Time</span>
-                      <span className="font-label-md text-label-md text-text-primary font-semibold">09:00 AM</span>
-                    </div>
-                    <Icon name="schedule" className="text-text-tertiary text-[18px]" />
-                  </div>
-                  <div className="flex items-center justify-between bg-surface-container-lowest rounded-lg px-3 py-2 border border-border-subtle">
-                    <div className="flex flex-col">
-                      <span className="font-caption text-[11px] text-text-tertiary uppercase">End Time</span>
-                      <span className="font-label-md text-label-md text-text-primary font-semibold">06:00 PM</span>
-                    </div>
-                    <Icon name="schedule" className="text-text-tertiary text-[18px]" />
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5 text-text-secondary font-caption text-caption pt-0.5">
-                <Icon name="info" className="text-primary text-[16px]" />
-                <span>
-                  {draft.durationMins} mins appointment slots ({draft.bufferMins} mins cleanup buffer auto-added)
-                </span>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <span className="font-caption text-caption text-text-secondary font-medium">Preview Slot Intervals</span>
-                <span className="font-caption text-caption text-badge-discount-text font-semibold">
-                  7 Daily Windows
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                {['09:00 AM', '10:15 AM', '11:30 AM', '01:00 PM', '02:15 PM'].map((slot) => (
-                  <span
-                    key={slot}
-                    className="h-8 px-2.5 rounded-lg bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold flex items-center whitespace-nowrap"
-                  >
-                    {slot}
-                  </span>
-                ))}
-                <span className="h-8 px-2.5 rounded-lg bg-surface-container-low text-text-secondary font-label-sm text-label-sm font-medium flex items-center whitespace-nowrap">
-                  +2 more
-                </span>
-              </div>
+            <div className="flex items-center gap-1.5 text-text-secondary font-caption text-caption">
+              <Icon name="info" className="text-primary text-[16px]" />
+              <span>
+                {draft.durationMins} mins appointment slots ({draft.bufferMins} mins cleanup buffer auto-added)
+              </span>
             </div>
 
             <button

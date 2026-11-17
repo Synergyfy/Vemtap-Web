@@ -1,15 +1,19 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { Logo } from '../../components/ui/Logo';
 
 interface DesktopSignInScreenProps {
   onSignIn: (credentials: { identifier: string; password: string }) => Promise<void> | void;
   onGoogleSignIn: () => void;
+  /** A failed live Google sign-in to show (set again for each failure). */
+  googleError?: { message: string } | null;
   onCreateAccount: () => void;
   onBusinessRegister: () => void;
   onForgotPin: () => void;
-  onCustomerSignIn: () => void;
-  onBusinessSignIn: () => void;
+  /** Prefills the email (e.g. business sign-up found an existing account). */
+  initialIdentifier?: string;
+  /** Why the visitor was sent here, shown above the form. */
+  notice?: string | null;
   /** Returns to wherever sign-in was opened from (mobile parity). */
   onBack?: () => void;
 }
@@ -22,7 +26,7 @@ const getAuthErrorMessage = (error: unknown) => {
   if (error && typeof error === 'object' && 'message' in error && typeof (error as { message?: unknown }).message === 'string') {
     return (error as { message: string }).message;
   }
-  return 'We could not sign you in. Please check your email or password and try again.';
+  return 'We could not sign you in. Please check your email or phone and your 6-digit PIN.';
 };
 
 const PILLARS = [
@@ -69,17 +73,24 @@ function GoogleIcon() {
 export function DesktopSignInScreen({
   onSignIn,
   onGoogleSignIn,
+  googleError,
   onCreateAccount,
   onBusinessRegister,
   onForgotPin,
-  onCustomerSignIn,
-  onBusinessSignIn,
+  initialIdentifier,
+  notice,
   onBack,
 }: DesktopSignInScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [status, setStatus] = useState<Status>('idle');
   const [googleStatus, setGoogleStatus] = useState<Status>('idle');
+
+  useEffect(() => {
+    if (!googleError) return;
+    setError(googleError.message);
+    setGoogleStatus('idle');
+  }, [googleError]);
   const [error, setError] = useState<string | null>(null);
 
   const busy = status !== 'idle' || googleStatus !== 'idle';
@@ -96,6 +107,12 @@ export function DesktopSignInScreen({
     }
     if (!credential?.value) {
       credential?.focus();
+      return;
+    }
+    // Customer and business accounts sign in with a 6-digit PIN only.
+    if (!/^\d{6}$/.test(credential.value)) {
+      setError('Enter your 6-digit PIN.');
+      credential.focus();
       return;
     }
     const nextIdentifier = identifier.value.trim();
@@ -201,46 +218,6 @@ export function DesktopSignInScreen({
                 </p>
               </div>
 
-              <div className="flex flex-col gap-space-2xs">
-                <span className="font-label-sm text-label-sm text-text-tertiary uppercase tracking-wider">
-                  Continue as
-                </span>
-                <div className="grid grid-cols-2 gap-space-xs">
-                  <button
-                    className="flex items-center gap-space-sm p-space-sm rounded-xl bg-surface-subtle hover:bg-surface-container-high border border-border-subtle transition-all duration-200 text-left active:scale-[0.99] disabled:opacity-75"
-                    type="button"
-                    onClick={onCustomerSignIn}
-                    disabled={busy}
-                  >
-                    <span className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
-                      <Icon name="person" className="text-[20px]" />
-                    </span>
-                    <span className="flex flex-col min-w-0">
-                      <span className="font-label-md text-label-sm text-text-primary font-semibold">Customer</span>
-                      <span className="font-caption text-caption text-text-secondary truncate">
-                        Open customer dashboard
-                      </span>
-                    </span>
-                  </button>
-                  <button
-                    className="flex items-center gap-space-sm p-space-sm rounded-xl bg-surface-subtle hover:bg-surface-container-high border border-border-subtle transition-all duration-200 text-left active:scale-[0.99] disabled:opacity-75"
-                    type="button"
-                    onClick={onBusinessSignIn}
-                    disabled={busy}
-                  >
-                    <span className="w-9 h-9 rounded-lg bg-secondary-fixed text-on-secondary-fixed-variant flex items-center justify-center shrink-0">
-                      <Icon name="storefront" className="text-[20px]" />
-                    </span>
-                    <span className="flex flex-col min-w-0">
-                      <span className="font-label-md text-label-sm text-text-primary font-semibold">Business</span>
-                      <span className="font-caption text-caption text-text-secondary truncate">
-                        Open business dashboard
-                      </span>
-                    </span>
-                  </button>
-                </div>
-              </div>
-
               <button
                 className="w-full h-12 px-4 rounded-xl bg-surface-subtle hover:bg-surface-container-high transition-all duration-200 flex items-center justify-center gap-3 font-button-secondary text-button-secondary text-text-primary shadow-sm hover:shadow active:scale-[0.99] cursor-pointer disabled:opacity-75"
                 type="button"
@@ -268,6 +245,11 @@ export function DesktopSignInScreen({
               </div>
 
               <form className="flex flex-col gap-space-md" onSubmit={handleSubmit}>
+                {notice && !error ? (
+                  <div className="rounded-xl bg-surface-tint-blue px-space-sm py-space-xs text-text-primary font-body-md text-body-md">
+                    {notice}
+                  </div>
+                ) : null}
                 {error ? (
                   <div className="rounded-xl border border-red-200 bg-red-50 px-space-sm py-space-xs text-red-700 font-body-md text-body-md">
                     {error}
@@ -288,6 +270,7 @@ export function DesktopSignInScreen({
                       autoComplete="username"
                       id="identifier"
                       name="identifier"
+                      defaultValue={initialIdentifier}
                       placeholder="name@example.com or +234..."
                       required
                       type="text"
@@ -298,7 +281,7 @@ export function DesktopSignInScreen({
                 <div className="flex flex-col gap-1.5">
                   <div className="flex items-center justify-between">
                     <label className="font-label-md text-label-md text-text-primary" htmlFor="password">
-                      PIN or Password
+                      6-digit PIN
                     </label>
                     <button
                       type="button"
@@ -320,13 +303,18 @@ export function DesktopSignInScreen({
                       autoComplete="current-password"
                       id="password"
                       name="password"
-                      maxLength={32}
-                      placeholder="Enter 6-digit PIN or password"
+                      maxLength={6}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="Enter your 6-digit PIN"
                       required
                       type={showPassword ? 'text' : 'password'}
+                      onInput={(event) => {
+                        event.currentTarget.value = event.currentTarget.value.replace(/\D/g, '').slice(0, 6);
+                      }}
                     />
                     <button
-                      aria-label="Toggle password visibility"
+                      aria-label="Toggle PIN visibility"
                       className="absolute right-3.5 text-text-tertiary hover:text-text-primary flex items-center p-1"
                       id="togglePassBtn"
                       type="button"

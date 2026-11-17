@@ -10,6 +10,7 @@ import {
   type ChannelPlatformId,
 } from '../utils/socialChannels';
 import type { BusinessProfileDraft } from './BusinessOnboardingScreen';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessProfileContactScreenProps {
   draft: BusinessProfileDraft;
@@ -107,8 +108,8 @@ export function BusinessProfileContactScreen({
             <h1 className="font-heading-sm text-heading-sm text-on-surface truncate max-w-[210px]">Basic Information</h1>
           </div>
           <div className="flex items-center">
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>
@@ -320,7 +321,7 @@ export function BusinessProfileContactScreen({
                         {showError ? (
                           <span className="flex items-center gap-1 font-caption text-caption text-error mt-0.5">
                             <Icon className="text-[13px]" name="error" />
-                            {result.error}
+                            {'error' in result ? result.error : ''}
                           </span>
                         ) : result.ok ? (
                           <a
@@ -387,16 +388,16 @@ export function BusinessProfileContactScreen({
                 <button
                   aria-checked={draft.prefs.inApp}
                   aria-label="Allow In-App Direct Chat"
-                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none mt-0.5 ${
-                    draft.prefs.inApp ? 'bg-primary-container' : 'bg-surface-dim'
+                  className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none p-0.5 mt-0.5 ${
+                    draft.prefs.inApp ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'
                   }`}
                   role="switch"
                   type="button"
                   onClick={() => onChange({ prefs: { ...draft.prefs, inApp: !draft.prefs.inApp } })}
                 >
                   <span
-                    className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-surface-canvas shadow transition duration-200 ease-in-out mt-0.5 ${
-                      draft.prefs.inApp ? 'translate-x-5' : 'translate-x-0.5'
+                    className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                      draft.prefs.inApp ? 'translate-x-3.5' : 'translate-x-0'
                     }`}
                   />
                 </button>
@@ -414,16 +415,16 @@ export function BusinessProfileContactScreen({
                 <button
                   aria-checked={draft.prefs.whatsapp}
                   aria-label="Receive deal claims via WhatsApp alerts"
-                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out focus:outline-none mt-0.5 ${
-                    draft.prefs.whatsapp ? 'bg-primary-container' : 'bg-surface-dim'
+                  className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none p-0.5 mt-0.5 ${
+                    draft.prefs.whatsapp ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'
                   }`}
                   role="switch"
                   type="button"
                   onClick={() => onChange({ prefs: { ...draft.prefs, whatsapp: !draft.prefs.whatsapp } })}
                 >
                   <span
-                    className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-surface-canvas shadow transition duration-200 ease-in-out mt-0.5 ${
-                      draft.prefs.whatsapp ? 'translate-x-5' : 'translate-x-0.5'
+                    className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                      draft.prefs.whatsapp ? 'translate-x-3.5' : 'translate-x-0'
                     }`}
                   />
                 </button>

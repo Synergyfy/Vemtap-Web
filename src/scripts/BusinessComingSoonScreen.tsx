@@ -1,5 +1,6 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessComingSoonScreenProps {
   title: string;
@@ -23,8 +24,8 @@ export function BusinessComingSoonScreen({ title, message, onBack }: BusinessCom
             </button>
             <h1 className="font-heading-sm text-heading-sm text-on-surface truncate">{title}</h1>
           </div>
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-            <Icon name="person" className="text-on-primary text-[18px]" />
+          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 overflow-hidden">
+            <UserAvatar textClassName="text-on-primary text-[13px]" />
           </div>
         </div>
       </header>

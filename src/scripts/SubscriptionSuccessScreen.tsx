@@ -1,3 +1,5 @@
+import { useBusinessCard } from './subscriptionLive';
+import { NO_IMAGE } from '../utils/homeOffer';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { downloadCsv } from '../utils/exportCsv';
@@ -27,7 +29,7 @@ const RECEIPT_ROWS = [
 const UNLOCKED_BENEFITS = [
   {
     title: 'Verified storefront active on nearby feeds',
-    body: 'Visible to shoppers within 5km of Apo & Wuse II.',
+    body: 'Visible to shoppers near your branches.',
   },
   {
     title: 'Unlimited deal creation & QR tap codes live',
@@ -49,6 +51,7 @@ export function SubscriptionSuccessScreen({
   onExploreFeatures,
 }: SubscriptionSuccessScreenProps) {
   const live = hasApiConfig();
+  const bizCard = useBusinessCard();
   const subscription = useActiveSubscription();
   const plans = useSubscriptionPlans();
   const billing = useBillingHistory();
@@ -150,13 +153,13 @@ export function SubscriptionSuccessScreen({
         {/* Storefront Preview Card */}
         <div className="w-full bg-surface-subtle rounded-xl p-3 mb-3 shadow-sm flex items-center gap-3">
           <div className="relative w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-surface-container">
-            <img alt={STORE_ALT} className="w-full h-full object-cover" src={STORE_IMG} />
+            <img alt={bizCard.live ? `${bizCard.name} logo` : STORE_ALT} className="w-full h-full object-cover" src={bizCard.live ? bizCard.logo || NO_IMAGE : STORE_IMG} />
             <div className="absolute bottom-0 inset-x-0 h-3 bg-gradient-to-t from-text-primary/70 to-transparent" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1">
               <h2 className="font-label-md text-label-md font-semibold text-text-primary truncate">
-                Apo & Wuse II Hubs
+                {bizCard.live ? bizCard.name : 'Apo & Wuse II Hubs'}
               </h2>
               <Icon name="check_circle" filled className="text-primary text-[14px]" />
             </div>

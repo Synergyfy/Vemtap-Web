@@ -7,11 +7,13 @@ import { summariseImport } from '../productImport/importSummary';
 import { naira } from '../catalogueData';
 import { hasApiConfig } from '../../services/api/client';
 import { useCatalogueItems } from '../../hooks/business/useCatalogueItems';
-import { toPrice } from '../../services/catalogueItemsService';
+import { toPrice, type CatalogueItem } from '../../services/catalogueItemsService';
+import { useBusinessOfferings } from '../../context/BusinessOfferingsContext';
 
 interface DesktopBusinessCatalogScreenProps {
   onBack: () => void;
-  onNext: () => void;
+  /** Live: receives the item the deal is built on (null when the catalogue is empty — skip deals). */
+  onNext: (dealItem: CatalogueItem | null) => void;
   onSaveDraft: () => void;
   onAddProduct: () => void;
   onAddService: () => void;
@@ -23,6 +25,8 @@ interface CatalogEntry {
   type: 'Product' | 'Service';
   price: string;
   category: string;
+  /** Live entries keep the API item so it can seed a deal. */
+  item?: CatalogueItem;
 }
 
 const SEED_ENTRIES: CatalogEntry[] = [
@@ -33,12 +37,14 @@ const SEED_ENTRIES: CatalogEntry[] = [
 ];
 
 export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAddProduct, onAddService }: DesktopBusinessCatalogScreenProps) {
+  const { offerings, mode } = useBusinessOfferings();
   const [methodsOpen, setMethodsOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [dealItemId, setDealItemId] = useState<string | null>(null);
   const importedProducts = useImportedProducts();
 
-  const importedEntries: CatalogEntry[] = importedProducts.map((product) => ({
+  const importedEntries: CatalogEntry[] = (offerings.hasProducts ? importedProducts : []).map((product) => ({
     id: product.id,
     name: product.name || 'Untitled imported product',
     type: 'Product',
@@ -55,9 +61,15 @@ export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAd
     type: item.itemType === 'service' ? 'Service' : 'Product',
     price: naira(toPrice(item.price ?? undefined) ?? 0),
     category: item.category?.name || (item.itemType === 'service' ? 'Service' : 'Product'),
+    item,
   }));
-  const entries = [...importedEntries, ...(live ? liveEntries : SEED_ENTRIES)];
+  // Deals need a real item: the one the owner picked, else the first listed.
+  const dealable = liveEntries.filter((entry) => entry.item?.status === 'active' && !entry.item.isSuspended);
+  const dealEntry = dealable.find((entry) => entry.id === dealItemId) ?? dealable[0] ?? null;
+  const visible = (entry: CatalogEntry) => (entry.type === 'Product' ? offerings.hasProducts : offerings.hasServices);
+  const entries = [...importedEntries, ...(live ? liveEntries : SEED_ENTRIES).filter(visible)];
   const loadingLive = live && (products.isLoading || services.isLoading);
+  const title = mode === 'both' ? 'Products & Services' : mode === 'services' ? 'Services' : 'Products';
 
   return (
     <div className="w-full max-w-3xl mx-auto px-8 py-10 flex flex-col gap-8">
@@ -68,7 +80,7 @@ export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAd
           </button>
           <span className="font-label-sm text-caption text-primary font-semibold uppercase tracking-wider">Step 5 of 8</span>
         </div>
-        <h1 className="font-heading-lg text-heading-lg text-text-primary font-bold tracking-tight">Products &amp; Services</h1>
+        <h1 className="font-heading-lg text-heading-lg text-text-primary font-bold tracking-tight">{title}</h1>
         <p className="font-body-md text-body-md text-text-secondary">Add items one at a time, or bulk-import a CSV/Excel file. Everything can be refined later in the Central Catalogue.</p>
       </div>
 
@@ -92,28 +104,47 @@ export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAd
                 <span className="font-caption text-caption text-text-secondary">{e.type} • {e.category}</span>
               </div>
             </div>
-            <span className="font-heading-sm text-heading-sm font-bold text-text-primary">{e.price}</span>
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="font-heading-sm text-heading-sm font-bold text-text-primary">{e.price}</span>
+              {live && dealable.some((entry) => entry.id === e.id) && (
+                <button
+                  type="button"
+                  onClick={() => setDealItemId(e.id)}
+                  aria-pressed={dealEntry?.id === e.id}
+                  className={`h-8 px-3 rounded-full font-caption text-caption font-semibold flex items-center gap-1 transition-colors ${
+                    dealEntry?.id === e.id ? 'bg-primary text-on-primary' : 'bg-surface-subtle text-text-secondary hover:bg-surface-container'
+                  }`}
+                >
+                  <Icon name={dealEntry?.id === e.id ? 'check' : 'local_offer'} className="text-[14px]" />
+                  <span>{dealEntry?.id === e.id ? 'Deal item' : 'Use for deal'}</span>
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <button
-          type="button"
-          onClick={() => setMethodsOpen(true)}
-          className="py-4 rounded-xl border-2 border-dashed border-border-subtle hover:border-primary hover:bg-surface-tint-blue/40 transition-colors cursor-pointer flex items-center justify-center gap-2 text-primary font-label-md text-label-md font-semibold"
-        >
-          <Icon name="add" className="text-[20px]" />
-          <span>Add Product</span>
-        </button>
-        <button
-          type="button"
-          onClick={onAddService}
-          className="py-4 rounded-xl border-2 border-dashed border-border-subtle hover:border-primary hover:bg-surface-tint-blue/40 transition-colors cursor-pointer flex items-center justify-center gap-2 text-primary font-label-md text-label-md font-semibold"
-        >
-          <Icon name="add" className="text-[20px]" />
-          <span>Add Service</span>
-        </button>
+      <div className={`grid ${mode === 'both' ? 'grid-cols-2' : 'grid-cols-1'} gap-4`}>
+        {offerings.hasProducts && (
+          <button
+            type="button"
+            onClick={() => setMethodsOpen(true)}
+            className="py-4 rounded-xl border-2 border-dashed border-border-subtle hover:border-primary hover:bg-surface-tint-blue/40 transition-colors cursor-pointer flex items-center justify-center gap-2 text-primary font-label-md text-label-md font-semibold"
+          >
+            <Icon name="add" className="text-[20px]" />
+            <span>Add Product</span>
+          </button>
+        )}
+        {offerings.hasServices && (
+          <button
+            type="button"
+            onClick={onAddService}
+            className="py-4 rounded-xl border-2 border-dashed border-border-subtle hover:border-primary hover:bg-surface-tint-blue/40 transition-colors cursor-pointer flex items-center justify-center gap-2 text-primary font-label-md text-label-md font-semibold"
+          >
+            <Icon name="add" className="text-[20px]" />
+            <span>Add Service</span>
+          </button>
+        )}
       </div>
 
       {/* Add Product: manual / bulk import / connect platform (coming soon) */}
@@ -176,10 +207,11 @@ export function DesktopBusinessCatalogScreen({ onBack, onNext, onSaveDraft, onAd
           <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
             <button
               type="button"
-              onClick={onNext}
-              className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all"
+              onClick={() => onNext(live ? dealEntry?.item ?? null : null)}
+              disabled={loadingLive}
+              className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all disabled:opacity-60"
             >
-              <span>Continue to Deal Studio</span>
+              <span>{live && !loadingLive && !dealEntry ? 'Skip Deals for Now' : 'Continue to Deal Studio'}</span>
               <Icon name="arrow_forward" className="text-[20px]" />
             </button>
           </div>

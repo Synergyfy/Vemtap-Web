@@ -25,7 +25,9 @@
   #root {
     display: flex;
     flex-direction: column;
+    /* 100vh ignores mobile dynamic toolbars; 100dvh is the visible height. */
     min-height: 100vh;
+    min-height: 100dvh;
   }
 
   .pb-safe {

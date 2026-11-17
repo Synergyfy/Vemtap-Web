@@ -1,5 +1,6 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { useSavedAddresses } from '../hooks/useSavedAddresses';
 import { AccountRowButton, RowGroup, type AccountRow, type AccountTarget } from '../components/AccountRows';
 
 interface SettingsScreenProps {
@@ -12,7 +13,7 @@ const PREFERENCE_ROWS: AccountRow[] = [
     icon: 'notifications_active',
     iconClass: 'bg-surface-container-high text-on-surface-variant',
     label: 'Notifications & Alerts',
-    sub: 'Push, WhatsApp, Email',
+    sub: 'Push, Email, SMS',
     target: 'notifications',
   },
   {
@@ -26,7 +27,6 @@ const PREFERENCE_ROWS: AccountRow[] = [
     icon: 'location_on',
     iconClass: 'bg-surface-container-high text-on-surface-variant',
     label: 'Delivery & Neighborhood Addresses',
-    trail: 'Apo, Abuja',
     target: 'addresses',
   },
   {
@@ -46,6 +46,12 @@ const PREFERENCE_ROWS: AccountRow[] = [
 ];
 
 export function SettingsScreen({ onBack, onNavigate }: SettingsScreenProps) {
+  const { addresses } = useSavedAddresses();
+  const defaultAddress = addresses.find((address) => address.isDefault) ?? addresses[0];
+  // The addresses row shows the customer's default place, or nothing until one is saved.
+  const rows = PREFERENCE_ROWS.map((row) =>
+    row.target === 'addresses' && defaultAddress ? { ...row, trail: defaultAddress.area || defaultAddress.label } : row,
+  );
   return (
     <AppScreen>
       <header className="sticky top-0 z-30 bg-surface-container-lowest/95 backdrop-blur-md shadow-sm">
@@ -69,7 +75,7 @@ export function SettingsScreen({ onBack, onNavigate }: SettingsScreenProps) {
 
       <main className="flex flex-col w-full px-margin py-space-sm pb-space-xl gap-space-md">
         <RowGroup title="Preferences">
-          {PREFERENCE_ROWS.map((row) => (
+          {rows.map((row) => (
             <AccountRowButton key={row.label} row={row} onSelect={onNavigate} />
           ))}
         </RowGroup>

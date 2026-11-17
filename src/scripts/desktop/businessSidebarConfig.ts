@@ -1,3 +1,9 @@
+import {
+  getNavKeyFeature,
+  SECTION_FEATURES,
+  type FeatureId,
+} from '../businessFeatures';
+
 export interface BusinessSidebarSubItem {
   key: string;
   label: string;
@@ -14,8 +20,8 @@ export interface BusinessSidebarSection {
   badge?: string;
   badgeClass?: string;
   /**
-   * Hidden from the main business rail. The section still exists in this config
-   * because the POS rail reuses its items — Store Front moved inside POS.
+   * Hidden from the main business rail when its items are presented in a
+   * secondary navigation rail.
    */
   hidden?: boolean;
   /**
@@ -23,6 +29,8 @@ export interface BusinessSidebarSection {
    * Used by POS, which is now a page with its own side menu (the POS rail).
    */
   link?: boolean;
+  /** Feature that owns this section's badge — dropped from the rail when it is off. */
+  badgeFeature?: FeatureId;
   items?: BusinessSidebarSubItem[];
 }
 
@@ -40,6 +48,7 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
     defaultKey: 'messages-inapp',
     badge: '2',
     badgeClass: 'bg-tertiary-container text-on-tertiary',
+    badgeFeature: 'chat',
     // Messages is a page with its own side menu (the messages rail) — navigate
     // directly, no dropdown chevron on the main rail. The rail lists the
     // channels: In-App Chat, SMS and Email.
@@ -55,9 +64,9 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
     label: 'Business',
     icon: 'storefront',
     defaultKey: 'business-profile',
-    // Order mirrors the mobile Business menu — keep both lists in sync.
     items: [
-      { key: 'business-catalog', label: 'Products & Services', icon: 'inventory_2' },
+      { key: 'business-catalog', label: 'My Products', icon: 'inventory_2' },
+      { key: 'business-services', label: 'My Service', icon: 'design_services' },
       { key: 'business-deals', label: 'Deals', icon: 'local_offer' },
       { key: 'business-customers', label: 'Customers', icon: 'group' },
       { key: 'business-loyalty', label: 'Loyalty & Rewards', icon: 'stars' },
@@ -74,6 +83,7 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
     defaultKey: 'pos-home',
     badge: '4',
     badgeClass: 'bg-primary-container text-on-primary',
+    badgeFeature: 'pos',
     // POS is a page with its own side menu (the POS rail) — navigate directly,
     // no dropdown chevron on the main rail.
     link: true,
@@ -93,9 +103,7 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
     defaultKey: 'store-ordering-dashboard',
     badge: 'Live',
     badgeClass: 'bg-badge-discount-bg text-badge-discount-text',
-    // Store Front lives inside POS now — hidden from the main rail, rendered as
-    // its own group in the POS side menu.
-    hidden: true,
+    badgeFeature: 'storefront',
     items: [
       { key: 'store-ordering-dashboard', label: 'Store Front Dashboard', icon: 'dashboard' },
       { key: 'store-ordering-qr', label: 'QR Codes & Placement', icon: 'qr_code_2' },
@@ -128,6 +136,78 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
 ];
 
 /**
+ * Applies the saved feature selection to the rail config:
+ *
+ * - a section whose features are all switched off disappears,
+ * - an entry that belongs to a switched-off tool disappears,
+ * - `defaultKey` falls back to the first entry that is still there, so a
+ *   section header never jumps to a hidden page,
+ * - badges tied to a switched-off tool are dropped.
+ *
+ * Returns new objects — the shared config above is never mutated.
+ */
+export function filterSidebarSections(
+  sections: BusinessSidebarSection[],
+  isEnabled: (id: FeatureId) => boolean
+): BusinessSidebarSection[] {
+  const itemVisible = (item: BusinessSidebarSubItem) => {
+    const feature = getNavKeyFeature(item.key);
+    return feature === undefined || isEnabled(feature);
+  };
+
+  let list = sections;
+
+  // POS off but Bookings on: the Bookings entry moves into the Business group so
+  // appointments stay reachable from the rail without a "POS" header that only
+  // contains bookings.
+  if (!isEnabled('pos') && isEnabled('bookings')) {
+    list = sections.map((section) => {
+      if (section.key === 'pos' && section.items?.some((item) => item.key === 'orders-bookings')) {
+        return { ...section, items: section.items.filter((item) => item.key !== 'orders-bookings') };
+      }
+      if (section.key === 'business' && section.items) {
+        const bookings: BusinessSidebarSubItem = {
+          key: 'orders-bookings',
+          label: 'Bookings',
+          icon: 'calendar_month',
+        };
+        const at = section.items.findIndex((item) => item.key === 'business-services');
+        const items = [...section.items];
+        items.splice(at < 0 ? items.length : at + 1, 0, bookings);
+        return { ...section, items };
+      }
+      return section;
+    });
+  }
+
+  const filtered: BusinessSidebarSection[] = [];
+
+  for (const section of list) {
+    const required = SECTION_FEATURES[section.key];
+    if (required && !required.some(isEnabled)) continue;
+
+    const items = section.items ? section.items.filter(itemVisible) : undefined;
+    // A section that only existed to hold tool entries has nothing left to show.
+    if (section.items && section.items.length > 0 && (!items || items.length === 0)) continue;
+
+    const badgeVisible = !section.badgeFeature || isEnabled(section.badgeFeature);
+
+    filtered.push({
+      ...section,
+      items,
+      defaultKey:
+        items && items.length > 0 && !items.some((item) => item.key === section.defaultKey)
+          ? items[0].key
+          : section.defaultKey,
+      badge: badgeVisible ? section.badge : undefined,
+      badgeClass: badgeVisible ? section.badgeClass : undefined,
+    });
+  }
+
+  return filtered;
+}
+
+/**
  * Normalizes any legacy or sub-route key to its canonical section and item keys.
  */
 export function resolveSidebarActive(activeKey?: string): { sectionKey: string; itemKey: string } {
@@ -135,8 +215,7 @@ export function resolveSidebarActive(activeKey?: string): { sectionKey: string; 
 
   // Direct matches in sub items
   for (const section of BUSINESS_SIDEBAR_SECTIONS) {
-    // Hidden sections (Store Front) only render inside the POS side menu, so they
-    // resolve into the POS section for chrome / layout purposes.
+    // Hidden sections resolve into the secondary navigation chrome that hosts them.
     if (section.key === activeKey) {
       return { sectionKey: section.hidden ? 'pos' : section.key, itemKey: section.defaultKey };
     }
@@ -171,6 +250,11 @@ export function resolveSidebarActive(activeKey?: string): { sectionKey: string; 
     'business-locations': { sectionKey: 'business', itemKey: 'business-locations' },
     catalog: { sectionKey: 'business', itemKey: 'business-catalog' },
     'business-catalog': { sectionKey: 'business', itemKey: 'business-catalog' },
+    products: { sectionKey: 'business', itemKey: 'business-catalog' },
+    'business-products': { sectionKey: 'business', itemKey: 'business-catalog' },
+    services: { sectionKey: 'business', itemKey: 'business-services' },
+    'business-services': { sectionKey: 'business', itemKey: 'business-services' },
+    'hub-services': { sectionKey: 'business', itemKey: 'business-services' },
     deals: { sectionKey: 'business', itemKey: 'business-deals' },
     'business-deals': { sectionKey: 'business', itemKey: 'business-deals' },
     customers: { sectionKey: 'business', itemKey: 'business-customers' },
@@ -187,12 +271,10 @@ export function resolveSidebarActive(activeKey?: string): { sectionKey: string; 
     'pos-stock': { sectionKey: 'pos', itemKey: 'pos-stock' },
     'pos-ledger': { sectionKey: 'pos', itemKey: 'pos-ledger' },
     'pos-settings': { sectionKey: 'pos', itemKey: 'pos-settings' },
-    // Store Front pages run inside POS mode: the main rail collapses and the POS
-    // menu (with the Store Front group) opens beside it.
-    'store-ordering': { sectionKey: 'pos', itemKey: 'store-ordering-dashboard' },
-    'store-ordering-dashboard': { sectionKey: 'pos', itemKey: 'store-ordering-dashboard' },
-    'store-ordering-qr': { sectionKey: 'pos', itemKey: 'store-ordering-qr' },
-    'store-ordering-settings': { sectionKey: 'pos', itemKey: 'store-ordering-settings' },
+    'store-ordering': { sectionKey: 'store-ordering', itemKey: 'store-ordering-dashboard' },
+    'store-ordering-dashboard': { sectionKey: 'store-ordering', itemKey: 'store-ordering-dashboard' },
+    'store-ordering-qr': { sectionKey: 'store-ordering', itemKey: 'store-ordering-qr' },
+    'store-ordering-settings': { sectionKey: 'store-ordering', itemKey: 'store-ordering-settings' },
     'cluster-system': { sectionKey: 'cluster-system', itemKey: 'cluster-system' },
     cluster: { sectionKey: 'cluster-system', itemKey: 'cluster-system' },
     'cluster-onboarding': { sectionKey: 'cluster-system', itemKey: 'cluster-system' },
@@ -211,12 +293,12 @@ export function resolveSidebarActive(activeKey?: string): { sectionKey: string; 
     settings: { sectionKey: 'more', itemKey: 'more-settings' },
   };
 
-  // Any sub-page key that belongs to a nested-menu section (POS / Store Front,
-  // Messages) resolves back into that section so the inner side menu never
-  // disappears while the user drills into detail pages (e.g. pos-txn-detail,
-  // messages-search, store-ordering sub-flows).
-  if (activeKey.startsWith('pos-') || activeKey.startsWith('store-ordering-')) {
+  // Keep nested pages attached to their own navigation section.
+  if (activeKey.startsWith('pos-')) {
     return { sectionKey: 'pos', itemKey: activeKey };
+  }
+  if (activeKey.startsWith('store-ordering-')) {
+    return { sectionKey: 'store-ordering', itemKey: activeKey };
   }
   if (activeKey.startsWith('messages-')) {
     return { sectionKey: 'messages', itemKey: activeKey };

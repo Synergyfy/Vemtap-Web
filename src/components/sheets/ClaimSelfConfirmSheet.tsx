@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useProfile } from '../../context/ProfileContext';
 import { Icon } from '../ui/Icon';
 import { SheetShell } from './SheetShell';
+import { UserAvatar } from '../ui/UserAvatar';
 
 export interface ClaimSelfConfirmSheetProps {
   open: boolean;
@@ -13,7 +14,7 @@ export interface ClaimSelfConfirmSheetProps {
 }
 
 export function ClaimSelfConfirmSheet({ open, onClose, onConfirm, onCompleteProfile }: ClaimSelfConfirmSheetProps) {
-  const { fullName, email, maskedPhone, initials, hasPhone, isComplete } = useProfile();
+  const { fullName, email, maskedPhone, hasPhone, isComplete } = useProfile();
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -76,8 +77,8 @@ export function ClaimSelfConfirmSheet({ open, onClose, onConfirm, onCompleteProf
 
         <div className="bg-surface-container-low rounded-xl p-space-md mb-space-md shadow-sm">
           <div className="flex items-center gap-space-sm pb-space-sm border-b border-outline-variant/40">
-            <div className="w-12 h-12 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-heading-sm text-heading-sm font-semibold shrink-0">
-              {initials || 'VT'}
+            <div className="w-12 h-12 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-heading-sm text-heading-sm font-semibold shrink-0 overflow-hidden">
+              <UserAvatar textClassName="" />
             </div>
             <div className="flex flex-col min-w-0 flex-1">
               <span className="font-button-primary text-button-primary text-text-primary truncate">

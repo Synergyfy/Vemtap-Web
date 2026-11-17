@@ -37,6 +37,11 @@ export interface AccountProfilePayload {
   email?: string;
   phone?: string;
   name?: string;
+  gender?: string;
+  /** Hosted image URL from `POST /uploads`. */
+  avatar?: string;
+  /** A `district` cluster id from `GET /clusters/districts`, or null to clear it. */
+  homeDistrictId?: string | null;
 }
 
 export interface AccountPreferencePayload {

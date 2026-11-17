@@ -3,6 +3,20 @@ import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
 import type { ProductDraft } from './desktopProductDraft';
 import type { DealStudioDraft } from './desktopDealStudio';
+import { draftImage } from './draftImage';
+import { hasApiConfig } from '../../services/api/client';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
+import { useDealBranches, useDealBundleCatalog } from '../../hooks/business/useDealStudioLive';
+import { getActiveVariants } from '../productVariants';
+import {
+  claimLimitLabel,
+  dealBadgeLabel,
+  dealMinSpend,
+  formatDealAmount,
+  parseDealAmount,
+  redemptionModesLabel,
+  resolveDealPricing,
+} from '../deals/dealStudioShared';
 
 interface DesktopDealStudioStep2ScreenProps {
   draft: ProductDraft;
@@ -49,6 +63,7 @@ function StudioToggle({ checked, onChange }: { checked: boolean; onChange: (valu
 }
 
 export function DesktopDealStudioStep2Screen({
+  draft,
   studio,
   onStudioChange,
   onBack,
@@ -56,6 +71,21 @@ export function DesktopDealStudioStep2Screen({
   onSaveDraft,
   onNav,
 }: DesktopDealStudioStep2ScreenProps) {
+  // Live: the preview is built from this deal, business and branch; sample-only
+  // promises (per-order cap, "Almost Gone" badge, conversion stats) are hidden.
+  const live = hasApiConfig();
+  const business = useMyBusiness().data;
+  const dealBranches = useDealBranches(studio);
+  const activeVariants = getActiveVariants(draft);
+  const basePrice = parseDealAmount(
+    activeVariants.find((variant) => variant.name === 'Regular')?.price ?? activeVariants[0]?.price ?? draft.basePrice,
+  );
+  const bundleCatalog = useDealBundleCatalog(draft.title, basePrice);
+  const pricing = resolveDealPricing({ ...studio, strategy: studio.strategy ?? 'percentage' }, basePrice, bundleCatalog);
+  const minSpend = dealMinSpend(studio);
+  const modes = redemptionModesLabel(studio);
+  const previewBranch = dealBranches.selected[0];
+
   const adjustVouchers = (delta: number) => {
     const next = Math.min(1000, Math.max(5, studio.vouchers + delta));
     onStudioChange({ vouchers: next });
@@ -146,7 +176,7 @@ export function DesktopDealStudioStep2Screen({
           </h1>
           <p className="font-body-md text-body-md text-on-surface-variant max-w-3xl">
             Define voucher availability, redemption frequency, and viral customer gifting options to safeguard
-            restaurant margins while accelerating local diners.
+            {live ? ' your margins while bringing in new customers.' : ' restaurant margins while accelerating local diners.'}
           </p>
         </div>
       </div>
@@ -210,6 +240,8 @@ export function DesktopDealStudioStep2Screen({
                     </button>
                   </div>
                 </div>
+                {/* Not stored by the API yet, so it can't be enforced — demo only. */}
+                {!live && (
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-md">
                   <div>
                     <label className="font-label-md text-label-md text-on-surface font-semibold block">
@@ -241,21 +273,26 @@ export function DesktopDealStudioStep2Screen({
                     </button>
                   </div>
                 </div>
+                )}
               </div>
-              <div className="flex items-center gap-space-xs px-space-md py-space-xs rounded-lg bg-tertiary-fixed text-on-tertiary-fixed">
-                <Icon name="local_fire_department" className="text-[18px]" />
-                <span className="font-caption text-caption font-medium">
-                  Vouchers will automatically show 'Almost Gone' badge at 80% claimed (≥
-                  {Math.round(studio.vouchers * 0.8)} claimed).
-                </span>
-              </div>
+              {!live && (
+                <div className="flex items-center gap-space-xs px-space-md py-space-xs rounded-lg bg-tertiary-fixed text-on-tertiary-fixed">
+                  <Icon name="local_fire_department" className="text-[18px]" />
+                  <span className="font-caption text-caption font-medium">
+                    Vouchers will automatically show 'Almost Gone' badge at 80% claimed (≥
+                    {Math.round(studio.vouchers * 0.8)} claimed).
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between pt-space-xs">
                 <div className="flex flex-col">
                   <span className="font-label-md text-label-md text-on-surface font-medium">
                     Auto-pause when sold out
                   </span>
                   <span className="font-caption text-caption text-text-secondary">
-                    Instantly freezes redemption passes to prevent overbooking during peak dining
+                    {live
+                      ? 'Stops new claims once every voucher has been claimed'
+                      : 'Instantly freezes redemption passes to prevent overbooking during peak dining'}
                   </span>
                 </div>
                 <StudioToggle
@@ -276,7 +313,7 @@ export function DesktopDealStudioStep2Screen({
                       Customer Claim Restrictions
                     </h3>
                     <p className="font-caption text-caption text-on-surface-variant">
-                      Prevent budget abuse by recurring diners
+                      {live ? 'Limit how often one customer can claim' : 'Prevent budget abuse by recurring diners'}
                     </p>
                   </div>
                 </div>
@@ -552,10 +589,12 @@ export function DesktopDealStudioStep2Screen({
               <div className="flex items-center justify-between p-space-md rounded-xl bg-surface-subtle">
                 <div className="flex flex-col pr-space-md">
                   <span className="font-label-md text-label-md text-on-surface font-semibold">
-                    Advance Reservation Required
+                    {live ? 'Redeem with a Reservation' : 'Advance Reservation Required'}
                   </span>
                   <span className="font-caption text-caption text-text-secondary">
-                    Guests must phone or reserve table at least 1 hour prior to arrival
+                    {live
+                      ? 'Customers can also use this deal when they book or reserve with you'
+                      : 'Guests must phone or reserve table at least 1 hour prior to arrival'}
                   </span>
                 </div>
                 <StudioToggle
@@ -586,12 +625,12 @@ export function DesktopDealStudioStep2Screen({
               <div className="bg-surface rounded-xl overflow-hidden shadow-sm flex flex-col">
                 <div
                   className="relative h-44 w-full bg-cover bg-center"
-                  style={{ backgroundImage: `url('${PREVIEW_IMAGES[0].src}')` }}
+                  style={{ backgroundImage: `url("${draftImage(draft.mainImage, PREVIEW_IMAGES[0].src)}")` }}
                 >
                   <div className="absolute inset-0 bg-gradient-to-t from-inverse-surface/80 via-transparent to-black/20" />
                   <div className="absolute top-space-sm left-space-sm flex flex-wrap gap-space-2xs">
                     <span className="bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold px-space-xs py-space-2xs rounded-full shadow-sm">
-                      20% Off Weekend Dinner
+                      {live ? dealBadgeLabel(studio, pricing.savingsPct) : '20% Off Weekend Dinner'}
                     </span>
                     <span className="bg-tertiary-container text-on-tertiary-container font-caption text-caption font-bold px-space-xs py-space-2xs rounded-full shadow-sm flex items-center gap-1">
                       <Icon name="bolt" className="text-[13px]" />
@@ -606,46 +645,69 @@ export function DesktopDealStudioStep2Screen({
                   <div className="absolute bottom-space-sm left-space-sm right-space-sm flex items-end justify-between">
                     <div>
                       <h4 className="font-label-md text-label-md text-surface-canvas font-bold">
-                        The Obsidian Grill &amp; Lounge
+                        {live ? business?.name || 'Your business' : 'The Obsidian Grill & Lounge'}
                       </h4>
                       <div className="flex items-center gap-space-2xs text-surface-container-low font-caption text-caption">
                         <Icon name="location_on" className="text-[14px]" />
-                        <span>Victoria Island • 0.6 km</span>
+                        <span>{live ? previewBranch?.area || previewBranch?.name || 'Your branch' : 'Victoria Island • 0.6 km'}</span>
                       </div>
                     </div>
-                    <span className="bg-surface-canvas text-primary font-caption text-caption font-bold px-space-xs py-space-2xs rounded-lg">
-                      ★ 4.9 (1.2k)
-                    </span>
+                    {!live && (
+                      <span className="bg-surface-canvas text-primary font-caption text-caption font-bold px-space-xs py-space-2xs rounded-lg">
+                        ★ 4.9 (1.2k)
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="p-space-md flex flex-col gap-space-sm bg-surface-canvas">
                   <div className="flex flex-wrap items-center gap-space-2xs font-caption text-caption">
                     <span className="px-space-xs py-space-2xs rounded bg-surface-container-high text-on-surface font-medium flex items-center gap-1">
                       <Icon name="person" className="text-[14px]" />{' '}
-                      {studio.claimOnce
-                        ? '1 Per Diner'
-                        : studio.unlimitedClaims
-                          ? 'Unlimited Per Diner'
-                          : `${studio.maxClaims} Per Diner`}
+                      {live
+                        ? claimLimitLabel(studio)
+                        : studio.claimOnce
+                          ? '1 Per Diner'
+                          : studio.unlimitedClaims
+                            ? 'Unlimited Per Diner'
+                            : `${studio.maxClaims} Per Diner`}
                     </span>
-                    <span className="px-space-xs py-space-2xs rounded bg-surface-subtle text-secondary font-medium">
-                      Max {studio.maxUnitsPerOrder} per Order
-                    </span>
-                    <span className="px-space-xs py-space-2xs rounded bg-surface-tint-blue text-primary font-medium flex items-center gap-1">
-                      <Icon name="payments" className="text-[14px]" /> Min Spend ₦5,000
-                    </span>
-                    <span className="px-space-xs py-space-2xs rounded bg-surface-subtle text-secondary font-medium">
-                      Dine-In &amp; Pickup
-                    </span>
-                    <span className="px-space-xs py-space-2xs rounded bg-surface-subtle text-secondary font-medium">
-                      Reservation Req.
-                    </span>
+                    {live ? (
+                      <>
+                        {minSpend > 0 && (
+                          <span className="px-space-xs py-space-2xs rounded bg-surface-tint-blue text-primary font-medium flex items-center gap-1">
+                            <Icon name="payments" className="text-[14px]" /> Min Spend ₦{formatDealAmount(minSpend)}
+                          </span>
+                        )}
+                        {modes && (
+                          <span className="px-space-xs py-space-2xs rounded bg-surface-subtle text-secondary font-medium">{modes}</span>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <span className="px-space-xs py-space-2xs rounded bg-surface-subtle text-secondary font-medium">
+                          Max {studio.maxUnitsPerOrder} per Order
+                        </span>
+                        <span className="px-space-xs py-space-2xs rounded bg-surface-tint-blue text-primary font-medium flex items-center gap-1">
+                          <Icon name="payments" className="text-[14px]" /> Min Spend ₦5,000
+                        </span>
+                        <span className="px-space-xs py-space-2xs rounded bg-surface-subtle text-secondary font-medium">
+                          Dine-In &amp; Pickup
+                        </span>
+                        <span className="px-space-xs py-space-2xs rounded bg-surface-subtle text-secondary font-medium">
+                          Reservation Req.
+                        </span>
+                      </>
+                    )}
                   </div>
                   <div className="flex items-center justify-between pt-space-2xs">
-                    <div className="flex items-center gap-space-xs text-text-secondary font-caption text-caption">
-                      <Icon name="card_giftcard" className="text-[16px] text-badge-discount-text" />
-                      <span>Giftable via WhatsApp link</span>
-                    </div>
+                    {!live || studio.gifting ? (
+                      <div className="flex items-center gap-space-xs text-text-secondary font-caption text-caption">
+                        <Icon name="card_giftcard" className="text-[16px] text-badge-discount-text" />
+                        <span>Giftable via WhatsApp link</span>
+                      </div>
+                    ) : (
+                      <span />
+                    )}
                     <button
                       type="button"
                       className="bg-primary-container text-on-primary px-space-md py-space-2xs rounded-lg font-button-secondary text-button-secondary hover:bg-primary transition-all"
@@ -657,6 +719,9 @@ export function DesktopDealStudioStep2Screen({
               </div>
             </div>
 
+            {/* Sample benchmarks with no live source — demo only. */}
+            {!live && (
+              <>
             <div className="bg-surface-container-lowest rounded-xl p-space-xl shadow-sm flex flex-col gap-space-md">
               <div className="flex items-center gap-space-xs text-tertiary">
                 <Icon name="trending_up" className="text-[22px]" />
@@ -732,6 +797,8 @@ export function DesktopDealStudioStep2Screen({
               </div>
               <Icon name="workspace_premium" className="text-primary text-[24px]" />
             </div>
+              </>
+            )}
           </div>
         </div>
       </div>

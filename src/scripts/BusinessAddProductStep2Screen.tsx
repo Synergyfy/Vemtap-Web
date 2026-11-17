@@ -2,6 +2,7 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { getActiveVariants } from './productVariants';
 import type { ProductDraft } from './productDraft';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessAddProductStep2ScreenProps {
   draft: ProductDraft;
@@ -31,6 +32,10 @@ export function BusinessAddProductStep2Screen({
     0,
   );
 
+  const updateVariant = (id: string, patch: Partial<ProductDraft['variants'][number]>) => {
+    onDraftChange({ variants: draft.variants.map((variant) => (variant.id === id ? { ...variant, ...patch } : variant)) });
+  };
+
   const removeVariant = (id: string) => {
     onDraftChange({ variants: draft.variants.filter((variant) => variant.id !== id) });
   };
@@ -41,10 +46,10 @@ export function BusinessAddProductStep2Screen({
         ...draft.variants,
         {
           id: `variant-${Date.now()}`,
-          name: 'New Option',
-          cut: 'Size',
-          price: '0',
-          inventory: '0',
+          name: '',
+          cut: '',
+          price: '',
+          inventory: '',
         },
       ],
     });
@@ -77,8 +82,8 @@ export function BusinessAddProductStep2Screen({
             >
               Draft
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>
@@ -194,6 +199,46 @@ export function BusinessAddProductStep2Screen({
             </p>
           </section>
 
+          {/* Reward & Loyalty Points */}
+          <section className="flex flex-col gap-space-sm p-space-md rounded-xl bg-surface-container-lowest shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)]">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-space-xs">
+                <Icon name="stars" className="text-primary text-[20px]" />
+                <div className="flex flex-col">
+                  <h3 className="font-heading-sm text-heading-sm text-on-surface">Reward &amp; Loyalty Points</h3>
+                  <span className="font-caption text-caption text-text-secondary">
+                    Bonus points customers earn on this product
+                  </span>
+                </div>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-[10px] font-bold">
+                Loyalty
+              </span>
+            </div>
+            <div className="flex flex-col gap-space-2xs">
+              <label className="font-label-md text-label-md text-on-surface font-medium flex items-center justify-between" htmlFor="loyalty-points">
+                Points Awarded on Purchase
+                <span className="text-text-tertiary font-caption text-caption">Optional</span>
+              </label>
+              <div className="relative flex items-center">
+                <Icon name="stars" className="absolute left-3.5 text-text-tertiary text-[18px]" />
+                <input
+                  className="w-full h-[46px] pl-10 pr-12 rounded-xl bg-surface-subtle text-on-surface font-body-md text-body-md focus:outline-none focus:bg-surface-canvas transition-all"
+                  id="loyalty-points"
+                  inputMode="numeric"
+                  placeholder="e.g. 50 (leave empty for default spend rate)"
+                  type="text"
+                  value={draft.loyaltyPoints || ''}
+                  onChange={(event) => onDraftChange({ loyaltyPoints: event.target.value })}
+                />
+                <span className="absolute right-3.5 text-text-tertiary font-caption text-[11px] font-semibold">pts</span>
+              </div>
+              <p className="font-caption text-[11px] text-text-tertiary">
+                If left empty, the standard store formula (₦100 spent = 1 pt) applies automatically.
+              </p>
+            </div>
+          </section>
+
           <section className="flex flex-col gap-space-md p-space-md rounded-xl bg-surface-container-lowest shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)]">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-space-xs">
@@ -207,7 +252,7 @@ export function BusinessAddProductStep2Screen({
               </div>
               <button
                 aria-checked={draft.variantsEnabled}
-                className={`w-12 h-7 rounded-full p-0.5 flex items-center transition-colors focus:outline-none ${
+                className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
                   draft.variantsEnabled ? 'bg-primary' : 'bg-surface-container-highest'
                 }`}
                 id="variant-toggle"
@@ -216,8 +261,8 @@ export function BusinessAddProductStep2Screen({
                 onClick={() => onDraftChange({ variantsEnabled: !draft.variantsEnabled })}
               >
                 <span
-                  className={`w-6 h-6 rounded-full bg-surface shadow-md transform transition-transform ${
-                    draft.variantsEnabled ? 'translate-x-5' : 'translate-x-0'
+                  className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                    draft.variantsEnabled ? 'translate-x-3.5' : 'translate-x-0'
                   }`}
                 />
               </button>
@@ -252,11 +297,22 @@ export function BusinessAddProductStep2Screen({
                       className="flex flex-col p-space-sm rounded-xl bg-surface-subtle gap-space-xs"
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-primary" />
-                          <span className="font-label-md text-label-md text-on-surface font-semibold">
-                            {variant.name} ({variant.cut})
-                          </span>
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
+                          <input
+                            aria-label="Option name"
+                            placeholder="Option name (e.g. Large)"
+                            value={variant.name}
+                            onChange={(event) => updateVariant(variant.id, { name: event.target.value })}
+                            className="flex-1 min-w-0 bg-transparent font-label-md text-label-md text-on-surface font-semibold outline-none focus:bg-surface-canvas rounded px-1"
+                          />
+                          <input
+                            aria-label="Option detail"
+                            placeholder="Detail (e.g. 450g)"
+                            value={variant.cut}
+                            onChange={(event) => updateVariant(variant.id, { cut: event.target.value })}
+                            className="w-24 bg-transparent font-caption text-caption text-text-secondary outline-none focus:bg-surface-canvas rounded px-1"
+                          />
                         </div>
                         <button
                           aria-label={`Remove ${variant.name}`}
@@ -270,18 +326,26 @@ export function BusinessAddProductStep2Screen({
                       <div className="grid grid-cols-2 gap-space-xs pt-1">
                         <div className="flex flex-col">
                           <span className="font-caption text-caption text-text-secondary mb-1">Variant Price (₦)</span>
-                          <div className="h-10 px-3 rounded-lg bg-surface-container-lowest flex items-center shadow-sm">
-                            <span className="font-label-md text-label-md text-on-surface font-medium">
-                              {variant.price}
-                            </span>
-                          </div>
+                          <input
+                            aria-label="Variant price"
+                            inputMode="numeric"
+                            placeholder="0"
+                            value={variant.price}
+                            onChange={(event) => updateVariant(variant.id, { price: event.target.value })}
+                            className="h-10 px-3 rounded-lg bg-surface-container-lowest shadow-sm font-label-md text-label-md text-on-surface font-medium outline-none focus:ring-2 focus:ring-primary/20"
+                          />
                         </div>
                         <div className="flex flex-col">
                           <span className="font-caption text-caption text-text-secondary mb-1">Inventory Qty</span>
-                          <div className="h-10 px-3 rounded-lg bg-surface-container-lowest flex items-center justify-between shadow-sm">
-                            <span className="font-label-md text-label-md text-on-surface font-medium">
-                              {variant.inventory}
-                            </span>
+                          <div className="h-10 px-3 rounded-lg bg-surface-container-lowest flex items-center justify-between shadow-sm focus-within:ring-2 focus-within:ring-primary/20">
+                            <input
+                              aria-label="Variant stock"
+                              inputMode="numeric"
+                              placeholder="0"
+                              value={variant.inventory}
+                              onChange={(event) => updateVariant(variant.id, { inventory: event.target.value.replace(/[^0-9]/g, '') })}
+                              className="w-full bg-transparent font-label-md text-label-md text-on-surface font-medium outline-none"
+                            />
                             <span className="font-caption text-caption text-text-tertiary">units</span>
                           </div>
                         </div>
@@ -336,9 +400,18 @@ export function BusinessAddProductStep2Screen({
                   <span className="font-caption text-caption text-text-secondary">
                     {draft.variantsEnabled ? 'Combined Variant Stock' : 'Standard Product Stock'}
                   </span>
-                  <span className="font-heading-sm text-heading-sm text-on-surface">
-                    {draft.variantsEnabled ? `${combinedStock} units available` : 'Single item — no variants'}
-                  </span>
+                  {draft.variantsEnabled ? (
+                    <span className="font-heading-sm text-heading-sm text-on-surface">{combinedStock} units available</span>
+                  ) : (
+                    <input
+                      aria-label="Stock on hand"
+                      inputMode="numeric"
+                      placeholder="Units on hand (blank = not tracked)"
+                      value={draft.stock ?? ''}
+                      onChange={(event) => onDraftChange({ stock: event.target.value.replace(/[^0-9]/g, '') })}
+                      className="h-9 px-2 rounded-lg bg-surface-container-lowest font-label-md text-label-md text-on-surface outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                  )}
                 </div>
               </div>
               <Icon name="check_circle" className="text-text-tertiary text-[20px]" />
@@ -395,7 +468,7 @@ export function BusinessAddProductStep2Screen({
               </div>
               <button
                 aria-checked={draft.backorder}
-                className={`w-12 h-7 rounded-full p-0.5 flex items-center transition-colors focus:outline-none shrink-0 ${
+                className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
                   draft.backorder ? 'bg-primary' : 'bg-surface-container-highest'
                 }`}
                 id="backorder-toggle"
@@ -404,8 +477,8 @@ export function BusinessAddProductStep2Screen({
                 onClick={() => onDraftChange({ backorder: !draft.backorder })}
               >
                 <span
-                  className={`w-6 h-6 rounded-full bg-surface shadow-md transform transition-transform ${
-                    draft.backorder ? 'translate-x-5' : 'translate-x-0'
+                  className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                    draft.backorder ? 'translate-x-3.5' : 'translate-x-0'
                   }`}
                 />
               </button>

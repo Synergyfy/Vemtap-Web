@@ -3,7 +3,9 @@ import { hasApiConfig } from '../services/api/client';
 import type { BusinessLocationResult } from './desktop/DesktopBusinessLocationScreen';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { useBusinessLocationLookup } from '../hooks/business/useBusinessLocationLookup';
 import type { BusinessProfileDraft } from './BusinessOnboardingScreen';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessLocationScreenProps {
   draft: BusinessProfileDraft;
@@ -20,10 +22,10 @@ export function BusinessLocationScreen({ draft, onBack, onNext, onSaveDraft }: B
   // Live setup starts empty; the sample address is demo-only.
   const live = hasApiConfig();
   const [search, setSearch] = useState(live ? '' : 'Plot 1428, Adetokunbo Ademola Crescent, Wuse 2');
-  const [locating, setLocating] = useState(false);
   const [street, setStreet] = useState(live ? '' : 'Plot 1428, Adetokunbo Ademola Crescent, Wuse 2, Abuja');
   const [landmark, setLandmark] = useState(live ? '' : 'Opposite Cubana Suites, Ground Floor (Suite G-02)');
-  const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const lookup = useBusinessLocationLookup(search);
+  const locating = lookup.status === 'locating';
   const [toast, setToast] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
 
@@ -39,31 +41,36 @@ export function BusinessLocationScreen({ draft, onBack, onNext, onSaveDraft }: B
     searchRef.current?.focus();
   };
 
-  const handleUseLocation = () => {
-    if (locating) return;
-    if (!live || !navigator.geolocation) {
-      setLocating(true);
+  const [demoLocating, setDemoLocating] = useState(false);
+  const handleUseLocation = async () => {
+    if (locating || demoLocating) return;
+    if (!live) {
+      setDemoLocating(true);
       setSearch('Locating current GPS coordinates...');
       window.setTimeout(() => {
         setSearch('Adetokunbo Ademola Cres, Wuse 2, Abuja 904101');
-        setLocating(false);
+        setDemoLocating(false);
       }, 600);
       return;
     }
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setCoords({ latitude: position.coords.latitude, longitude: position.coords.longitude });
-        showToast('Location pinned. Add your street address below.');
-        setLocating(false);
-      },
-      () => {
-        showToast('Could not get your location.');
-        setLocating(false);
-      },
-      { enableHighAccuracy: true, timeout: 15_000 },
-    );
+    const label = await lookup.locate();
+    if (label) {
+      setSearch(label);
+      showToast('Location pinned. Add your street address below.');
+    }
   };
+
+  // Live: what the API resolved (blank until it has); demo keeps the sample territory.
+  const territory = live
+    ? {
+        country: lookup.place?.country ?? null,
+        state: lookup.place?.state ?? null,
+        city: lookup.place?.city ?? null,
+        district: lookup.place?.district ?? null,
+      }
+    : { country: 'Nigeria', state: 'FCT (Abuja)', city: 'Abuja Municipal', district: 'Wuse 2' };
+  const resolved = !live || lookup.status === 'resolved';
+  const looking = lookup.status === 'locating' || lookup.status === 'searching';
 
   return (
     <AppScreen>
@@ -86,8 +93,8 @@ export function BusinessLocationScreen({ draft, onBack, onNext, onSaveDraft }: B
             <h1 className="font-label-sm text-label-sm text-text-secondary line-clamp-1">Location Details</h1>
           </div>
           <div className="w-11 h-11 flex items-center justify-end">
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-[0_2px_6px_rgba(0,85,196,0.2)]">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-[0_2px_6px_rgba(0,85,196,0.2)] overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>
@@ -110,9 +117,15 @@ export function BusinessLocationScreen({ draft, onBack, onNext, onSaveDraft }: B
         </section>
 
         <section className="px-margin pt-3 pb-4">
-          <h2 className="font-heading-sm text-heading-sm text-on-surface">Where is your business located?</h2>
+          <div className="flex items-center justify-between gap-space-sm">
+            <h2 className="font-heading-sm text-heading-sm text-on-surface">Where is your business located?</h2>
+            <span className="bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm px-2 py-0.5 rounded-full font-semibold flex-shrink-0">
+              Primary · Free
+            </span>
+          </div>
           <p className="font-body-md text-body-md text-text-secondary mt-1">
-            Customers will use this information to discover your business and redeem local offers near them.
+            This is your primary business location — it's free and serves as your default. Customers use it to
+            discover your business and redeem local offers near them.
           </p>
         </section>
 
@@ -142,14 +155,16 @@ export function BusinessLocationScreen({ draft, onBack, onNext, onSaveDraft }: B
 
           <button
               className={`w-full h-11 px-4 rounded-xl bg-surface-tint-blue active:bg-secondary-container text-primary flex items-center justify-between transition-all group ${
-              locating ? 'opacity-75' : ''
+              locating || demoLocating ? 'opacity-75' : ''
             }`}
             type="button"
-            onClick={handleUseLocation}
+            onClick={() => void handleUseLocation()}
           >
             <div className="flex items-center gap-space-xs">
               <Icon className="text-[20px] text-primary group-hover:rotate-45 transition-transform" name="my_location" />
-              <span className="font-label-md text-label-md font-semibold text-primary">Use current location</span>
+              <span className="font-label-md text-label-md font-semibold text-primary">
+                {locating ? 'Locating…' : 'Use current location'}
+              </span>
             </div>
             <span className="font-caption text-caption text-primary flex items-center gap-0.5">
               GPS Ready
@@ -161,7 +176,7 @@ export function BusinessLocationScreen({ draft, onBack, onNext, onSaveDraft }: B
         <section className="px-margin mt-4">
           <div className="relative w-full h-[210px] rounded-2xl overflow-hidden shadow-sm bg-surface-container-high">
             <div
-              aria-label="Wuse 2, Abuja, Nigeria"
+              aria-label={live ? 'Map of your business area' : 'Wuse 2, Abuja, Nigeria'}
               className="w-full h-full bg-cover bg-center"
               role="img"
               style={{ backgroundImage: `url('${MAP_IMG}')` }}
@@ -215,8 +230,12 @@ export function BusinessLocationScreen({ draft, onBack, onNext, onSaveDraft }: B
                 </div>
                 <span className="font-heading-sm text-heading-sm text-on-surface">Territory Resolution</span>
               </div>
-              <span className="px-2 py-0.5 rounded-md bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                Auto-Verified
+              <span
+                className={`px-2 py-0.5 rounded-md font-caption text-caption font-semibold ${
+                  resolved ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-subtle text-text-secondary'
+                }`}
+              >
+                {looking ? 'Looking up…' : resolved ? (live ? 'Resolved' : 'Auto-Verified') : 'Not resolved yet'}
               </span>
             </div>
 
@@ -224,51 +243,55 @@ export function BusinessLocationScreen({ draft, onBack, onNext, onSaveDraft }: B
               <div className="p-2.5 rounded-xl bg-surface-subtle">
                 <span className="font-caption text-caption text-text-tertiary block">Country</span>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="text-[16px]">🇳🇬</span>
-                  <span className="font-label-md text-label-md font-semibold text-on-surface">Nigeria</span>
+                  {territory.country === 'Nigeria' && <span className="text-[16px]">🇳🇬</span>}
+                  <span className="font-label-md text-label-md font-semibold text-on-surface">{territory.country ?? '—'}</span>
                 </div>
               </div>
               <div className="p-2.5 rounded-xl bg-surface-subtle">
                 <span className="font-caption text-caption text-text-tertiary block">State / Region</span>
                 <span className="font-label-md text-label-md font-semibold text-on-surface mt-0.5 block truncate">
-                  FCT (Abuja)
+                  {territory.state ?? '—'}
                 </span>
               </div>
               <div className="p-2.5 rounded-xl bg-surface-subtle">
                 <span className="font-caption text-caption text-text-tertiary block">City / Metro</span>
                 <span className="font-label-md text-label-md font-semibold text-on-surface mt-0.5 block">
-                  Abuja Municipal
+                  {territory.city ?? '—'}
                 </span>
               </div>
               <div className="p-2.5 rounded-xl bg-surface-subtle">
                 <span className="font-caption text-caption text-text-tertiary block">District / Area</span>
-                <span className="font-label-md text-label-md font-semibold text-primary mt-0.5 block">Wuse 2</span>
+                <span className="font-label-md text-label-md font-semibold text-primary mt-0.5 block">{territory.district ?? '—'}</span>
               </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-surface-tint-blue flex flex-col gap-1.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <Icon className="text-[16px] text-primary" name="insights" filled />
-                  <span className="font-label-sm text-label-sm font-semibold text-primary">
-                    District Cluster Assignment
-                  </span>
+            {lookup.message && <p className="font-caption text-caption text-text-secondary">{lookup.message}</p>}
+            {/* Cluster assignment has no backend yet — sample only. */}
+            {!live && (
+              <div className="p-3 rounded-xl bg-surface-tint-blue flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Icon className="text-[16px] text-primary" name="insights" filled />
+                    <span className="font-label-sm text-label-sm font-semibold text-primary">
+                      District Cluster Assignment
+                    </span>
+                  </div>
+                  <button aria-label="More cluster details" className="text-secondary hover:text-primary" type="button" onClick={() => showToast('Cluster #04 covers a 3km radius around Wuse Commercial Hub')}>
+                    <Icon name="info" className="text-[16px]" />
+                  </button>
                 </div>
-                <button aria-label="More cluster details" className="text-secondary hover:text-primary" type="button" onClick={() => showToast('Cluster #04 covers a 3km radius around Wuse Commercial Hub')}>
-                  <Icon name="info" className="text-[16px]" />
-                </button>
+                <div className="flex items-center justify-between bg-surface-container-lowest px-2.5 py-1.5 rounded-lg shadow-sm">
+                  <span className="font-label-sm text-label-sm font-semibold text-on-surface truncate">
+                    Wuse Commercial Hub Cluster #04
+                  </span>
+                  <span className="font-caption text-caption text-primary font-semibold shrink-0 ml-1">Assigned</span>
+                </div>
+                <p className="font-caption text-caption text-text-secondary leading-tight mt-0.5">
+                  Customers browsing within this 3km retail radius will see your flash offers and tap-to-pay deals
+                  instantly.
+                </p>
               </div>
-              <div className="flex items-center justify-between bg-surface-container-lowest px-2.5 py-1.5 rounded-lg shadow-sm">
-                <span className="font-label-sm text-label-sm font-semibold text-on-surface truncate">
-                  Wuse Commercial Hub Cluster #04
-                </span>
-                <span className="font-caption text-caption text-primary font-semibold shrink-0 ml-1">Assigned</span>
-              </div>
-              <p className="font-caption text-caption text-text-secondary leading-tight mt-0.5">
-                Customers browsing within this 3km retail radius will see your flash offers and tap-to-pay deals
-                instantly.
-              </p>
-            </div>
+            )}
           </div>
         </section>
 
@@ -321,11 +344,13 @@ export function BusinessLocationScreen({ draft, onBack, onNext, onSaveDraft }: B
             onClick={() =>
               onNext({
                 address: [street.trim() || search.trim(), landmark.trim()].filter(Boolean).join(' — '),
-                ...(coords ?? {}),
+                ...(lookup.place?.city ? { city: lookup.place.city } : {}),
+                ...(lookup.place?.state ? { state: lookup.place.state } : {}),
+                ...(lookup.coords ?? {}),
               })
             }
           >
-            <span>Continue to Branch Details</span>
+            <span>Continue to Business Offerings</span>
             <Icon name="arrow_forward" className="text-[20px]" />
           </button>
           <button
@@ -339,7 +364,7 @@ export function BusinessLocationScreen({ draft, onBack, onNext, onSaveDraft }: B
         </section>
       </div>
       {toast && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {toast}
         </div>
       )}

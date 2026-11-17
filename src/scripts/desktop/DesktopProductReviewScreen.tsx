@@ -20,6 +20,8 @@ interface DesktopProductReviewScreenProps {
   onEditImage?: () => void;
   onEditSteps: () => void;
   onPublish: () => void;
+  /** Live: true while the parent is saving, so the button reflects the real request. */
+  publishing?: boolean;
   onSaveDraft: () => void;
   onNav?: (key: BusinessPortalNavKey) => void;
 }
@@ -58,6 +60,7 @@ export function DesktopProductReviewScreen({
   onEditImage,
   onEditSteps,
   onPublish,
+  publishing = false,
   onSaveDraft,
   onNav,
 }: DesktopProductReviewScreenProps) {
@@ -76,6 +79,8 @@ export function DesktopProductReviewScreen({
   const activeBranchCount = Object.values(draft.branches).filter(Boolean).length;
   // Live: the real branches ticked in the previous step and the uploaded photo.
   const live = hasApiConfig();
+  // Live: the button follows the real request (no simulated "published" before the API answers).
+  const shownState = live ? (publishing ? 'publishing' : 'idle') : publishState;
   const { branches: liveBranches } = useBusinessBranch();
   const selectedLiveBranches = liveBranches.filter((branch) => branch.id && draft.branches[branch.id]);
   const heroImage = live ? { src: draft.mainImage || LIVE_IMAGE_PLACEHOLDER, alt: draft.title || 'Product photo' } : REVIEW_IMAGES[0];
@@ -94,7 +99,9 @@ export function DesktopProductReviewScreen({
   const simVariant = activeVariants[simIndex] ?? activeVariants[0];
 
   const handlePublish = () => {
-    if (publishState !== 'idle') return;
+    if (shownState !== 'idle') return;
+    // Live: publish for real; the parent opens the published screen on success or shows the error.
+    if (live) return onPublish();
     setPublishState('publishing');
     timers.current.push(window.setTimeout(() => setPublishState('success'), 1200));
     timers.current.push(window.setTimeout(() => onPublish(), 2800));
@@ -502,50 +509,78 @@ export function DesktopProductReviewScreen({
                   Edit
                 </button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-space-sm">
-                <div className="p-space-sm rounded-xl bg-surface-subtle flex items-start gap-space-xs">
-                  <Icon name="store" className="text-[22px] text-badge-discount-text" />
-                  <div>
-                    <span className="font-label-md text-label-md text-text-primary font-semibold block">
-                      In-Store Pickup
-                    </span>
-                    <span className="font-caption text-caption text-badge-discount-text font-medium block">
-                      Instant Availability
-                    </span>
-                    <span className="font-caption text-caption text-text-secondary mt-1 block">
-                      {live ? `Pickup at ${branchNames}` : 'Dedicated counter at both Wuse & Garki'}
-                    </span>
+              {live ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-space-sm">
+                  {draft.fulfillment?.pickup !== false && (
+                    <div className="p-space-sm rounded-xl bg-surface-subtle flex items-start gap-space-xs">
+                      <Icon name="store" className="text-[22px] text-badge-discount-text" />
+                      <div>
+                        <span className="font-label-md text-label-md text-text-primary font-semibold block">In-Store Pickup</span>
+                        <span className="font-caption text-caption text-text-secondary mt-1 block">Pickup at {branchNames}</span>
+                      </div>
+                    </div>
+                  )}
+                  {draft.fulfillment?.delivery !== false && (
+                    <div className="p-space-sm rounded-xl bg-surface-subtle flex items-start gap-space-xs">
+                      <Icon name="moped" className="text-[22px] text-primary" />
+                      <div>
+                        <span className="font-label-md text-label-md text-text-primary font-semibold block">Delivery</span>
+                        {draft.prepWindow && (
+                          <span className="font-caption text-caption text-primary font-medium block">Ready in {draft.prepWindow}</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {draft.fulfillment?.pickup === false && draft.fulfillment?.delivery === false && (
+                    <p className="font-body-md text-body-md text-error">No way to get it yet — turn on pickup or delivery.</p>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-space-sm">
+                  <div className="p-space-sm rounded-xl bg-surface-subtle flex items-start gap-space-xs">
+                    <Icon name="store" className="text-[22px] text-badge-discount-text" />
+                    <div>
+                      <span className="font-label-md text-label-md text-text-primary font-semibold block">
+                        In-Store Pickup
+                      </span>
+                      <span className="font-caption text-caption text-badge-discount-text font-medium block">
+                        Instant Availability
+                      </span>
+                      <span className="font-caption text-caption text-text-secondary mt-1 block">
+                        {live ? `Pickup at ${branchNames}` : 'Dedicated counter at both Wuse & Garki'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="p-space-sm rounded-xl bg-surface-subtle flex items-start gap-space-xs">
+                    <Icon name="moped" className="text-[22px] text-primary" />
+                    <div>
+                      <span className="font-label-md text-label-md text-text-primary font-semibold block">
+                        Local Delivery
+                      </span>
+                      <span className="font-caption text-caption text-primary font-medium block">
+                        20 - 30 Minutes
+                      </span>
+                      <span className="font-caption text-caption text-text-secondary mt-1 block">
+                        VEMTAP On-Demand Courier dispatched hot
+                      </span>
+                    </div>
+                  </div>
+                  <div className="p-space-sm rounded-xl bg-surface-subtle flex items-start gap-space-xs">
+                    <Icon name="inventory_2" className="text-[22px] text-secondary" />
+                    <div>
+                      <span className="font-label-md text-label-md text-text-primary font-semibold block">
+                        Interstate Waybill
+                      </span>
+                      <span className="font-caption text-caption text-text-secondary font-medium block">
+                        Restricted (Perishable)
+                      </span>
+                      <span className="font-caption text-caption text-text-secondary mt-1 block">
+                        Vacuum chilled seals only for express lines
+                      </span>
+                    </div>
                   </div>
                 </div>
-                <div className="p-space-sm rounded-xl bg-surface-subtle flex items-start gap-space-xs">
-                  <Icon name="moped" className="text-[22px] text-primary" />
-                  <div>
-                    <span className="font-label-md text-label-md text-text-primary font-semibold block">
-                      Local Delivery
-                    </span>
-                    <span className="font-caption text-caption text-primary font-medium block">
-                      20 - 30 Minutes
-                    </span>
-                    <span className="font-caption text-caption text-text-secondary mt-1 block">
-                      VEMTAP On-Demand Courier dispatched hot
-                    </span>
-                  </div>
-                </div>
-                <div className="p-space-sm rounded-xl bg-surface-subtle flex items-start gap-space-xs">
-                  <Icon name="inventory_2" className="text-[22px] text-secondary" />
-                  <div>
-                    <span className="font-label-md text-label-md text-text-primary font-semibold block">
-                      Interstate Waybill
-                    </span>
-                    <span className="font-caption text-caption text-text-secondary font-medium block">
-                      Restricted (Perishable)
-                    </span>
-                    <span className="font-caption text-caption text-text-secondary mt-1 block">
-                      Vacuum chilled seals only for express lines
-                    </span>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
 
             <div className="bg-surface-canvas rounded-xl p-space-lg shadow-sm flex flex-col gap-space-md">
@@ -563,24 +598,40 @@ export function DesktopProductReviewScreen({
                 </button>
               </div>
               <p className="font-body-md text-body-md text-text-secondary leading-relaxed">{draft.description}</p>
-              <div className="flex flex-wrap items-center gap-space-xs pt-space-xs">
-                <div className="px-space-sm py-1.5 rounded-full bg-surface-subtle text-text-primary font-label-sm text-label-sm flex items-center gap-1.5 shadow-sm">
-                  <Icon name="eco" className="text-[16px] text-badge-discount-text" />
-                  <span>100% Gluten-free</span>
+              {live ? (
+                (draft.tags?.length ?? 0) > 0 && (
+                  <div className="flex flex-wrap items-center gap-space-xs pt-space-xs">
+                    {draft.tags.map((tag) => (
+                      <div
+                        key={tag}
+                        className="px-space-sm py-1.5 rounded-full bg-surface-subtle text-text-primary font-label-sm text-label-sm flex items-center gap-1.5 shadow-sm"
+                      >
+                        <Icon name="sell" className="text-[16px] text-badge-discount-text" />
+                        <span>{tag}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <div className="flex flex-wrap items-center gap-space-xs pt-space-xs">
+                  <div className="px-space-sm py-1.5 rounded-full bg-surface-subtle text-text-primary font-label-sm text-label-sm flex items-center gap-1.5 shadow-sm">
+                    <Icon name="eco" className="text-[16px] text-badge-discount-text" />
+                    <span>100% Gluten-free</span>
+                  </div>
+                  <div className="px-space-sm py-1.5 rounded-full bg-surface-subtle text-text-primary font-label-sm text-label-sm flex items-center gap-1.5 shadow-sm">
+                    <Icon name="verified" className="text-[16px] text-badge-discount-text" />
+                    <span>Halal Certified Kitchen</span>
+                  </div>
+                  <div className="px-space-sm py-1.5 rounded-full bg-surface-subtle text-text-primary font-label-sm text-label-sm flex items-center gap-1.5 shadow-sm">
+                    <Icon name="recycling" className="text-[16px] text-primary" />
+                    <span>Biodegradable Thermal Packaging</span>
+                  </div>
+                  <div className="px-space-sm py-1.5 rounded-full bg-surface-subtle text-text-primary font-label-sm text-label-sm flex items-center gap-1.5 shadow-sm">
+                    <Icon name="restaurant" className="text-[16px] text-tertiary" />
+                    <span>Chef's Choice Recommended</span>
+                  </div>
                 </div>
-                <div className="px-space-sm py-1.5 rounded-full bg-surface-subtle text-text-primary font-label-sm text-label-sm flex items-center gap-1.5 shadow-sm">
-                  <Icon name="verified" className="text-[16px] text-badge-discount-text" />
-                  <span>Halal Certified Kitchen</span>
-                </div>
-                <div className="px-space-sm py-1.5 rounded-full bg-surface-subtle text-text-primary font-label-sm text-label-sm flex items-center gap-1.5 shadow-sm">
-                  <Icon name="recycling" className="text-[16px] text-primary" />
-                  <span>Biodegradable Thermal Packaging</span>
-                </div>
-                <div className="px-space-sm py-1.5 rounded-full bg-surface-subtle text-text-primary font-label-sm text-label-sm flex items-center gap-1.5 shadow-sm">
-                  <Icon name="restaurant" className="text-[16px] text-tertiary" />
-                  <span>Chef's Choice Recommended</span>
-                </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -699,28 +750,28 @@ export function DesktopProductReviewScreen({
                 <button
                   type="button"
                   onClick={handlePublish}
-                  disabled={publishState !== 'idle'}
+                  disabled={shownState !== 'idle'}
                   className={`w-full h-14 rounded-xl font-button-primary text-button-primary font-semibold flex items-center justify-center gap-space-xs shadow-md transition-all ${
-                    publishState === 'success'
+                    shownState === 'success'
                       ? 'bg-badge-discount-text text-on-primary cursor-default'
-                      : publishState === 'publishing'
+                      : shownState === 'publishing'
                         ? 'bg-primary text-on-primary opacity-80 cursor-not-allowed'
                         : 'bg-primary hover:bg-[#0559CA] active:scale-[0.98] text-on-primary cursor-pointer'
                   }`}
                 >
-                  {publishState === 'idle' && (
+                  {shownState === 'idle' && (
                     <>
                       <Icon name="rocket_launch" className="text-[20px]" />
                       <span>Publish Product to Storefront 🚀</span>
                     </>
                   )}
-                  {publishState === 'publishing' && (
+                  {shownState === 'publishing' && (
                     <>
                       <Icon name="refresh" className="text-[20px] animate-spin" />
                       <span>Synchronizing Catalogs...</span>
                     </>
                   )}
-                  {publishState === 'success' && (
+                  {shownState === 'success' && (
                     <>
                       <Icon name="done_all" className="text-[20px]" />
                       <span>Catalog Published!</span>
@@ -746,7 +797,7 @@ export function DesktopProductReviewScreen({
                   </button>
                 </div>
               </div>
-              {publishState === 'success' && (
+              {shownState === 'success' && (
                 <div className="bg-badge-discount-bg text-badge-discount-text rounded-lg p-space-sm flex items-center gap-space-xs transition-opacity duration-300">
                   <Icon name="task_alt" className="text-[18px]" />
                   <span className="font-caption text-caption font-semibold">
@@ -819,22 +870,22 @@ export function DesktopProductReviewScreen({
             <button
               type="button"
               onClick={handlePublish}
-              disabled={publishState !== 'idle'}
+              disabled={shownState !== 'idle'}
               className="inline-flex items-center justify-center gap-space-xs bg-primary hover:bg-surface-tint text-on-primary px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg shadow-primary/20 hover:scale-[1.01] transition-all disabled:opacity-80"
             >
-              {publishState === 'idle' && (
+              {shownState === 'idle' && (
                 <>
                   <span>Publish Product to Storefront</span>
                   <Icon name="rocket_launch" className="text-[20px]" />
                 </>
               )}
-              {publishState === 'publishing' && (
+              {shownState === 'publishing' && (
                 <>
                   <Icon name="refresh" className="text-[20px] animate-spin" />
                   <span>Synchronizing Catalogs...</span>
                 </>
               )}
-              {publishState === 'success' && (
+              {shownState === 'success' && (
                 <>
                   <Icon name="done_all" className="text-[20px]" />
                   <span>Catalog Published!</span>

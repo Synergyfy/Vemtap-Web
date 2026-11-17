@@ -1,8 +1,11 @@
+import type { DealDetail } from '../../../hooks/useDealDetail';
 import { Icon } from '../../ui/Icon';
 import { DesktopModal, ModalCloseButton } from '../DesktopModal';
 import { maskPhone, parsePrice } from '../../../utils/format';
 
 export interface RecipientSummaryModalProps {
+  /** The live deal, for its validity and redemption hours. */
+  detail?: DealDetail | null;
   open: boolean;
   onClose: () => void;
   onConfirm: () => void;
@@ -20,12 +23,6 @@ export interface RecipientSummaryModalProps {
   } | null;
 }
 
-const VALIDITY: Array<{ label: string; value: string; note: string }> = [
-  { label: 'Valid Period', value: '48 hours', note: 'From instant issue' },
-  { label: 'Redemption Hours', value: 'Mon – Fri', note: '12:00 PM – 4:00 PM' },
-  { label: 'Venue (0.8 km)', value: 'Plot 14 Apo Blvd', note: 'Apo District, Abuja' },
-];
-
 function ContactTile({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
     <div className="p-2.5 rounded-xl bg-surface-container-lowest flex items-center gap-2.5">
@@ -40,22 +37,29 @@ function ContactTile({ icon, label, value }: { icon: string; label: string; valu
   );
 }
 
-export function RecipientSummaryModal({ open, onClose, onConfirm, onEdit, recipient, deal }: RecipientSummaryModalProps) {
-  const recipientName = recipient?.name ?? 'Samuel Adeleke';
-  const recipientEmail = recipient?.email ?? 'samuel.adeleke@example.com';
-  const recipientPhoneDisplay = recipient?.phone ? maskPhone(recipient.phone) : '+234 802 345 6789';
-  const dealTitle = deal?.title || 'Prime 3-Course Lunch Combo';
+export function RecipientSummaryModal({ open, onClose, onConfirm, onEdit, recipient, deal, detail }: RecipientSummaryModalProps) {
+  const recipientName = recipient?.name ?? '';
+  const recipientEmail = recipient?.email ?? '';
+  const recipientPhoneDisplay = recipient?.phone ? maskPhone(recipient.phone) : '';
+  const dealTitle = deal?.title || 'This deal';
   const businessName = deal?.business?.trim() || 'This local partner';
   const dealPrice = parsePrice(deal?.price);
   const oldPrice = parsePrice(deal?.oldPrice) || dealPrice;
-  const dealImage = deal?.image || 'https://lh3.googleusercontent.com/aida-public/AB6AXuBRXg9PQzMVASST6uW5-xyjbVAWUt130eROKykVMAjqADiq69ANPpZstPrtMGjqBiPZ0GntBD-J6CQvBmWzW32gDHZnuNBONvAxv5D10rP0rAdlFP9VStnh2RQtZzWQBOAG70yWBr13IgD_BmDZxIk9okXh2Kw-qVcRT2OeNBK4Rm7DWdc8IX1ksyVs8YrMhA41T0q_Cjx1MOFW21rBfp80554HhJcy6l_OC6R4Okd0';
+  const dealImage = deal?.image ?? '';
+  const [windowDays, windowHours] = detail?.windowLabel?.split(' • ') ?? [];
+  const validity = [
+    detail?.endDate
+      ? { label: 'Valid Until', value: detail.endDate.toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' }), note: 'While vouchers last' }
+      : null,
+    windowDays ? { label: 'Redemption Hours', value: windowDays, note: windowHours ?? '' } : null,
+  ].filter((item): item is { label: string; value: string; note: string } => Boolean(item));
   const initials =
     recipientName
       .split(/\s+/)
       .map((part) => part.charAt(0))
       .join('')
       .toUpperCase()
-      .slice(0, 2) || 'SA';
+      .slice(0, 2);
   return (
     <DesktopModal
       open={open}
@@ -67,7 +71,7 @@ export function RecipientSummaryModal({ open, onClose, onConfirm, onEdit, recipi
       <div className="px-6 sm:px-8 pt-6 pb-4 flex items-center justify-between">
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text">
           <Icon name="check_circle" filled className="text-[16px] leading-none" />
-          <span className="font-caption text-caption font-bold tracking-wider uppercase">Recipient Confirmed</span>
+          <span className="font-caption text-caption font-bold tracking-wider uppercase">Recipient Details</span>
         </div>
         <ModalCloseButton onClose={onClose} />
       </div>
@@ -98,14 +102,7 @@ export function RecipientSummaryModal({ open, onClose, onConfirm, onEdit, recipi
                   <span className="font-heading-sm text-heading-sm text-on-surface font-semibold truncate">
                     {recipientName}
                   </span>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                    <Icon name="verified" className="text-[13px]" />
-                    Verified Contact
-                  </span>
                 </div>
-                <span className="font-label-sm text-label-sm text-text-secondary">
-                  Relation: <strong className="text-on-surface font-medium">Family / Friend</strong>
-                </span>
               </div>
             </div>
           </div>
@@ -130,7 +127,7 @@ export function RecipientSummaryModal({ open, onClose, onConfirm, onEdit, recipi
                   {businessName}
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shrink-0">
-                  {deal?.discountLabel || (oldPrice > dealPrice ? '20% OFF' : 'Special rate')}
+                  {deal?.discountLabel || (oldPrice > dealPrice ? `${Math.round(((oldPrice - dealPrice) / oldPrice) * 100)}% OFF` : 'Special rate')}
                 </span>
               </div>
               <h3 className="font-label-md text-label-md font-semibold text-on-surface truncate">
@@ -162,7 +159,7 @@ export function RecipientSummaryModal({ open, onClose, onConfirm, onEdit, recipi
             <span className="font-label-sm text-label-sm font-semibold">Validity &amp; Operational Schedule</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 font-caption text-caption">
-            {VALIDITY.map((item) => (
+            {validity.map((item) => (
               <div key={item.label} className="flex flex-col gap-0.5 p-2 rounded-lg bg-surface-container-lowest">
                 <span className="text-text-tertiary font-medium">{item.label}</span>
                 <span className="text-on-surface font-semibold truncate">{item.value}</span>
@@ -191,7 +188,7 @@ export function RecipientSummaryModal({ open, onClose, onConfirm, onEdit, recipi
         </button>
         <div className="flex items-center justify-center gap-2 pt-1 text-center font-caption text-caption text-text-tertiary">
           <Icon name="security" filled className="text-[16px] text-badge-discount-text" />
-          <span>Voucher will appear in Samuel Adeleke's VEMTAP app and be sent to his email &amp; WhatsApp.</span>
+          <span>Voucher will appear in {recipientName}'s VEMTAP app and be sent to his email &amp; WhatsApp.</span>
         </div>
       </div>
     </DesktopModal>

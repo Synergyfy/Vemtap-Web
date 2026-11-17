@@ -1,6 +1,7 @@
 import { Icon } from '../../components/ui/Icon';
 import type { VerificationIdType } from '../verificationDraft';
 import { BusinessVerificationChrome } from './BusinessVerificationChrome';
+import { ID_TYPE_REQUIREMENTS, useIdTypeStep } from '../../hooks/business/useVerification';
 
 interface DesktopVerificationIdTypeScreenProps {
   onBack: () => void;
@@ -75,6 +76,17 @@ export function DesktopVerificationIdTypeScreen({
   onBrand,
 }: DesktopVerificationIdTypeScreenProps) {
   const selected = ID_OPTIONS.find((option) => option.key === idType) ?? ID_OPTIONS[0];
+  // Live: what each ID really needs, the name it must match and the last attempt;
+  // sample timings, certifications and the "virtual slip" shortcut are demo-only.
+  const step = useIdTypeStep();
+  const live = step.live;
+  const options = live
+    ? ID_OPTIONS.map((option) => ({
+        ...option,
+        badge: option.key === 'nin' ? 'Recommended' : option.key === 'passport' ? 'Photo check' : 'Registry check',
+        description: ID_TYPE_REQUIREMENTS[option.key],
+      }))
+    : ID_OPTIONS;
 
   return (
     <BusinessVerificationChrome activeNav="trust" onBrand={onBrand}>
@@ -108,7 +120,34 @@ export function DesktopVerificationIdTypeScreen({
             Select a government-issued ID to verify your identity. This verifies the person operating this business
             account.
           </p>
+          {step.accountName && (
+            <p className="font-body-md text-body-md text-on-surface">
+              The name on your ID must match your account name: <strong>{step.accountName}</strong>
+            </p>
+          )}
         </div>
+
+        {step.lastAttempt && (
+          <div
+            className={`flex items-start gap-space-sm p-space-md rounded-xl ${
+              step.lastAttempt.underReview ? 'bg-surface-tint-blue text-primary' : 'bg-error-container/40 text-on-surface'
+            }`}
+          >
+            <Icon name={step.lastAttempt.underReview ? 'pending_actions' : 'error'} className="text-[20px] shrink-0 mt-0.5" />
+            <div className="flex flex-col gap-space-2xs">
+              <span className="font-label-md text-label-md font-semibold">
+                {step.lastAttempt.underReview
+                  ? `Your last check (${step.lastAttempt.label}) is with our team for review.`
+                  : `Your last check (${step.lastAttempt.label}) didn’t go through.`}
+              </span>
+              {step.lastAttempt.reasons.map((reason) => (
+                <span key={reason} className="font-caption text-caption text-text-secondary">
+                  {reason}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-xl items-start">
           <div className="lg:col-span-7 flex flex-col gap-space-md">
@@ -116,7 +155,7 @@ export function DesktopVerificationIdTypeScreen({
               Select Identity Document
             </div>
             <div className="flex flex-col gap-space-sm" role="radiogroup" aria-label="Identity document type">
-              {ID_OPTIONS.map((option) => {
+              {options.map((option) => {
                 const active = option.key === idType;
                 return (
                   <button
@@ -138,7 +177,14 @@ export function DesktopVerificationIdTypeScreen({
                     </div>
                     <div className="flex flex-col gap-space-2xs flex-1 min-w-0">
                       <div className="flex flex-wrap items-center justify-between gap-space-xs">
-                        <span className="font-heading-sm text-heading-sm text-text-primary">{option.name}</span>
+                        <span className="font-heading-sm text-heading-sm text-text-primary flex items-center gap-space-xs">
+                          {option.name}
+                          {step.lastAttempt?.idType === option.key && (
+                            <span className="px-space-xs py-0.5 rounded-full bg-surface-container text-text-secondary font-caption text-caption">
+                              Last tried
+                            </span>
+                          )}
+                        </span>
                         <div
                           className={`flex items-center gap-1.5 px-space-xs py-0.5 rounded-full font-label-sm text-caption font-semibold ${option.badgeClass}`}
                         >
@@ -153,10 +199,15 @@ export function DesktopVerificationIdTypeScreen({
                         <span className="flex items-center gap-1">
                           <Icon name={option.metaIcon1} className="text-[14px]" /> {option.metaText1}
                         </span>
-                        <span>•</span>
-                        <span className="flex items-center gap-1">
-                          <Icon name={option.metaIcon2} className="text-[14px]" /> {option.metaText2}
-                        </span>
+                        {/* Sample timings — no live measure behind them. */}
+                        {!live && (
+                          <>
+                            <span>•</span>
+                            <span className="flex items-center gap-1">
+                              <Icon name={option.metaIcon2} className="text-[14px]" /> {option.metaText2}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </button>
@@ -179,17 +230,21 @@ export function DesktopVerificationIdTypeScreen({
                     Accredited Registry Gateway
                   </span>
                   <span className="font-caption text-caption text-text-secondary mt-0.5">
-                    Connected directly with accredited verification services (NIMC &amp; NIBSS licensed).
+                    {live
+                      ? 'NIN, licence and voter’s card are checked against the official registry with a face match; passports are checked from the photo.'
+                      : 'Connected directly with accredited verification services (NIMC & NIBSS licensed).'}
                   </span>
                 </div>
               </div>
-              <div className="flex items-center justify-between gap-space-sm p-space-sm bg-badge-discount-bg text-badge-discount-text rounded-lg flex-wrap">
-                <div className="flex items-center gap-space-xs font-label-md text-label-md font-semibold">
-                  <Icon name="electric_bolt" className="text-[20px]" />
-                  <span>Instant identity verification in under 30 seconds</span>
+              {!live && (
+                <div className="flex items-center justify-between gap-space-sm p-space-sm bg-badge-discount-bg text-badge-discount-text rounded-lg flex-wrap">
+                  <div className="flex items-center gap-space-xs font-label-md text-label-md font-semibold">
+                    <Icon name="electric_bolt" className="text-[20px]" />
+                    <span>Instant identity verification in under 30 seconds</span>
+                  </div>
+                  <Icon name="check_circle" className="text-[16px]" />
                 </div>
-                <Icon name="check_circle" className="text-[16px]" />
-              </div>
+              )}
               <div className="flex flex-col gap-space-sm">
                 <div className="flex items-start gap-space-xs">
                   <Icon name="lock" className="text-primary text-[20px] shrink-0 mt-0.5" />
@@ -217,29 +272,42 @@ export function DesktopVerificationIdTypeScreen({
                 </div>
               </div>
               <div className="pt-space-xs flex flex-wrap items-center gap-space-xs">
-                <div className="px-space-xs py-1 rounded bg-surface-container text-on-surface font-caption text-caption flex items-center gap-1">
-                  <Icon name="check" className="text-[14px] text-badge-discount-text" />
-                  <span>NDPR Certified</span>
-                </div>
-                <div className="px-space-xs py-1 rounded bg-surface-container text-on-surface font-caption text-caption flex items-center gap-1">
-                  <Icon name="security" className="text-[14px] text-primary" />
-                  <span>TLS 1.3 Strict</span>
-                </div>
+                {!live && (
+                  <>
+                    <div className="px-space-xs py-1 rounded bg-surface-container text-on-surface font-caption text-caption flex items-center gap-1">
+                      <Icon name="check" className="text-[14px] text-badge-discount-text" />
+                      <span>NDPR Certified</span>
+                    </div>
+                    <div className="px-space-xs py-1 rounded bg-surface-container text-on-surface font-caption text-caption flex items-center gap-1">
+                      <Icon name="security" className="text-[14px] text-primary" />
+                      <span>TLS 1.3 Strict</span>
+                    </div>
+                  </>
+                )}
                 <div className="px-space-xs py-1 rounded bg-surface-container text-on-surface font-caption text-caption flex items-center gap-1">
                   <Icon name="fingerprint" className="text-[14px] text-tertiary" />
                   <span>Biometric Matching</span>
                 </div>
               </div>
             </div>
-            <div className="p-space-md rounded-xl bg-surface-subtle flex items-center justify-between gap-space-sm text-text-secondary flex-wrap">
-              <div className="flex items-center gap-space-xs min-w-0">
+            {live ? (
+              <div className="p-space-md rounded-xl bg-surface-subtle flex items-center gap-space-xs text-text-secondary">
                 <Icon name="contact_support" className="text-[18px] shrink-0" />
-                <span className="font-caption text-caption">Don't have your physical card on hand?</span>
+                <span className="font-caption text-caption">
+                  Don't have your card on hand? You only need the number for NIN, licence or voter's card. Dial *346# to get your NIN.
+                </span>
               </div>
-              <button className="font-label-sm text-caption text-primary hover:underline font-semibold" type="button">
-                Use Virtual Slip →
-              </button>
-            </div>
+            ) : (
+              <div className="p-space-md rounded-xl bg-surface-subtle flex items-center justify-between gap-space-sm text-text-secondary flex-wrap">
+                <div className="flex items-center gap-space-xs min-w-0">
+                  <Icon name="contact_support" className="text-[18px] shrink-0" />
+                  <span className="font-caption text-caption">Don't have your physical card on hand?</span>
+                </div>
+                <button className="font-label-sm text-caption text-primary hover:underline font-semibold" type="button">
+                  Use Virtual Slip →
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

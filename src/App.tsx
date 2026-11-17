@@ -1,31 +1,42 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazyScreen } from './utils/lazyScreen';
 import { useIsDesktop } from './hooks/useIsDesktop';
 import { PosSettingsProvider } from './context/PosSettingsContext';
 import { PosOfflineProvider, usePosOffline } from './context/PosOfflineContext';
 import type { DesktopNavKey } from './components/ui/DesktopChrome';
 import type { AccountTarget } from './components/AccountRows';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { isBusinessRole } from './services/sessionService';
+import { isBusinessRole, type SessionUser } from './services/sessionService';
+import { Skeleton, SkeletonGroup } from './components/ui/Skeleton';
 import { useSessionUser } from './hooks/useSessionUser';
-import { SESSION_EXPIRED_EVENT } from './services/api/client';
+import { ApiError, SESSION_EXPIRED_EVENT } from './services/api/client';
+import { businessService } from './services/businessService';
 import { hasApiConfig } from './lib/api';
 import { authService } from './services';
 import type { CatalogueItem } from './services/catalogueItemsService';
-import { ownerAuthService, OTP_GATE_MESSAGE } from './services/ownerAuthService';
+import { ownerAuthService, OTP_GATE_MESSAGE, rememberUpgradePin } from './services/ownerAuthService';
+import { apiErrorMessage } from './services/errorMessages';
+import { startGoogleSignIn, takeGoogleRedirectResult, type GoogleIntent } from './services/googleAuth';
 import { catalogueService } from './services/catalogueService';
+import { messageService } from './services/messageService';
 import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessBranchContext';
+import { BusinessOfferingsProvider } from './context/BusinessOfferingsContext';
+import { BusinessFeaturesProvider, useBusinessFeatures } from './context/BusinessFeaturesContext';
+import { BUSINESS_FEATURES, FEATURE_MANAGE_ROUTE, FEATURE_SETUP_ROUTE, findDisabledRoute, type FeatureId, type FeatureState } from './scripts/businessFeatures';
+import { isAdminAuthenticated } from './scripts/admin/adminAuth';
+import { addPaidBusinessLocation, getBusinessLocationCount } from './scripts/businessLocationsStore';
 import { CartProvider } from './context/CartContext';
 import { BookingProvider, useBooking } from './context/BookingContext';
 import { ProfileProvider, useProfile } from './context/ProfileContext';
-import { LocationProvider } from './context/LocationContext';
-import { ClaimsProvider, useClaims, type ClaimRecord } from './context/ClaimsContext';
+import { LocationProvider, useLocation } from './context/LocationContext';
+import { DealFiltersProvider } from './context/DealFiltersContext';
+import { AREA_NOT_FOUND, findPlace, getCurrentPlace, type PickedPlace } from './services/currentLocation';
+import { ClaimsProvider, currentVoucher, rememberGiftLink, useClaims, type ClaimHolder, type ClaimRecord } from './context/ClaimsContext';
 import { OrdersProvider } from './context/OrdersContext';
 import { parsePrice } from './utils/format';
+import type { CustomerNotificationDestination } from './utils/customerNotificationDestination';
 import { ClaimSelfConfirmSheet } from './components/sheets/ClaimSelfConfirmSheet';
 import { ClaimSelfConfirmModal } from './components/desktop/dialogs/ClaimSelfConfirmModal';
-import { ProductDetailScreen } from './scripts/ProductDetailScreen';
-import { CheckoutScreen } from './scripts/CheckoutScreen';
-import { OrderPlacedScreen } from './scripts/OrderPlacedScreen';
 import { ContactsProvider, useContacts } from './context/ContactsContext';
 import { CampaignsProvider } from './context/CampaignsContext';
 import { AccountDeletionProvider } from './context/AccountDeletionContext';
@@ -39,28 +50,10 @@ import {
   servicePath,
   type BusinessProfileRef,
 } from './scripts/businessData';
-import { CustomerInviteJoinScreen } from './scripts/CustomerInviteJoinScreen';
 import { findProduct, type CatalogueProduct } from './scripts/catalogueData';
 import { findSpaService, type SpaCatalogueService } from './scripts/spaBookingData';
-import { ServiceDetailScreen } from './scripts/ServiceDetailScreen';
-import { SpaBookingScheduleScreen } from './scripts/SpaBookingScheduleScreen';
-import { BookingCheckoutScreen } from './scripts/BookingCheckoutScreen';
-import { BookingConfirmedScreen } from './scripts/BookingConfirmedScreen';
 import { WelcomeScreen } from './scripts/WelcomeScreen';
-import { DiscoverDealsScreen } from './scripts/DiscoverDealsScreen';
-import { StartVemtapScreen } from './scripts/StartVemtapScreen';
-import { AccountScreen } from './scripts/AccountScreen';
-import { SettingsScreen } from './scripts/SettingsScreen';
-import { AdminReferralScreen } from './scripts/admin/AdminReferralScreen';
-import { SupportLegalScreen } from './scripts/SupportLegalScreen';
-import { EditProfileScreen } from './scripts/EditProfileScreen';
-import { RewardsScreen } from './scripts/RewardsScreen';
-import { SavingsScreen } from './scripts/SavingsScreen';
-import { SavedItemsScreen } from './scripts/SavedItemsScreen';
-import { CustomerReferralsScreen } from './scripts/CustomerReferralsScreen';
-import { BusinessReferralsScreen } from './scripts/BusinessReferralsScreen';
-import { OnboardingWelcomeScreen } from './scripts/OnboardingWelcomeScreen';
-import { GoogleProfileConfirmScreen, type GoogleConfirmDetails } from './scripts/GoogleProfileConfirmScreen';
+import type { GoogleConfirmDetails } from './scripts/GoogleProfileConfirmScreen';
 import {
   clearProvisionalReferralCode,
   getProvisionalReferralCode,
@@ -68,178 +61,41 @@ import {
   readReferralCodeFromUrl,
   setProvisionalReferralCode,
 } from './scripts/referralData';
-import { ActivityScreen } from './scripts/ActivityScreen';
-import { NotificationsScreen } from './scripts/NotificationsScreen';
-import { HelpCentreScreen } from './scripts/HelpCentreScreen';
-import { AccountSettingsScreen } from './scripts/AccountSettingsScreen';
-import { DashboardScreen } from './scripts/DashboardScreen';
-import { MyDealsScreen } from './scripts/MyDealsScreen';
-import { MessagesScreen } from './scripts/MessagesScreen';
-import { ConversationScreen } from './scripts/ConversationScreen';
+import { referralsService } from './services/referralsService';
 import { useCustomerMessagingRealtime, useCustomerThreadBinding } from './hooks/useCustomerMessagingRealtime';
-import { OrdersScreen } from './scripts/OrdersScreen';
-import { OrderDetailScreen } from './scripts/OrderDetailScreen';
-import { BookingDetailScreen } from './scripts/BookingDetailScreen';
-import { AuthCodeScreen } from './scripts/AuthCodeScreen';
 import { SignInScreen } from './scripts/SignInScreen';
-import { ForgotPinScreen } from './scripts/ForgotPinScreen';
-import { VerifyEmailScreen } from './scripts/VerifyEmailScreen';
-import { ProfileSetupScreen } from './scripts/ProfileSetupScreen';
-import { LocationPermissionScreen } from './scripts/LocationPermissionScreen';
-import { ManualLocationScreen } from './scripts/ManualLocationScreen';
-import { ConfirmLocationScreen } from './scripts/ConfirmLocationScreen';
-import { DiscoveringScreen } from './scripts/DiscoveringScreen';
+import { accountService } from './services/accountService';
+import { uploadImage } from './services/uploadService';
 import { DesktopWelcomeScreen } from './scripts/desktop/DesktopWelcomeScreen';
-import { DesktopDiscoverDealsScreen } from './scripts/desktop/DesktopDiscoverDealsScreen';
-import { DesktopStartVemtapScreen } from './scripts/desktop/DesktopStartVemtapScreen';
-import { DesktopAuthCodeScreen } from './scripts/desktop/DesktopAuthCodeScreen';
 import { DesktopSignInScreen } from './scripts/desktop/DesktopSignInScreen';
-import { DesktopForgotPinScreen } from './scripts/desktop/DesktopForgotPinScreen';
-import { DesktopVerifyEmailScreen } from './scripts/desktop/DesktopVerifyEmailScreen';
-import { DesktopProfileSetupScreen } from './scripts/desktop/DesktopProfileSetupScreen';
-import { DesktopLocationPermissionScreen } from './scripts/desktop/DesktopLocationPermissionScreen';
-import { DesktopManualLocationScreen } from './scripts/desktop/DesktopManualLocationScreen';
-import { DesktopConfirmLocationScreen } from './scripts/desktop/DesktopConfirmLocationScreen';
-import { DesktopAccountScreen } from './scripts/desktop/DesktopAccountScreen';
-import { DesktopSavedItemsScreen } from './scripts/desktop/DesktopSavedItemsScreen';
-import { DesktopCustomerReferralsScreen } from './scripts/desktop/DesktopCustomerReferralsScreen';
-import { DesktopBusinessReferralsScreen } from './scripts/desktop/DesktopBusinessReferralsScreen';
-import { DesktopOnboardingWelcomeScreen } from './scripts/desktop/DesktopOnboardingWelcomeScreen';
-import { DesktopGoogleProfileConfirmScreen } from './scripts/desktop/DesktopGoogleProfileConfirmScreen';
-import { DesktopBusinessHubScreen } from './scripts/desktop/DesktopBusinessHubScreen';
-import { DesktopBusinessMoreScreen } from './scripts/desktop/DesktopBusinessMoreScreen';
-import { DesktopBoostHubScreen } from './scripts/desktop/DesktopBoostHubScreen';
-import { DesktopBoostMetricsScreen } from './scripts/desktop/DesktopBoostMetricsScreen';
-import { DesktopBoostWalletScreen } from './scripts/desktop/DesktopBoostWalletScreen';
-import { DesktopSegmentsHubScreen } from './scripts/desktop/DesktopSegmentsHubScreen';
-import { DesktopSegmentActionsScreen } from './scripts/desktop/DesktopSegmentActionsScreen';
-import { DesktopSegmentCreateScreen } from './scripts/desktop/DesktopSegmentCreateScreen';
-import { DesktopSegmentDetailScreen } from './scripts/desktop/DesktopSegmentDetailScreen';
-import { DesktopHowToClaimScreen } from './scripts/desktop/DesktopHowToClaimScreen';
-import { DesktopClaimSuccessScreen } from './scripts/desktop/DesktopClaimSuccessScreen';
-import { DesktopGiftSentScreen } from './scripts/desktop/DesktopGiftSentScreen';
-import { DesktopClaimedDealScreen } from './scripts/desktop/DesktopClaimedDealScreen';
-import { DesktopMerchantChatScreen } from './scripts/desktop/DesktopMerchantChatScreen';
-import { DesktopDealTermsScreen } from './scripts/desktop/DesktopDealTermsScreen';
-import { DesktopStorefrontMenuScreen } from './scripts/desktop/DesktopStorefrontMenuScreen';
-import { DesktopCheckoutScreen } from './scripts/desktop/DesktopCheckoutScreen';
-import { DesktopOrderPlacedScreen } from './scripts/desktop/DesktopOrderPlacedScreen';
 import { ContactBusinessModal } from './components/desktop/dialogs/ContactBusinessModal';
 import { ClaimedTermsModal } from './components/desktop/dialogs/ClaimedTermsModal';
-import { DesktopSettingsScreen } from './scripts/desktop/DesktopSettingsScreen';
-import { DesktopSupportLegalScreen } from './scripts/desktop/DesktopSupportLegalScreen';
-import { DesktopEditProfileScreen } from './scripts/desktop/DesktopEditProfileScreen';
-import { DesktopPrivacyScreen } from './scripts/desktop/DesktopPrivacyScreen';
-import { DesktopAddressesScreen } from './scripts/desktop/DesktopAddressesScreen';
-import { DesktopPreferencesScreen } from './scripts/desktop/DesktopPreferencesScreen';
-import { DesktopTermsScreen } from './scripts/desktop/DesktopTermsScreen';
-import { DesktopRewardsScreen } from './scripts/desktop/DesktopRewardsScreen';
-import { DesktopSavingsScreen } from './scripts/desktop/DesktopSavingsScreen';
-import { DesktopNotificationsScreen } from './scripts/desktop/DesktopNotificationsScreen';
-import { DesktopHelpCentreScreen } from './scripts/desktop/DesktopHelpCentreScreen';
-import { DesktopSupportScreen } from './scripts/desktop/DesktopSupportScreen';
-import { DesktopActivityScreen } from './scripts/desktop/DesktopActivityScreen';
-import { DesktopScanScreen } from './scripts/desktop/DesktopScanScreen';
-import { DesktopDiscoveringScreen } from './scripts/desktop/DesktopDiscoveringScreen';
-import { SupportScreen } from './scripts/SupportScreen';
-import { TermsScreen } from './scripts/TermsScreen';
-import { PrivacyScreen } from './scripts/PrivacyScreen';
-import { PreferencesScreen } from './scripts/PreferencesScreen';
-import { AddressesScreen } from './scripts/AddressesScreen';
-import { ScanScreen } from './scripts/ScanScreen';
 import { HomeScreen } from './scripts/HomeScreen';
-import { DealsScreen } from './scripts/DealsScreen';
-import { FeaturedDealsScreen } from './scripts/FeaturedDealsScreen';
-import { FiltersScreen } from './scripts/FiltersScreen';
 import { DealDetailScreen } from './scripts/DealDetailScreen';
-import { HowToClaimScreen } from './scripts/HowToClaimScreen';
-import { ClaimSuccessScreen } from './scripts/ClaimSuccessScreen';
-import { GiftSentScreen, type GiftRecipientSummary } from './scripts/GiftSentScreen';
-import { ClaimedDealScreen } from './scripts/ClaimedDealScreen';
-import { MerchantChatScreen } from './scripts/MerchantChatScreen';
-import { DealTermsScreen } from './scripts/DealTermsScreen';
-import { DiscoverScreen } from './scripts/DiscoverScreen';
-import { MerchantDealsScreen } from './scripts/MerchantDealsScreen';
-import { ProductsCatalogueScreen } from './scripts/ProductsCatalogueScreen';
-import { MenuProductsScreen } from './scripts/MenuProductsScreen';
-import { BusinessProfileScreen } from './scripts/BusinessProfileScreen';
-import { BusinessAccountChoiceScreen } from './scripts/BusinessAccountChoiceScreen';
-import { BusinessOnboardingScreen } from './scripts/BusinessOnboardingScreen';
-import { BusinessDealStudioFlow } from './scripts/BusinessDealStudioFlow';
+import type { GiftRecipientSummary } from './scripts/GiftSentScreen';
+import type { ProfileSetupDraft } from './scripts/ProfileSetupScreen';
 import {
   BusinessSetupNavContext,
   clearBusinessSetupSnapshot,
+  clearBusinessSignup,
   getBusinessSetupSnapshot,
+  getBusinessSignup,
+  hasUnfinishedBusinessSetup,
+  hydrateBusinessSetupFromServer,
+  markBusinessSetupScreensDone,
+  saveBusinessSignup,
   setBusinessSetupSnapshotStep,
   setBusinessSetupVerificationState,
   type BusinessSetupNavValue,
 } from './scripts/businessSetup';
-import { BusinessVerificationScreen } from './scripts/BusinessVerificationScreen';
-import { VerificationStatusCenterScreen } from './scripts/VerificationStatusCenterScreen';
-import { SubscriptionScreen } from './scripts/SubscriptionScreen';
-import { BusinessOrdersScreen } from './scripts/BusinessOrdersScreen';
-import { BusinessMessagesScreen } from './scripts/BusinessMessagesScreen';
-import { BusinessOverviewScreen } from './scripts/BusinessOverviewScreen';
-import { BusinessPosMenuScreen } from './scripts/BusinessPosMenuScreen';
-import { BusinessHubScreen } from './scripts/BusinessHubScreen';
 import type { HubModuleKey } from './scripts/BusinessHubHomeScreen';
-import { BusinessMoreScreen } from './scripts/BusinessMoreScreen';
-import { BusinessStaffScreen } from './scripts/BusinessStaffScreen';
-import { DesktopStaffDirectoryScreen } from './scripts/desktop/DesktopStaffDirectoryScreen';
-import { BusinessInviteStaffScreen } from './scripts/BusinessInviteStaffScreen';
-import { DesktopStaffInviteScreen } from './scripts/desktop/DesktopStaffInviteScreen';
-import { BusinessLoyaltyScreen } from './scripts/BusinessLoyaltyScreen';
-import { BusinessLoyaltyRewardsScreen } from './scripts/BusinessLoyaltyRewardsScreen';
-import { BusinessAnalyticsScreen } from './scripts/BusinessAnalyticsScreen';
-import { BusinessBranchComparisonScreen } from './scripts/BusinessBranchComparisonScreen';
-import { AnalyticsBusinessScreen } from './scripts/AnalyticsBusinessScreen';
-import { AnalyticsCustomersScreen } from './scripts/AnalyticsCustomersScreen';
-import { AnalyticsDealsScreen } from './scripts/AnalyticsDealsScreen';
-import { AnalyticsLocationsScreen } from './scripts/AnalyticsLocationsScreen';
-import { AnalyticsPosScreen } from './scripts/AnalyticsPosScreen';
-import { AnalyticsExportScreen } from './scripts/AnalyticsExportScreen';
-import { AnalyticsFilterScreen } from './scripts/AnalyticsFilterScreen';
 import type { AnalyticsTabKey } from './components/AnalyticsChrome';
-import { BusinessPosDisplayOrderScreen } from './scripts/BusinessPosDisplayOrderScreen';
-import { BusinessPosDisplayTipScreen } from './scripts/BusinessPosDisplayTipScreen';
-import { BusinessPosDisplayPayScreen } from './scripts/BusinessPosDisplayPayScreen';
-import { BusinessPosDisplayReceiptScreen } from './scripts/BusinessPosDisplayReceiptScreen';
-import { BusinessSplitBillScreen } from './scripts/BusinessSplitBillScreen';
-import { BusinessPosHomeScreen } from './scripts/BusinessPosHomeScreen';
-import { BusinessPosRegisterScreen } from './scripts/BusinessPosRegisterScreen';
-import { BusinessPosCartScreen } from './scripts/BusinessPosCartScreen';
-import { BusinessPosSwitchScreen } from './scripts/BusinessPosSwitchScreen';
-import { BusinessPosCustomerScreen } from './scripts/BusinessPosCustomerScreen';
-import { BusinessPosSaleCompleteScreen } from './scripts/BusinessPosSaleCompleteScreen';
-import { BusinessPosPaymentScreen } from './scripts/BusinessPosPaymentScreen';
-import { BusinessPosProductShiftScreen } from './scripts/BusinessPosProductShiftScreen';
-import { BusinessPosStockScreen } from './scripts/BusinessPosStockScreen';
-import { BusinessPosLedgerScreen } from './scripts/BusinessPosLedgerScreen';
-import { BusinessPosCustomerLookupScreen } from './scripts/BusinessPosCustomerLookupScreen';
-import { BusinessPosOrderLookupScreen } from './scripts/BusinessPosOrderLookupScreen';
-import { BusinessPosCustomerDossierScreen } from './scripts/BusinessPosCustomerDossierScreen';
-import { BusinessPosOfflineCheckoutScreen } from './scripts/BusinessPosOfflineCheckoutScreen';
-import { BusinessPosTransactionDetailScreen } from './scripts/BusinessPosTransactionDetailScreen';
-import { BusinessPosOfflineBufferScreen } from './scripts/BusinessPosOfflineBufferScreen';
-import { BusinessPosKitchenStreamScreen } from './scripts/BusinessPosKitchenStreamScreen';
-import { BusinessPosSettingsScreen } from './scripts/BusinessPosSettingsScreen';
-import { PublicPosMenuScreen } from './scripts/PublicPosMenuScreen';
-import { PublicPosCartReviewScreen } from './scripts/PublicPosCartReviewScreen';
-import { PublicPosOrderTrackingScreen } from './scripts/PublicPosOrderTrackingScreen';
 import type { PosTabKey } from './components/PosTabBar';
 import { type PosCartLine } from './scripts/posCartData';
 import { type PublicCartLine } from './scripts/publicPosData';
 import type { BusinessTabKey } from './components/BusinessTabBar';
-import { BusinessBoostHubScreen } from './scripts/BusinessBoostHubScreen';
-import { BusinessBoostMetricsScreen } from './scripts/BusinessBoostMetricsScreen';
-import { BusinessBoostWalletScreen } from './scripts/BusinessBoostWalletScreen';
-import { BusinessSegmentsHubScreen, type SegmentRef } from './scripts/BusinessSegmentsHubScreen';
-import { BusinessSegmentActionsScreen } from './scripts/BusinessSegmentActionsScreen';
-import { BusinessSegmentCreateScreen } from './scripts/BusinessSegmentCreateScreen';
-import { BusinessSegmentDetailScreen } from './scripts/BusinessSegmentDetailScreen';
-import { ConsumerCartScreen } from './scripts/ConsumerCartScreen';
+import type { SegmentRef } from './scripts/BusinessSegmentsHubScreen';
 import type { BoostTabKey } from './components/BoostTabBar';
-import { ServicesCatalogueScreen } from './scripts/ServicesCatalogueScreen';
 import { CommentsSheet } from './components/sheets/CommentsSheet';
 import { ReviewsSheet } from './components/sheets/ReviewsSheet';
 import { ShareSheet } from './components/sheets/ShareSheet';
@@ -265,107 +121,15 @@ import { ConfirmGiftSendSheet } from './components/sheets/ConfirmGiftSendSheet';
 import { ContactBusinessSheet } from './components/sheets/ContactBusinessSheet';
 import { ClaimedTermsSheet } from './components/sheets/ClaimedTermsSheet';
 import { DesktopHomeScreen } from './scripts/desktop/DesktopHomeScreen';
-import { DesktopDealsScreen } from './scripts/desktop/DesktopDealsScreen';
-import { DesktopDiscoverScreen } from './scripts/desktop/DesktopDiscoverScreen';
-import { DesktopFeaturedDealsScreen } from './scripts/desktop/DesktopFeaturedDealsScreen';
-import { DesktopFiltersScreen } from './scripts/desktop/DesktopFiltersScreen';
 import { DesktopDealDetailScreen } from './scripts/desktop/DesktopDealDetailScreen';
-import { DesktopUrbanGrillStorefrontScreen } from './scripts/desktop/DesktopUrbanGrillStorefrontScreen';
-import { DesktopProductDetailScreen } from './scripts/desktop/DesktopProductDetailScreen';
-import { DesktopSpaStorefrontScreen } from './scripts/desktop/DesktopSpaStorefrontScreen';
-import { DesktopAllProductsScreen } from './scripts/desktop/DesktopAllProductsScreen';
-import { DesktopAllServicesScreen } from './scripts/desktop/DesktopAllServicesScreen';
-import { DesktopSpaBookingScreen } from './scripts/desktop/DesktopSpaBookingScreen';
-import { DesktopDashboardScreen } from './scripts/desktop/DesktopDashboardScreen';
-import { DesktopOrdersScreen } from './scripts/desktop/DesktopOrdersScreen';
-import { DesktopOrderDetailScreen } from './scripts/desktop/DesktopOrderDetailScreen';
-import { DesktopBookingDetailScreen } from './scripts/desktop/DesktopBookingDetailScreen';
-import { DesktopMyDealsScreen } from './scripts/desktop/DesktopMyDealsScreen';
-import { DesktopMessagesScreen } from './scripts/desktop/DesktopMessagesScreen';
-import { DesktopCartScreen } from './scripts/desktop/DesktopCartScreen';
-import { DesktopAccountSettingsScreen } from './scripts/desktop/DesktopAccountSettingsScreen';
-import { DesktopBusinessAccountChoiceScreen } from './scripts/desktop/DesktopBusinessAccountChoiceScreen';
-import { DesktopBusinessOnboardingScreen } from './scripts/desktop/DesktopBusinessOnboardingScreen';
-import { DesktopBusinessVerificationScreen } from './scripts/desktop/DesktopBusinessVerificationScreen';
-import { DesktopVerificationStatusCenterScreen } from './scripts/desktop/DesktopVerificationStatusCenterScreen';
-import { DesktopSubscriptionScreen } from './scripts/desktop/DesktopSubscriptionScreen';
-import { DesktopBusinessOrdersScreen } from './scripts/desktop/DesktopBusinessOrdersScreen';
-import { DesktopBusinessPosOrdersScreen } from './scripts/desktop/DesktopBusinessPosOrdersScreen';
-import { DesktopBusinessMessagesWorkspaceScreen } from './scripts/desktop/DesktopBusinessMessagesWorkspaceScreen';
-import { CampaignsChannelScreen } from './scripts/campaigns/CampaignsChannelScreen';
-import { DesktopMoreSubscriptionScreen } from './scripts/desktop/DesktopMoreSubscriptionScreen';
-import { DesktopMoreAddOnsScreen } from './scripts/desktop/DesktopMoreAddOnsScreen';
-import { DesktopBusinessNotificationsScreen } from './scripts/desktop/DesktopBusinessNotificationsScreen';
-import { DesktopBusinessHelpSupportScreen } from './scripts/desktop/DesktopBusinessHelpSupportScreen';
-import { DesktopBusinessSettingsScreen } from './scripts/desktop/DesktopBusinessSettingsScreen';
-import { DesktopDealsWorkspaceScreen } from './scripts/desktop/DesktopDealsWorkspaceScreen';
-import { DesktopDealStudioFlow } from './scripts/desktop/DesktopDealStudioFlow';
-import { DesktopBusinessProfilePreviewStudioScreen } from './scripts/desktop/DesktopBusinessProfilePreviewStudioScreen';
-import { DesktopBusinessOverviewScreen } from './scripts/desktop/DesktopBusinessOverviewScreen';
-import { DesktopDealLocationPricingScreen } from './scripts/desktop/DesktopDealLocationPricingScreen';
-import { DesktopDealCreateLocationsScreen } from './scripts/desktop/DesktopDealCreateLocationsScreen';
-import { DesktopBusinessProfileStorefrontScreen } from './scripts/desktop/DesktopBusinessProfileStorefrontScreen';
+import { dealIdFromPath, useDealDetail } from './hooks/useDealDetail';
 import { SIGN_OUT_EVENT, BUSINESS_NAV_EVENT } from './scripts/desktop/PortalShell';
-import { MOBILE_ACCOUNT_NAV_EVENT } from './utils/appEvents';
-import { DesktopDealAnalyticsScreen } from './scripts/desktop/DesktopDealAnalyticsScreen';
-import { DesktopBusinessBranchPricingScreen } from './scripts/desktop/DesktopBusinessBranchPricingScreen';
-import { DesktopBusinessCustomersScreen } from './scripts/desktop/DesktopBusinessCustomersScreen';
-import { DesktopCustomerProfileScreen } from './scripts/desktop/DesktopCustomerProfileScreen';
-import { DesktopLoyaltyProgrammeScreen } from './scripts/desktop/DesktopLoyaltyProgrammeScreen';
-import { DesktopLoyaltyRewardsScreen } from './scripts/desktop/DesktopLoyaltyRewardsScreen';
-import { DesktopBusinessCatalogHubScreen } from './scripts/desktop/DesktopBusinessCatalogHubScreen';
-import { DesktopBusinessLocationsHubScreen } from './scripts/desktop/DesktopBusinessLocationsHubScreen';
-import { DesktopBusinessAddBranchScreen } from './scripts/desktop/DesktopBusinessAddBranchScreen';
-import { DesktopBranchDetailScreen } from './scripts/desktop/DesktopBranchDetailScreen';
-import { DesktopServicesCategoriesScreen } from './scripts/desktop/DesktopServicesCategoriesScreen';
-import { DesktopAnalyticsBusinessScreen } from './scripts/desktop/DesktopAnalyticsBusinessScreen';
-import { DesktopAnalyticsDealsScreen } from './scripts/desktop/DesktopAnalyticsDealsScreen';
-import { DesktopAnalyticsPosScreen } from './scripts/desktop/DesktopAnalyticsPosScreen';
-import { DesktopAnalyticsExportScreen } from './scripts/desktop/DesktopAnalyticsExportScreen';
-import { DesktopAnalyticsFilterScreen } from './scripts/desktop/DesktopAnalyticsFilterScreen';
-import { DesktopAnalyticsLocationsScreen } from './scripts/desktop/DesktopAnalyticsLocationsScreen';
-import { DesktopAnalyticsCustomersScreen } from './scripts/desktop/DesktopAnalyticsCustomersScreen';
-import { DesktopPosDisplayOrderScreen } from './scripts/desktop/DesktopPosDisplayOrderScreen';
-import { DesktopPosDisplayTipScreen } from './scripts/desktop/DesktopPosDisplayTipScreen';
-import { DesktopPosDisplayPayScreen } from './scripts/desktop/DesktopPosDisplayPayScreen';
-import { DesktopSplitBillScreen } from './scripts/desktop/DesktopSplitBillScreen';
-import { DesktopPosDisplayReceiptScreen } from './scripts/desktop/DesktopPosDisplayReceiptScreen';
-import { DesktopPosHomeScreen } from './scripts/desktop/DesktopPosHomeScreen';
-import { DesktopPosRegisterScreen } from './scripts/desktop/DesktopPosRegisterScreen';
-import { DesktopPosPaymentScreen } from './scripts/desktop/DesktopPosPaymentScreen';
-import { DesktopPosSaleCompleteScreen } from './scripts/desktop/DesktopPosSaleCompleteScreen';
-import { DesktopPosStockScreen } from './scripts/desktop/DesktopPosStockScreen';
-import { DesktopPosLedgerScreen } from './scripts/desktop/DesktopPosLedgerScreen';
-import { DesktopPosOfflineSaleScreen } from './scripts/desktop/DesktopPosOfflineSaleScreen';
-import { DesktopPosBufferScreen } from './scripts/desktop/DesktopPosBufferScreen';
-import { DesktopPosKitchenScreen } from './scripts/desktop/DesktopPosKitchenScreen';
-import { DesktopPosCartScreen } from './scripts/desktop/DesktopPosCartScreen';
-import { DesktopPosSwitchScreen } from './scripts/desktop/DesktopPosSwitchScreen';
-import { DesktopPosCustomerScreen } from './scripts/desktop/DesktopPosCustomerScreen';
-import { DesktopPosProductShiftScreen } from './scripts/desktop/DesktopPosProductShiftScreen';
-import { DesktopPosCustomerLookupScreen } from './scripts/desktop/DesktopPosCustomerLookupScreen';
-import { DesktopPosOrderLookupScreen } from './scripts/desktop/DesktopPosOrderLookupScreen';
-import { DesktopPosCustomerDossierScreen } from './scripts/desktop/DesktopPosCustomerDossierScreen';
-import { DesktopPosTransactionDetailScreen } from './scripts/desktop/DesktopPosTransactionDetailScreen';
-import { DesktopPublicPosCartScreen } from './scripts/desktop/DesktopPublicPosCartScreen';
-import { DesktopPublicPosTrackingScreen } from './scripts/desktop/DesktopPublicPosTrackingScreen';
-import { DesktopPublicPosMenuScreen } from './scripts/desktop/DesktopPublicPosMenuScreen';
-import { DesktopPosGeneralSettingsScreen } from './scripts/desktop/DesktopPosGeneralSettingsScreen';
+import { MOBILE_ACCOUNT_NAV_EVENT, SEARCH_PICK_EVENT, type SearchPick } from './utils/appEvents';
 import type { PosTerminalNavKey } from './scripts/desktop/PosTerminalChrome';
 import { type PosTerminalLine } from './scripts/desktop/posTerminalData';
 import { type PosCustomerRecord } from './scripts/desktop/posRegisterExtras';
 import { StoreOrderingProvider } from './context/StoreOrderingContext';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
-import { DesktopStoreOrderingDashboard } from './scripts/desktop/DesktopStoreOrderingDashboard';
-import { DesktopStoreOrderingQrScreen } from './scripts/desktop/DesktopStoreOrderingQrScreen';
-import { DesktopStoreOrderingSettingsScreen } from './scripts/desktop/DesktopStoreOrderingSettingsScreen';
-import { StoreOrderingScreen } from './scripts/StoreOrderingScreen';
-import { ClusterOnboardingScreen } from './scripts/ClusterOnboardingScreen';
-import { DesktopClusterOnboardingScreen } from './scripts/desktop/DesktopClusterOnboardingScreen';
-import { ClusterSystemScreen } from './scripts/ClusterSystemScreen';
-import { DesktopClusterSystemScreen } from './scripts/desktop/DesktopClusterSystemScreen';
-import { ClusterBoostFlow } from './scripts/ClusterBoostFlow';
-import { ClusterBoostListScreen } from './scripts/ClusterBoostListScreen';
 
 type Route =
   | 'welcome'
@@ -427,13 +191,17 @@ type Route =
   | 'business-pos-menu'
   | 'business-hub'
   | 'hub-locations'
+  | 'business-add-location'
   | 'hub-branch-detail'
   | 'hub-catalog'
+  | 'hub-catalog-new-product'
+  | 'hub-catalog-new-service'
   | 'hub-services'
   | 'hub-deals'
   | 'hub-customers'
   | 'customer-invite-join'
   | 'hub-profile'
+  | 'hub-storefront-preview'
   | 'deal-location-pricing'
   | 'deal-create-locations'
   | 'deal-studio'
@@ -499,6 +267,8 @@ type Route =
   | 'business-notifications'
   | 'business-support'
   | 'business-settings'
+  | 'business-manage-features'
+  | 'business-feature-setup'
   | 'deal-detail'
   | 'how-to-claim'
   | 'claim-success'
@@ -542,7 +312,49 @@ type Route =
   | 'claim-gift-confirm'
   | 'claimed-contact'
   | 'claimed-terms'
-  | 'admin-referral';
+  | 'admin-referral'
+  | 'admin-login'
+  | 'admin-overview'
+  | 'admin-customers'
+  | 'admin-businesses'
+  | 'admin-businesses-verification'
+  | 'admin-businesses-categories'
+  | 'admin-locations'
+  | 'admin-locations-hierarchy'
+  | 'admin-locations-map'
+  | 'admin-locations-geofencing'
+  | 'admin-locations-fleet'
+  | 'admin-deals'
+  | 'admin-deals-flagged'
+  | 'admin-deals-moderation'
+  | 'admin-deals-featured'
+  | 'admin-orders'
+  | 'admin-orders-transactions'
+  | 'admin-orders-terminals'
+  | 'admin-orders-disputes'
+  | 'admin-marketing'
+  | 'admin-marketing-ads'
+  | 'admin-marketing-performance'
+  | 'admin-marketing-slots'
+  | 'admin-marketing-broadcasts'
+  | 'admin-subscriptions'
+  | 'admin-subscriptions-subscriptions'
+  | 'admin-subscriptions-payments'
+  | 'admin-subscriptions-ad-billing'
+  | 'admin-subscriptions-escrow'
+  | 'admin-subscriptions-invoices'
+  | 'admin-analytics'
+  | 'admin-analytics-growth'
+  | 'admin-analytics-deals'
+  | 'admin-analytics-clusters'
+  | 'admin-analytics-revenue'
+  | 'admin-settings'
+  | 'admin-settings-support'
+  | 'admin-settings-disputes'
+  | 'admin-settings-team'
+  | 'admin-settings-audit'
+  | 'not-found'
+  | 'gift-reject';
 
 const ROUTE_PATH: Record<Route, string> = {
   welcome: '/onboarding',
@@ -600,8 +412,11 @@ const ROUTE_PATH: Record<Route, string> = {
   'business-pos-menu': '/business/pos/menu',
   'business-hub': '/business/hub',
   'hub-locations': '/business/hub/locations',
+  'business-add-location': '/business/hub/locations/add',
   'hub-branch-detail': '/business/hub/locations/branch',
   'hub-catalog': '/business/hub/catalog',
+  'hub-catalog-new-product': '/business/hub/catalog/products/new',
+  'hub-catalog-new-service': '/business/hub/catalog/services/new',
   'hub-services': '/business/hub/catalog/services',
   'hub-deals': '/business/hub/deals',
   'hub-customers': '/business/hub/customers',
@@ -609,6 +424,7 @@ const ROUTE_PATH: Record<Route, string> = {
   // URL-sync effect never overwrites it (see renderRoute effect).
   'customer-invite-join': '/join',
   'hub-profile': '/business/hub/profile',
+  'hub-storefront-preview': '/business/hub/profile/preview',
   'deal-location-pricing': '/business/deals/location-pricing',
   'deal-create-locations': '/business/deals/create/locations',
   'deal-studio': '/business/deals/create/studio',
@@ -678,6 +494,8 @@ const ROUTE_PATH: Record<Route, string> = {
   'business-notifications': '/business/notifications',
   'business-support': '/business/support',
   'business-settings': '/business/settings',
+  'business-manage-features': '/business/settings/features',
+  'business-feature-setup': '/business/setup/features',
   'deal-detail': '/deals/lunch-combo',
   'how-to-claim': '/how-to-claim',
   'claim-success': '/claim/success',
@@ -723,10 +541,74 @@ const ROUTE_PATH: Record<Route, string> = {
   'claimed-terms': '/my/claimed-deal/terms',
   // Platform Admin — deliberately absent from every user nav; admins open it
   // directly. Gating is the backend's job once auth exists.
+  // Platform Admin — command centre and management console
+  'admin-login': '/admin/login',
+  'admin-overview': '/admin',
+  'admin-customers': '/admin/customers',
+  'admin-businesses': '/admin/businesses',
+  'admin-businesses-verification': '/admin/businesses/verification',
+  'admin-businesses-categories': '/admin/businesses/categories',
+  'admin-locations': '/admin/locations',
+  'admin-locations-hierarchy': '/admin/locations/hierarchy',
+  'admin-locations-map': '/admin/locations/map',
+  'admin-locations-geofencing': '/admin/locations/geofencing',
+  'admin-locations-fleet': '/admin/locations/fleet',
+  'admin-deals': '/admin/deals',
+  'admin-deals-flagged': '/admin/deals/flagged',
+  'admin-deals-moderation': '/admin/deals/moderation',
+  'admin-deals-featured': '/admin/deals/featured',
+  'admin-orders': '/admin/orders',
+  'admin-orders-transactions': '/admin/orders/transactions',
+  'admin-orders-terminals': '/admin/orders/terminals',
+  'admin-orders-disputes': '/admin/orders/disputes',
+  'admin-marketing': '/admin/marketing',
+  'admin-marketing-ads': '/admin/marketing/ads',
+  'admin-marketing-performance': '/admin/marketing/performance',
+  'admin-marketing-slots': '/admin/marketing/slots',
+  'admin-marketing-broadcasts': '/admin/marketing/broadcasts',
+  'admin-subscriptions': '/admin/subscriptions',
+  'admin-subscriptions-subscriptions': '/admin/subscriptions/subscriptions',
+  'admin-subscriptions-payments': '/admin/subscriptions/payments',
+  'admin-subscriptions-ad-billing': '/admin/subscriptions/ad-billing',
+  'admin-subscriptions-escrow': '/admin/subscriptions/escrow',
+  'admin-subscriptions-invoices': '/admin/subscriptions/invoices',
+  'admin-analytics': '/admin/analytics',
+  'admin-analytics-growth': '/admin/analytics/growth',
+  'admin-analytics-deals': '/admin/analytics/deals',
+  'admin-analytics-clusters': '/admin/analytics/clusters',
+  'admin-analytics-revenue': '/admin/analytics/revenue',
+  'admin-settings': '/admin/settings',
+  'admin-settings-support': '/admin/settings/support',
+  'admin-settings-disputes': '/admin/settings/disputes',
+  'admin-settings-team': '/admin/settings/team',
+  'admin-settings-audit': '/admin/settings/audit',
   'admin-referral': '/admin/referral',
+  'not-found': '/not-found',
+  'gift-reject': '/deals/gift-reject',
 };
 
 const PATH_ROUTE = new Map(Object.entries(ROUTE_PATH).map(([key, path]) => [path, key as Route]));
+// Several routes share a placeholder path (e.g. every business sub-page is `/discover` until a
+// business is chosen). Loading or going Back to that path must open the page it names, not
+// whichever route was listed last (`/discover` resolved to the sample booking confirmation).
+PATH_ROUTE.set(ROUTE_PATH.discover, 'discover');
+PATH_ROUTE.set(ROUTE_PATH.messages, 'messages');
+PATH_ROUTE.set(ROUTE_PATH.orders, 'orders');
+
+/**
+ * The sample spa flow from the original design (storefront, service catalogue and
+ * detail, booking, checkout and confirmation). Every screen in it reads the sample
+ * "Glow & Serenity" business, so with an API configured it is never shown: live
+ * services are booked from the business's own service page.
+ */
+const SAMPLE_SPA_ROUTES = new Set<Route>([
+  'spa-storefront',
+  'spa-services',
+  'service-detail',
+  'spa-booking',
+  'spa-booking-checkout',
+  'spa-booking-confirmed',
+]);
 
 const OVERLAY_ROUTES = new Set<Route>([
   'comments',
@@ -816,6 +698,74 @@ function isPortalRoute(route: Route) {
   return PORTAL_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
 
+/**
+ * Pages of the customer shell: an owner reaching one gets a customer token.
+ * Anything not here and not a portal page (public business pages, sign-in,
+ * help, legal) is neutral and keeps the current token.
+ */
+const CUSTOMER_SHELL_ROUTES = new Set<Route>([
+  ...CLAIM_STEP_ROUTES,
+  'home',
+  'deals',
+  'featured-deals',
+  'filters',
+  'discover',
+  'saved',
+  'referrals',
+  'account',
+  'account-settings',
+  'savings',
+  'notifications',
+  'addresses',
+  'preferences',
+  'settings',
+  'edit-profile',
+  'rewards',
+  'scan',
+  'activity',
+  'dashboard',
+  'orders',
+  'order-detail',
+  'booking-detail',
+  'my-deals',
+  'messages',
+  'conversation',
+  'cart',
+  'checkout',
+  'claim-success',
+  'claimed-deal',
+]);
+
+/** A voucher's own pass page, the link in its QR. */
+const PASS_PATH = '/my/claimed-deal/';
+const passIdFromPath = (path: string) => (path.startsWith(PASS_PATH) ? decodeURIComponent(path.slice(PASS_PATH.length).replace(/\/+$/, '')) || null : null);
+const pathRef = (value: string): string | null => {
+  try {
+    const decoded = decodeURIComponent(value);
+    return decoded && !decoded.includes('/') ? decoded : null;
+  } catch {
+    return null;
+  }
+};
+const bookingRefFromPath = (path: string): string | null => {
+  const match = /^\/orders\/booking\/([^/]+)$/.exec(path);
+  return match ? pathRef(match[1]) : null;
+};
+const conversationRefFromPath = (path: string): string | null => {
+  const match = /^\/messages\/(?:conversation\/)?([^/]+)$/.exec(path);
+  return match && match[1] !== 'conversation' ? pathRef(match[1]) : null;
+};
+/** `/business/hub/customers/profile/{customerId}` → the customer's user id. */
+const CUSTOMER_PROFILE_PATH = '/business/hub/customers/profile';
+const customerIdFromPath = (path: string): string | null => {
+  const match = /^\/business\/hub\/customers\/profile\/([^/]+)\/?$/.exec(path);
+  return match ? pathRef(match[1]) : null;
+};
+const orderRefFromPath = (path: string): string | null => {
+  const match = /^\/orders\/([^/]+)$/.exec(path);
+  return match && match[1] !== 'booking' && match[1] !== 'order' ? pathRef(match[1]) : null;
+};
+
 const DESKTOP_ONLY_ROUTES = new Set<Route>([
   'spa-storefront',
 ]);
@@ -827,9 +777,59 @@ const AUTH_INTENT_KEY = 'vemtap_auth_intent';
 
 const hasOnboarded = () => window.localStorage.getItem(ONBOARDED_KEY) === '1';
 
+/** Live: signed-in customer pages; signed out (or an ended session) goes to onboarding. */
+const SIGNED_IN_ROUTES = new Set<Route>([
+  'deals',
+  'featured-deals',
+  'filters',
+  'discover',
+  'saved',
+  'dashboard',
+  'account',
+  'account-settings',
+  'settings',
+  'savings',
+  'rewards',
+  'notifications',
+  'addresses',
+  'preferences',
+  'edit-profile',
+  'referrals',
+  'activity',
+  'orders',
+  'order-detail',
+  'booking-detail',
+  'my-deals',
+  'messages',
+  'conversation',
+  // Post-sign-up steps: the account exists before these open.
+  'location-permission',
+  'manual-location',
+  'confirm-location',
+  'discovering',
+]);
+
+/** Sign-up and sign-in pages: a signed-in visitor opening one returns to their shell. */
+const SIGNED_OUT_ROUTES = new Set<Route>([
+  'welcome',
+  'discover-deals',
+  'start-vemtap',
+  'auth-code',
+  'business-auth',
+  'sign-in',
+  'forgot-pin',
+  'verify-email',
+  'profile-setup',
+]);
+const isSignedOutPath = (path: string) => {
+  const found = PATH_ROUTE.get(path);
+  return found !== undefined && SIGNED_OUT_ROUTES.has(found);
+};
+
 function guardRoute(found: Route, authed: boolean, isDesktop: boolean): Route {
   if (DESKTOP_ONLY_ROUTES.has(found) && !isDesktop) return authed ? 'home' : 'welcome';
   if (authed) return found;
+  if (hasApiConfig() && SIGNED_IN_ROUTES.has(found)) return 'welcome';
   if (CLAIM_STEP_ROUTES.has(found)) return 'claim-auth';
   if (AUTH_ROUTES.has(found)) return 'welcome';
   return found;
@@ -837,8 +837,9 @@ function guardRoute(found: Route, authed: boolean, isDesktop: boolean): Route {
 
 function businessSectionRoute(section: string, venue: 'urban' | 'spa', serviceSlug?: string): Route {
   switch (section) {
+    // The bundled demo storefront sub-pages are retired: their links land on the live business page.
     case 'deals':
-      return 'storefront';
+      return 'business-profile';
     case 'products':
       return 'product-detail';
     case 'checkout':
@@ -846,11 +847,11 @@ function businessSectionRoute(section: string, venue: 'urban' | 'spa', serviceSl
     case 'order-placed':
       return 'order-placed';
     case 'menu':
-      return 'storefront-menu';
+      return 'business-profile';
     case 'services':
-      return serviceSlug ? 'service-detail' : 'spa-services';
+      return serviceSlug ? 'service-detail' : 'business-profile';
     case 'shop':
-      return 'spa-storefront';
+      return 'business-profile';
     case 'booking':
       return 'spa-booking';
     case 'booking/checkout':
@@ -880,11 +881,27 @@ function dealDetailPath(deal?: ClaimDealSummary | null): string {
   return `/deals/${encodeURIComponent(slug)}`;
 }
 
-function entryRoute(path: string, authed: boolean, isDesktop: boolean): Route {
+/**
+ * The route a URL opens. `resume` (the first page load only, never Back/Forward)
+ * reopens an unfinished business sign-up or setup from the bare entry URL.
+ */
+function entryRoute(rawPath: string, authed: boolean, isDesktop: boolean, resume = false): Route {
+  const path = rawPath.replace(/\/+$/, '') || '/';
   // Public customer invite page — reachable signed-out via /join/{business-slug}.
   if (path.startsWith('/join/')) return 'customer-invite-join';
+  if (path === ROUTE_PATH['gift-reject']) return 'gift-reject';
   if (path.startsWith('/deals/')) return 'deal-detail';
+  if (path.startsWith(PASS_PATH)) return guardRoute('claimed-deal', authed, isDesktop);
+  if (bookingRefFromPath(path)) return guardRoute('booking-detail', authed, isDesktop);
+  if (orderRefFromPath(path)) return guardRoute('order-detail', authed, isDesktop);
+  if (conversationRefFromPath(path)) return guardRoute('conversation', authed, isDesktop);
+  if (customerIdFromPath(path)) return guardRoute('hub-customer-profile', authed, isDesktop);
   const direct = PATH_ROUTE.get(path);
+  if (authed && hasApiConfig() && isSignedOutPath(path)) return 'home';
+  // A page load can't restore a sign-up in progress unless a business one was saved.
+  if (resume && !authed && hasApiConfig() && (direct === 'verify-email' || direct === 'profile-setup') && !getBusinessSignup()?.email) {
+    return 'start-vemtap';
+  }
   if (direct && direct !== 'welcome' && direct !== 'home') {
     return guardRoute(direct, authed, isDesktop);
   }
@@ -896,25 +913,320 @@ function entryRoute(path: string, authed: boolean, isDesktop: boolean): Route {
       isDesktop,
     );
   }
+  if (direct === undefined && path !== '/') return 'not-found';
+  // Live mode: the customer home is for signed-in users only — "onboarded on
+  // this device before" survives sign-out and expired sessions. An unfinished
+  // business sign-up reopens where it stopped. Signed-in accounts always land on
+  // home: unfinished setup resumes only from "Set up your business on VEMTAP".
+  if (hasApiConfig()) {
+    if (!authed) return (resume && getBusinessSignup()?.stage) || 'welcome';
+    return 'home';
+  }
   return (authed || hasOnboarded()) ? 'home' : 'welcome';
 }
+
+/* Screens load when first opened; only the first pages a visitor sees are bundled up front. */
+const CheckoutScreen = lazyScreen(() => import('./scripts/CheckoutScreen').then((module) => module.CheckoutScreen));
+const OrderPlacedScreen = lazyScreen(() => import('./scripts/OrderPlacedScreen').then((module) => module.OrderPlacedScreen));
+const CustomerInviteJoinScreen = lazyScreen(() => import('./scripts/CustomerInviteJoinScreen').then((module) => module.CustomerInviteJoinScreen));
+const ServiceDetailScreen = lazyScreen(() => import('./scripts/ServiceDetailScreen').then((module) => module.ServiceDetailScreen));
+const SpaBookingScheduleScreen = lazyScreen(() => import('./scripts/SpaBookingScheduleScreen').then((module) => module.SpaBookingScheduleScreen));
+const BookingCheckoutScreen = lazyScreen(() => import('./scripts/BookingCheckoutScreen').then((module) => module.BookingCheckoutScreen));
+const BookingConfirmedScreen = lazyScreen(() => import('./scripts/BookingConfirmedScreen').then((module) => module.BookingConfirmedScreen));
+const DiscoverDealsScreen = lazyScreen(() => import('./scripts/DiscoverDealsScreen').then((module) => module.DiscoverDealsScreen));
+const StartVemtapScreen = lazyScreen(() => import('./scripts/StartVemtapScreen').then((module) => module.StartVemtapScreen));
+const AccountScreen = lazyScreen(() => import('./scripts/AccountScreen').then((module) => module.AccountScreen));
+const SettingsScreen = lazyScreen(() => import('./scripts/SettingsScreen').then((module) => module.SettingsScreen));
+const AdminReferralScreen = lazyScreen(() => import('./scripts/admin/AdminReferralScreen').then((module) => module.AdminReferralScreen));
+const NotFoundScreen = lazyScreen(() => import('./scripts/NotFoundScreen').then((module) => module.NotFoundScreen));
+const GiftRejectScreen = lazyScreen(() => import('./scripts/GiftRejectScreen').then((module) => module.GiftRejectScreen));
+const VoucherRedeemScreen = lazyScreen(() => import('./scripts/VoucherRedeemScreen').then((module) => module.VoucherRedeemScreen));
+const DesktopNotFoundScreen = lazyScreen(() => import('./scripts/desktop/DesktopNotFoundScreen').then((module) => module.DesktopNotFoundScreen));
+const SupportLegalScreen = lazyScreen(() => import('./scripts/SupportLegalScreen').then((module) => module.SupportLegalScreen));
+const EditProfileScreen = lazyScreen(() => import('./scripts/EditProfileScreen').then((module) => module.EditProfileScreen));
+const RewardsScreen = lazyScreen(() => import('./scripts/RewardsScreen').then((module) => module.RewardsScreen));
+const SavingsScreen = lazyScreen(() => import('./scripts/SavingsScreen').then((module) => module.SavingsScreen));
+const SavedItemsScreen = lazyScreen(() => import('./scripts/SavedItemsScreen').then((module) => module.SavedItemsScreen));
+const CustomerReferralsScreen = lazyScreen(() => import('./scripts/CustomerReferralsScreen').then((module) => module.CustomerReferralsScreen));
+const BusinessReferralsScreen = lazyScreen(() => import('./scripts/BusinessReferralsScreen').then((module) => module.BusinessReferralsScreen));
+const OnboardingWelcomeScreen = lazyScreen(() => import('./scripts/OnboardingWelcomeScreen').then((module) => module.OnboardingWelcomeScreen));
+const GoogleProfileConfirmScreen = lazyScreen(() => import('./scripts/GoogleProfileConfirmScreen').then((module) => module.GoogleProfileConfirmScreen));
+const ActivityScreen = lazyScreen(() => import('./scripts/ActivityScreen').then((module) => module.ActivityScreen));
+const NotificationsScreen = lazyScreen(() => import('./scripts/NotificationsScreen').then((module) => module.NotificationsScreen));
+const HelpCentreScreen = lazyScreen(() => import('./scripts/HelpCentreScreen').then((module) => module.HelpCentreScreen));
+const AccountSettingsScreen = lazyScreen(() => import('./scripts/AccountSettingsScreen').then((module) => module.AccountSettingsScreen));
+const DashboardScreen = lazyScreen(() => import('./scripts/DashboardScreen').then((module) => module.DashboardScreen));
+const MyDealsScreen = lazyScreen(() => import('./scripts/MyDealsScreen').then((module) => module.MyDealsScreen));
+const MessagesScreen = lazyScreen(() => import('./scripts/MessagesScreen').then((module) => module.MessagesScreen));
+const ConversationScreen = lazyScreen(() => import('./scripts/ConversationScreen').then((module) => module.ConversationScreen));
+const OrdersScreen = lazyScreen(() => import('./scripts/OrdersScreen').then((module) => module.OrdersScreen));
+const OrderDetailScreen = lazyScreen(() => import('./scripts/OrderDetailScreen').then((module) => module.OrderDetailScreen));
+const BookingDetailScreen = lazyScreen(() => import('./scripts/BookingDetailScreen').then((module) => module.BookingDetailScreen));
+const AuthCodeScreen = lazyScreen(() => import('./scripts/AuthCodeScreen').then((module) => module.AuthCodeScreen));
+const ForgotPinScreen = lazyScreen(() => import('./scripts/ForgotPinScreen').then((module) => module.ForgotPinScreen));
+const VerifyEmailScreen = lazyScreen(() => import('./scripts/VerifyEmailScreen').then((module) => module.VerifyEmailScreen));
+const ProfileSetupScreen = lazyScreen(() => import('./scripts/ProfileSetupScreen').then((module) => module.ProfileSetupScreen));
+const LocationPermissionScreen = lazyScreen(() => import('./scripts/LocationPermissionScreen').then((module) => module.LocationPermissionScreen));
+const ManualLocationScreen = lazyScreen(() => import('./scripts/ManualLocationScreen').then((module) => module.ManualLocationScreen));
+const ConfirmLocationScreen = lazyScreen(() => import('./scripts/ConfirmLocationScreen').then((module) => module.ConfirmLocationScreen));
+const DiscoveringScreen = lazyScreen(() => import('./scripts/DiscoveringScreen').then((module) => module.DiscoveringScreen));
+const DesktopDiscoverDealsScreen = lazyScreen(() => import('./scripts/desktop/DesktopDiscoverDealsScreen').then((module) => module.DesktopDiscoverDealsScreen));
+const DesktopStartVemtapScreen = lazyScreen(() => import('./scripts/desktop/DesktopStartVemtapScreen').then((module) => module.DesktopStartVemtapScreen));
+const DesktopAuthCodeScreen = lazyScreen(() => import('./scripts/desktop/DesktopAuthCodeScreen').then((module) => module.DesktopAuthCodeScreen));
+const DesktopForgotPinScreen = lazyScreen(() => import('./scripts/desktop/DesktopForgotPinScreen').then((module) => module.DesktopForgotPinScreen));
+const DesktopVerifyEmailScreen = lazyScreen(() => import('./scripts/desktop/DesktopVerifyEmailScreen').then((module) => module.DesktopVerifyEmailScreen));
+const DesktopProfileSetupScreen = lazyScreen(() => import('./scripts/desktop/DesktopProfileSetupScreen').then((module) => module.DesktopProfileSetupScreen));
+const DesktopLocationPermissionScreen = lazyScreen(() => import('./scripts/desktop/DesktopLocationPermissionScreen').then((module) => module.DesktopLocationPermissionScreen));
+const DesktopManualLocationScreen = lazyScreen(() => import('./scripts/desktop/DesktopManualLocationScreen').then((module) => module.DesktopManualLocationScreen));
+const DesktopConfirmLocationScreen = lazyScreen(() => import('./scripts/desktop/DesktopConfirmLocationScreen').then((module) => module.DesktopConfirmLocationScreen));
+const DesktopAccountScreen = lazyScreen(() => import('./scripts/desktop/DesktopAccountScreen').then((module) => module.DesktopAccountScreen));
+const DesktopSavedItemsScreen = lazyScreen(() => import('./scripts/desktop/DesktopSavedItemsScreen').then((module) => module.DesktopSavedItemsScreen));
+const DesktopCustomerReferralsScreen = lazyScreen(() => import('./scripts/desktop/DesktopCustomerReferralsScreen').then((module) => module.DesktopCustomerReferralsScreen));
+const DesktopBusinessReferralsScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessReferralsScreen').then((module) => module.DesktopBusinessReferralsScreen));
+const DesktopOnboardingWelcomeScreen = lazyScreen(() => import('./scripts/desktop/DesktopOnboardingWelcomeScreen').then((module) => module.DesktopOnboardingWelcomeScreen));
+const DesktopGoogleProfileConfirmScreen = lazyScreen(() => import('./scripts/desktop/DesktopGoogleProfileConfirmScreen').then((module) => module.DesktopGoogleProfileConfirmScreen));
+const DesktopBusinessHubScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessHubScreen').then((module) => module.DesktopBusinessHubScreen));
+const DesktopBusinessMoreScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessMoreScreen').then((module) => module.DesktopBusinessMoreScreen));
+const DesktopBoostHubScreen = lazyScreen(() => import('./scripts/desktop/DesktopBoostHubScreen').then((module) => module.DesktopBoostHubScreen));
+const DesktopBoostMetricsScreen = lazyScreen(() => import('./scripts/desktop/DesktopBoostMetricsScreen').then((module) => module.DesktopBoostMetricsScreen));
+const DesktopBoostWalletScreen = lazyScreen(() => import('./scripts/desktop/DesktopBoostWalletScreen').then((module) => module.DesktopBoostWalletScreen));
+const DesktopSegmentsHubScreen = lazyScreen(() => import('./scripts/desktop/DesktopSegmentsHubScreen').then((module) => module.DesktopSegmentsHubScreen));
+const DesktopSegmentActionsScreen = lazyScreen(() => import('./scripts/desktop/DesktopSegmentActionsScreen').then((module) => module.DesktopSegmentActionsScreen));
+const DesktopSegmentCreateScreen = lazyScreen(() => import('./scripts/desktop/DesktopSegmentCreateScreen').then((module) => module.DesktopSegmentCreateScreen));
+const DesktopSegmentDetailScreen = lazyScreen(() => import('./scripts/desktop/DesktopSegmentDetailScreen').then((module) => module.DesktopSegmentDetailScreen));
+const DesktopHowToClaimScreen = lazyScreen(() => import('./scripts/desktop/DesktopHowToClaimScreen').then((module) => module.DesktopHowToClaimScreen));
+const BusinessProfileScreen = lazyScreen(() => import('./scripts/BusinessProfileScreen').then((module) => module.BusinessProfileScreen));
+const ProductDetailScreen = lazyScreen(() => import('./scripts/ProductDetailScreen').then((module) => module.ProductDetailScreen));
+const DesktopProductDetailScreen = lazyScreen(() => import('./scripts/desktop/DesktopProductDetailScreen').then((module) => module.DesktopProductDetailScreen));
+const DesktopClaimSuccessScreen = lazyScreen(() => import('./scripts/desktop/DesktopClaimSuccessScreen').then((module) => module.DesktopClaimSuccessScreen));
+const DesktopGiftSentScreen = lazyScreen(() => import('./scripts/desktop/DesktopGiftSentScreen').then((module) => module.DesktopGiftSentScreen));
+const DesktopClaimedDealScreen = lazyScreen(() => import('./scripts/desktop/DesktopClaimedDealScreen').then((module) => module.DesktopClaimedDealScreen));
+const DesktopDealTermsScreen = lazyScreen(() => import('./scripts/desktop/DesktopDealTermsScreen').then((module) => module.DesktopDealTermsScreen));
+const DesktopStorefrontMenuScreen = lazyScreen(() => import('./scripts/desktop/DesktopStorefrontMenuScreen').then((module) => module.DesktopStorefrontMenuScreen));
+const DesktopCheckoutScreen = lazyScreen(() => import('./scripts/desktop/DesktopCheckoutScreen').then((module) => module.DesktopCheckoutScreen));
+const DesktopOrderPlacedScreen = lazyScreen(() => import('./scripts/desktop/DesktopOrderPlacedScreen').then((module) => module.DesktopOrderPlacedScreen));
+const DesktopSettingsScreen = lazyScreen(() => import('./scripts/desktop/DesktopSettingsScreen').then((module) => module.DesktopSettingsScreen));
+const DesktopSupportLegalScreen = lazyScreen(() => import('./scripts/desktop/DesktopSupportLegalScreen').then((module) => module.DesktopSupportLegalScreen));
+const DesktopEditProfileScreen = lazyScreen(() => import('./scripts/desktop/DesktopEditProfileScreen').then((module) => module.DesktopEditProfileScreen));
+const DesktopPrivacyScreen = lazyScreen(() => import('./scripts/desktop/DesktopPrivacyScreen').then((module) => module.DesktopPrivacyScreen));
+const DesktopAddressesScreen = lazyScreen(() => import('./scripts/desktop/DesktopAddressesScreen').then((module) => module.DesktopAddressesScreen));
+const DesktopPreferencesScreen = lazyScreen(() => import('./scripts/desktop/DesktopPreferencesScreen').then((module) => module.DesktopPreferencesScreen));
+const DesktopTermsScreen = lazyScreen(() => import('./scripts/desktop/DesktopTermsScreen').then((module) => module.DesktopTermsScreen));
+const DesktopRewardsScreen = lazyScreen(() => import('./scripts/desktop/DesktopRewardsScreen').then((module) => module.DesktopRewardsScreen));
+const DesktopSavingsScreen = lazyScreen(() => import('./scripts/desktop/DesktopSavingsScreen').then((module) => module.DesktopSavingsScreen));
+const DesktopNotificationsScreen = lazyScreen(() => import('./scripts/desktop/DesktopNotificationsScreen').then((module) => module.DesktopNotificationsScreen));
+const DesktopHelpCentreScreen = lazyScreen(() => import('./scripts/desktop/DesktopHelpCentreScreen').then((module) => module.DesktopHelpCentreScreen));
+const DesktopSupportScreen = lazyScreen(() => import('./scripts/desktop/DesktopSupportScreen').then((module) => module.DesktopSupportScreen));
+const DesktopActivityScreen = lazyScreen(() => import('./scripts/desktop/DesktopActivityScreen').then((module) => module.DesktopActivityScreen));
+const DesktopScanScreen = lazyScreen(() => import('./scripts/desktop/DesktopScanScreen').then((module) => module.DesktopScanScreen));
+const DesktopDiscoveringScreen = lazyScreen(() => import('./scripts/desktop/DesktopDiscoveringScreen').then((module) => module.DesktopDiscoveringScreen));
+const SupportScreen = lazyScreen(() => import('./scripts/SupportScreen').then((module) => module.SupportScreen));
+const TermsScreen = lazyScreen(() => import('./scripts/TermsScreen').then((module) => module.TermsScreen));
+const PrivacyScreen = lazyScreen(() => import('./scripts/PrivacyScreen').then((module) => module.PrivacyScreen));
+const PreferencesScreen = lazyScreen(() => import('./scripts/PreferencesScreen').then((module) => module.PreferencesScreen));
+const AddressesScreen = lazyScreen(() => import('./scripts/AddressesScreen').then((module) => module.AddressesScreen));
+const ScanScreen = lazyScreen(() => import('./scripts/ScanScreen').then((module) => module.ScanScreen));
+const DealsScreen = lazyScreen(() => import('./scripts/DealsScreen').then((module) => module.DealsScreen));
+const FeaturedDealsScreen = lazyScreen(() => import('./scripts/FeaturedDealsScreen').then((module) => module.FeaturedDealsScreen));
+const FiltersScreen = lazyScreen(() => import('./scripts/FiltersScreen').then((module) => module.FiltersScreen));
+const HowToClaimScreen = lazyScreen(() => import('./scripts/HowToClaimScreen').then((module) => module.HowToClaimScreen));
+const ClaimSuccessScreen = lazyScreen(() => import('./scripts/ClaimSuccessScreen').then((module) => module.ClaimSuccessScreen));
+const GiftSentScreen = lazyScreen(() => import('./scripts/GiftSentScreen').then((module) => module.GiftSentScreen));
+const ClaimedDealScreen = lazyScreen(() => import('./scripts/ClaimedDealScreen').then((module) => module.ClaimedDealScreen));
+const DealTermsScreen = lazyScreen(() => import('./scripts/DealTermsScreen').then((module) => module.DealTermsScreen));
+const DiscoverScreen = lazyScreen(() => import('./scripts/DiscoverScreen').then((module) => module.DiscoverScreen));
+const MerchantDealsScreen = lazyScreen(() => import('./scripts/MerchantDealsScreen').then((module) => module.MerchantDealsScreen));
+const ProductsCatalogueScreen = lazyScreen(() => import('./scripts/ProductsCatalogueScreen').then((module) => module.ProductsCatalogueScreen));
+const MenuProductsScreen = lazyScreen(() => import('./scripts/MenuProductsScreen').then((module) => module.MenuProductsScreen));
+const BusinessAccountChoiceScreen = lazyScreen(() => import('./scripts/BusinessAccountChoiceScreen').then((module) => module.BusinessAccountChoiceScreen));
+const BusinessOnboardingScreen = lazyScreen(() => import('./scripts/BusinessOnboardingScreen').then((module) => module.BusinessOnboardingScreen));
+const BusinessDealStudioFlow = lazyScreen(() => import('./scripts/BusinessDealStudioFlow').then((module) => module.BusinessDealStudioFlow));
+const BusinessVerificationScreen = lazyScreen(() => import('./scripts/BusinessVerificationScreen').then((module) => module.BusinessVerificationScreen));
+const VerificationStatusCenterScreen = lazyScreen(() => import('./scripts/VerificationStatusCenterScreen').then((module) => module.VerificationStatusCenterScreen));
+const SubscriptionScreen = lazyScreen(() => import('./scripts/SubscriptionScreen').then((module) => module.SubscriptionScreen));
+const BusinessOrdersScreen = lazyScreen(() => import('./scripts/BusinessOrdersScreen').then((module) => module.BusinessOrdersScreen));
+const BusinessMessagesScreen = lazyScreen(() => import('./scripts/BusinessMessagesScreen').then((module) => module.BusinessMessagesScreen));
+const BusinessFeatureSetupScreen = lazyScreen(() => import('./scripts/BusinessFeatureSetupScreen').then((module) => module.BusinessFeatureSetupScreen));
+const BusinessManageFeaturesScreen = lazyScreen(() => import('./scripts/BusinessManageFeaturesScreen').then((module) => module.BusinessManageFeaturesScreen));
+const DesktopBusinessFeatureSetupScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessFeatureSetupScreen').then((module) => module.DesktopBusinessFeatureSetupScreen));
+const DesktopBusinessManageFeaturesScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessManageFeaturesScreen').then((module) => module.DesktopBusinessManageFeaturesScreen));
+const AdminLoginScreen = lazyScreen(() => import('./scripts/admin/AdminLoginScreen').then((module) => module.AdminLoginScreen));
+const AdminDashboardScreen = lazyScreen(() => import('./scripts/admin/AdminDashboardScreen').then((module) => module.AdminDashboardScreen));
+const BusinessOverviewScreen = lazyScreen(() => import('./scripts/BusinessOverviewScreen').then((module) => module.BusinessOverviewScreen));
+const BusinessPosMenuScreen = lazyScreen(() => import('./scripts/BusinessPosMenuScreen').then((module) => module.BusinessPosMenuScreen));
+const BusinessHubScreen = lazyScreen(() => import('./scripts/BusinessHubScreen').then((module) => module.BusinessHubScreen));
+const BusinessMoreScreen = lazyScreen(() => import('./scripts/BusinessMoreScreen').then((module) => module.BusinessMoreScreen));
+const BusinessStaffScreen = lazyScreen(() => import('./scripts/BusinessStaffScreen').then((module) => module.BusinessStaffScreen));
+const DesktopStaffDirectoryScreen = lazyScreen(() => import('./scripts/desktop/DesktopStaffDirectoryScreen').then((module) => module.DesktopStaffDirectoryScreen));
+const BusinessInviteStaffScreen = lazyScreen(() => import('./scripts/BusinessInviteStaffScreen').then((module) => module.BusinessInviteStaffScreen));
+const DesktopStaffInviteScreen = lazyScreen(() => import('./scripts/desktop/DesktopStaffInviteScreen').then((module) => module.DesktopStaffInviteScreen));
+const BusinessLoyaltyDemoScreen = lazyScreen(() => import('./scripts/BusinessLoyaltyDemoScreen').then((module) => module.BusinessLoyaltyDemoScreen));
+const DesktopLoyaltyProgrammeDemoScreen = lazyScreen(() => import('./scripts/desktop/DesktopLoyaltyProgrammeDemoScreen').then((module) => module.DesktopLoyaltyProgrammeDemoScreen));
+const DesktopServicesCategoriesDemoScreen = lazyScreen(() => import('./scripts/desktop/DesktopServicesCategoriesDemoScreen').then((module) => module.DesktopServicesCategoriesDemoScreen));
+const BusinessAddBranchScreen = lazyScreen(() => import('./scripts/BusinessAddBranchScreen').then((module) => module.BusinessAddBranchScreen));
+const BusinessAddLocationFlow = lazyScreen(() => import('./scripts/BusinessAddLocationFlow').then((module) => module.BusinessAddLocationFlow));
+const DesktopBusinessAddLocationFlow = lazyScreen(() => import('./scripts/desktop/DesktopBusinessAddLocationFlow').then((module) => module.DesktopBusinessAddLocationFlow));
+const BusinessLoyaltyScreen = lazyScreen(() => import('./scripts/BusinessLoyaltyScreen').then((module) => module.BusinessLoyaltyScreen));
+const BusinessLoyaltyRewardsScreen = lazyScreen(() => import('./scripts/BusinessLoyaltyRewardsScreen').then((module) => module.BusinessLoyaltyRewardsScreen));
+const BusinessAnalyticsScreen = lazyScreen(() => import('./scripts/BusinessAnalyticsScreen').then((module) => module.BusinessAnalyticsScreen));
+const BusinessBranchComparisonScreen = lazyScreen(() => import('./scripts/BusinessBranchComparisonScreen').then((module) => module.BusinessBranchComparisonScreen));
+const AnalyticsBusinessScreen = lazyScreen(() => import('./scripts/AnalyticsBusinessScreen').then((module) => module.AnalyticsBusinessScreen));
+const AnalyticsCustomersScreen = lazyScreen(() => import('./scripts/AnalyticsCustomersScreen').then((module) => module.AnalyticsCustomersScreen));
+const AnalyticsDealsScreen = lazyScreen(() => import('./scripts/AnalyticsDealsScreen').then((module) => module.AnalyticsDealsScreen));
+const AnalyticsLocationsScreen = lazyScreen(() => import('./scripts/AnalyticsLocationsScreen').then((module) => module.AnalyticsLocationsScreen));
+const AnalyticsPosScreen = lazyScreen(() => import('./scripts/AnalyticsPosScreen').then((module) => module.AnalyticsPosScreen));
+const AnalyticsExportScreen = lazyScreen(() => import('./scripts/AnalyticsExportScreen').then((module) => module.AnalyticsExportScreen));
+const AnalyticsFilterScreen = lazyScreen(() => import('./scripts/AnalyticsFilterScreen').then((module) => module.AnalyticsFilterScreen));
+const BusinessPosDisplayOrderScreen = lazyScreen(() => import('./scripts/BusinessPosDisplayOrderScreen').then((module) => module.BusinessPosDisplayOrderScreen));
+const BusinessPosDisplayTipScreen = lazyScreen(() => import('./scripts/BusinessPosDisplayTipScreen').then((module) => module.BusinessPosDisplayTipScreen));
+const BusinessPosDisplayPayScreen = lazyScreen(() => import('./scripts/BusinessPosDisplayPayScreen').then((module) => module.BusinessPosDisplayPayScreen));
+const BusinessPosDisplayReceiptScreen = lazyScreen(() => import('./scripts/BusinessPosDisplayReceiptScreen').then((module) => module.BusinessPosDisplayReceiptScreen));
+const BusinessSplitBillScreen = lazyScreen(() => import('./scripts/BusinessSplitBillScreen').then((module) => module.BusinessSplitBillScreen));
+const BusinessPosHomeScreen = lazyScreen(() => import('./scripts/BusinessPosHomeScreen').then((module) => module.BusinessPosHomeScreen));
+const BusinessPosRegisterScreen = lazyScreen(() => import('./scripts/BusinessPosRegisterScreen').then((module) => module.BusinessPosRegisterScreen));
+const BusinessPosCartScreen = lazyScreen(() => import('./scripts/BusinessPosCartScreen').then((module) => module.BusinessPosCartScreen));
+const BusinessPosSwitchScreen = lazyScreen(() => import('./scripts/BusinessPosSwitchScreen').then((module) => module.BusinessPosSwitchScreen));
+const BusinessPosCustomerScreen = lazyScreen(() => import('./scripts/BusinessPosCustomerScreen').then((module) => module.BusinessPosCustomerScreen));
+const BusinessPosSaleCompleteScreen = lazyScreen(() => import('./scripts/BusinessPosSaleCompleteScreen').then((module) => module.BusinessPosSaleCompleteScreen));
+const BusinessPosPaymentScreen = lazyScreen(() => import('./scripts/BusinessPosPaymentScreen').then((module) => module.BusinessPosPaymentScreen));
+const BusinessPosProductShiftScreen = lazyScreen(() => import('./scripts/BusinessPosProductShiftScreen').then((module) => module.BusinessPosProductShiftScreen));
+const BusinessPosStockScreen = lazyScreen(() => import('./scripts/BusinessPosStockScreen').then((module) => module.BusinessPosStockScreen));
+const BusinessPosLedgerScreen = lazyScreen(() => import('./scripts/BusinessPosLedgerScreen').then((module) => module.BusinessPosLedgerScreen));
+const BusinessPosCustomerLookupScreen = lazyScreen(() => import('./scripts/BusinessPosCustomerLookupScreen').then((module) => module.BusinessPosCustomerLookupScreen));
+const BusinessPosOrderLookupScreen = lazyScreen(() => import('./scripts/BusinessPosOrderLookupScreen').then((module) => module.BusinessPosOrderLookupScreen));
+const BusinessPosCustomerDossierScreen = lazyScreen(() => import('./scripts/BusinessPosCustomerDossierScreen').then((module) => module.BusinessPosCustomerDossierScreen));
+const BusinessPosOfflineCheckoutScreen = lazyScreen(() => import('./scripts/BusinessPosOfflineCheckoutScreen').then((module) => module.BusinessPosOfflineCheckoutScreen));
+const BusinessPosTransactionDetailScreen = lazyScreen(() => import('./scripts/BusinessPosTransactionDetailScreen').then((module) => module.BusinessPosTransactionDetailScreen));
+const BusinessPosOfflineBufferScreen = lazyScreen(() => import('./scripts/BusinessPosOfflineBufferScreen').then((module) => module.BusinessPosOfflineBufferScreen));
+const BusinessPosKitchenStreamScreen = lazyScreen(() => import('./scripts/BusinessPosKitchenStreamScreen').then((module) => module.BusinessPosKitchenStreamScreen));
+const BusinessPosSettingsScreen = lazyScreen(() => import('./scripts/BusinessPosSettingsScreen').then((module) => module.BusinessPosSettingsScreen));
+const PublicPosMenuScreen = lazyScreen(() => import('./scripts/PublicPosMenuScreen').then((module) => module.PublicPosMenuScreen));
+const PublicPosCartReviewScreen = lazyScreen(() => import('./scripts/PublicPosCartReviewScreen').then((module) => module.PublicPosCartReviewScreen));
+const PublicPosOrderTrackingScreen = lazyScreen(() => import('./scripts/PublicPosOrderTrackingScreen').then((module) => module.PublicPosOrderTrackingScreen));
+const BusinessBoostHubScreen = lazyScreen(() => import('./scripts/BusinessBoostHubScreen').then((module) => module.BusinessBoostHubScreen));
+const BusinessBoostMetricsScreen = lazyScreen(() => import('./scripts/BusinessBoostMetricsScreen').then((module) => module.BusinessBoostMetricsScreen));
+const BusinessBoostWalletScreen = lazyScreen(() => import('./scripts/BusinessBoostWalletScreen').then((module) => module.BusinessBoostWalletScreen));
+const BusinessSegmentsHubScreen = lazyScreen(() => import('./scripts/BusinessSegmentsHubScreen').then((module) => module.BusinessSegmentsHubScreen));
+const BusinessSegmentActionsScreen = lazyScreen(() => import('./scripts/BusinessSegmentActionsScreen').then((module) => module.BusinessSegmentActionsScreen));
+const BusinessSegmentCreateScreen = lazyScreen(() => import('./scripts/BusinessSegmentCreateScreen').then((module) => module.BusinessSegmentCreateScreen));
+const BusinessSegmentDetailScreen = lazyScreen(() => import('./scripts/BusinessSegmentDetailScreen').then((module) => module.BusinessSegmentDetailScreen));
+const ConsumerCartScreen = lazyScreen(() => import('./scripts/ConsumerCartScreen').then((module) => module.ConsumerCartScreen));
+const ServicesCatalogueScreen = lazyScreen(() => import('./scripts/ServicesCatalogueScreen').then((module) => module.ServicesCatalogueScreen));
+const DesktopDealsScreen = lazyScreen(() => import('./scripts/desktop/DesktopDealsScreen').then((module) => module.DesktopDealsScreen));
+const DesktopDiscoverScreen = lazyScreen(() => import('./scripts/desktop/DesktopDiscoverScreen').then((module) => module.DesktopDiscoverScreen));
+const DesktopFeaturedDealsScreen = lazyScreen(() => import('./scripts/desktop/DesktopFeaturedDealsScreen').then((module) => module.DesktopFeaturedDealsScreen));
+const DesktopFiltersScreen = lazyScreen(() => import('./scripts/desktop/DesktopFiltersScreen').then((module) => module.DesktopFiltersScreen));
+const DesktopUrbanGrillStorefrontScreen = lazyScreen(() => import('./scripts/desktop/DesktopUrbanGrillStorefrontScreen').then((module) => module.DesktopUrbanGrillStorefrontScreen));
+const DesktopSpaStorefrontScreen = lazyScreen(() => import('./scripts/desktop/DesktopSpaStorefrontScreen').then((module) => module.DesktopSpaStorefrontScreen));
+const DesktopAllProductsScreen = lazyScreen(() => import('./scripts/desktop/DesktopAllProductsScreen').then((module) => module.DesktopAllProductsScreen));
+const DesktopAllServicesScreen = lazyScreen(() => import('./scripts/desktop/DesktopAllServicesScreen').then((module) => module.DesktopAllServicesScreen));
+const DesktopSpaBookingScreen = lazyScreen(() => import('./scripts/desktop/DesktopSpaBookingScreen').then((module) => module.DesktopSpaBookingScreen));
+const DesktopDashboardScreen = lazyScreen(() => import('./scripts/desktop/DesktopDashboardScreen').then((module) => module.DesktopDashboardScreen));
+const DesktopOrdersScreen = lazyScreen(() => import('./scripts/desktop/DesktopOrdersScreen').then((module) => module.DesktopOrdersScreen));
+const DesktopOrderDetailScreen = lazyScreen(() => import('./scripts/desktop/DesktopOrderDetailScreen').then((module) => module.DesktopOrderDetailScreen));
+const DesktopBookingDetailScreen = lazyScreen(() => import('./scripts/desktop/DesktopBookingDetailScreen').then((module) => module.DesktopBookingDetailScreen));
+const DesktopMyDealsScreen = lazyScreen(() => import('./scripts/desktop/DesktopMyDealsScreen').then((module) => module.DesktopMyDealsScreen));
+const DesktopMessagesScreen = lazyScreen(() => import('./scripts/desktop/DesktopMessagesScreen').then((module) => module.DesktopMessagesScreen));
+const DesktopCartScreen = lazyScreen(() => import('./scripts/desktop/DesktopCartScreen').then((module) => module.DesktopCartScreen));
+const DesktopAccountSettingsScreen = lazyScreen(() => import('./scripts/desktop/DesktopAccountSettingsScreen').then((module) => module.DesktopAccountSettingsScreen));
+const DesktopBusinessAccountChoiceScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessAccountChoiceScreen').then((module) => module.DesktopBusinessAccountChoiceScreen));
+const DesktopBusinessOnboardingScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessOnboardingScreen').then((module) => module.DesktopBusinessOnboardingScreen));
+const DesktopBusinessVerificationScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessVerificationScreen').then((module) => module.DesktopBusinessVerificationScreen));
+const DesktopVerificationStatusCenterScreen = lazyScreen(() => import('./scripts/desktop/DesktopVerificationStatusCenterScreen').then((module) => module.DesktopVerificationStatusCenterScreen));
+const DesktopSubscriptionScreen = lazyScreen(() => import('./scripts/desktop/DesktopSubscriptionScreen').then((module) => module.DesktopSubscriptionScreen));
+const DesktopBusinessOrdersScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessOrdersScreen').then((module) => module.DesktopBusinessOrdersScreen));
+const DesktopBusinessPosOrdersScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessPosOrdersScreen').then((module) => module.DesktopBusinessPosOrdersScreen));
+const DesktopBusinessMessagesWorkspaceScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessMessagesWorkspaceScreen').then((module) => module.DesktopBusinessMessagesWorkspaceScreen));
+const CampaignsChannelScreen = lazyScreen(() => import('./scripts/campaigns/CampaignsChannelScreen').then((module) => module.CampaignsChannelScreen));
+const DesktopMoreSubscriptionScreen = lazyScreen(() => import('./scripts/desktop/DesktopMoreSubscriptionScreen').then((module) => module.DesktopMoreSubscriptionScreen));
+const DesktopMoreAddOnsScreen = lazyScreen(() => import('./scripts/desktop/DesktopMoreAddOnsScreen').then((module) => module.DesktopMoreAddOnsScreen));
+const DesktopBusinessNotificationsScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessNotificationsScreen').then((module) => module.DesktopBusinessNotificationsScreen));
+const DesktopBusinessHelpSupportScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessHelpSupportScreen').then((module) => module.DesktopBusinessHelpSupportScreen));
+const DesktopBusinessSettingsScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessSettingsScreen').then((module) => module.DesktopBusinessSettingsScreen));
+const DesktopDealsWorkspaceScreen = lazyScreen(() => import('./scripts/desktop/DesktopDealsWorkspaceScreen').then((module) => module.DesktopDealsWorkspaceScreen));
+const DesktopDealStudioFlow = lazyScreen(() => import('./scripts/desktop/DesktopDealStudioFlow').then((module) => module.DesktopDealStudioFlow));
+const DesktopBusinessProfilePreviewStudioScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessProfilePreviewStudioScreen').then((module) => module.DesktopBusinessProfilePreviewStudioScreen));
+const DesktopBusinessOverviewScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessOverviewScreen').then((module) => module.DesktopBusinessOverviewScreen));
+const DesktopDealLocationPricingScreen = lazyScreen(() => import('./scripts/desktop/DesktopDealLocationPricingScreen').then((module) => module.DesktopDealLocationPricingScreen));
+const DesktopDealCreateLocationsScreen = lazyScreen(() => import('./scripts/desktop/DesktopDealCreateLocationsScreen').then((module) => module.DesktopDealCreateLocationsScreen));
+const DesktopBusinessProfileStorefrontScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessProfileStorefrontScreen').then((module) => module.DesktopBusinessProfileStorefrontScreen));
+const BusinessStorefrontPreviewScreen = lazyScreen(() => import('./scripts/desktop/BusinessStorefrontPreviewScreen').then((module) => module.BusinessStorefrontPreviewScreen));
+const DesktopDealAnalyticsScreen = lazyScreen(() => import('./scripts/desktop/DesktopDealAnalyticsScreen').then((module) => module.DesktopDealAnalyticsScreen));
+const DesktopBusinessBranchPricingScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessBranchPricingScreen').then((module) => module.DesktopBusinessBranchPricingScreen));
+const DesktopBusinessCustomersScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessCustomersScreen').then((module) => module.DesktopBusinessCustomersScreen));
+const DesktopCustomerProfileScreen = lazyScreen(() => import('./scripts/desktop/DesktopCustomerProfileScreen').then((module) => module.DesktopCustomerProfileScreen));
+const DesktopLoyaltyProgrammeScreen = lazyScreen(() => import('./scripts/desktop/DesktopLoyaltyProgrammeScreen').then((module) => module.DesktopLoyaltyProgrammeScreen));
+const DesktopLoyaltyRewardsScreen = lazyScreen(() => import('./scripts/desktop/DesktopLoyaltyRewardsScreen').then((module) => module.DesktopLoyaltyRewardsScreen));
+const DesktopBusinessCatalogHubScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessCatalogHubScreen').then((module) => module.DesktopBusinessCatalogHubScreen));
+const DesktopBusinessLocationsHubScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessLocationsHubScreen').then((module) => module.DesktopBusinessLocationsHubScreen));
+const DesktopBusinessAddBranchScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessAddBranchScreen').then((module) => module.DesktopBusinessAddBranchScreen));
+const DesktopBranchDetailScreen = lazyScreen(() => import('./scripts/desktop/DesktopBranchDetailScreen').then((module) => module.DesktopBranchDetailScreen));
+const DesktopServicesCategoriesScreen = lazyScreen(() => import('./scripts/desktop/DesktopServicesCategoriesScreen').then((module) => module.DesktopServicesCategoriesScreen));
+const DesktopAnalyticsBusinessScreen = lazyScreen(() => import('./scripts/desktop/DesktopAnalyticsBusinessScreen').then((module) => module.DesktopAnalyticsBusinessScreen));
+const DesktopAnalyticsDealsScreen = lazyScreen(() => import('./scripts/desktop/DesktopAnalyticsDealsScreen').then((module) => module.DesktopAnalyticsDealsScreen));
+const DesktopAnalyticsPosScreen = lazyScreen(() => import('./scripts/desktop/DesktopAnalyticsPosScreen').then((module) => module.DesktopAnalyticsPosScreen));
+const DesktopAnalyticsExportScreen = lazyScreen(() => import('./scripts/desktop/DesktopAnalyticsExportScreen').then((module) => module.DesktopAnalyticsExportScreen));
+const DesktopAnalyticsFilterScreen = lazyScreen(() => import('./scripts/desktop/DesktopAnalyticsFilterScreen').then((module) => module.DesktopAnalyticsFilterScreen));
+const DesktopAnalyticsLocationsScreen = lazyScreen(() => import('./scripts/desktop/DesktopAnalyticsLocationsScreen').then((module) => module.DesktopAnalyticsLocationsScreen));
+const DesktopAnalyticsCustomersScreen = lazyScreen(() => import('./scripts/desktop/DesktopAnalyticsCustomersScreen').then((module) => module.DesktopAnalyticsCustomersScreen));
+const DesktopPosDisplayOrderScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosDisplayOrderScreen').then((module) => module.DesktopPosDisplayOrderScreen));
+const DesktopPosDisplayTipScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosDisplayTipScreen').then((module) => module.DesktopPosDisplayTipScreen));
+const DesktopPosDisplayPayScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosDisplayPayScreen').then((module) => module.DesktopPosDisplayPayScreen));
+const DesktopSplitBillScreen = lazyScreen(() => import('./scripts/desktop/DesktopSplitBillScreen').then((module) => module.DesktopSplitBillScreen));
+const DesktopPosDisplayReceiptScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosDisplayReceiptScreen').then((module) => module.DesktopPosDisplayReceiptScreen));
+const DesktopPosHomeScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosHomeScreen').then((module) => module.DesktopPosHomeScreen));
+const DesktopPosRegisterScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosRegisterScreen').then((module) => module.DesktopPosRegisterScreen));
+const DesktopPosPaymentScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosPaymentScreen').then((module) => module.DesktopPosPaymentScreen));
+const DesktopPosSaleCompleteScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosSaleCompleteScreen').then((module) => module.DesktopPosSaleCompleteScreen));
+const DesktopPosStockScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosStockScreen').then((module) => module.DesktopPosStockScreen));
+const DesktopPosLedgerScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosLedgerScreen').then((module) => module.DesktopPosLedgerScreen));
+const DesktopPosOfflineSaleScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosOfflineSaleScreen').then((module) => module.DesktopPosOfflineSaleScreen));
+const DesktopPosBufferScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosBufferScreen').then((module) => module.DesktopPosBufferScreen));
+const DesktopPosKitchenScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosKitchenScreen').then((module) => module.DesktopPosKitchenScreen));
+const DesktopPosCartScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosCartScreen').then((module) => module.DesktopPosCartScreen));
+const DesktopPosSwitchScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosSwitchScreen').then((module) => module.DesktopPosSwitchScreen));
+const DesktopPosCustomerScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosCustomerScreen').then((module) => module.DesktopPosCustomerScreen));
+const DesktopPosProductShiftScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosProductShiftScreen').then((module) => module.DesktopPosProductShiftScreen));
+const DesktopPosCustomerLookupScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosCustomerLookupScreen').then((module) => module.DesktopPosCustomerLookupScreen));
+const DesktopPosOrderLookupScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosOrderLookupScreen').then((module) => module.DesktopPosOrderLookupScreen));
+const DesktopPosCustomerDossierScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosCustomerDossierScreen').then((module) => module.DesktopPosCustomerDossierScreen));
+const DesktopPosTransactionDetailScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosTransactionDetailScreen').then((module) => module.DesktopPosTransactionDetailScreen));
+const DesktopPublicPosCartScreen = lazyScreen(() => import('./scripts/desktop/DesktopPublicPosCartScreen').then((module) => module.DesktopPublicPosCartScreen));
+const DesktopPublicPosTrackingScreen = lazyScreen(() => import('./scripts/desktop/DesktopPublicPosTrackingScreen').then((module) => module.DesktopPublicPosTrackingScreen));
+const DesktopPublicPosMenuScreen = lazyScreen(() => import('./scripts/desktop/DesktopPublicPosMenuScreen').then((module) => module.DesktopPublicPosMenuScreen));
+const DesktopPosGeneralSettingsScreen = lazyScreen(() => import('./scripts/desktop/DesktopPosGeneralSettingsScreen').then((module) => module.DesktopPosGeneralSettingsScreen));
+const DesktopStoreOrderingQrScreen = lazyScreen(() => import('./scripts/desktop/DesktopStoreOrderingQrScreen').then((module) => module.DesktopStoreOrderingQrScreen));
+const DesktopStoreOrderingSettingsScreen = lazyScreen(() => import('./scripts/desktop/DesktopStoreOrderingSettingsScreen').then((module) => module.DesktopStoreOrderingSettingsScreen));
+const StoreOrderingScreen = lazyScreen(() => import('./scripts/StoreOrderingScreen').then((module) => module.StoreOrderingScreen));
+const ClusterOnboardingScreen = lazyScreen(() => import('./scripts/ClusterOnboardingScreen').then((module) => module.ClusterOnboardingScreen));
+const DesktopClusterOnboardingScreen = lazyScreen(() => import('./scripts/desktop/DesktopClusterOnboardingScreen').then((module) => module.DesktopClusterOnboardingScreen));
+const ClusterSystemScreen = lazyScreen(() => import('./scripts/ClusterSystemScreen').then((module) => module.ClusterSystemScreen));
+const DesktopClusterSystemScreen = lazyScreen(() => import('./scripts/desktop/DesktopClusterSystemScreen').then((module) => module.DesktopClusterSystemScreen));
+const ClusterBoostFlow = lazyScreen(() => import('./scripts/ClusterBoostFlow').then((module) => module.ClusterBoostFlow));
+const ClusterBoostListScreen = lazyScreen(() => import('./scripts/ClusterBoostListScreen').then((module) => module.ClusterBoostListScreen));
+const DesktopStoreOrderingDashboard = lazyScreen(() => import('./scripts/desktop/DesktopStoreOrderingDashboard').then((module) => module.DesktopStoreOrderingDashboard));
 
 export default function App() {
   return (
     <AuthProvider>
       <ProfileProvider>
         <LocationProvider>
+          <DealFiltersProvider>
           <ClaimsProvider>
             <OrdersProvider>
               <ContactsProvider>
               <CampaignsProvider>
+              <BusinessOfferingsProvider>
+              <BusinessFeaturesProvider>
               <BusinessBranchProvider>
                 <CartProvider>
                   <BookingProvider>
                     <AccountDeletionProvider>
                       <PosSettingsProvider>
                         <PosOfflineProvider>
-                          <AppInner />
+                          <Suspense fallback={null}>
+                            <AppInner />
+                          </Suspense>
                           <BranchSwitchOverlay />
                         </PosOfflineProvider>
                       </PosSettingsProvider>
@@ -922,29 +1234,49 @@ export default function App() {
                   </BookingProvider>
                 </CartProvider>
               </BusinessBranchProvider>
+              </BusinessFeaturesProvider>
+              </BusinessOfferingsProvider>
               </CampaignsProvider>
               </ContactsProvider>
             </OrdersProvider>
           </ClaimsProvider>
+          </DealFiltersProvider>
         </LocationProvider>
       </ProfileProvider>
     </AuthProvider>
   );
 }
 
+/** The result Google sent back to `/google-callback`, read once per page load. */
+const GOOGLE_REDIRECT = takeGoogleRedirectResult();
+/** The URL this tab opened; a protected one is returned to after signing in. */
+const ENTRY_PATH = window.location.pathname;
+rememberGiftLink(window.location.search);
+const GIFT_REJECT_TOKEN = new URLSearchParams(window.location.search).get('token') ?? '';
+const RETURN_PATH_KEY = 'vemtap_return_to';
+
 function AppInner() {
-  const { authed, claimed, signIn, signOut, markAuthenticated, markClaimed, resetClaim, adoptSession } = useAuth();
-  const sessionUser = useSessionUser().data;
+  const { authed, signIn, signOut, markAuthenticated, markClaimed, resetClaim, adoptSession, switchShell } = useAuth();
+  const sessionQuery = useSessionUser();
+  const sessionUser = sessionQuery.data;
   // A live owner already has their business identity: business entry points
   // should open their dashboard instead of starting sign-up again.
-  const isBusinessSession = hasApiConfig() && !!sessionUser && isBusinessRole(sessionUser.role);
+  // Includes an owner whose token is currently scoped to the customer shell.
+  const isBusinessSession = hasApiConfig() && !!sessionUser && (Boolean(sessionUser.businessRole) || isBusinessRole(sessionUser.role));
   const cart = useCart();
   const booking = useBooking();
   const profile = useProfile();
   const claims = useClaims();
   const contacts = useContacts();
   const isDesktop = useIsDesktop();
-  const [route, setRouteState] = useState<Route>(() => entryRoute(window.location.pathname, authed, isDesktop));
+  const featureConfig = useBusinessFeatures();
+  const [route, setRouteState] = useState<Route>(() =>
+    GOOGLE_REDIRECT
+      ? ((GOOGLE_REDIRECT.pending.from in ROUTE_PATH ? GOOGLE_REDIRECT.pending.from : 'welcome') as Route)
+      : entryRoute(window.location.pathname, authed, isDesktop, true),
+  );
+  /** A failed "Continue with Google", shown on the screen it started from. */
+  const [googleError, setGoogleError] = useState<{ route: Route; message: string } | null>(null);
   const [selectedBusiness, setSelectedBusiness] = useState<BusinessProfileRef | null>(() => {
     const match = resolveBusinessPath(window.location.pathname);
     return match?.business ?? null;
@@ -952,7 +1284,8 @@ function AppInner() {
   const [confirmFrom, setConfirmFrom] = useState<'location-permission' | 'manual-location'>('location-permission');
   const [authFrom, setAuthFrom] = useState<Route>('start-vemtap');
   const [customerSignup, setCustomerSignup] = useState({
-    email: '',
+    // A business sign-up resumed on the code or details screen keeps its email.
+    email: getBusinessSignup()?.email ?? '',
     code: '',
     firstName: '',
     lastName: '',
@@ -968,7 +1301,11 @@ function AppInner() {
     // Restored on load so a hard refresh mid-flow (e.g. on /verify-email)
     // still completes into the right journey instead of dropping merchants
     // into the customer one.
-    () => (window.localStorage.getItem(AUTH_INTENT_KEY) === 'business' ? 'business' : 'customer'),
+    // A business sign-up resumed past its email screen is always the business journey.
+    () =>
+      window.localStorage.getItem(AUTH_INTENT_KEY) === 'business' || (getBusinessSignup()?.email ?? '') !== ''
+        ? 'business'
+        : 'customer',
   );
   const setAuthIntent = (intent: 'customer' | 'business') => {
     setAuthIntentState(intent);
@@ -980,6 +1317,8 @@ function AppInner() {
   };
   /** Sign In is reachable from several sign-ups — remember where it was opened from. */
   const [signInFrom, setSignInFrom] = useState<Route>('welcome');
+  // Business sign-up found an existing account for this email: sign-in opens prefilled.
+  const [businessSignInEmail, setBusinessSignInEmail] = useState<string | null>(null);
   const [feedFrom, setFeedFrom] = useState<Route>('home');
   /**
    * Referral code captured from a referral URL (e.g. `?ref=CODE`) at mount,
@@ -998,6 +1337,28 @@ function AppInner() {
   const [dealFrom, setDealFrom] = useState<Route>('home');
   const [selectedDeal, setSelectedDeal] = useState<ClaimDealSummary | null>(null);
   const [commentsModalOnly, setCommentsModalOnly] = useState(false);
+  const dealChatOpening = useRef(false);
+  const dealSheetOpen = useRef(false);
+  // A reloaded or shared /deals/<title>-<id> link has no selected deal yet, so its id comes from the URL.
+  // On a deal's own page its link decides the deal, so refresh, Back and shared links open the right one.
+  const liveDeal = useDealDetail((route === 'deal-detail' ? dealIdFromPath(window.location.pathname) : undefined) ?? selectedDeal?.id ?? dealIdFromPath(window.location.pathname));
+  const liveDealDetail = liveDeal.detail;
+  useEffect(() => {
+    if (!liveDealDetail) return;
+    // The claim flow, sheets and share page read the selected deal, so keep it on the live values.
+    setSelectedDeal({
+      id: liveDealDetail.id,
+      title: liveDealDetail.title,
+      business: liveDealDetail.businessName,
+      location: liveDealDetail.address ?? liveDealDetail.branchName ?? undefined,
+      price: liveDealDetail.price,
+      oldPrice: liveDealDetail.oldPrice,
+      image: liveDealDetail.image,
+      images: liveDealDetail.images,
+      discountLabel: liveDealDetail.discountPercent > 0 ? `${liveDealDetail.discountPercent}% OFF` : undefined,
+      commentCount: liveDealDetail.reviewsCount,
+    });
+  }, [liveDealDetail]);
   const [bizFrom, setBizFrom] = useState<Route>('discover');
   const [profileFrom, setProfileFrom] = useState<Route>('discover');
   const [catalogueFrom, setCatalogueFrom] = useState<Route>('storefront');
@@ -1006,6 +1367,11 @@ function AppInner() {
     const match = resolveBusinessPath(window.location.pathname);
     return (match?.productId ? findProduct(match.productId) : undefined) ?? null;
   });
+  /** The live product/service page: `/business/<code>/products/<itemId>`. */
+  const [liveItem, setLiveItem] = useState<{ code: string; id: string } | null>(() => {
+    const match = resolveBusinessPath(window.location.pathname);
+    return match?.productId ? { code: match.business.slug, id: match.productId } : null;
+  });
   const [detailService, setDetailService] = useState<SpaCatalogueService | null>(() => {
     const match = resolveBusinessPath(window.location.pathname);
     return (match?.serviceSlug ? findSpaService(match.serviceSlug) : undefined) ?? null;
@@ -1013,7 +1379,10 @@ function AppInner() {
   const [serviceFrom, setServiceFrom] = useState<Route>('spa-services');
   const [bookingFrom, setBookingFrom] = useState<Route>('spa-profile');
   const [orderSummary, setOrderSummary] = useState<SubmittedOrder | null>(null);
-  const [businessSetupSkipIntro, setBusinessSetupSkipIntro] = useState(false);
+  // A signed-in owner reopening unfinished setup is already past the intro.
+  const [businessSetupSkipIntro, setBusinessSetupSkipIntro] = useState(
+    () => hasApiConfig() && authed && hasUnfinishedBusinessSetup(),
+  );
   /**
    * "Reuse this account or register a fresh business identity?" is asked from
    * the business intro's primary button — i.e. once the merchant has actually
@@ -1022,16 +1391,28 @@ function AppInner() {
    */
   const [businessChoiceOpen, setBusinessChoiceOpen] = useState(false);
   const [businessOnboardingFrom, setBusinessOnboardingFrom] = useState<Route>('dashboard');
-  const [activeOrderRef, setActiveOrderRef] = useState<string | undefined>(undefined);
-  const [chatFrom, setChatFrom] = useState<Route>('claimed-deal');
+  const [activeOrderRef, setActiveOrderRef] = useState<string | undefined>(() => orderRefFromPath(window.location.pathname) ?? undefined);
+  const [activeBookingRef, setActiveBookingRef] = useState<string | undefined>(() => bookingRefFromPath(window.location.pathname) ?? undefined);
+  // The CRM customer being viewed; carried in the profile URL so a reload or shared link reopens them.
+  const [hubCustomerId, setHubCustomerId] = useState<string | null>(() => customerIdFromPath(window.location.pathname));
   const [termsFrom, setTermsFrom] = useState<Route>('deal-detail');
+  /** Where "How to Claim" was opened: a deal page (claim that deal) or the Deals feed (no deal to claim). */
+  const [howToClaimFrom, setHowToClaimFrom] = useState<Route>('deal-detail');
+  const openHowToClaim = (from: Route) => {
+    setHowToClaimFrom(from);
+    setRoute('how-to-claim');
+  };
   const [claimedFrom, setClaimedFrom] = useState<Route>('claim-success');
-  const [activeConversation, setActiveConversation] = useState('urban');
+  // The voucher picked on the dashboard, so its pass and contact sheet show that one.
+  const [dashboardClaimRef, setDashboardClaimRef] = useState<string | null>(null);
+  const [activeConversation, setActiveConversation] = useState(() => conversationRefFromPath(window.location.pathname) ?? '');
   useCustomerMessagingRealtime(authed);
   useCustomerThreadBinding(route === 'conversation' ? activeConversation : null, authed);
   const [giftRecipient, setGiftRecipient] = useState<GiftRecipientSummary | null>(null);
+  const [giftNote, setGiftNote] = useState('');
   const [claimRecipient, setClaimRecipient] = useState<GiftRecipientSummary | null>(null);
   const [activeClaim, setActiveClaim] = useState<ClaimRecord | null>(null);
+  const [myDealsOpensGifted, setMyDealsOpensGifted] = useState(false);
   const [claimSelfConfirmOpen, setClaimSelfConfirmOpen] = useState(false);
   const [posCart, setPosCart] = useState<PosCartLine[]>([]);
   const [posTermCart, setPosTermCart] = useState<PosTerminalLine[]>([]);
@@ -1041,7 +1422,8 @@ function AppInner() {
   const [posSalePoints, setPosSalePoints] = useState(0);
   /** Points manually awarded to the mobile-flow customer during the sale. */
   const [posCustomerBonus, setPosCustomerBonus] = useState(0);
-  const [posDossierCustomer, setPosDossierCustomer] = useState('Michael James');
+  // Live: no sample customer — a real one is picked before these screens open.
+  const [posDossierCustomer, setPosDossierCustomer] = useState(() => (hasApiConfig() ? '' : 'Michael James'));
   const [publicCart, setPublicCart] = useState<PublicCartLine[]>([]);
   const [posActiveNav, setPosActiveNav] = useState('pos-transactions');
 
@@ -1125,7 +1507,6 @@ function AppInner() {
   };
 
   const resolveRoutePath = useCallback((target: Route, overrideDeal?: ClaimDealSummary | null) => {
-    const activeUrbanBusiness = selectedBusiness && selectedBusiness.venue === 'urban' ? selectedBusiness : null;
     const activeSpaBusiness = selectedBusiness && selectedBusiness.venue === 'spa' ? selectedBusiness : null;
     const dealForRoute = overrideDeal ?? selectedDeal ?? null;
 
@@ -1151,13 +1532,15 @@ function AppInner() {
       case 'service-detail':
         return detailService && activeSpaBusiness ? servicePath(activeSpaBusiness.slug, detailService.slug) : '/discover';
       case 'product-detail':
-        return detailProduct && activeUrbanBusiness ? productPath(activeUrbanBusiness.slug, detailProduct.id) : '/discover';
+        return liveItem ? productPath(liveItem.code, liveItem.id) : '/discover';
       case 'deal-detail':
         return dealForRoute ? dealDetailPath(dealForRoute) : '/deals';
+      case 'hub-customer-profile':
+        return hubCustomerId ? `${CUSTOMER_PROFILE_PATH}/${encodeURIComponent(hubCustomerId)}` : ROUTE_PATH[target];
       default:
         return ROUTE_PATH[target];
     }
-  }, [detailProduct, detailService, selectedBusiness, selectedDeal]);
+  }, [liveItem, detailService, selectedBusiness, selectedDeal, hubCustomerId]);
 
   const setRoute = (target: Route, nextDeal?: ClaimDealSummary | null) => {
     if (target === route) return;
@@ -1179,6 +1562,12 @@ function AppInner() {
 
   const startCheckout = () => {
     if (cart.count === 0) return;
+    if (hasApiConfig() && !authed) {
+      // Orders belong to an account; the cart waits through sign-in.
+      window.sessionStorage.setItem(RETURN_PATH_KEY, ROUTE_PATH.cart);
+      setRoute('sign-in');
+      return;
+    }
     setRoute('checkout');
   };
 
@@ -1226,15 +1615,172 @@ function AppInner() {
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, handleExpired);
   }, []);
 
-  // Opening a portal page signed out (with the API configured) goes to sign in.
+  // Signed in: a sign-up left unfinished on this device is done (or replaced).
   useEffect(() => {
-    if (hasApiConfig() && !authed && isPortalRoute(route)) setRouteState('sign-in');
+    if (authed) clearBusinessSignup();
+  }, [authed]);
+
+  // The page decides the shell: an owner reaching a business page by any means
+  // (link, Back, reload) gets a business token, and a customer page a customer
+  // token. Neutral pages keep what they have. Held while a sign-in or "Set up
+  // your business" is choosing where to go.
+  const [shellHold, setShellHold] = useState(Boolean(GOOGLE_REDIRECT));
+  // A signed-in visitor opened a sign-up or sign-in page (URL, Back): their
+  // shell is only known once the session loads.
+  const [returningToShell, setReturningToShell] = useState(
+    () => authed && hasApiConfig() && !GOOGLE_REDIRECT && isSignedOutPath(window.location.pathname),
+  );
+  const [shellSwitchFailed, setShellSwitchFailed] = useState<Route | null>(null);
+  const shellSwitchInFlight = useRef(false);
+  const onBusinessPage = isPortalRoute(route) || route === 'business-onboarding' || route === 'business-verification';
+  // A scanned voucher that isn't this customer's: a business account scans it for redeeming.
+  const scanNeedsBusiness =
+    route === 'claimed-deal' &&
+    !claims.claimsLoading &&
+    Boolean(passIdFromPath(window.location.pathname)) &&
+    !claims.claims.some((claim) => claim.id === passIdFromPath(window.location.pathname) && !claim.sentForOther);
+  const shellRoleNeeded: 'Owner' | 'Manager' | 'Staff' | 'Customer' | null = shellHold || returningToShell
+    ? null
+    : scanNeedsBusiness && sessionUser?.businessRole && sessionUser.role === 'Customer'
+      ? sessionUser.businessRole
+    : onBusinessPage && sessionUser?.businessRole && sessionUser.role === 'Customer'
+      ? sessionUser.businessRole
+      : !onBusinessPage && CUSTOMER_SHELL_ROUTES.has(route) && !passIdFromPath(window.location.pathname) && isBusinessRole(sessionUser?.role)
+        ? 'Customer'
+        : null;
+  const shellSwitching = shellRoleNeeded !== null && shellSwitchFailed !== route;
+  useEffect(() => {
+    if (!shellSwitching || !shellRoleNeeded || shellSwitchInFlight.current) return;
+    shellSwitchInFlight.current = true;
+    const failedOn = route;
+    void switchShell(shellRoleNeeded)
+      .then(() => setShellSwitchFailed(null))
+      .catch((error) => {
+        console.error('Could not switch shell:', error);
+        // Show the page anyway; it reports its own errors.
+        setShellSwitchFailed(failedOn);
+      })
+      .finally(() => {
+        shellSwitchInFlight.current = false;
+      });
+  }, [shellSwitching, shellRoleNeeded, route, switchShell]);
+
+  // Business pages need a business: plain customers never see them, and an owner
+  // without one goes home. Finished owners have no setup to open. Only a saved
+  // run keeps /business-onboarding, including Back from its verification step.
+  // Setup itself is where a customer becomes an owner (on its first save), so
+  // they keep /business-onboarding: its intro, account choice and saved run.
+  const plainCustomerOnBusinessPage =
+    hasApiConfig() &&
+    onBusinessPage &&
+    route !== 'business-onboarding' &&
+    !!sessionUser &&
+    !sessionUser.businessRole &&
+    (sessionUser.role === 'Customer' || sessionUser.role === 'USER');
+  const [accessChecked, setAccessChecked] = useState<Route | null>(null);
+  const accessCheckPending =
+    hasApiConfig() &&
+    !!sessionUser &&
+    !shellHold &&
+    !returningToShell &&
+    !shellSwitching &&
+    accessChecked !== route &&
+    ((isPortalRoute(route) && sessionUser.role === 'Owner' && !sessionUser.businessId) ||
+      (route === 'business-onboarding' && isBusinessRole(sessionUser.role) && Boolean(sessionUser.businessId)) ||
+      (route === 'business-onboarding' && !isBusinessRole(sessionUser.role) && !sessionUser.hasBusiness));
+  useEffect(() => {
+    if (plainCustomerOnBusinessPage) setRouteState('home');
+  }, [plainCustomerOnBusinessPage]);
+  useEffect(() => {
+    if (!accessCheckPending) return;
+    let ignore = false;
+    const checkedRoute = route;
+    const settle = (next: Route | null) => {
+      if (ignore) return;
+      setAccessChecked(checkedRoute);
+      if (next) setRouteState(next);
+    };
+    if (checkedRoute === 'business-onboarding' && !isBusinessRole(sessionUser?.role)) {
+      // A customer's run saved on the account (before the first save made it an
+      // owner) reopens through the account choice: the PIN is never stored, so
+      // "Continue with this account" asks for it again, then resumes the run.
+      void hydrateBusinessSetupFromServer().then((saved) => {
+        if (!ignore && hasUnfinishedBusinessSetup(saved)) setBusinessChoiceOpen(true);
+        settle(null);
+      });
+    } else if (checkedRoute === 'business-onboarding') {
+      void hydrateBusinessSetupFromServer().then((saved) => {
+        const runOpen = hasUnfinishedBusinessSetup(saved) || (saved?.screensDone && saved.verificationState !== 'complete');
+        settle(runOpen ? null : 'business-overview');
+      });
+    } else {
+      // The session can predate a business setup just created, so ask the API.
+      void businessService
+        .myBusiness()
+        .then((business) => settle(business?.id ? null : 'home'))
+        .catch((error) => settle(error instanceof ApiError && error.status === 404 ? 'home' : null));
+    }
+    return () => {
+      ignore = true;
+    };
+  }, [accessCheckPending, route]);
+
+  // Remember the protected page a signed-out visitor opened, for after sign-in.
+  useEffect(() => {
+    const opened = PATH_ROUTE.get(ENTRY_PATH);
+    if (hasApiConfig() && !authed && passIdFromPath(ENTRY_PATH)) window.sessionStorage.setItem(RETURN_PATH_KEY, ENTRY_PATH);
+    if (!hasApiConfig() || authed || !opened || opened === 'home') return;
+    if (SIGNED_IN_ROUTES.has(opened) || isPortalRoute(opened)) window.sessionStorage.setItem(RETURN_PATH_KEY, ENTRY_PATH);
+    // Only the page this tab opened on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // A reload loses which chat was open; the inbox still has it.
+  useEffect(() => {
+    if (route === 'conversation' && !activeConversation) setRouteState('messages');
+  }, [route, activeConversation]);
+
+  // A reload loses the just-claimed voucher; its wallet still has it.
+  useEffect(() => {
+    if (route === 'claim-success' && !activeClaim) setRouteState('my-deals');
+  }, [route, activeClaim]);
+
+  useEffect(() => {
+    if (route !== 'my-deals') setMyDealsOpensGifted(false);
+  }, [route]);
+
+  // "Sign in" from business sign-up continues into setup, but only on that trip:
+  // once the visitor leaves, a later sign-in is an ordinary one and goes home.
+  useEffect(() => {
+    if (signInFrom !== 'business-auth' || ['sign-in', 'forgot-pin', 'business-auth'].includes(route)) return;
+    setSignInFrom('welcome');
+    setBusinessSignInEmail(null);
+  }, [route, signInFrom]);
+
+  // The referral admin page is for platform admins only.
+  const adminCheckPending =
+    hasApiConfig() && route === 'admin-referral' && (!sessionUser || (sessionUser.role !== 'SUPER_ADMIN' && sessionUser.role !== 'Admin'));
+  useEffect(() => {
+    if (!hasApiConfig() || route !== 'admin-referral') return;
+    if (!authed) setRouteState('sign-in');
+    else if (sessionUser && sessionUser.role !== 'SUPER_ADMIN' && sessionUser.role !== 'Admin') setRouteState('home');
+  }, [authed, route, sessionUser]);
+
+  // Opening a portal page signed out (with the API configured) goes to sign in;
+  // customer pages without a session (signed out, expired) go to onboarding.
+  useEffect(() => {
+    if (!hasApiConfig() || authed) return;
+    if (isPortalRoute(route)) setRouteState('sign-in');
+    else if (route === 'home' || SIGNED_IN_ROUTES.has(route)) setRouteState('welcome');
   }, [authed, route]);
 
   useEffect(() => {
     const expected =
-      route === 'customer-invite-join'
-        ? null // dynamic /join/{slug}?invite=… path — never overwritten
+      route === 'customer-invite-join' ||
+      route === 'not-found' ||
+      (route === 'claimed-deal' && passIdFromPath(window.location.pathname)) ||
+      (route === 'deal-detail' && window.location.pathname.startsWith('/deals/'))
+        ? null // dynamic /join/{slug}?invite=…, a deal's own link and unknown paths — never overwritten
         : resolveRoutePath(route);
     if (expected && window.location.pathname !== expected) {
       window.history.replaceState(null, '', expected);
@@ -1250,13 +1796,22 @@ function AppInner() {
     const onPopState = () => {
       const path = window.location.pathname;
       setRouteState(entryRoute(path, authed, isDesktop));
+      const orderRef = orderRefFromPath(path);
+      if (orderRef) setActiveOrderRef(orderRef);
+      const bookingRef = bookingRefFromPath(path);
+      if (bookingRef) setActiveBookingRef(bookingRef);
+      const customerId = customerIdFromPath(path);
+      if (customerId) setHubCustomerId(customerId);
+      const conversationRef = conversationRefFromPath(path);
+      if (conversationRef) setActiveConversation(conversationRef);
+      if (authed && hasApiConfig() && isSignedOutPath(path)) setReturningToShell(true);
       const match = resolveBusinessPath(path);
       if (match) {
         setSelectedBusiness((prev) => (prev && prev.slug === match.business.slug ? prev : match.business));
       }
-      if (match?.section === 'products') {
-        const base = findProduct(match.productId);
-        if (base) setDetailProduct((prev) => (prev && prev.id === base.id ? prev : base));
+      if (match?.section === 'products' && match.productId) {
+        const next = { code: match.business.slug, id: match.productId };
+        setLiveItem((prev) => (prev && prev.code === next.code && prev.id === next.id ? prev : next));
       }
       if (match?.section === 'services' && match.serviceSlug) {
         const base = findSpaService(match.serviceSlug);
@@ -1268,12 +1823,11 @@ function AppInner() {
   }, [authed, isDesktop, route, detailProduct, detailService, resolveRoutePath, selectedBusiness]);
 
   useEffect(() => {
-    if (route !== 'product-detail' || detailProduct) return;
+    if (route !== 'product-detail' || liveItem) return;
     const match = resolveBusinessPath(window.location.pathname);
-    const base = match?.productId ? findProduct(match.productId) : undefined;
-    if (base) setDetailProduct(base);
-    else setRouteState('storefront-products');
-  }, [route, detailProduct]);
+    if (match?.productId) setLiveItem({ code: match.business.slug, id: match.productId });
+    else setRouteState('discover');
+  }, [route, liveItem]);
 
   /**
    * Capture a referral code from the URL once, before the path-sync effect
@@ -1282,10 +1836,9 @@ function AppInner() {
    * secured attribution.
    */
   useEffect(() => {
+    // The link just opened wins over any code saved earlier.
     const fromUrl = normaliseReferralCode(readReferralCodeFromUrl());
-    if (fromUrl && !getProvisionalReferralCode()) {
-      setProvisionalReferralCode(fromUrl, 'url');
-    }
+    if (fromUrl) setProvisionalReferralCode(fromUrl, 'url');
   }, []);
 
   useEffect(() => {
@@ -1300,6 +1853,12 @@ function AppInner() {
     if (route === 'spa-booking-confirmed' && !booking.confirmedRef) setRouteState('spa-booking');
   }, [route, booking.confirmedRef]);
 
+  // Live: a sample spa page goes to the real business being viewed, else to Discover.
+  useEffect(() => {
+    if (!hasApiConfig() || !SAMPLE_SPA_ROUTES.has(route)) return;
+    setRouteState(selectedBusiness ? 'business-profile' : 'discover');
+  }, [route, selectedBusiness]);
+
   useEffect(() => {
     if (route === 'order-placed' && !orderSummary) setRouteState('home');
   }, [route, orderSummary]);
@@ -1312,60 +1871,87 @@ function AppInner() {
   const openDeal = async (from: Route, deal?: ClaimDealSummary | null) => {
     setDealFrom(from);
 
-    let nextDeal = deal ?? null;
-    const offerId = nextDeal && typeof nextDeal.id !== 'undefined' ? String(nextDeal.id) : '';
-    if (offerId) {
-      try {
-        const response = await catalogueService.getPublicOfferDetails(offerId);
-        const payload = response && typeof response === 'object' ? (response as Record<string, unknown>) : null;
-        if (payload) {
-          const nestedItem = Array.isArray(payload.items) && typeof payload.items[0] === 'object' ? (payload.items[0] as Record<string, unknown>) : null;
-          const business = payload.business && typeof payload.business === 'object' ? (payload.business as Record<string, unknown>) : {};
-          nextDeal = {
-            ...nextDeal,
-            title: typeof payload.title === 'string' && payload.title.trim() ? payload.title : nextDeal?.title,
-            business:
-              typeof payload.businessName === 'string' && payload.businessName.trim()
-                ? payload.businessName
-                : typeof business.name === 'string' && business.name.trim()
-                  ? business.name
-                  : nextDeal?.business,
-            location:
-              typeof payload.location === 'string' && payload.location.trim()
-                ? payload.location
-                : typeof business.location === 'string' && business.location.trim()
-                  ? business.location
-                  : nextDeal?.location,
-            price:
-              typeof payload.price === 'number'
-                ? payload.price
-                : typeof nestedItem?.price === 'number'
-                  ? nestedItem.price
-                  : nextDeal?.price,
-            oldPrice:
-              typeof payload.originalPrice === 'number'
-                ? payload.originalPrice
-                : typeof nestedItem?.originalPrice === 'number'
-                  ? nestedItem.originalPrice
-                  : nextDeal?.oldPrice,
-            discountLabel:
-              typeof payload.badge === 'string' && payload.badge.trim() ? payload.badge : nextDeal?.discountLabel,
-            image:
-              typeof payload.image === 'string' && payload.image.trim()
-                ? payload.image
-                : typeof nestedItem?.image === 'string' && nestedItem.image.trim()
-                  ? nestedItem.image
-                  : nextDeal?.image,
-          };
-        }
-      } catch {
-        // Keep the clicked offer visible even when the detail lookup is unavailable.
-      }
-    }
-
-    setSelectedDeal(nextDeal ?? null);
-    setRoute('deal-detail', nextDeal ?? null);
+    // Open the page straight away: its skeleton shows until `useDealDetail` loads the deal.
+    setSelectedDeal(deal ?? null);
+    setRoute('deal-detail', deal ?? null);
+    // Reopening the same deal refreshes its counts in the background.
+    liveDeal.reload();
   };
+
+  const openCustomerNotificationDestination = (destination: CustomerNotificationDestination) => {
+    const target = entryRoute(destination.path, authed, isDesktop);
+    if (target === 'not-found') return;
+
+    if (destination.kind === 'order') setActiveOrderRef(destination.ref);
+    if (destination.kind === 'booking') setActiveBookingRef(destination.ref);
+    if (destination.kind === 'conversation') setActiveConversation(destination.ref);
+    if (destination.path.startsWith(PASS_PATH)) setClaimedFrom('notifications');
+    if (destination.kind === 'deal') setSelectedDeal(null);
+
+    if (window.location.pathname !== destination.path) {
+      window.history.pushState(null, '', destination.path);
+    }
+    setRouteState(target);
+    if (destination.kind === 'deal') liveDeal.reload();
+  };
+
+  /** Opens a live business page by its public code (`uniqueCode`). */
+  const openBusiness = (ref: { code: string; id?: string; name?: string }, from: Route) => {
+    const next: BusinessProfileRef = { slug: ref.code, id: ref.id ?? '', name: ref.name ?? '', venue: 'urban' };
+    setSelectedBusiness(next);
+    setProfileFrom(from);
+    const target = businessPath(next);
+    if (window.location.pathname !== target) window.history.pushState(null, '', target);
+    setRouteState('business-profile');
+  };
+
+  /** Opens a live product/service page for an item of the business with this code. */
+  const openItem = (code: string, itemId: string, from: Route) => {
+    setLiveItem({ code, id: itemId });
+    setDetailFrom(from);
+    const target = productPath(code, itemId);
+    if (window.location.pathname !== target) window.history.pushState(null, '', target);
+    setRouteState('product-detail');
+  };
+
+  /** Opens the business behind a deal: its real code comes from the deal's public details. */
+  const openBusinessForDeal = async (deal: ClaimDealSummary | null | undefined, from: Route) => {
+    const offerId = deal?.id != null ? String(deal.id) : '';
+    if (!offerId) return;
+    try {
+      const response = await catalogueService.getPublicOfferDetails(offerId);
+      const record = response && typeof response === 'object' ? (response as Record<string, unknown>) : {};
+      const payload = (record.data && typeof record.data === 'object' ? record.data : record) as Record<string, unknown>;
+      const business = (payload.business && typeof payload.business === 'object' ? payload.business : {}) as Record<string, unknown>;
+      const code = typeof business.uniqueCode === 'string' && business.uniqueCode ? business.uniqueCode : typeof business.slug === 'string' ? business.slug : '';
+      if (code) openBusiness({ code, id: typeof business.id === 'string' ? business.id : undefined, name: typeof business.name === 'string' ? business.name : undefined }, from);
+    } catch {
+      // The deal page stays open; nothing to navigate to without the business's code.
+    }
+  };
+
+  // Global search (desktop navbar / mobile home) → open the picked deal or business, or the Deals page with the term.
+  const [dealsSearch, setDealsSearch] = useState({ query: '', key: 0 });
+  const searchPickRef = useRef<(pick: SearchPick) => void>(() => undefined);
+  searchPickRef.current = (pick: SearchPick) => {
+    if (pick.kind === 'deal') void openDeal(route, pick.deal);
+    else if (pick.kind === 'business') openBusiness({ code: pick.code, id: pick.id, name: pick.name }, route);
+    else {
+      setDealsSearch((prev) => ({ query: pick.query, key: prev.key + 1 }));
+      setRoute('deals');
+    }
+  };
+  useEffect(() => {
+    const onPick = (event: Event) => {
+      const pick = (event as CustomEvent<SearchPick>).detail;
+      if (pick) searchPickRef.current(pick);
+    };
+    window.addEventListener(SEARCH_PICK_EVENT, onPick);
+    return () => window.removeEventListener(SEARCH_PICK_EVENT, onPick);
+  }, []);
+  useEffect(() => {
+    if (route !== 'deals' && dealsSearch.query) setDealsSearch((prev) => ({ ...prev, query: '' }));
+  }, [route, dealsSearch.query]);
 
   const openDealComments = (from: Route, deal?: ClaimDealSummary | null) => {
     setDealFrom(from);
@@ -1375,7 +1961,7 @@ function AppInner() {
   };
 
   const startClaim = (from: Route) => {
-    if (claimed) {
+    if (dealClaimed) {
       setClaimedFrom(from);
       setRoute('claimed-deal');
       return;
@@ -1383,52 +1969,105 @@ function AppInner() {
     setRoute(authed ? 'claim-confirm' : 'claim-auth');
   };
 
-  const completeClaim = async () => {
+  /** The deal as the page shows it, frozen onto the voucher. */
+  const claimDealFields = () => ({
+    dealTitle: liveDeal.detail?.title ?? selectedDeal?.title,
+    dealBusiness: liveDeal.detail?.businessName ?? selectedDeal?.business,
+    dealImage: liveDeal.detail?.image ?? selectedDeal?.image,
+    dealLocation: liveDeal.detail?.address ?? selectedDeal?.location,
+    dealPrice: liveDeal.detail?.price ?? parsePrice(selectedDeal?.price),
+    dealOldPrice: liveDeal.detail?.oldPrice ?? (parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price)),
+    discountLabel: selectedDeal?.discountLabel,
+    dealPhone: liveDeal.detail?.phone ?? undefined,
+    branchId: liveDeal.detail?.branchId ?? undefined,
+    dealLatitude: liveDeal.detail?.latitude ?? undefined,
+    dealLongitude: liveDeal.detail?.longitude ?? undefined,
+    terms: liveDeal.detail?.terms,
+  });
+
+  // A claim is two API steps: a code is emailed to the holder, then the code is
+  // traded for the voucher. Self claims trade it on the code step; claims for
+  // someone else trade it after their summary.
+  const [claimHolder, setClaimHolder] = useState<ClaimHolder | null>(null);
+  const [claimCode, setClaimCode] = useState('');
+  const [claimError, setClaimError] = useState<string | null>(null);
+  const [claimBusy, setClaimBusy] = useState(false);
+
+  const sendClaimCode = async (holder: ClaimHolder) => {
+    const offerId = selectedDeal?.id ? String(selectedDeal.id) : liveDeal.detail?.id;
+    setClaimHolder(holder);
+    setClaimError(null);
+    setClaimBusy(true);
+    try {
+      if (!offerId) throw new Error('This deal can’t be claimed right now.');
+      await claims.requestClaimCode(offerId, holder);
+    } catch (error) {
+      setClaimError(apiErrorMessage(error, 'We couldn’t send the code. Please try again.'));
+    } finally {
+      setClaimBusy(false);
+    }
+  };
+
+  const holderFromRecipient = (recipient: { name: string; email: string; phone?: string }): ClaimHolder => {
+    const [firstName = '', ...rest] = recipient.name.trim().split(/\s+/);
+    return { firstName, lastName: rest.join(' '), email: recipient.email, phone: recipient.phone ?? '' };
+  };
+
+  const completeClaim = async (code = claimCode): Promise<boolean> => {
+    setClaimBusy(true);
+    setClaimError(null);
     try {
       const record = await claims.recordClaim({
-        offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
+        offerId: selectedDeal?.id ? String(selectedDeal.id) : liveDeal.detail?.id,
         kind: claimRecipient ? 'someone-else' : 'self',
-        dealTitle: selectedDeal?.title ?? 'Featured local deal',
-        dealBusiness: selectedDeal?.business ?? 'Local dining partner',
-        dealImage: selectedDeal?.image,
-        dealLocation: selectedDeal?.location,
-        dealPrice: parsePrice(selectedDeal?.price),
-        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
-        discountLabel: selectedDeal?.discountLabel,
+        ...claimDealFields(),
+        code: hasApiConfig() ? code : undefined,
+        email: claimHolder?.email,
         sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
         recipient: claimRecipient ?? undefined,
       });
       setActiveClaim(record);
       setClaimRecipient(null);
+      setClaimHolder(null);
+      setClaimCode('');
       markClaimed();
+      claimSuccessRef.current?.();
+      claimSuccessRef.current = null;
       setRoute('claim-success');
-    } catch {
-      // Do not continue to the success screen unless the backend confirms the claim.
+      return true;
+    } catch (error) {
+      setClaimError(apiErrorMessage(error, 'We couldn’t confirm this claim. Please try again.'));
+      return false;
+    } finally {
+      setClaimBusy(false);
     }
   };
 
+  /** Back on the code step with the reason shown (a wrong or expired code). */
+  const backToClaimCode = () => setRoute('claim-verify');
+
   const completeGift = async () => {
+    setClaimBusy(true);
+    setClaimError(null);
     try {
       const record = await claims.recordClaim({
         offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
         kind: 'gift',
-        dealTitle: selectedDeal?.title ?? 'Featured local deal',
-        dealBusiness: selectedDeal?.business ?? 'Local dining partner',
-        dealImage: selectedDeal?.image,
-        dealLocation: selectedDeal?.location,
-        dealPrice: parsePrice(selectedDeal?.price),
-        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
-        discountLabel: selectedDeal?.discountLabel,
+        ...claimDealFields(),
         sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
+        note: giftNote,
         recipient: giftRecipient
           ? { name: giftRecipient.name, email: giftRecipient.email, phone: giftRecipient.phone }
           : undefined,
       });
       setActiveClaim(record);
       markClaimed();
+      setClaimDialog(null);
       setRoute('gift-sent');
-    } catch {
-      // Keep the user on the claim flow until the backend confirms the gift claim.
+    } catch (error) {
+      setClaimError(apiErrorMessage(error, 'We couldn’t send this gift. Please try again.'));
+    } finally {
+      setClaimBusy(false);
     }
   };
 
@@ -1458,34 +2097,14 @@ function AppInner() {
   /** BUG-005/BUG-006/BUG-009 — "Claim for myself" only completes after the identity confirmation step. */
   const confirmSelfClaim = async () => {
     setClaimSelfConfirmOpen(false);
-    const onClaimed = claimSuccessRef.current;
-    claimSuccessRef.current = null;
-    onClaimed?.();
-
-    try {
-      const record = await claims.recordClaim({
-        offerId: selectedDeal?.id ? String(selectedDeal.id) : undefined,
-        kind: 'self',
-        dealTitle: selectedDeal?.title ?? 'Featured local deal',
-        dealBusiness: selectedDeal?.business ?? 'Local dining partner',
-        dealImage: selectedDeal?.image,
-        dealLocation: selectedDeal?.location,
-        dealPrice: parsePrice(selectedDeal?.price),
-        dealOldPrice: parsePrice(selectedDeal?.oldPrice) || parsePrice(selectedDeal?.price),
-        discountLabel: selectedDeal?.discountLabel,
-        sender: { name: profile.fullName, email: profile.email, phone: profile.phone },
-      });
-      setActiveClaim(record);
-      if (claimed) {
-        setClaimedFrom(route);
-        setRoute('claimed-deal');
-        return;
-      }
-      markClaimed();
-      setRoute('claim-success');
-    } catch {
-      // Do not transition to success until backend confirms the claim.
+    setClaimRecipient(null);
+    if (!hasApiConfig()) {
+      await completeClaim();
+      return;
     }
+    const holder = { firstName: profile.firstName, lastName: profile.lastName, email: profile.email, phone: profile.phone };
+    setRoute('claim-verify');
+    await sendClaimCode(holder);
   };
 
   const [claimPopupOpen, setClaimPopupOpen] = useState(false);
@@ -1529,19 +2148,22 @@ function AppInner() {
    * BUG-006/BUG-008/BUG-009: desktop previously stopped at a toast. Every claim
    * method now lands on a real outcome screen carrying the recorded claim.
    */
-  const finishDesktopClaim = (kind: 'self' | 'gift' | 'someone-else') => {
-    setClaimDialog(null);
+  const finishDesktopClaim = async (kind: 'self' | 'gift' | 'someone-else') => {
     if (kind === 'gift') {
-      completeGift();
+      // Stays open on failure so the reason shows on the review step.
+      await completeGift();
       return;
     }
-    completeClaim();
+    setClaimDialog(null);
+    if (!(await completeClaim())) setClaimDialog('verify');
   };
 
   useEffect(() => {
     if (route === 'discovering') {
       window.localStorage.setItem(ONBOARDED_KEY, '1');
-      signIn();
+      // Demo mode signs the visitor in here; live users are already signed in
+      // by sign-up (a credential-less live sign-in would only throw).
+      if (!hasApiConfig()) signIn();
     }
   }, [route, signIn]);
 
@@ -1558,11 +2180,8 @@ function AppInner() {
   const accountNav = (target: AccountTarget) => {
     if (target === 'business-onboarding') {
       // An owner switching to the customer view still owns a business.
-      if (isBusinessSession) {
-        setRoute('business-overview');
-        return;
-      }
-      setBusinessOnboardingFrom('account');
+      void openBusinessSetup('account');
+      return;
     }
     setRoute(target);
   };
@@ -1585,8 +2204,7 @@ function AppInner() {
         setRoute('welcome');
         break;
       case 'for-business':
-        setBusinessOnboardingFrom(route);
-        setRoute('business-onboarding');
+        void openBusinessSetup(route);
         break;
       case 'sign-in':
         setSignInFrom('welcome');
@@ -1631,6 +2249,9 @@ function AppInner() {
       case 'cart':
         setRoute('cart');
         break;
+      case 'saved':
+        setRoute('saved');
+        break;
       case 'notifications':
         setRoute('notifications');
         break;
@@ -1644,8 +2265,7 @@ function AppInner() {
         setRoute('deal-detail');
         break;
       case 'for-merchants':
-        setBusinessOnboardingFrom(route);
-        setRoute('business-onboarding');
+        void openBusinessSetup(route);
         break;
     }
   };
@@ -1668,8 +2288,7 @@ function AppInner() {
         setRoute('welcome');
         break;
       case 'for-business':
-        setBusinessOnboardingFrom(route);
-        setRoute('business-onboarding');
+        void openBusinessSetup(route);
         break;
       case 'sign-in':
         setSignInFrom('welcome');
@@ -1712,6 +2331,9 @@ function AppInner() {
       case 'cart':
         setRoute('cart');
         break;
+      case 'saved':
+        setRoute('saved');
+        break;
       case 'notifications':
         setRoute('notifications');
         break;
@@ -1725,8 +2347,7 @@ function AppInner() {
         setRoute('deal-detail');
         break;
       case 'for-merchants':
-        setBusinessOnboardingFrom(route);
-        setRoute('business-onboarding');
+        void openBusinessSetup(route);
         break;
     }
   };
@@ -1735,8 +2356,7 @@ function AppInner() {
   const [boostItem, setBoostItem] = useState<string | null>(null);
   // Live: the boost or promotion the metrics screen shows (null = latest active).
   const [boostMetricsTarget, setBoostMetricsTarget] = useState<{ kind: 'boost' | 'promotion'; id: string } | null>(null);
-  const [hubCustomerName, setHubCustomerName] = useState('Michael James');
-  const [hubCustomerId, setHubCustomerId] = useState<string | null>(null);
+  const [hubCustomerName, setHubCustomerName] = useState(() => (hasApiConfig() ? '' : 'Michael James'));
   // Live deals: the catalogue item a new deal is built on, the deal being
   // viewed or priced, and a one-off catalogue message ("pick an item").
   const [dealSource, setDealSource] = useState<CatalogueItem | null>(null);
@@ -1854,6 +2474,7 @@ function AppInner() {
     const moduleRoute: Record<HubModuleKey, Route> = {
       deals: 'hub-deals',
       catalog: 'hub-catalog',
+      services: 'hub-services',
       customers: 'hub-customers',
       loyalty: 'hub-loyalty',
       locations: 'hub-locations',
@@ -1872,6 +2493,18 @@ function AppInner() {
     }
   };
 
+  /**
+   * Open the first messaging channel the business has switched on — the chat
+   * inbox is only reachable while VEMTAP Chat is on, so SMS-only and
+   * email-only workspaces still land somewhere real.
+   */
+  const openMessages = () => {
+    const flags = featureConfig.features;
+    if (flags.chat) setRoute('business-messages');
+    else if (flags.sms) setRoute('business-messages-sms');
+    else setRoute('business-messages-email');
+  };
+
   const businessTab = (key: BusinessTabKey) => {
     switch (key) {
       case 'overview':
@@ -1881,7 +2514,7 @@ function AppInner() {
         setRoute('business-orders');
         break;
       case 'messages':
-        setRoute('business-messages');
+        openMessages();
         break;
       case 'business':
         setRoute('business-hub');
@@ -1909,6 +2542,8 @@ function AppInner() {
       case 'messages':
       case 'messages-all':
       case 'messages-inquiries':
+        openMessages();
+        break;
       case 'messages-inapp':
         setRoute('business-messages');
         break;
@@ -1920,7 +2555,14 @@ function AppInner() {
         break;
       case 'catalog':
       case 'business-catalog':
+      case 'products':
+      case 'business-products':
         setRoute('hub-catalog');
+        break;
+      case 'services':
+      case 'business-services':
+      case 'hub-services':
+        setRoute('hub-services');
         break;
       case 'deals':
       case 'business-deals':
@@ -2042,7 +2684,39 @@ function AppInner() {
         // Dashboard Help & Support — never the public consumer help centre.
         setRoute('business-support');
         break;
+      case 'manage-features':
+      case 'more-manage-features':
+        // Business Settings › Manage Features — the dashboard tool switchboard.
+        setRoute(FEATURE_MANAGE_ROUTE);
+        break;
     }
+  };
+
+  /** Opens a dashboard tool from a quick action, through the same nav as the sidebar. */
+  const openBusinessFeature = (feature: FeatureId) => {
+    if (feature === 'pos' && !isDesktop) {
+      setRoute('business-pos-menu');
+      return;
+    }
+    businessPortalNav(BUSINESS_FEATURES[feature].navKey);
+  };
+
+  /** Business Settings › Manage Features — validate, persist, then re-check the current page. */
+  const saveManagedFeatures = (selected: FeatureState) => {
+    const result = featureConfig.saveFeatures(selected);
+    if (!result.success) return result;
+    // Defensive: if the page being viewed now belongs to a switched-off tool,
+    // leave it for the dashboard instead of showing a hidden feature.
+    if (findDisabledRoute(route, (id) => Boolean(selected[id]))) setRoute('business-overview');
+    return result;
+  };
+
+  /** One-time setup screen — persists the selection and enters the dashboard. */
+  const completeFeatureSetup = (selected: FeatureState) => {
+    const result = featureConfig.saveFeatures(selected, { completeSetup: true });
+    if (!result.success) return result;
+    setRoute('business-overview');
+    return result;
   };
 
   // The collapsed business rail inside the POS shell navigates via a window
@@ -2068,6 +2742,8 @@ function AppInner() {
       if (key === 'dashboard') setRoute('business-hub');
       else if (key === 'notifications') setRoute('business-notifications');
       else if (key === 'settings') setRoute('business-settings');
+      // "Switch to Customer Dashboard": the route change switches the session to the customer shell.
+      else if (key === 'customer') setRoute('dashboard');
     };
     window.addEventListener(MOBILE_ACCOUNT_NAV_EVENT, handleMobileAccountNav);
     return () => window.removeEventListener(MOBILE_ACCOUNT_NAV_EVENT, handleMobileAccountNav);
@@ -2077,18 +2753,130 @@ function AppInner() {
     setRoute(`analytics-${tab}` as Route);
   };
 
+  const dealClaim = claims.claims.find((claim) => claim.status === 'claimed' && !claim.sentForOther && claim.offerId === liveDeal.detail?.id);
+  const dealClaimed = Boolean(dealClaim);
+  // Opened from the deal page, the voucher screen shows that deal's voucher, not the latest one.
+  // A scanned pass link opens that voucher, or nothing if it isn't this account's.
+  const scannedPassId = route === 'claimed-deal' ? passIdFromPath(window.location.pathname) : null;
+  const scannedClaim = scannedPassId ? claims.claims.find((claim) => claim.id === scannedPassId && !claim.sentForOther) ?? null : undefined;
+  const dashboardClaim = (claimedFrom === 'dashboard' || claimedFrom === 'my-deals') && dashboardClaimRef ? claims.claims.find((claim) => claim.ref === dashboardClaimRef) : undefined;
+  const walletClaim =
+    scannedClaim !== undefined
+      ? scannedClaim
+      : claimedFrom === 'deal-detail'
+        ? dealClaim
+        : claimedFrom === 'claim-success' && activeClaim?.kind === 'self'
+          ? activeClaim
+          : dashboardClaim;
+  // A voucher made for someone else is theirs to open; the claimer follows it under Gifted in My Deals.
+  const viewClaimedDeal = () => {
+    if (activeClaim?.sentForOther) {
+      setMyDealsOpensGifted(true);
+      setRoute('my-deals');
+      return;
+    }
+    setClaimedFrom('claim-success');
+    setRoute('claimed-deal');
+  };
+  // The voucher page with nothing of this account's to open, only claims made for others: those live in My Deals.
+  const onlyClaimsForOthers =
+    route === 'claimed-deal' &&
+    !claims.claimsLoading &&
+    walletClaim === undefined &&
+    !currentVoucher(claims.claims) &&
+    claims.claims.some((claim) => claim.sentForOther);
+  useEffect(() => {
+    if (!onlyClaimsForOthers) return;
+    setMyDealsOpensGifted(true);
+    setRouteState('my-deals');
+  }, [onlyClaimsForOthers]);
+  // The claim steps open straight from the deal page, so fetch them while it's being read.
+  useEffect(() => {
+    if (route !== 'deal-detail') return;
+    const next = isDesktop
+      ? [DesktopDealTermsScreen, DesktopClaimSuccessScreen, DesktopClaimedDealScreen]
+      : [DealTermsScreen, HowToClaimScreen, ClaimSuccessScreen, ClaimedDealScreen];
+    next.forEach((screen) => screen.preload());
+  }, [route, isDesktop]);
+
+  const openDashboardVoucher = (claim: ClaimRecord, target: 'claimed-deal' | 'claimed-contact') => {
+    setDashboardClaimRef(claim.ref);
+    setClaimedFrom('dashboard');
+    setRoute(target);
+  };
+
+  /** Opens the customer's chat with the deal's branch; rejects when it can't be opened. */
+  // Closing the comments or reviews sheet refreshes the page's counts, so a new post shows.
+  useEffect(() => {
+    if (route === 'comments' || route === 'reviews') dealSheetOpen.current = true;
+    else if (dealSheetOpen.current) {
+      dealSheetOpen.current = false;
+      if (route === 'deal-detail') liveDeal.reload();
+    }
+  }, [route, liveDeal.reload]);
+
+  // "New chat" from Messages: the next business opened shows its message box ready,
+  // and the first message sent there opens that conversation.
+  const [chatIntent, setChatIntent] = useState(false);
+  useEffect(() => {
+    if (chatIntent && !['discover', 'business-profile', 'spa-profile', 'storefront'].includes(route)) setChatIntent(false);
+  }, [route, chatIntent]);
+  const startNewChat = () => {
+    setChatIntent(true);
+    setRoute('discover');
+  };
+
+  /** Opens the customer's chat with a branch, or the inbox if it can't be opened. */
+  const openBranchChat = (branchId?: string) => {
+    if (!branchId) {
+      setRoute('messages');
+      return;
+    }
+    messageService
+      .openBranchThread(branchId)
+      .then((threadId) => {
+        setActiveConversation(threadId);
+        setRoute('conversation');
+      })
+      .catch(() => setRoute('messages'));
+  };
+
+  const openDealChat = async () => {
+    const branchId = liveDeal.detail?.branchId;
+    if (!branchId) throw new Error('Chat is not available for this deal');
+    if (dealChatOpening.current) return; // A second click must not race a second new chat into being.
+    dealChatOpening.current = true;
+    try {
+      const threadId = await messageService.openBranchThread(branchId);
+      setActiveConversation(threadId);
+      setRoute('conversation');
+    } finally {
+      dealChatOpening.current = false;
+    }
+  };
+
   const renderDetail = () =>
     isDesktop ? (
       <DesktopDealDetailScreen
         onNav={feedNav}
         onBack={() => setRoute(dealFrom)}
         onClaimComplete={handleClaimComplete}
-        deal={selectedDeal}
+        onOpenBusiness={() => void openBusinessForDeal(selectedDeal, 'deal-detail')}
+        detail={liveDeal.detail}
+        loading={liveDeal.loading}
+        error={liveDeal.error}
+        onRetry={liveDeal.reload}
+        onChat={openDealChat}
+        claimed={dealClaimed}
+        onViewWallet={() => {
+          setClaimedFrom('deal-detail');
+          setRoute('claimed-deal');
+        }}
       />
     ) : (
       <DealDetailScreen
         onBack={() => setRoute(dealFrom)}
-        onHowToClaim={() => setRoute('how-to-claim')}
+        onHowToClaim={() => openHowToClaim('deal-detail')}
         onTerms={() => {
           setTermsFrom('deal-detail');
           setRoute('deal-terms');
@@ -2100,22 +2888,25 @@ function AppInner() {
         onReviews={() => setRoute('reviews')}
         onShare={() => setRoute('share')}
         onClaim={() => startClaim('deal-detail')}
-        onMerchant={() => {
-          setProfileFrom('deal-detail');
-          setRoute('business-profile');
-        }}
-        claimed={claimed}
+        onMerchant={() => void openBusinessForDeal(selectedDeal, 'deal-detail')}
+        claimed={dealClaimed}
         onViewWallet={() => {
           setClaimedFrom('deal-detail');
           setRoute('claimed-deal');
         }}
-        deal={selectedDeal}
+        detail={liveDeal.detail}
+        loading={liveDeal.loading}
+        error={liveDeal.error}
+        onRetry={liveDeal.reload}
+        onChat={openDealChat}
       />
     );
 
-  const cancelActiveClaim = () => {
-    const active = claims.claims.find((entry) => entry.kind !== 'gift');
-    if (active) claims.removeClaim(active.ref);
+  /** Releases the voucher on the API first; rejects, keeping it, when the API refuses. */
+  const cancelActiveClaim = async () => {
+    const active = walletClaim ?? currentVoucher(claims.claims);
+    if (active?.id) await claims.deleteClaim(active.id);
+    else if (active) claims.removeClaim(active.ref);
     setActiveClaim(null);
     resetClaim();
     setRoute('home');
@@ -2128,6 +2919,8 @@ function AppInner() {
     }
 
     setCustomerSignup((current) => ({ ...current, email: nextEmail }));
+    // A customer sign-up replaces any business one left unfinished here.
+    clearBusinessSignup();
 
     if (!hasApiConfig()) {
       return;
@@ -2136,7 +2929,7 @@ function AppInner() {
     await authService.requestCustomerOtp({ email: nextEmail });
   };
 
-  /** Business sign-up (`business-auth`): live, the email gets a 4-digit owner code. */
+  /** Business sign-up (`business-auth`): live, the email gets a 6-digit owner code. */
   const requestOwnerSignupOtp = async (email: string) => {
     const nextEmail = email.trim().toLowerCase();
     if (!nextEmail) {
@@ -2145,11 +2938,30 @@ function AppInner() {
 
     setCustomerSignup((current) => ({ ...current, email: nextEmail }));
 
-    if (!hasApiConfig()) {
+    if (hasApiConfig()) await ownerAuthService.requestOtp(nextEmail);
+    // Email screen done: a return visit opens the code screen for this email.
+    saveBusinessSignup({ stage: 'verify-email', email: nextEmail });
+  };
+
+  /**
+   * Business sign-up's email step. An email that already has a Vemtap account
+   * signs in instead (prefilled); signing in from here continues to business setup.
+   */
+  const submitBusinessSignupEmail = async (email: string) => {
+    try {
+      await requestOwnerSignupOtp(email);
+    } catch (error) {
+      const exists =
+        (error instanceof ApiError && error.status === 409) ||
+        (error instanceof Error && /already exists/i.test(error.message) && !/phone/i.test(error.message));
+      if (!hasApiConfig() || !exists) throw error;
+      setBusinessSignInEmail(email.trim().toLowerCase());
+      setSignInFrom('business-auth');
+      setRoute('sign-in');
       return;
     }
-
-    await ownerAuthService.requestOtp(nextEmail);
+    setAuthIntent('business');
+    setRoute('verify-email');
   };
 
   /**
@@ -2158,12 +2970,15 @@ function AppInner() {
    */
   const verifyOwnerSignupCode = async (code: string) => {
     if (!hasApiConfig()) {
+      clearBusinessSignup();
       enterBusinessProfile();
       return;
     }
     const nextCode = code.trim();
     await ownerAuthService.verifyOtp(customerSignup.email, nextCode);
     setCustomerSignup((current) => ({ ...current, code: nextCode }));
+    // Code screen done: a return visit opens the details screen.
+    saveBusinessSignup({ stage: 'profile-setup', email: customerSignup.email });
     setRoute('profile-setup');
   };
 
@@ -2178,6 +2993,7 @@ function AppInner() {
     }
 
     const email = customerSignup.email;
+    const referralCode = getProvisionalReferralCode() || undefined;
     try {
       adoptSession(
         await ownerAuthService.register({
@@ -2186,18 +3002,48 @@ function AppInner() {
           ...(firstName ? { firstName } : {}),
           ...(lastName ? { lastName } : {}),
           ...(phone ? { businessNumber: `+${phone}` } : {}),
-          referralCode: getProvisionalReferralCode() || undefined,
+          referralCode,
         }),
       );
     } catch (error) {
       if (error instanceof Error && error.message.includes(OTP_GATE_MESSAGE)) {
+        // The code step has to be redone, so a return visit reopens it.
+        saveBusinessSignup({ stage: 'verify-email' });
         throw new Error('Your code has expired. Go back, request a new one and try again.');
       }
       throw error;
     }
 
+    // The code was consumed with the sign-up above.
+    if (referralCode) clearProvisionalReferralCode();
+
+    // The account exists now: setup progress takes over (saved on the account).
+    clearBusinessSignup();
     profile.update({ firstName: firstName || 'User', lastName, email, phone: phone ? `+${phone}` : '' });
     enterBusinessProfile();
+  };
+
+  /**
+   * Plain wording for a rejected sign-up code. The API keeps only the newest
+   * code per email, so a code from an earlier email reads as "invalid".
+   */
+  const signupCodeError = (error: unknown, stage: 'code' | 'profile') => {
+    const message = error instanceof Error ? error.message.toLowerCase() : '';
+    if (message.includes('expired')) {
+      return new Error(
+        stage === 'code'
+          ? 'That code has expired — tap Resend for a new one.'
+          : 'Your verification code expired. Go back, request a new code and try again.',
+      );
+    }
+    if (message.includes('invalid otp') || message.includes('otp not found') || message.includes('session not found')) {
+      return new Error(
+        stage === 'code'
+          ? 'That code isn’t right — use the code in the most recent email, or tap Resend.'
+          : 'Your verification code is no longer valid. Go back, request a new code and try again.',
+      );
+    }
+    return error instanceof Error ? error : new Error('We could not verify your code. Please try again.');
   };
 
   const handleCustomerSignupVerification = async (code: string) => {
@@ -2206,10 +3052,20 @@ function AppInner() {
       throw new Error('Enter the 6-digit verification code to continue.');
     }
 
+    // Live: check the code now (like the owner path), so a wrong or superseded
+    // code is caught here instead of after the whole profile is filled in.
+    if (hasApiConfig()) {
+      try {
+        await ownerAuthService.verifyOtp(customerSignup.email, nextCode);
+      } catch (error) {
+        throw signupCodeError(error, 'code');
+      }
+    }
+
     setCustomerSignup((current) => ({ ...current, code: nextCode }));
   };
 
-  const completeCustomerSignup = async (details: { firstName: string; lastName: string; phone: string; pin: string }) => {
+  const completeCustomerSignup = async (details: { firstName: string; lastName: string; phone: string; pin: string; photo?: File }) => {
     const email = customerSignup.email.trim().toLowerCase();
     const code = customerSignup.code.replace(/\D/g, '').slice(0, 6);
     const firstName = details.firstName.trim();
@@ -2232,10 +3088,26 @@ function AppInner() {
       ...(firstName ? { firstName } : {}),
       ...(lastName ? { lastName } : {}),
       ...(phone ? { phone: `+${phone}` } : {}),
+      referralCode: getProvisionalReferralCode() || undefined,
     };
 
     if (hasApiConfig()) {
-      await authService.verifyCustomerPin(payload);
+      try {
+        await authService.verifyCustomerPin(payload);
+      } catch (error) {
+        throw signupCodeError(error, 'profile');
+      }
+      // The code was recorded with the sign-up above.
+      clearProvisionalReferralCode();
+      // The account exists by now, so a failed upload must not undo the sign-up:
+      // the customer can add the photo from Edit Profile instead.
+      if (details.photo) {
+        try {
+          await accountService.updateProfile({ avatar: await uploadImage(details.photo) });
+        } catch (error) {
+          console.warn('Unable to save the sign-up profile photo:', error);
+        }
+      }
     }
 
     profile.update({
@@ -2269,9 +3141,278 @@ function AppInner() {
     // Live, the owner-account step on setup signs the merchant in.
     if (!hasApiConfig()) void signIn();
     setAuthIntent('customer');
-    resumeAtBusinessProfile();
-    setRoute('business-onboarding');
+    const open = () => {
+      resumeAtBusinessProfile();
+      setRoute('business-onboarding');
+    };
+    // Live: pick up a run saved on the account (signed out, or another device).
+    if (hasApiConfig()) void hydrateBusinessSetupFromServer().then(open);
+    else open();
   };
+
+  /**
+   * A signed-in owner returns to the shell they last used. Unfinished setup, or
+   * no business yet, is the customer shell; setup reopens from its button.
+   * Staff and admins only have the business side.
+   */
+  const resumeReturnPath = () => {
+    const path = window.sessionStorage.getItem(RETURN_PATH_KEY);
+    window.sessionStorage.removeItem(RETURN_PATH_KEY);
+    if (!path) return false;
+    setRoute(entryRoute(path, true, isDesktop));
+    return true;
+  };
+
+  const routeSignedInOwner = async (user?: SessionUser | null, replaceTo?: (target: Route) => void) => {
+    if (!replaceTo && resumeReturnPath()) return;
+    const go = replaceTo ?? setRoute;
+    const saved = await hydrateBusinessSetupFromServer();
+    const customerShell =
+      user?.lastActiveShell === 'customer' ||
+      (user?.role === 'Owner' && (hasUnfinishedBusinessSetup(saved) || !user.businessId));
+    if (!customerShell) {
+      go('business-overview');
+      return;
+    }
+    setAuthIntent('customer');
+    go('home');
+  };
+
+  /**
+   * Signed in from a business entry (business sign-up's "Sign in", or its
+   * existing-account redirect): continue to business, not the customer feed.
+   * A customer gets the account choice (resuming any run saved on the account);
+   * an owner resumes setup, or opens the dashboard once it is finished.
+   */
+  const continueBusinessAfterSignIn = async (user?: SessionUser | null) => {
+    setBusinessSignInEmail(null);
+    setSignInFrom('welcome');
+    if (!hasApiConfig()) {
+      enterBusinessProfile();
+      return;
+    }
+    setBusinessOnboardingFrom('home');
+    const openChoice = (resumeIntro: boolean) => {
+      setAuthIntent('customer');
+      setBusinessSetupSkipIntro(resumeIntro);
+      setBusinessChoiceOpen(true);
+      setRoute('business-onboarding');
+    };
+    const businessRole = user?.businessRole ?? (isBusinessRole(user?.role) ? (user?.role as 'Owner' | 'Manager' | 'Staff') : null);
+    setShellHold(true);
+    try {
+      if (!businessRole) {
+        await hydrateBusinessSetupFromServer();
+        openChoice(false);
+        return;
+      }
+      const owner = isBusinessRole(user?.role) ? user : await switchShell(businessRole);
+      const saved = await hydrateBusinessSetupFromServer();
+      if (hasUnfinishedBusinessSetup(saved)) {
+        setAuthIntent('customer');
+        setBusinessSetupSkipIntro(true);
+        setRoute('business-onboarding');
+      } else if (owner?.role === 'Owner' && !owner.businessId) {
+        openChoice(false);
+      } else {
+        setRoute('business-overview');
+      }
+    } catch (error) {
+      console.error('Could not continue to business setup:', error);
+      setRoute('home');
+    } finally {
+      setShellHold(false);
+    }
+  };
+
+  /**
+   * Any sign-in: an account that left business setup half way reopens it on the
+   * page after the last one completed, instead of the customer feed. Business
+   * sign-up keeps the account a customer until its first Business Profile save,
+   * so a customer with a saved run resumes too — without the account choice,
+   * since signing in has just confirmed this identity (and its PIN, kept in
+   * memory for the upgrade on the next save). Resolves true when it routed.
+   */
+  const resumeUnfinishedSetupAfterSignIn = async (user?: SessionUser | null, pin?: string) => {
+    if (!hasApiConfig() || !user) return false;
+    const business = Boolean(user.businessRole) || isBusinessRole(user.role);
+    const customer = user.role === 'Customer' || user.role === 'USER';
+    // Admins and agents have no business setup to resume.
+    if (!business && !customer) return false;
+    const saved = await hydrateBusinessSetupFromServer();
+    if (!hasUnfinishedBusinessSetup(saved)) return false;
+    if (business) {
+      await continueBusinessAfterSignIn(user);
+      return true;
+    }
+    rememberUpgradePin(pin ?? null);
+    setBusinessOnboardingFrom('home');
+    setAuthIntent('customer');
+    resumeAtBusinessProfile();
+    // The onboarding access check would reopen the account choice; it was just answered.
+    setAccessChecked('business-onboarding');
+    setRoute('business-onboarding');
+    return true;
+  };
+
+  // The session has loaded: a customer (or an owner on a customer token) stays on
+  // home; a business token goes back through the same choice as signing in.
+  useEffect(() => {
+    if (!returningToShell || !(sessionUser || sessionQuery.isError)) return;
+    if (!isBusinessRole(sessionUser?.role)) {
+      setReturningToShell(false);
+      return;
+    }
+    void routeSignedInOwner(sessionUser, setRouteState).finally(() => setReturningToShell(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [returningToShell, sessionUser, sessionQuery.isError]);
+
+  /**
+   * "Set up your business on VEMTAP": the way back into unfinished setup, on the
+   * page after the last one completed. Finished owners get their dashboard.
+   */
+  const openBusinessSetup = async (from: Route = route) => {
+    setBusinessOnboardingFrom(from);
+    if (!isBusinessSession) {
+      // A signed-in customer with no business first chooses whose identity the
+      // business uses ("Continue with this account" / "Use a new account").
+      // Signed-out visitors and demo mode still start at the business intro.
+      if (hasApiConfig() && authed && sessionUser && !sessionUser.hasBusiness) {
+        await hydrateBusinessSetupFromServer();
+        setBusinessChoiceOpen(true);
+      }
+      setRoute('business-onboarding');
+      return;
+    }
+    setShellHold(true);
+    try {
+      const owner = sessionUser?.role === 'Customer' ? await switchShell(sessionUser.businessRole ?? 'Owner') : sessionUser;
+      const saved = await hydrateBusinessSetupFromServer();
+      if (hasUnfinishedBusinessSetup(saved)) {
+        setAuthIntent('customer');
+        setBusinessSetupSkipIntro(true);
+        setRoute('business-onboarding');
+      } else if (owner?.role === 'Owner' && !owner.businessId) {
+        // An owner account left with no business (an older setup that upgraded
+        // the account early) and nothing saved is treated like a customer:
+        // the account choice comes first, then setup from the beginning.
+        setAuthIntent('customer');
+        setBusinessSetupSkipIntro(false);
+        setBusinessChoiceOpen(true);
+        setRoute('business-onboarding');
+      } else {
+        setRoute('business-overview');
+      }
+    } catch (error) {
+      console.error('Could not open business setup:', error);
+    } finally {
+      setShellHold(false);
+    }
+  };
+
+  // Sign-up location (live): the browser's position or a typed area becomes
+  // the customer's saved location; failures reject with a message the screen shows.
+  const savedLocation = useLocation();
+  const savePlace = (place: PickedPlace, radius = savedLocation.radius) =>
+    savedLocation.setLocation(place.district, radius, { city: place.city, lat: place.lat, lng: place.lng });
+  const saveCurrentPlace = async () => savePlace(await getCurrentPlace());
+  const saveTypedPlace = async (area: string) => {
+    const place = await findPlace(area);
+    if (!place) throw new Error(AREA_NOT_FOUND);
+    savePlace(place);
+  };
+  const confirmPlace = hasApiConfig()
+    ? {
+        district: savedLocation.district,
+        city: savedLocation.city === 'Your city' ? undefined : savedLocation.city,
+      }
+    : {};
+
+  /** Live "Continue with Google": leaves for Google, or shows why it can't. */
+  const continueWithGoogle = (intent: GoogleIntent, from: Route) => {
+    setGoogleError(null);
+    try {
+      startGoogleSignIn(intent, from);
+    } catch (error) {
+      setGoogleError({ route: from, message: apiErrorMessage(error) });
+    }
+  };
+
+  // Back from Google: sign in through the API, then continue the journey the
+  // visitor started (new accounts confirm their phone first).
+  const googleHandled = useRef(false);
+  useEffect(() => {
+    const result = GOOGLE_REDIRECT;
+    if (!result || googleHandled.current) return;
+    googleHandled.current = true;
+    const from = (result.pending.from in ROUTE_PATH ? result.pending.from : 'welcome') as Route;
+    const fail = (message: string) => setGoogleError({ route: from, message });
+    if (result.error) {
+      // Closing Google's page is a cancel, not an error.
+      if (result.error !== 'access_denied') fail('Google sign-in didn’t complete. Please try again.');
+      setShellHold(false);
+      return;
+    }
+    const { intent } = result.pending;
+    void (async () => {
+      try {
+        const response = (await authService.googleSignIn({
+          token: result.idToken,
+          ...(intent === 'business' ? { role: 'OWNER' } : intent === 'customer' ? { role: 'CUSTOMER' } : {}),
+        })) as Parameters<typeof adoptSession>[0] & { isNewUser?: boolean; requiresTwoFactor?: boolean };
+        if (response.requiresTwoFactor) {
+          fail('This account uses two-factor sign-in. Sign in with your email and PIN instead.');
+          return;
+        }
+        const user = adoptSession(response);
+        const isNew = Boolean(response.isNewUser);
+        // A new account can still claim the code captured from a referral
+        // link before Google redirected away — best effort, so a rejected or
+        // unknown code never blocks the sign-in flow.
+        const pendingReferral = getProvisionalReferralCode();
+        if (isNew && pendingReferral) {
+          void referralsService
+            .claim(pendingReferral)
+            .then(() => clearProvisionalReferralCode())
+            .catch(() => {
+              // Leave the stored code; the confirm screen can still take one.
+            });
+        }
+        const business = isBusinessRole(user?.role);
+        if (intent === 'business') {
+          if (isNew) {
+            setAuthIntent('business');
+            setRoute('google-confirm');
+            return;
+          }
+          // A returning account continues to business: customers get the account
+          // choice, owners resume setup or open their dashboard.
+          await continueBusinessAfterSignIn(user);
+          return;
+        }
+        // Setup left half way (customer or owner) reopens where it stopped.
+        if (!isNew && (await resumeUnfinishedSetupAfterSignIn(user))) return;
+        if (business && user?.businessId && !isNew) {
+          await routeSignedInOwner(user);
+          return;
+        }
+        if (business) {
+          await routeSignedInOwner(user);
+          return;
+        }
+        setAuthIntent('customer');
+        // New accounts confirm their phone; returning customers go straight home.
+        if (isNew) setRoute('google-confirm');
+        else if (!resumeReturnPath()) setRoute('home');
+      } catch (error) {
+        fail(apiErrorMessage(error, 'Google sign-in failed. Please try again.'));
+      } finally {
+        setShellHold(false);
+      }
+    })();
+    // Runs once for the page Google returned to.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const renderClaimed = () =>
     isDesktop ? (
@@ -2281,6 +3422,7 @@ function AppInner() {
         onContact={() => setRoute('claimed-contact')}
         onReview={() => setRoute('support')}
         onCancelClaim={cancelActiveClaim}
+        claim={walletClaim}
       />
     ) : (
       <ClaimedDealScreen
@@ -2288,13 +3430,27 @@ function AppInner() {
         onContact={() => setRoute('claimed-contact')}
         onReview={() => setRoute('support')}
         onCancelClaim={cancelActiveClaim}
+        claim={walletClaim}
       />
     );
+
+  /** The code step: self claims finish here, others go on to their summary. */
+  const onClaimCode = (code: string) => {
+    if (claimRecipient) {
+      setClaimCode(code);
+      setClaimError(null);
+      setRoute('claim-summary');
+      return;
+    }
+    void completeClaim(code);
+  };
 
   const renderRoute = () => {
     // Sign In opened from the business sign-up modal: authenticating resumes
     // business setup instead of dropping the merchant into the customer feed.
     const resumeBusinessSetup = signInFrom === 'business-auth';
+    // Never paint a sample spa page in live mode while the redirect above runs.
+    if (hasApiConfig() && SAMPLE_SPA_ROUTES.has(route)) return null;
     switch (route) {
     case 'welcome':
       if (isDesktop) return <DesktopWelcomeScreen onNav={nav('start-vemtap')} />;
@@ -2354,10 +3510,15 @@ function AppInner() {
               setRoute('verify-email');
             }}
             onGoogle={() => {
+              if (hasApiConfig()) {
+                continueWithGoogle('customer', 'auth-code');
+                return;
+              }
               signIn();
               setAuthIntent('customer');
               setRoute('google-confirm');
             }}
+            googleError={googleError?.route === 'auth-code' ? googleError : null}
             onSignIn={() => {
               setSignInFrom('auth-code');
               setRoute('sign-in');
@@ -2378,10 +3539,15 @@ function AppInner() {
             setRoute('verify-email');
           }}
           onGoogle={() => {
+            if (hasApiConfig()) {
+            continueWithGoogle('customer', 'auth-code');
+            return;
+            }
             signIn();
             setAuthIntent('customer');
             setRoute('google-confirm');
           }}
+          googleError={googleError?.route === 'auth-code' ? googleError : null}
           // "Already have an account? Sign In" reuses the shared sign-in
           // screen instead of continuing into verification (desktop parity).
           onSignIn={() => {
@@ -2412,16 +3578,17 @@ function AppInner() {
               setAuthIntent('business');
               setRoute('verify-email');
             }}
-            onSubmitEmail={async (email) => {
-              await requestOwnerSignupOtp(email);
-              setAuthIntent('business');
-              setRoute('verify-email');
-            }}
+            onSubmitEmail={submitBusinessSignupEmail}
             onGoogle={() => {
+              if (hasApiConfig()) {
+                continueWithGoogle('business', 'business-auth');
+                return;
+              }
               signIn();
               setAuthIntent('business');
               setRoute('google-confirm');
             }}
+            googleError={googleError?.route === 'business-auth' ? googleError : null}
             onSignIn={() => {
               setSignInFrom('business-auth');
               setRoute('sign-in');
@@ -2440,16 +3607,17 @@ function AppInner() {
             setAuthIntent('business');
             setRoute('verify-email');
           }}
-          onSubmitEmail={async (email) => {
-            await requestOwnerSignupOtp(email);
-            setAuthIntent('business');
-            setRoute('verify-email');
-          }}
+          onSubmitEmail={submitBusinessSignupEmail}
           onGoogle={() => {
+            if (hasApiConfig()) {
+            continueWithGoogle('business', 'business-auth');
+            return;
+            }
             signIn();
             setAuthIntent('business');
             setRoute('google-confirm');
           }}
+          googleError={googleError?.route === 'business-auth' ? googleError : null}
           onSignIn={() => {
             setSignInFrom('business-auth');
             setRoute('sign-in');
@@ -2473,12 +3641,23 @@ function AppInner() {
             onSignIn={async ({ identifier, password }) => {
               const user = await signIn({ identifier, password });
               if (resumeBusinessSetup) {
-                enterBusinessProfile();
+                await continueBusinessAfterSignIn(user);
                 return;
               }
-              setRoute(isBusinessRole(user?.role) ? 'business-overview' : 'discovering');
+              // Setup left half way (customer or owner) reopens where it stopped.
+              if (await resumeUnfinishedSetupAfterSignIn(user, password)) return;
+              if (isBusinessRole(user?.role)) {
+                await routeSignedInOwner(user);
+                return;
+              }
+              // A returning customer goes straight home; onboarding is for sign-up.
+              if (!resumeReturnPath()) setRoute(hasApiConfig() ? 'home' : 'discovering');
             }}
             onGoogleSignIn={async () => {
+              if (hasApiConfig()) {
+                continueWithGoogle(resumeBusinessSetup ? 'business' : 'sign-in', 'sign-in');
+                return;
+              }
               if (!hasApiConfig()) {
                 await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
               }
@@ -2498,18 +3677,14 @@ function AppInner() {
               setBusinessOnboardingFrom('sign-in');
               setRoute('business-onboarding');
             }}
+            initialIdentifier={resumeBusinessSetup ? (businessSignInEmail ?? undefined) : undefined}
+            notice={
+              resumeBusinessSetup && businessSignInEmail
+                ? 'You already have a Vemtap account. Sign in to continue setting up your business.'
+                : null
+            }
             onForgotPin={() => setRoute('forgot-pin')}
-            onCustomerSignIn={async () => {
-              setRoute('dashboard');
-            }}
-            onBusinessSignIn={async () => {
-              if (isBusinessSession) {
-                setRoute('business-overview');
-                return;
-              }
-              setBusinessOnboardingFrom('sign-in');
-              setRoute('business-onboarding');
-            }}
+            googleError={googleError?.route === 'sign-in' ? googleError : null}
           />
         );
       return (
@@ -2518,12 +3693,23 @@ function AppInner() {
           onSignIn={async ({ identifier, password }) => {
             const user = await signIn({ identifier, password });
             if (resumeBusinessSetup) {
-              enterBusinessProfile();
+              await continueBusinessAfterSignIn(user);
               return;
             }
-            setRoute(isBusinessRole(user?.role) ? 'business-overview' : 'discovering');
+            // Setup left half way (customer or owner) reopens where it stopped.
+            if (await resumeUnfinishedSetupAfterSignIn(user, password)) return;
+            if (isBusinessRole(user?.role)) {
+              await routeSignedInOwner(user);
+              return;
+            }
+            // A returning customer goes straight home; onboarding is for sign-up.
+            if (!resumeReturnPath()) setRoute(hasApiConfig() ? 'home' : 'discovering');
           }}
           onGoogleSignIn={async () => {
+            if (hasApiConfig()) {
+            continueWithGoogle(resumeBusinessSetup ? 'business' : 'sign-in', 'sign-in');
+            return;
+            }
             if (!hasApiConfig()) {
               await signIn({ identifier: 'demo@vemtap.com', password: 'demo-password' });
             }
@@ -2543,18 +3729,14 @@ function AppInner() {
             setBusinessOnboardingFrom('sign-in');
             setRoute('business-onboarding');
           }}
-          onForgotPin={() => setRoute('forgot-pin')}
-          onCustomerSignIn={async () => {
-            setRoute('dashboard');
-          }}
-          onBusinessSignIn={async () => {
-            if (isBusinessSession) {
-              setRoute('business-overview');
-              return;
+          initialIdentifier={resumeBusinessSetup ? (businessSignInEmail ?? undefined) : undefined}
+            notice={
+              resumeBusinessSetup && businessSignInEmail
+                ? 'You already have a Vemtap account. Sign in to continue setting up your business.'
+                : null
             }
-            setBusinessOnboardingFrom('sign-in');
-            setRoute('business-onboarding');
-          }}
+            onForgotPin={() => setRoute('forgot-pin')}
+            googleError={googleError?.route === 'sign-in' ? googleError : null}
         />
       );
 
@@ -2564,8 +3746,6 @@ function AppInner() {
       // keeps going through the consumer profile setup.
       const businessSignup = authIntent === 'business';
       const authEntry: Route = businessSignup ? 'business-auth' : 'auth-code';
-      // Live owner codes are 4 digits; customer and demo codes stay at 6.
-      const ownerCodeLength = businessSignup && hasApiConfig() ? 4 : undefined;
       if (isDesktop)
         return (
           <DesktopVerifyEmailScreen
@@ -2579,13 +3759,12 @@ function AppInner() {
               setRoute('profile-setup');
             }}
             onEditEmail={() => setRoute(authEntry)}
-            onBusinessSetup={() => setRoute('business-onboarding')}
+            onBusinessSetup={() => void openBusinessSetup()}
             email={customerSignup.email}
             onResend={async () => {
               if (businessSignup) await requestOwnerSignupOtp(customerSignup.email);
               else await requestCustomerSignupOtp(customerSignup.email);
             }}
-            codeLength={ownerCodeLength}
           />
         );
       return (
@@ -2600,7 +3779,7 @@ function AppInner() {
             setRoute('profile-setup');
           }}
           onEditEmail={() => setRoute(authEntry)}
-          onBusinessSetup={() => setRoute('business-onboarding')}
+          onBusinessSetup={() => void openBusinessSetup()}
           email={businessSignup && !hasApiConfig() ? undefined : customerSignup.email}
           onResend={
             businessSignup
@@ -2613,18 +3792,27 @@ function AppInner() {
                   await requestCustomerSignupOtp(customerSignup.email);
                 }
           }
-          codeLength={ownerCodeLength}
         />
       );
     }
 
-    case 'profile-setup':
+    case 'profile-setup': {
+      // Business sign-up keeps the name and phone typed here across visits.
+      const businessSignup = authIntent === 'business';
+      const savedSignup = businessSignup ? getBusinessSignup() : null;
+      const signupDraft = savedSignup
+        ? { firstName: savedSignup.firstName ?? '', lastName: savedSignup.lastName ?? '', phone: savedSignup.phone ?? '' }
+        : undefined;
+      const saveSignupDraft = businessSignup ? (draft: ProfileSetupDraft) => saveBusinessSignup(draft) : undefined;
       if (isDesktop)
         return (
           <DesktopProfileSetupScreen
             onBack={() => setRoute('verify-email')}
             email={customerSignup.email}
             code={customerSignup.code}
+            initialValues={signupDraft}
+            onDraftChange={saveSignupDraft}
+            photoEnabled={!businessSignup}
             onComplete={async (details) => {
               if (authIntent === 'business') {
                 await completeOwnerSignup(details);
@@ -2633,7 +3821,7 @@ function AppInner() {
               await completeCustomerSignup(details);
               setRoute('location-permission');
             }}
-            onBusinessSetup={() => setRoute('business-onboarding')}
+            onBusinessSetup={authIntent === 'business' ? undefined : () => void openBusinessSetup()}
           />
         );
       return (
@@ -2641,6 +3829,9 @@ function AppInner() {
           onBack={() => setRoute('verify-email')}
           email={customerSignup.email}
           code={customerSignup.code}
+          initialValues={signupDraft}
+          onDraftChange={saveSignupDraft}
+          photoEnabled={!businessSignup}
           onComplete={async (details) => {
             if (authIntent === 'business') {
               await completeOwnerSignup(details);
@@ -2649,16 +3840,18 @@ function AppInner() {
             await completeCustomerSignup(details);
             setRoute('location-permission');
           }}
-          onBusinessSetup={authIntent === 'business' ? undefined : () => setRoute('business-onboarding')}
+          onBusinessSetup={authIntent === 'business' ? undefined : () => void openBusinessSetup()}
         />
       );
+    }
 
     case 'location-permission':
       if (isDesktop)
         return (
           <DesktopLocationPermissionScreen
             onNav={nav('confirm-location')}
-            onUseLocation={() => {
+            onUseLocation={async () => {
+              if (hasApiConfig()) await saveCurrentPlace();
               setConfirmFrom('location-permission');
               setRoute('confirm-location');
             }}
@@ -2668,7 +3861,8 @@ function AppInner() {
       return (
         <LocationPermissionScreen
           onBack={() => setRoute('profile-setup')}
-          onUseLocation={() => {
+          onUseLocation={async () => {
+            if (hasApiConfig()) await saveCurrentPlace();
             setConfirmFrom('location-permission');
             setRoute('confirm-location');
           }}
@@ -2682,8 +3876,14 @@ function AppInner() {
           <DesktopManualLocationScreen
             onNav={nav('confirm-location')}
             onBack={() => setRoute('location-permission')}
-            onContinue={() => {
+            onContinue={async (area) => {
+              if (hasApiConfig()) await saveTypedPlace(area);
               setConfirmFrom('manual-location');
+              setRoute('confirm-location');
+            }}
+            onUseCurrentLocation={async () => {
+              await saveCurrentPlace();
+              setConfirmFrom('location-permission');
               setRoute('confirm-location');
             }}
           />
@@ -2691,11 +3891,17 @@ function AppInner() {
       return (
         <ManualLocationScreen
           onBack={() => setRoute('location-permission')}
-          onContinue={() => {
+          onContinue={async (area) => {
+            if (hasApiConfig()) await saveTypedPlace(area);
             setConfirmFrom('manual-location');
             setRoute('confirm-location');
           }}
-          onBusinessSetup={() => setRoute('business-onboarding')}
+          onUseCurrentLocation={async () => {
+            await saveCurrentPlace();
+            setConfirmFrom('location-permission');
+            setRoute('confirm-location');
+          }}
+          onBusinessSetup={() => void openBusinessSetup()}
         />
       );
 
@@ -2706,8 +3912,16 @@ function AppInner() {
             onNav={nav('discovering')}
             onBack={() => setRoute(confirmFrom)}
             onChangeLocation={() => setRoute('manual-location')}
-            onContinue={() => setRoute('discovering')}
-            onBusinessSetup={() => setRoute('business-onboarding')}
+            onContinue={(radius) => {
+              // Keep the radius picked here with the saved place.
+              if (hasApiConfig() && radius !== savedLocation.radius) {
+                savePlace({ district: savedLocation.district, city: confirmPlace.city, lat: savedLocation.lat, lng: savedLocation.lng }, radius);
+              }
+              setRoute('discovering');
+            }}
+            onBusinessSetup={() => void openBusinessSetup()}
+            {...confirmPlace}
+            initialRadius={savedLocation.radius}
           />
         );
       return (
@@ -2715,7 +3929,9 @@ function AppInner() {
           onBack={() => setRoute(confirmFrom)}
           onChangeLocation={() => setRoute('manual-location')}
           onContinue={() => setRoute('discovering')}
-          onBusinessSetup={() => setRoute('business-onboarding')}
+          onBusinessSetup={() => void openBusinessSetup()}
+          {...confirmPlace}
+          radius={savedLocation.radius}
         />
       );
 
@@ -2738,6 +3954,12 @@ function AppInner() {
       const enterDashboard = () => {
         clearProvisionalReferralCode();
         setWelcomeBusiness(null);
+        // A business that has never picked its tools does that once, right
+        // before its first dashboard entry — returning owners skip straight in.
+        if (welcomeAudience === 'business' && !featureConfig.setupComplete) {
+          setRoute(FEATURE_SETUP_ROUTE as Route);
+          return;
+        }
         setRoute('home');
       };
       if (isDesktop)
@@ -2760,6 +3982,7 @@ function AppInner() {
     case 'home':
       if (isDesktop)
         return (
+          <>
           <DesktopHomeScreen
             onNav={feedNav}
             onOpenFilters={() => openFeedRoute('filters', 'home')}
@@ -2767,23 +3990,51 @@ function AppInner() {
             onOpenDeals={() => setRoute('deals')}
             onOpenDeal={(deal) => openDeal('home', deal ?? null)}
             onClaim={openClaimPopup}
+            onOpenComments={(deal) => openDealComments('home', deal)}
+            onOpenBusiness={(business) => openBusiness(business, 'home')}
           />
+          {commentsModalOnly ? (
+            <CommentsDrawer
+              open
+              deal={selectedDeal}
+              onClose={() => {
+                setCommentsModalOnly(false);
+                setRoute('home');
+              }}
+              onClaim={() => {
+                setCommentsModalOnly(false);
+                setRoute('deal-detail');
+                openClaimPopup();
+              }}
+            />
+          ) : null}
+          </>
         );
       return (
+        <>
         <HomeScreen
           onTab={(tab) => setRoute(tab)}
           onOpenFilters={() => openFeedRoute('filters', 'home')}
           onOpenFeatured={() => openFeedRoute('featured-deals', 'home')}
           onOpenDeals={() => setRoute('deals')}
           onOpenDeal={(deal) => openDeal('home', deal ?? null)}
-          onOpenBusiness={() => {
-            setProfileFrom('home');
-            setRoute('business-profile');
-          }}
+          onOpenBusiness={(business) => openBusiness(business, 'home')}
           onOpenNotifications={() => setRoute('notifications')}
-          onEnroll={() => setRoute('business-onboarding')}
+          onEnroll={() => void openBusinessSetup()}
           onAccount={() => setRoute('account')}
+          onOpenComments={(deal) => openDealComments('home', deal)}
         />
+        {commentsModalOnly ? (
+          <CommentsSheet
+            open
+            deal={selectedDeal}
+            onClose={() => {
+              setCommentsModalOnly(false);
+              setRoute('home');
+            }}
+          />
+        ) : null}
+        </>
       );
 
     case 'deals':
@@ -2791,12 +4042,15 @@ function AppInner() {
         return (
           <>
             <DesktopDealsScreen
+              key={`deals-${dealsSearch.key}`}
+              initialSearch={dealsSearch.query}
               onNav={feedNav}
               onOpenFilters={() => openFeedRoute('filters', 'deals')}
               onOpenFeatured={() => openFeedRoute('featured-deals', 'deals')}
               onOpenDeal={(deal) => openDeal('deals', deal ?? null)}
               onOpenComments={(deal) => openDealComments('deals', deal ?? null)}
               onClaim={openClaimPopup}
+              onHowToClaim={() => openHowToClaim('deals')}
             />
             {commentsModalOnly ? (
               <CommentsDrawer
@@ -2818,12 +4072,16 @@ function AppInner() {
       return (
         <>
           <DealsScreen
+            key={`deals-${dealsSearch.key}`}
+            initialSearch={dealsSearch.query}
             onTab={(tab) => setRoute(tab)}
             onOpenFilters={() => openFeedRoute('filters', 'deals')}
             onOpenDeal={(deal) => openDeal('deals', deal ?? null)}
             onOpenNotifications={() => setRoute('notifications')}
             onClaim={openClaimPopup}
             onAccount={() => setRoute('account')}
+            onHowToClaim={() => openHowToClaim('deals')}
+            onOpenComments={(deal) => openDealComments('deals', deal)}
           />
           {commentsModalOnly ? (
             <CommentsSheet
@@ -2844,25 +4102,23 @@ function AppInner() {
           <DesktopFeaturedDealsScreen
             onNav={feedNav}
             onOpenFilters={() => openFeedRoute('filters', 'featured-deals')}
-            onOpenDeal={() => openDeal('featured-deals')}
+            onOpenDeal={(deal) => openDeal('featured-deals', deal)}
           />
         );
-      return <FeaturedDealsScreen onBack={() => setRoute(feedFrom)} onOpenDeal={(deal) => openDeal('featured-deals', deal ?? null)} />;
+      return (
+        <FeaturedDealsScreen
+          onBack={() => setRoute(feedFrom)}
+          onOpenFilters={() => openFeedRoute('filters', 'featured-deals')}
+          onBoost={() => void openBusinessSetup()}
+          onOpenDeal={(deal) => openDeal('featured-deals', deal ?? null)}
+        />
+      );
 
     case 'filters':
       if (isDesktop) return <DesktopFiltersScreen onNav={feedNav} onClose={() => setRoute(feedFrom)} />;
       return <FiltersScreen onClose={() => setRoute(feedFrom)} />;
 
     case 'deal-detail':
-      if (isDesktop)
-        return (
-          <DesktopDealDetailScreen
-            onNav={feedNav}
-            onBack={() => setRoute(dealFrom)}
-            onClaimComplete={handleClaimComplete}
-            deal={selectedDeal}
-          />
-        );
       return <>{renderDetail()}</>;
 
     case 'comments':
@@ -2902,6 +4158,7 @@ function AppInner() {
       return commentsModalOnly ? (
         <CommentsSheet
           open
+          deal={selectedDeal}
           onClose={() => {
             setCommentsModalOnly(false);
             setRoute(dealFrom);
@@ -2912,6 +4169,7 @@ function AppInner() {
           {renderDetail()}
           <CommentsSheet
             open
+            deal={selectedDeal}
             onClose={() => {
               setCommentsModalOnly(false);
               setRoute('deal-detail');
@@ -2959,6 +4217,13 @@ function AppInner() {
               open
               deal={selectedDeal}
               onAuthenticated={() => {
+                if (hasApiConfig()) {
+                  // A real sign-in, then back to this deal to claim it.
+                  window.sessionStorage.setItem(RETURN_PATH_KEY, window.location.pathname);
+                  setSignInFrom('deal-detail');
+                  setRoute('sign-in');
+                  return;
+                }
                 signIn();
                 setRoute('claim-confirm');
               }}
@@ -2970,8 +4235,16 @@ function AppInner() {
         <>
           {renderDetail()}
           <ClaimAuthSheet
+            detail={liveDeal.detail}
             open
             onAuthenticated={() => {
+              if (hasApiConfig()) {
+                // A real sign-in, then back to this deal to claim it.
+                window.sessionStorage.setItem(RETURN_PATH_KEY, window.location.pathname);
+                setSignInFrom('deal-detail');
+                setRoute('sign-in');
+                return;
+              }
               signIn();
               setRoute('claim-confirm');
             }}
@@ -2986,6 +4259,7 @@ function AppInner() {
           <>
             {renderDetail()}
             <ClaimConfirmationModal
+              detail={liveDeal.detail}
               open
               onClose={() => setRoute('deal-detail')}
               onConfirm={() => setRoute('claim-identity')}
@@ -2996,7 +4270,7 @@ function AppInner() {
       return (
         <>
           {renderDetail()}
-          <ClaimConfirmSheet open onClose={() => setRoute('deal-detail')} onConfirm={() => setRoute('claim-identity')} />
+          <ClaimConfirmSheet open detail={liveDeal.detail} email={profile.email} onClose={() => setRoute('deal-detail')} onConfirm={() => setRoute('claim-identity')} />
         </>
       );
 
@@ -3023,6 +4297,7 @@ function AppInner() {
         <>
           {renderDetail()}
           <ClaimIdentitySheet
+            detail={liveDeal.detail}
             open
             identity={{ name: profile.fullName, email: profile.email, initials: profile.initials }}
             onClaimSelf={() => setClaimSelfConfirmOpen(true)}
@@ -3050,6 +4325,13 @@ function AppInner() {
                   phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
                 });
                 setRoute('claim-verify');
+                void sendClaimCode(
+                  holderFromRecipient({
+                    name: `${values.firstName} ${values.lastName}`.trim(),
+                    email: values.email,
+                    phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
+                  }),
+                );
               }}
               onClose={() => setRoute('deal-detail')}
             />
@@ -3067,6 +4349,13 @@ function AppInner() {
                 phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
               });
               setRoute('claim-verify');
+              void sendClaimCode(
+                holderFromRecipient({
+                  name: `${values.firstName} ${values.lastName}`.trim(),
+                  email: values.email,
+                  phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
+                }),
+              );
             }}
             onBack={() => setRoute('claim-identity')}
             onClose={() => setRoute('deal-detail')}
@@ -3082,9 +4371,13 @@ function AppInner() {
             <RecipientVerificationModal
               open
               recipient={claimRecipient}
+              target={claimHolder?.email}
+              error={claimError}
+              busy={claimBusy}
+              onResend={() => claimHolder && void sendClaimCode(claimHolder)}
               deal={selectedDeal}
-              onVerify={() => setRoute('claim-summary')}
-              onBack={() => setRoute('claim-recipient')}
+              onVerify={onClaimCode}
+              onBack={() => setRoute(claimRecipient ? 'claim-recipient' : 'deal-detail')}
               onClose={() => setRoute('deal-detail')}
             />
           </>
@@ -3095,8 +4388,12 @@ function AppInner() {
           <RecipientVerificationSheet
             open
             recipient={claimRecipient}
-            onVerify={() => setRoute('claim-summary')}
-            onBack={() => setRoute('claim-recipient')}
+            target={claimHolder?.email}
+            error={claimError}
+            busy={claimBusy}
+            onResend={() => claimHolder && void sendClaimCode(claimHolder)}
+            onVerify={onClaimCode}
+            onBack={() => setRoute(claimRecipient ? 'claim-recipient' : 'deal-detail')}
             onClose={() => setRoute('deal-detail')}
           />
         </>
@@ -3108,10 +4405,11 @@ function AppInner() {
           <>
             {renderDetail()}
             <RecipientSummaryModal
+              detail={liveDeal.detail}
               open
               recipient={claimRecipient}
               deal={selectedDeal}
-              onConfirm={completeClaim}
+              onConfirm={() => void completeClaim().then((done) => done || backToClaimCode())}
               onEdit={() => setRoute('claim-recipient')}
               onClose={() => setRoute('deal-detail')}
             />
@@ -3121,9 +4419,10 @@ function AppInner() {
         <>
           {renderDetail()}
           <RecipientSummarySheet
+            detail={liveDeal.detail}
             open
             recipient={claimRecipient}
-            onContinue={completeClaim}
+            onContinue={() => void completeClaim().then((done) => done || backToClaimCode())}
             onEdit={() => setRoute('claim-recipient')}
             onClose={() => setRoute('deal-detail')}
           />
@@ -3139,10 +4438,11 @@ function AppInner() {
               open
               onContinue={(values) => {
                 setGiftRecipient({
-                  name: `${values.firstName} ${values.lastName}`.trim() || 'Gift Recipient',
+                  name: `${values.firstName} ${values.lastName}`.trim(),
                   email: values.email,
                   phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
                 });
+                setGiftNote(values.note);
                 setRoute('claim-gift-confirm');
               }}
               onClose={() => setRoute('deal-detail')}
@@ -3153,13 +4453,15 @@ function AppInner() {
         <>
           {renderDetail()}
           <GiftRecipientDetailsSheet
+            detail={liveDeal.detail}
             open
             onContinue={(values) => {
               setGiftRecipient({
                 name: `${values.firstName} ${values.lastName}`.trim(),
                 email: values.email,
-                phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : '0801 234 5678',
+                phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
               });
+              setGiftNote(values.note);
               setRoute('claim-gift-confirm');
             }}
             onClose={() => setRoute('deal-detail')}
@@ -3173,8 +4475,12 @@ function AppInner() {
           <>
             {renderDetail()}
             <ConfirmGiftSendModal
+              detail={liveDeal.detail}
               open
               recipient={giftRecipient}
+              note={giftNote}
+              error={claimError}
+              busy={claimBusy}
               onSend={completeGift}
               onEdit={() => setRoute('claim-gift')}
               onClose={() => setRoute('deal-detail')}
@@ -3185,8 +4491,11 @@ function AppInner() {
         <>
           {renderDetail()}
           <ConfirmGiftSendSheet
+            detail={liveDeal.detail}
             open
             recipient={giftRecipient}
+            error={claimError}
+            busy={claimBusy}
             onConfirm={completeGift}
             onEdit={() => setRoute('claim-gift')}
             onClose={() => setRoute('deal-detail')}
@@ -3199,9 +4508,11 @@ function AppInner() {
         return (
           <DesktopHowToClaimScreen
             onNav={feedNav}
-            onBack={() => setRoute('deal-detail')}
-            onClaim={() => startClaim('how-to-claim')}
-            onTerms={() => {
+            onBack={() => setRoute(howToClaimFrom)}
+            backLabel={howToClaimFrom === 'deals' ? 'Deals' : 'Deal'}
+            onClaim={howToClaimFrom === 'deals' ? undefined : () => startClaim('how-to-claim')}
+            detail={howToClaimFrom === 'deals' ? null : liveDeal.detail}
+            onTerms={howToClaimFrom === 'deals' ? undefined : () => {
               setTermsFrom('how-to-claim');
               setRoute('deal-terms');
             }}
@@ -3209,9 +4520,10 @@ function AppInner() {
         );
       return (
         <HowToClaimScreen
-          onBack={() => setRoute('deal-detail')}
-          onClaim={() => startClaim('how-to-claim')}
-          onTerms={() => {
+          onBack={() => setRoute(howToClaimFrom)}
+          onClaim={howToClaimFrom === 'deals' ? undefined : () => startClaim('how-to-claim')}
+          detail={howToClaimFrom === 'deals' ? null : liveDeal.detail}
+          onTerms={howToClaimFrom === 'deals' ? undefined : () => {
             setTermsFrom('how-to-claim');
             setRoute('deal-terms');
           }}
@@ -3225,10 +4537,7 @@ function AppInner() {
             onNav={feedNav}
             onBack={() => setRoute('deal-detail')}
             claim={activeClaim}
-            onViewMyDeal={() => {
-              setClaimedFrom('claim-success');
-              setRoute('claimed-deal');
-            }}
+            onViewMyDeal={viewClaimedDeal}
             onContinue={() => setRoute('home')}
           />
         );
@@ -3236,10 +4545,7 @@ function AppInner() {
         <ClaimSuccessScreen
           onBack={() => setRoute('deal-detail')}
           claim={activeClaim}
-          onViewMyDeal={() => {
-            setClaimedFrom('claim-success');
-            setRoute('claimed-deal');
-          }}
+          onViewMyDeal={viewClaimedDeal}
           onContinue={() => setRoute('home')}
         />
       );
@@ -3266,17 +4572,29 @@ function AppInner() {
         />
       );
 
-    case 'claimed-deal':
+    case 'claimed-deal': {
+      if (onlyClaimsForOthers) return null;
+      // A merchant scanning a voucher QR gets the redeem step, not the customer's pass.
+      const scannedId = passIdFromPath(window.location.pathname);
+      if (scannedId && isBusinessRole(sessionUser?.role)) {
+        return <VoucherRedeemScreen claimId={scannedId} onDone={() => setRoute('business-overview')} />;
+      }
       return <>{renderClaimed()}</>;
+    }
 
-    case 'claimed-contact':
+    case 'claimed-contact': {
+      const contactClaim = walletClaim ?? currentVoucher(claims.claims);
       if (isDesktop)
         return (
           <>
             {renderClaimed()}
             <ContactBusinessModal
               open
-              onChat={() => setRoute('merchant-chat')}
+              code={contactClaim?.code}
+              businessName={contactClaim?.dealBusiness}
+              phone={contactClaim?.dealPhone}
+              address={contactClaim?.dealLocation}
+              onChat={() => openBranchChat(contactClaim?.branchId)}
               onClose={() => setRoute('claimed-deal')}
             />
           </>
@@ -3284,9 +4602,18 @@ function AppInner() {
       return (
         <>
           {renderClaimed()}
-          <ContactBusinessSheet open onChat={() => setRoute('merchant-chat')} onClose={() => setRoute('claimed-deal')} />
+          <ContactBusinessSheet
+            open
+            code={contactClaim?.code}
+            businessName={contactClaim?.dealBusiness}
+            phone={contactClaim?.dealPhone}
+            address={contactClaim?.dealLocation}
+            onChat={() => openBranchChat(contactClaim?.branchId)}
+            onClose={() => setRoute('claimed-deal')}
+          />
         </>
       );
+    }
 
     case 'claimed-terms': {
       // Show the terms frozen onto the claim, not whatever the live offer has.
@@ -3306,32 +4633,12 @@ function AppInner() {
       );
     }
 
-    case 'merchant-chat':
-      if (isDesktop)
-        return (
-          <DesktopMerchantChatScreen
-            onNav={feedNav}
-            onBack={() => setRoute(chatFrom)}
-            onViewQr={() => {
-              setClaimedFrom('merchant-chat');
-              setRoute('claimed-deal');
-            }}
-          />
-        );
-      return (
-        <MerchantChatScreen
-          onBack={() => setRoute(chatFrom)}
-          onViewQr={() => {
-            setClaimedFrom('merchant-chat');
-            setRoute('claimed-deal');
-          }}
-        />
-      );
-
     case 'deal-terms':
       if (isDesktop)
         return (
           <DesktopDealTermsScreen
+            detail={liveDeal.detail}
+            loading={liveDeal.loading}
             onNav={feedNav}
             onBack={() => setRoute(termsFrom)}
             onClaim={() => startClaim('deal-terms')}
@@ -3339,19 +4646,36 @@ function AppInner() {
         );
       return (
         <DealTermsScreen
+          detail={liveDeal.detail}
+          loading={liveDeal.loading}
           onBack={() => setRoute(termsFrom)}
           onClaim={() => startClaim('deal-terms')}
         />
       );
 
     case 'storefront':
-      if (isDesktop) return <DesktopUrbanGrillStorefrontScreen onNav={feedNav} onClaim={openClaimPopup} onCheckout={startCheckout} />;
+      if (isDesktop)
+        return (
+          <DesktopUrbanGrillStorefrontScreen
+            business={selectedBusiness}
+            onNav={feedNav}
+            onClaim={(deal, onClaimed) => openClaimPopup(deal, onClaimed)}
+            onOpenDeal={(deal) => openDeal('business-profile', deal)}
+            onOpenItem={(itemId) => selectedBusiness?.slug && openItem(selectedBusiness.slug, itemId, 'business-profile')}
+            onCheckout={startCheckout}
+            startChat={chatIntent}
+            onChatStarted={(branchId) => {
+              setChatIntent(false);
+              openBranchChat(branchId);
+            }}
+          />
+        );
       return (
         <MerchantDealsScreen
           business={selectedBusiness}
           onBack={() => setRoute(bizFrom)}
           onOpenDeal={() => openDeal('storefront')}
-          onBusinessSetup={() => setRoute('business-onboarding')}
+          onBusinessSetup={() => void openBusinessSetup()}
           onShowGrid={() => {
             setCatalogueFrom('storefront');
             setRoute('storefront-products');
@@ -3407,47 +4731,36 @@ function AppInner() {
       );
 
     case 'business-profile':
+    case 'spa-profile':
       if (isDesktop)
         return (
           <DesktopUrbanGrillStorefrontScreen
             business={selectedBusiness}
             onNav={feedNav}
             activeNav="discover"
-            onClaim={openClaimPopup}
+            onClaim={(deal, onClaimed) => openClaimPopup(deal, onClaimed)}
+            onOpenDeal={(deal) => openDeal('business-profile', deal)}
+            onOpenItem={(itemId) => selectedBusiness?.slug && openItem(selectedBusiness.slug, itemId, 'business-profile')}
             onCheckout={startCheckout}
+            startChat={chatIntent}
+            onChatStarted={(branchId) => {
+              setChatIntent(false);
+              openBranchChat(branchId);
+            }}
           />
         );
       return (
         <BusinessProfileScreen
-          venue="urban"
           business={selectedBusiness}
           onBack={() => setRoute(profileFrom)}
-          onOpenDeals={() => {
-            setBizFrom('business-profile');
-            setRoute('storefront');
+          onClaim={(deal, onClaimed) => openClaimPopup(deal, onClaimed)}
+          onOpenDeal={(deal) => openDeal('business-profile', deal)}
+          onOpenItem={(itemId) => selectedBusiness?.slug && openItem(selectedBusiness.slug, itemId, 'business-profile')}
+          startChat={chatIntent}
+          onChatStarted={(branchId) => {
+            setChatIntent(false);
+            openBranchChat(branchId);
           }}
-          onOpenProducts={() => {
-            setCatalogueFrom('business-profile');
-            setRoute('storefront-products');
-          }}
-          onClaim={openClaimPopup}
-        />
-      );
-
-    case 'spa-profile':
-      if (isDesktop) return <DesktopSpaStorefrontScreen onNav={feedNav} onClaim={openClaimPopup} />;
-      return (
-        <BusinessProfileScreen
-          venue="spa"
-          business={selectedBusiness}
-          onBack={() => setRoute(profileFrom)}
-          onOpenDeals={() => setRoute(profileFrom)}
-          onOpenServices={() => {
-            setBizFrom('spa-profile');
-            setRoute('spa-services');
-          }}
-          onOpenService={(name) => openService(name, 'spa-profile')}
-          onClaim={openClaimPopup}
         />
       );
 
@@ -3480,20 +4793,31 @@ function AppInner() {
         />
       );
 
-    case 'product-detail':
-      if (isDesktop) return <DesktopProductDetailScreen onNav={feedNav} onBack={() => setRoute('storefront')} />;
-      if (!detailProduct) return null;
+    case 'product-detail': {
+      const backToBusiness = () => {
+        if (liveItem) openBusiness({ code: liveItem.code }, 'product-detail');
+      };
+      const goBack = () => (detailFrom === 'business-profile' ? backToBusiness() : setRoute(detailFrom));
+      if (isDesktop)
+        return (
+          <DesktopProductDetailScreen
+            itemId={liveItem?.id ?? null}
+            businessCode={liveItem?.code ?? null}
+            onNav={feedNav}
+            onBack={goBack}
+            onOpenBusiness={backToBusiness}
+            onOpenItem={(itemId) => liveItem && openItem(liveItem.code, itemId, 'product-detail')}
+          />
+        );
       return (
         <ProductDetailScreen
-          product={detailProduct}
-          onBack={() => setRoute(detailFrom)}
-          onCheckout={startCheckout}
-          onOpenBusiness={() => {
-            setProfileFrom('product-detail');
-            setRoute('business-profile');
-          }}
+          itemId={liveItem?.id ?? null}
+          businessCode={liveItem?.code ?? null}
+          onBack={goBack}
+          onOpenBusiness={backToBusiness}
         />
       );
+    }
 
     case 'checkout':
       if (isDesktop)
@@ -3511,10 +4835,7 @@ function AppInner() {
             order={orderSummary}
             onClose={() => setRoute('home')}
             onHome={() => setRoute('discover')}
-            onTrack={() => {
-              setChatFrom('order-placed');
-              setRoute('merchant-chat');
-            }}
+            onTrack={() => openBranchChat(orderSummary?.merchantId)}
           />
         );
       return (
@@ -3522,10 +4843,7 @@ function AppInner() {
           order={orderSummary}
           onClose={() => setRoute('home')}
           onHome={() => setRoute('discover')}
-          onTrack={() => {
-            setChatFrom('order-placed');
-            setRoute('merchant-chat');
-          }}
+          onTrack={() => openBranchChat(orderSummary?.merchantId)}
         />
       );
 
@@ -3557,8 +4875,7 @@ function AppInner() {
             onBack={() => setRoute('spa-storefront')}
             onChat={() => {
               // BUG-026: open the receptionist conversation directly.
-              setActiveConversation('glow');
-              setRoute('conversation');
+              setRoute('messages');
             }}
           />
         );
@@ -3576,8 +4893,7 @@ function AppInner() {
             onNav={feedNav}
             onBack={() => setRoute('spa-storefront')}
             onChat={() => {
-              setActiveConversation('glow');
-              setRoute('conversation');
+              setRoute('messages');
             }}
           />
         );
@@ -3589,8 +4905,7 @@ function AppInner() {
           onHome={() => setRoute('home')}
           onChat={() => {
             // BUG-026: open the business conversation for the spa receptionist.
-            setActiveConversation('glow');
-            setRoute('conversation');
+            setRoute('messages');
           }}
         />
       );
@@ -3607,7 +4922,7 @@ function AppInner() {
         // A live owner taps this from their customer view: send them back to
         // the business dashboard rather than through setup again.
         if (isBusinessSession) {
-          setRoute('business-overview');
+          void openBusinessSetup('dashboard');
           return;
         }
         setBusinessOnboardingFrom('dashboard');
@@ -3618,21 +4933,35 @@ function AppInner() {
           setRoute('business-auth');
         }
       };
-      if (isDesktop) return <DesktopDashboardScreen onNav={feedNav} onStartBusinessSignup={startBusinessSignup} />;
+      if (isDesktop)
+        return (
+          <DesktopDashboardScreen
+            onNav={feedNav}
+            onStartBusinessSignup={startBusinessSignup}
+            onOpenDeal={(deal) => void openDeal('dashboard', deal)}
+            onShowPass={(claim) => openDashboardVoucher(claim, 'claimed-deal')}
+            onContact={(claim) => openDashboardVoucher(claim, 'claimed-contact')}
+            onOpenOrder={(ref) => {
+              setActiveOrderRef(ref);
+              setRoute('order-detail');
+            }}
+            onOpenBooking={() => setRoute('booking-detail')}
+            onScan={() => setRoute('scan')}
+          />
+        );
       return (
         <DashboardScreen
           onTab={(tab) => setRoute(tab)}
           onNavigate={(target) => {
             if (target === 'business-onboarding') {
-              setBusinessOnboardingFrom('dashboard');
+              void openBusinessSetup('dashboard');
+              return;
             }
             setRoute(target);
           }}
           onStartBusinessSignup={startBusinessSignup}
-          onShowQR={() => {
-            setClaimedFrom('dashboard');
-            setRoute('claimed-deal');
-          }}
+          onOpenDeal={(deal) => void openDeal('dashboard', deal)}
+          onShowQR={(claim) => openDashboardVoucher(claim, 'claimed-deal')}
         />
       );
     }
@@ -3646,7 +4975,10 @@ function AppInner() {
               setActiveOrderRef(ref);
               setRoute('order-detail');
             }}
-            onOpenBooking={() => setRoute('booking-detail')}
+            onOpenBooking={(ref) => {
+              setActiveBookingRef(ref);
+              setRoute('booking-detail');
+            }}
           />
         );
       return (
@@ -3660,59 +4992,68 @@ function AppInner() {
             setActiveOrderRef(ref);
             setRoute('order-detail');
           }}
-          onOpenBooking={() => setRoute('booking-detail')}
+          onOpenBooking={(ref) => {
+              setActiveBookingRef(ref);
+              setRoute('booking-detail');
+            }}
           onNavigate={(target) => setRoute(target)}
         />
       );
 
     case 'order-detail':
       if (isDesktop)
-        return <DesktopOrderDetailScreen orderRef={activeOrderRef} onNav={feedNav} onBack={() => setRoute('orders')} />;
+        return <DesktopOrderDetailScreen orderRef={activeOrderRef} onChat={openBranchChat} onNav={feedNav} onBack={() => setRoute('orders')} />;
       return (
         <OrderDetailScreen
           orderRef={activeOrderRef}
           onBack={() => setRoute('orders')}
-          onChat={() => {
-            setActiveConversation('urban');
-            setRoute('conversation');
-          }}
-          onReorder={() => setRoute('storefront')}
+          onChat={(branchId) => openBranchChat(branchId)}
+          onReorder={() => setRoute('discover')}
           onSupport={() => setRoute('support')}
         />
       );
 
     case 'booking-detail':
       if (isDesktop)
-        return <DesktopBookingDetailScreen onNav={feedNav} onBack={() => setRoute('orders')} />;
+        return <DesktopBookingDetailScreen bookingRef={activeBookingRef} onChat={openBranchChat} onNav={feedNav} onBack={() => setRoute('orders')} />;
       return (
         <BookingDetailScreen
+          bookingRef={activeBookingRef}
           onBack={() => setRoute('orders')}
-          onReschedule={() => setRoute('spa-booking')}
-          onChat={() => {
-            setActiveConversation('glow');
-            setRoute('conversation');
-          }}
+          onBookAgain={() => setRoute('discover')}
+          onChat={(branchId) => openBranchChat(branchId)}
         />
       );
 
     case 'my-deals':
-      if (isDesktop) return <DesktopMyDealsScreen onNav={feedNav} />;
+      if (isDesktop) return <DesktopMyDealsScreen initialFilter={myDealsOpensGifted ? 'gifted' : undefined} onNav={feedNav} onOpenBusiness={(business) => openBusiness(business, 'my-deals')} />;
       return (
         <MyDealsScreen
+          initialFilter={myDealsOpensGifted ? 'gifted' : undefined}
           onTab={(tab) => setRoute(tab)}
-          onShowPass={() => {
+          onShowPass={(claim) => {
+            setDashboardClaimRef(claim.ref);
             setClaimedFrom('my-deals');
             setRoute('claimed-deal');
+          }}
+          onGiftReceipt={(claim) => {
+            setGiftRecipient(null); // The receipt reads this gift's own recipient, not the last one sent.
+            setActiveClaim(claim);
+            setRoute('gift-sent');
           }}
           onNavigate={(target) => setRoute(target)}
         />
       );
 
+    // The old scripted merchant chat; a voucher's chat now opens the real branch thread.
+    case 'merchant-chat':
     case 'messages':
-      if (isDesktop) return <DesktopMessagesScreen onNav={feedNav} />;
+      if (isDesktop) return <DesktopMessagesScreen onNav={feedNav} onNewChat={startNewChat} />;
       return (
         <MessagesScreen
           onTab={(tab) => setRoute(tab)}
+          onNewChat={startNewChat}
+          onOpenSettings={() => setRoute('account-settings')}
           onOpen={(threadId) => {
             setActiveConversation(threadId);
             setRoute('conversation');
@@ -3721,7 +5062,7 @@ function AppInner() {
       );
 
     case 'conversation':
-      if (isDesktop) return <DesktopMessagesScreen onNav={feedNav} initialThread={activeConversation} />;
+      if (isDesktop) return <DesktopMessagesScreen onNav={feedNav} initialThread={activeConversation} onNewChat={startNewChat} />;
       return (
         <ConversationScreen
           threadId={activeConversation}
@@ -3741,12 +5082,13 @@ function AppInner() {
           onBack={() => setRoute('dashboard')}
           onCheckout={startCheckout}
           onBrowseDeals={() => setRoute('deals')}
-          onOpenStorefront={() => setRoute('storefront-menu')}
+          onOpenStorefront={() => setRoute('discover')}
         />
       );
 
     case 'account-settings':
-      if (isDesktop) return <DesktopAccountSettingsScreen onNav={feedNav} />;
+      if (isDesktop)
+        return <DesktopAccountSettingsScreen onNav={feedNav} onOpenAddresses={() => setRoute('addresses')} />;
       return (
         <AccountSettingsScreen
           onBack={() => setRoute('settings')}
@@ -3765,34 +5107,8 @@ function AppInner() {
           <DesktopDiscoverScreen
             onNav={feedNav}
             onOpenFilters={() => openFeedRoute('filters', 'discover')}
-            onOpenBusiness={(business) => {
-              const normalized = (business.name ?? '').toLowerCase();
-              const isSpa = business.venue === 'spa' || normalized.includes('spa') || normalized.includes('serenity') || normalized.includes('glow');
-              const isUrban = business.venue === 'urban' || normalized.includes('grill') || normalized.includes('bistro') || normalized.includes('restaurant');
-
-              const businessName = business.name?.trim() || 'Business storefront';
-              const slugBase = (business.slug ?? businessName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `${isSpa ? 'spa' : 'business'}-${Date.now()}`;
-              const businessRef: BusinessProfileRef = {
-                slug: slugBase,
-                id: business.id || slugBase,
-                name: businessName,
-                venue: isSpa ? 'spa' : 'urban',
-              };
-
-              setSelectedBusiness(businessRef);
-              setProfileFrom('discover');
-
-              if (isSpa) {
-                setRoute('spa-profile');
-                return;
-              }
-
-              if (isUrban || !isSpa) {
-                setRoute('business-profile');
-                return;
-              }
-            }}
-            onBusinessSetup={() => setRoute('business-onboarding')}
+            onOpenBusiness={(business) => openBusiness({ code: business.code, id: business.id, name: business.name }, 'discover')}
+            onBusinessSetup={() => void openBusinessSetup()}
           />
         );
       return (
@@ -3803,35 +5119,10 @@ function AppInner() {
             else if (tab === 'saved') setRoute('saved');
             else if (tab === 'account') setRoute('account');
           }}
-          onOpenBusiness={(business) => {
-            const normalized = (business.name ?? '').toLowerCase();
-            const isSpa = business.venue === 'spa' || normalized.includes('spa') || normalized.includes('serenity') || normalized.includes('glow');
-            const isUrban = business.venue === 'urban' || normalized.includes('grill') || normalized.includes('bistro') || normalized.includes('restaurant');
-            const businessName = business.name?.trim() || 'Business storefront';
-            const slugBase = (business.slug ?? businessName).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `${isSpa ? 'spa' : 'business'}-${Date.now()}`;
-            const businessRef: BusinessProfileRef = {
-              slug: slugBase,
-              id: business.id || slugBase,
-              name: businessName,
-              venue: isSpa ? 'spa' : 'urban',
-            };
-
-            setSelectedBusiness(businessRef);
-            setProfileFrom('discover');
-
-            if (isSpa) {
-              setRoute('spa-profile');
-              return;
-            }
-
-            if (isUrban || !isSpa) {
-              setRoute('business-profile');
-              return;
-            }
-          }}
+          onOpenBusiness={(business) => openBusiness({ code: business.code, id: business.id, name: business.name }, 'discover')}
           onOpenFilters={() => openFeedRoute('filters', 'discover')}
           onOpenNotifications={() => setRoute('notifications')}
-          onBusinessSetup={() => setRoute('business-onboarding')}
+          onBusinessSetup={() => void openBusinessSetup()}
         />
       );
 
@@ -3841,22 +5132,18 @@ function AppInner() {
           <DesktopSavedItemsScreen
             onNav={feedNav}
             onBack={() => setRoute('account')}
-            onOpenDeal={() => setRoute('deal-detail')}
-            onOpenBusiness={() => {
-              setProfileFrom('saved');
-              setRoute('spa-profile');
-            }}
+            onOpenDeal={(item) => void openDeal('saved', { id: item.id, title: item.title, business: item.subtitle, image: item.image })}
+            onOpenBusiness={(item) => openBusiness({ code: item.code ?? '', id: item.id, name: item.title }, 'saved')}
+            onOpenService={(item) => openItem(item.code ?? '', item.id, 'saved')}
             onBrowse={() => setRoute('discover')}
           />
         );
       return (
         <SavedItemsScreen
           onBack={() => setRoute('home')}
-          onOpenDeal={() => setRoute('deal-detail')}
-          onOpenBusiness={() => {
-            setProfileFrom('saved');
-            setRoute('spa-profile');
-          }}
+          onOpenDeal={(item) => void openDeal('saved', { id: item.id, title: item.title, business: item.subtitle, image: item.image })}
+          onOpenBusiness={(item) => openBusiness({ code: item.code ?? '', id: item.id, name: item.title }, 'saved')}
+          onOpenService={(item) => openItem(item.code ?? '', item.id, 'saved')}
           onBrowse={() => setRoute('discover')}
         />
       );
@@ -3876,6 +5163,69 @@ function AppInner() {
      * Platform Admin → Referral programme. Not reachable from user navigation;
      * an admin opens `/admin/referral` directly to swap the explainer video.
      */
+    case 'gift-reject':
+      return <GiftRejectScreen token={GIFT_REJECT_TOKEN} onDone={() => setRoute(authed ? 'home' : 'welcome')} />;
+
+    case 'not-found': {
+      const leave = () => setRoute(!authed ? 'welcome' : isBusinessRole(sessionUser?.role) ? 'business-overview' : 'home');
+      return isDesktop ? <DesktopNotFoundScreen onHome={leave} /> : <NotFoundScreen onHome={leave} />;
+    }
+
+    case 'admin-login':
+    case 'admin-overview':
+    case 'admin-customers':
+    case 'admin-businesses':
+    case 'admin-businesses-verification':
+    case 'admin-businesses-categories':
+    case 'admin-locations':
+    case 'admin-locations-hierarchy':
+    case 'admin-locations-map':
+    case 'admin-locations-geofencing':
+    case 'admin-locations-fleet':
+    case 'admin-deals':
+    case 'admin-deals-flagged':
+    case 'admin-deals-moderation':
+    case 'admin-deals-featured':
+    case 'admin-orders':
+    case 'admin-orders-transactions':
+    case 'admin-orders-terminals':
+    case 'admin-orders-disputes':
+    case 'admin-marketing':
+    case 'admin-marketing-ads':
+    case 'admin-marketing-performance':
+    case 'admin-marketing-slots':
+    case 'admin-marketing-broadcasts':
+    case 'admin-subscriptions':
+    case 'admin-subscriptions-subscriptions':
+    case 'admin-subscriptions-payments':
+    case 'admin-subscriptions-ad-billing':
+    case 'admin-subscriptions-escrow':
+    case 'admin-subscriptions-invoices':
+    case 'admin-analytics':
+    case 'admin-analytics-growth':
+    case 'admin-analytics-deals':
+    case 'admin-analytics-clusters':
+    case 'admin-analytics-revenue':
+    case 'admin-settings':
+    case 'admin-settings-support':
+    case 'admin-settings-disputes':
+    case 'admin-settings-team':
+    case 'admin-settings-audit':
+    {
+      // The sample admin portal has no backend behind it: never shown against the live API.
+      const leave = () => setRoute(!authed ? 'welcome' : 'home');
+      if (hasApiConfig()) return isDesktop ? <DesktopNotFoundScreen onHome={leave} /> : <NotFoundScreen onHome={leave} />;
+      if (route === 'admin-login' || !isAdminAuthenticated()) {
+        return <AdminLoginScreen onLoginSuccess={() => setRoute('admin-overview')} onBackToApp={() => setRoute('home')} />;
+      }
+      const navigateAdminPath = (path: string) => {
+        if (path === '/dashboard') setRoute('dashboard');
+        else if (path === '/') setRoute('home');
+        else setRoute((PATH_ROUTE.get(path) as Route | undefined) ?? 'admin-overview');
+      };
+      return <AdminDashboardScreen currentPath={ROUTE_PATH[route] || '/admin'} onNavigate={navigateAdminPath} />;
+    }
+
     case 'admin-referral':
       return <AdminReferralScreen onBack={() => setRoute('business-referrals')} />;
 
@@ -3886,7 +5236,19 @@ function AppInner() {
      */
     case 'google-confirm': {
       const finishGoogleConfirm = (details: GoogleConfirmDetails) => {
-        if (details.referralCode) setProvisionalReferralCode(details.referralCode, 'manual');
+        if (details.referralCode) {
+          setProvisionalReferralCode(details.referralCode, 'manual');
+          // Google accounts already exist by this screen, so a typed code is
+          // claimed here instead of with a later register call — best effort,
+          // the account's own code and an already-claimed code just resolve
+          // to a server-side 400 that is ignored.
+          void referralsService
+            .claim(details.referralCode)
+            .then(() => clearProvisionalReferralCode())
+            .catch(() => {
+              // Best effort — an unknown or already-claimed code is ignored.
+            });
+        }
         profile.update({ phone: details.phone });
         // Merchant sign-up — the confirmed Google identity belongs to the
         // business, so it enters setup instead of the customer feed.
@@ -3994,6 +5356,7 @@ function AppInner() {
             onOpenRewards={() => setRoute('rewards')}
             onBrowseDeals={() => setRoute('discover')}
             onOpenPreferences={() => setRoute('preferences')}
+            onOpenDestination={openCustomerNotificationDestination}
           />
         );
       return (
@@ -4011,6 +5374,7 @@ function AppInner() {
           onOpenRewards={() => setRoute('rewards')}
           onBrowseDeals={() => setRoute('discover')}
           onOpenPreferences={() => setRoute('preferences')}
+          onOpenDestination={openCustomerNotificationDestination}
         />
       );
 
@@ -4045,7 +5409,7 @@ function AppInner() {
             onNav={feedNav}
             onBack={() => setRoute('support-legal')}
             onStartChat={() => setRoute('support')}
-            onOpenMerchant={() => setRoute('business-onboarding')}
+            onOpenMerchant={() => void openBusinessSetup()}
             onOpenTerms={() => setRoute('terms')}
           />
         );
@@ -4053,7 +5417,7 @@ function AppInner() {
         <HelpCentreScreen
           onBack={() => setRoute('support-legal')}
           onStartChat={() => setRoute('support')}
-          onOpenMerchant={() => setRoute('business-onboarding')}
+          onOpenMerchant={() => void openBusinessSetup()}
           onOpenTerms={() => setRoute('terms')}
         />
       );
@@ -4084,13 +5448,11 @@ function AppInner() {
           <DesktopScanScreen
             onNav={feedNav}
             onBack={() => setRoute('dashboard')}
-            onOpenTableMenu={() => setRoute('public-pos-menu')}
           />
         );
       return (
         <ScanScreen
           onBack={() => setRoute('dashboard')}
-          onOpenTableMenu={() => setRoute('public-pos-menu')}
         />
       );
 
@@ -4100,21 +5462,17 @@ function AppInner() {
           <DesktopActivityScreen
             onNav={feedNav}
             onBack={() => setRoute('dashboard')}
-            onOpenReceipt={() => setRoute('order-detail')}
-            onWriteReview={() => setRoute('reviews')}
             onOpenOrders={() => setRoute('orders')}
-            onOpenService={() => setRoute('service-detail')}
-            onBrowse={() => setRoute('discover')}
+            onOpenDeal={(deal) => void openDeal('activity', deal)}
+            onOpenBusiness={(business) => openBusiness(business, 'activity')}
           />
         );
       return (
         <ActivityScreen
           onBack={() => setRoute('dashboard')}
-          onOpenReceipt={() => setRoute('order-detail')}
-          onWriteReview={() => setRoute('reviews')}
           onOpenOrders={() => setRoute('orders')}
-          onOpenService={() => setRoute('service-detail')}
-          onBrowse={() => setRoute('discover')}
+          onOpenDeal={(deal) => void openDeal('activity', deal)}
+          onOpenBusiness={(business) => openBusiness(business, 'activity')}
         />
       );
 
@@ -4134,7 +5492,33 @@ function AppInner() {
         setRoute(destination);
       };
       const finishOnboarding = () => {
+        // Additional-location safety net: if an older saved draft still holds
+        // extra locations that were never paid for, don't complete onboarding
+        // as if they were live — send the merchant back to the (now
+        // informational) locations step, where "Continue with Primary
+        // Location" drops anything unpaid and continues registration.
+        const setup = getBusinessSetupSnapshot();
+        const extraRaw = setup ? setup.data.extraBranches : null;
+        const paidRaw = setup ? setup.data.paidBranchIds : null;
+        const paidIds = Array.isArray(paidRaw)
+          ? paidRaw.filter((id): id is string => typeof id === 'string')
+          : [];
+        const hasUnpaidLocations =
+          Array.isArray(extraRaw) &&
+          extraRaw.some(
+            (branch) =>
+              typeof branch === 'object' &&
+              branch !== null &&
+              typeof (branch as { id?: unknown }).id === 'string' &&
+              !paidIds.includes((branch as { id: string }).id),
+          );
+        if (hasUnpaidLocations && setup) {
+          setBusinessSetupSnapshotStep('branches');
+          setRoute('business-onboarding');
+          return;
+        }
         setBusinessSetupSkipIntro(false);
+        markBusinessSetupScreensDone();
         setBusinessSetupVerificationState('in-progress');
         setRoute('business-verification');
       };
@@ -4148,29 +5532,18 @@ function AppInner() {
         // That fresh identity is a *business*, so it signs up through the
         // business modal (which then lands on Business Profile).
         setBusinessChoiceOpen(false);
+        rememberUpgradePin(null);
         setBusinessSetupSkipIntro(false);
         setRoute('business-auth');
       };
       const continueWithAccount = async (pin?: string) => {
-        // Live: the customer account becomes an owner account first (a PIN
-        // account confirms its PIN); the business is created by setup's saves.
-        if (hasApiConfig() && sessionUser && !isBusinessRole(sessionUser.role)) {
-          try {
-            adoptSession(
-              await ownerAuthService.upgrade({
-                ...(pin ? { password: pin } : {}),
-                referralCode: getProvisionalReferralCode() || undefined,
-              }),
-            );
-          } catch (error) {
-            if (error instanceof Error && /incorrect password/i.test(error.message)) {
-              throw new Error('That PIN is incorrect. Try again.');
-            }
-            throw error;
-          }
-        }
-        // Reusing the consumer account skips straight to profile details — the
-        // intro has already been shown, so re-aim the saved run at `basic`.
+        // The account stays a customer for now: it becomes an owner, and the
+        // business is created, on the first Business Profile save. A PIN
+        // account's PIN is kept in memory for that one call.
+        rememberUpgradePin(pin ?? null);
+        // The account's saved run (if any) resumes at its step; otherwise the
+        // intro has already been shown, so the run starts on `basic`.
+        if (hasApiConfig()) await hydrateBusinessSetupFromServer();
         setBusinessChoiceOpen(false);
         resumeAtBusinessProfile();
       };
@@ -4182,7 +5555,11 @@ function AppInner() {
        * a merchant already inside their own run continues where they left off.
        */
       const startBusinessSignup = !authed
-        ? () => setRoute('business-auth')
+        ? () => {
+            // Intro done: a return visit opens the sign-up email screen.
+            saveBusinessSignup({ stage: 'business-auth' });
+            setRoute('business-auth');
+          }
         : businessSetupSkipIntro
           ? undefined
           : () => setBusinessChoiceOpen(true);
@@ -4267,9 +5644,9 @@ function AppInner() {
           onBack={backFromVerification}
           onComplete={finishVerification}
           onActivate={() => setRoute('subscription')}
-          onPreviewStorefront={() => setRoute('storefront')}
+          onPreviewStorefront={() => setRoute('hub-storefront-preview')}
           onConfigureStorefront={() => setRoute('storefront')}
-          onCreateDeal={() => setRoute('deals')}
+          onCreateDeal={() => setRoute('hub-deals')}
           onQrStands={() => setRoute('business-overview')}
         />
       ) : (
@@ -4277,9 +5654,9 @@ function AppInner() {
           onBack={backFromVerification}
           onComplete={finishVerification}
           onActivate={() => setRoute('subscription')}
-          onPreviewStorefront={() => setRoute('storefront')}
+          onPreviewStorefront={() => setRoute('hub-storefront-preview')}
           onConfigureStorefront={() => setRoute('storefront')}
-          onCreateDeal={() => setRoute('deals')}
+          onCreateDeal={() => setRoute('hub-deals')}
           onQrStands={() => setRoute('business-overview')}
         />
       );
@@ -4293,12 +5670,14 @@ function AppInner() {
             onNav={businessPortalNav}
             onBack={() => setRoute('business-overview')}
             onUpdateInfo={() => setRoute('business-verification')}
+            onManageLocations={() => setRoute('hub-locations')}
           />
         );
       return (
         <VerificationStatusCenterScreen
           onBack={() => setRoute('business-overview')}
           onUpdateInfo={() => setRoute('business-verification')}
+          onManageLocations={() => setRoute('hub-locations')}
         />
       );
 
@@ -4500,7 +5879,7 @@ function AppInner() {
             segment={activeSegment}
             onBack={() => setRoute('segments-hub')}
             onLaunchCampaign={() => openBoost()}
-            onOpenMessages={() => setRoute('messages')}
+            onOpenMessages={() => setRoute('business-messages')}
             onOpenDeals={() => setRoute('hub-deals')}
             onOpenCrm={() => setRoute('hub-customers')}
           />
@@ -4511,7 +5890,7 @@ function AppInner() {
             segment={activeSegment}
             onBack={() => setRoute('segments-hub')}
             onLaunchCampaign={() => openBoost()}
-            onOpenMessages={() => setRoute('messages')}
+            onOpenMessages={() => setRoute('business-messages')}
             onOpenDeals={() => setRoute('hub-deals')}
             onOpenCrm={() => setRoute('hub-customers')}
           />
@@ -4608,7 +5987,7 @@ function AppInner() {
           <HelpCentreScreen
             onBack={() => setRoute('business-more')}
             onStartChat={() => setRoute('support')}
-            onOpenMerchant={() => setRoute('business-onboarding')}
+            onOpenMerchant={() => void openBusinessSetup()}
             onOpenTerms={() => setRoute('terms')}
           />
         </div>
@@ -4621,6 +6000,7 @@ function AppInner() {
         return (
           <DesktopBusinessSettingsScreen
             onNav={businessPortalNav}
+            onOpenFeatures={() => setRoute(FEATURE_MANAGE_ROUTE)}
             onSignOut={() => {
               signOut();
               setRoute('welcome');
@@ -4633,10 +6013,52 @@ function AppInner() {
             onBack={() => setRoute('business-more')}
             onOpenPrivacy={() => setRoute('privacy')}
             onOpenTerms={() => setRoute('terms')}
+            onOpenFeatures={() => setRoute(FEATURE_MANAGE_ROUTE)}
             onSignOut={() => {
               signOut();
               setRoute('welcome');
             }}
+          />
+        </div>
+      );
+
+    case 'business-feature-setup':
+      // One-time dashboard tool selection — only reachable while setup is
+      // unfinished, and it never reappears for returning businesses.
+      if (isDesktop)
+        return (
+          <DesktopBusinessFeatureSetupScreen
+            initial={featureConfig.features}
+            recommended={featureConfig.recommended}
+            onSave={completeFeatureSetup}
+          />
+        );
+      return (
+        <BusinessFeatureSetupScreen
+          initial={featureConfig.features}
+          recommended={featureConfig.recommended}
+          onSave={completeFeatureSetup}
+        />
+      );
+
+    case 'business-manage-features':
+      // Business Settings › Manage Features — pending selection, saved explicitly.
+      if (isDesktop)
+        return (
+          <DesktopBusinessManageFeaturesScreen
+            onNav={businessPortalNav}
+            initial={featureConfig.features}
+            recommended={featureConfig.recommended}
+            onSave={saveManagedFeatures}
+          />
+        );
+      return (
+        <div className="biz-flow">
+          <BusinessManageFeaturesScreen
+            onBack={() => setRoute('business-settings')}
+            initial={featureConfig.features}
+            recommended={featureConfig.recommended}
+            onSave={saveManagedFeatures}
           />
         </div>
       );
@@ -4659,12 +6081,13 @@ function AppInner() {
         return (
           <DesktopBusinessOverviewScreen
             onNav={businessPortalNav}
+            onOpenFeature={openBusinessFeature}
             onSubscribe={() => setRoute('business-subscription')}
             onBoost={() => openBoost()}
             onAddOns={() => setRoute('business-add-ons')}
             onOpenOrders={() => setRoute('business-orders')}
             onOpenBookings={() => setRoute('business-bookings')}
-            onOpenMessages={() => setRoute('business-messages')}
+            onOpenMessages={openMessages}
           />
         );
       return (
@@ -4675,15 +6098,16 @@ function AppInner() {
           onAddOns={() => setRoute('business-add-ons')}
           onOpenOrders={() => setRoute('business-orders')}
           onOpenBookings={() => setRoute('business-bookings')}
-          onOpenMessages={() => setRoute('business-messages')}
+          onOpenMessages={openMessages}
           onOpenPosMenu={() => setRoute('business-pos-menu')}
+          onOpenFeature={openBusinessFeature}
         />
       );
 
     case 'business-pos-menu':
       // Mobile-only POS menu page (POS overview quick action). Desktop uses the
       // POS rail instead — fall back to the POS overview if reached there.
-      if (isDesktop) return <DesktopBusinessOverviewScreen onNav={businessPortalNav} onSubscribe={() => setRoute('business-subscription')} onBoost={() => openBoost()} onAddOns={() => setRoute('business-add-ons')} onOpenOrders={() => setRoute('business-orders')} onOpenBookings={() => setRoute('business-bookings')} onOpenMessages={() => setRoute('business-messages')} />;
+      if (isDesktop) return <DesktopBusinessOverviewScreen onOpenFeature={openBusinessFeature} onNav={businessPortalNav} onSubscribe={() => setRoute('business-subscription')} onBoost={() => openBoost()} onAddOns={() => setRoute('business-add-ons')} onOpenOrders={() => setRoute('business-orders')} onOpenBookings={() => setRoute('business-bookings')} onOpenMessages={openMessages} />;
       return (
         <BusinessPosMenuScreen
           onOpenPage={(key) => businessPortalNav(key)}
@@ -4701,7 +6125,7 @@ function AppInner() {
             onBackToCatalog={() => setRoute('hub-catalog')}
           />
         );
-      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'business-hub':
       if (isDesktop)
@@ -4709,7 +6133,7 @@ function AppInner() {
           <DesktopBusinessHubScreen
             onNav={businessPortalNav}
             onBoost={(item) => openBoost(item)}
-            onPreviewStorefront={() => setRoute('storefront')}
+            onPreviewStorefront={() => setRoute('hub-storefront-preview')}
             onOpenModule={openHubModule}
           />
         );
@@ -4719,10 +6143,24 @@ function AppInner() {
           onTab={businessTab}
           onBoost={(item) => openBoost(item)}
           onOpenMessages={() => setRoute('business-messages')}
-          onPreviewStorefront={() => setRoute('storefront')}
+          onPreviewStorefront={() => setRoute('hub-storefront-preview')}
           onOpenModule={openHubModule}
         />
       );
+
+    case 'business-add-location': {
+      // The paid flow is a demo: live owners add a real branch from the same page.
+      const leave = () => setRoute('hub-locations');
+      if (hasApiConfig()) {
+        return isDesktop ? <DesktopBusinessAddBranchScreen onBack={leave} onSaved={leave} /> : <BusinessAddBranchScreen onBack={leave} onSaved={leave} />;
+      }
+      const save = (location: { name: string; address: string; district: string }, feePaid: number) => {
+        addPaidBusinessLocation({ id: `loc-${Date.now()}`, name: location.name, address: location.address, district: location.district, feePaid });
+        leave();
+      };
+      const Flow = isDesktop ? DesktopBusinessAddLocationFlow : BusinessAddLocationFlow;
+      return <Flow businessName="Urban Grill & Bistro" locationCount={getBusinessLocationCount()} onExit={leave} onLocationPaid={save} />;
+    }
 
     case 'hub-locations':
       if (isDesktop)
@@ -4733,7 +6171,7 @@ function AppInner() {
             <DesktopBusinessLocationsHubScreen
               onNav={businessPortalNav}
               // Live owners are already set up: the add-branch form opens here.
-              onAddBranch={() => (hasApiConfig() ? setAddingBranch(true) : setRoute('business-onboarding'))}
+              onAddBranch={() => (hasApiConfig() ? setAddingBranch(true) : setRoute('business-add-location'))}
               onOpenBranch={(branchId) => {
                 setSelectedBranchId(branchId ?? null);
                 setRoute('hub-branch-detail');
@@ -4741,7 +6179,7 @@ function AppInner() {
             />
           )
         );
-      return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="locations" onAddLocation={() => setRoute('business-add-location')} onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'hub-branch-detail':
       if (isDesktop)
@@ -4752,12 +6190,16 @@ function AppInner() {
             onBackToLocations={() => setRoute('hub-locations')}
           />
         );
-      return <BusinessHubScreen initialStep="locations" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="locations" onAddLocation={() => setRoute('business-add-location')} onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'hub-catalog':
+    case 'hub-catalog-new-product':
+    case 'hub-catalog-new-service':
       if (isDesktop)
         return (
           <DesktopBusinessCatalogHubScreen
+            // Remount on the route change so the new form starts fresh.
+            key={route}
             onNav={businessPortalNav}
             onOpenBranchPricing={(itemId) => {
               setPricingItemId(itemId ?? null);
@@ -4765,20 +6207,29 @@ function AppInner() {
             }}
             onOpenServices={() => setRoute('hub-services')}
             onMakeDeal={(item) => openDealStudio(item)}
-            notice={catalogNotice}
+            notice={route === 'hub-catalog' ? catalogNotice : null}
+            onAddProduct={() => setRoute('hub-catalog-new-product')}
+            startWithNewProduct={route === 'hub-catalog-new-product'}
+            startWithNewService={route === 'hub-catalog-new-service'}
+            onCloseForm={() => setRoute('hub-catalog')}
           />
         );
-      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'hub-services':
       if (isDesktop)
         return (
-          <DesktopServicesCategoriesScreen
-            onNav={businessPortalNav}
-            onBackToCatalog={() => setRoute('hub-catalog')}
-          />
+          hasApiConfig() ? (
+            <DesktopServicesCategoriesScreen
+              onNav={businessPortalNav}
+              onBackToCatalog={() => setRoute('hub-catalog')}
+              onAddService={() => setRoute('hub-catalog-new-service')}
+            />
+          ) : (
+            <DesktopServicesCategoriesDemoScreen onNav={businessPortalNav} onBackToCatalog={() => setRoute('hub-catalog')} />
+          )
         );
-      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'hub-deals':
       if (isDesktop)
@@ -4793,7 +6244,7 @@ function AppInner() {
             onBoost={(dealName) => openBoost(dealName)}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'deal-studio': {
       const leaveStudio = () => {
@@ -4816,7 +6267,7 @@ function AppInner() {
               notice={notice}
             />
           );
-        return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+        return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
       }
       if (isDesktop)
         return (
@@ -4847,7 +6298,7 @@ function AppInner() {
           onTab={businessTab}
           onBoost={(item) => openBoost(item)}
           onOpenMessages={() => setRoute('business-messages')}
-          onPreviewStorefront={() => setRoute('storefront')}
+          onPreviewStorefront={() => setRoute('hub-storefront-preview')}
           onOpenModule={openHubModule}
           onViewCustomerProfile={(name, userId) => {
             setHubCustomerName(name);
@@ -4874,11 +6325,20 @@ function AppInner() {
         return (
           <DesktopBusinessProfilePreviewStudioScreen
             onNav={businessPortalNav}
-            onPreviewStorefront={() => setRoute('storefront')}
+            onPreviewStorefront={() => setRoute('hub-storefront-preview')}
             onEditProfile={() => setRoute('business-profile-studio')}
           />
         );
-      return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
+
+    case 'hub-storefront-preview':
+      return (
+        <BusinessStorefrontPreviewScreen
+          onNav={businessPortalNav}
+          onBack={() => setRoute('hub-profile')}
+          onEditProfile={() => setRoute(isDesktop ? 'business-profile-studio' : 'hub-profile')}
+        />
+      );
 
     case 'deal-location-pricing':
       if (isDesktop)
@@ -4890,7 +6350,7 @@ function AppInner() {
             onSave={() => setRoute('hub-deals')}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'deal-create-locations':
       // Live deals are created in the studio from a catalogue item, which has its own branch step.
@@ -4908,7 +6368,7 @@ function AppInner() {
               notice="Pick an item to make a deal from."
             />
           );
-        return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+        return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
       }
       if (isDesktop)
         return (
@@ -4918,7 +6378,7 @@ function AppInner() {
             onReview={() => setRoute('hub-deal-detail')}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'business-profile-studio':
       if (isDesktop)
@@ -4928,7 +6388,7 @@ function AppInner() {
             onDiscard={() => setRoute('business-overview')}
           />
         );
-      return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'hub-deal-detail':
       if (isDesktop)
@@ -4938,13 +6398,14 @@ function AppInner() {
             onNav={businessPortalNav}
             onEditPricing={() => setRoute('deal-location-pricing')}
             onConfigureCap={() => setRoute('deal-location-pricing')}
-            onChat={() => setRoute('business-messages')}
+            onChat={openMessages}
             onBoost={() => openBoost('Weekend Prime Lunch Combo')}
             // Live: an existing deal is edited on its branch pricing page.
             onEditDeal={() => (hasApiConfig() ? setRoute('deal-location-pricing') : setRoute('deal-studio'))}
+            onDeleted={() => setRoute('hub-deals')}
           />
         );
-      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('storefront')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen initialStep="deals" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'hub-customer-profile':
       if (isDesktop)
@@ -4963,7 +6424,7 @@ function AppInner() {
           onTab={businessTab}
           onBoost={(item) => openBoost(item)}
           onOpenMessages={() => setRoute('business-messages')}
-          onPreviewStorefront={() => setRoute('storefront')}
+          onPreviewStorefront={() => setRoute('hub-storefront-preview')}
           onOpenModule={openHubModule}
           onViewCustomerProfile={(name, userId) => {
             setHubCustomerName(name);
@@ -4997,12 +6458,17 @@ function AppInner() {
     case 'hub-loyalty':
       if (isDesktop)
         return (
-          <DesktopLoyaltyProgrammeScreen
-            onNav={businessPortalNav}
-            onOpenRewards={() => setRoute('hub-loyalty-rewards')}
-          />
+          hasApiConfig() ? (
+            <DesktopLoyaltyProgrammeScreen onNav={businessPortalNav} onOpenRewards={() => setRoute('hub-loyalty-rewards')} />
+          ) : (
+            <DesktopLoyaltyProgrammeDemoScreen onNav={businessPortalNav} onOpenRewards={() => setRoute('hub-loyalty-rewards')} />
+          )
         );
-      return <BusinessLoyaltyScreen onTab={businessTab} onOpenRewards={() => setRoute('hub-loyalty-rewards')} />;
+      return hasApiConfig() ? (
+        <BusinessLoyaltyScreen onTab={businessTab} onOpenRewards={() => setRoute('hub-loyalty-rewards')} />
+      ) : (
+        <BusinessLoyaltyDemoScreen onTab={businessTab} onOpenRewards={() => setRoute('hub-loyalty-rewards')} />
+      );
 
     case 'hub-loyalty-rewards':
       if (isDesktop)
@@ -5042,7 +6508,22 @@ function AppInner() {
       if (isDesktop) return <DesktopAnalyticsLocationsScreen onNav={businessPortalNav} />;
       return (
         <div className="biz-flow">
-          <BusinessBranchComparisonScreen onBack={() => setRoute('analytics-overview')} />
+          <BusinessBranchComparisonScreen
+            onBack={() => setRoute('analytics-overview')}
+            onNavigate={(target) =>
+              setRoute(
+                target === 'pricing'
+                  ? 'hub-catalog'
+                  : target === 'business'
+                    ? 'analytics-business'
+                    : target === 'customers'
+                      ? 'analytics-customers'
+                      : target === 'deals'
+                        ? 'analytics-deals'
+                        : 'analytics-pos',
+              )
+            }
+          />
         </div>
       );
 
@@ -5344,11 +6825,20 @@ function AppInner() {
     case 'pos-switch':
       if (isDesktop)
         return (
-          <DesktopPosSwitchScreen onNav={posTerminalNav} onBack={goBackToPrevious} onConfirm={() => setRoute('pos-home')} />
+          <DesktopPosSwitchScreen
+            onNav={posTerminalNav}
+            onOpenSettings={() => setRoute('pos-settings')}
+            onBack={goBackToPrevious}
+            onConfirm={() => setRoute('pos-home')}
+          />
         );
       return (
         <div className="biz-flow">
-          <BusinessPosSwitchScreen onBack={goBackToPrevious} onConfirm={() => setRoute('pos-home')} />
+          <BusinessPosSwitchScreen
+            onBack={goBackToPrevious}
+            onConfirm={() => setRoute('pos-home')}
+            onOpenSettings={() => setRoute('pos-settings')}
+          />
         </div>
       );
 
@@ -5762,6 +7252,16 @@ function AppInner() {
       return (
         <BusinessMoreScreen
           onTab={businessTab}
+          onOpenPos={() => setRoute('pos-home')}
+          onOpenStorefront={(sub) =>
+            setRoute(
+              sub === 'qr'
+                ? 'store-ordering-qr'
+                : sub === 'settings'
+                ? 'store-ordering-settings'
+                : 'store-ordering-dashboard',
+            )
+          }
           onOpenAnalytics={() => setRoute('analytics-business')}
           onOpenMarketing={() => setRoute('boost-hub')}
           onOpenSubscription={() => setRoute('subscription')}
@@ -5819,9 +7319,10 @@ function AppInner() {
         return (
           <DesktopBusinessMessagesWorkspaceScreen
             onNav={businessPortalNav}
-            onViewCustomerProfile={(name) => {
+            onViewCustomerProfile={(name, customerId) => {
               setHubCustomerName(name);
-              setHubCustomerId(null);
+              // Without the id the live profile has nothing to load.
+              setHubCustomerId(customerId ?? null);
               setRoute('hub-customer-profile');
             }}
           />
@@ -5830,6 +7331,11 @@ function AppInner() {
         <BusinessMessagesScreen
           initialStep="home"
           onTab={businessTab}
+          onViewCustomerProfile={(name, customerId) => {
+            setHubCustomerName(name);
+            setHubCustomerId(customerId ?? null);
+            setRoute('hub-customer-profile');
+          }}
           onSelectChannel={(key) => {
             if (key === 'chat') setRoute('business-messages');
             else if (key === 'sms') setRoute('business-messages-sms');
@@ -5944,10 +7450,22 @@ function AppInner() {
     }
   };
 
+  const routeLoading = (
+    <SkeletonGroup label="Loading" className="mx-auto w-full max-w-5xl space-y-4 p-6">
+      <Skeleton className="h-10 w-1/2" />
+      <Skeleton className="h-48 w-full" />
+      <Skeleton className="h-48 w-full" />
+    </SkeletonGroup>
+  );
+
   return (
     <StoreOrderingProvider>
     <>
-      {renderRoute()}
+      {shellSwitching || returningToShell || plainCustomerOnBusinessPage || accessCheckPending || adminCheckPending ? (
+        routeLoading
+      ) : (
+        <Suspense fallback={routeLoading}>{renderRoute()}</Suspense>
+      )}
 
       {claimPopupOpen &&
         (isDesktop ? (
@@ -5962,6 +7480,7 @@ function AppInner() {
           />
         ) : (
           <ClaimIdentitySheet
+            detail={liveDeal.detail}
             open
             identity={{ name: profile.fullName, email: profile.email, initials: profile.initials }}
             onClose={closeClaimPopup}
@@ -6002,22 +7521,28 @@ function AppInner() {
           onClose={() => setClaimDialog(null)}
           onContinue={(values) => {
             setGiftRecipient({
-              name: `${values.firstName} ${values.lastName}`.trim() || 'Gift Recipient',
+              name: `${values.firstName} ${values.lastName}`.trim(),
               email: values.email,
               phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
             });
+            setGiftNote(values.note);
+            setClaimError(null);
             setClaimDialog('giftConfirm');
           }}
         />
       )}
       {isDesktop && claimDialog === 'giftConfirm' && (
         <ConfirmGiftSendModal
+          detail={liveDeal.detail}
           open
           recipient={giftRecipient}
+          note={giftNote}
+          error={claimError}
+          busy={claimBusy}
           deal={selectedDeal}
           onClose={() => setClaimDialog(null)}
           onEdit={() => setClaimDialog('gift')}
-          onSend={() => finishDesktopClaim('gift')}
+          onSend={() => void finishDesktopClaim('gift')}
         />
       )}
       {isDesktop && claimDialog === 'other' && (
@@ -6031,6 +7556,13 @@ function AppInner() {
               phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
             });
             setClaimDialog('verify');
+            void sendClaimCode(
+              holderFromRecipient({
+                name: `${values.firstName} ${values.lastName}`.trim(),
+                email: values.email,
+                phone: values.phone ? (values.phone.startsWith('0') ? values.phone : `0${values.phone}`) : undefined,
+              }),
+            );
           }}
         />
       )}
@@ -6038,19 +7570,28 @@ function AppInner() {
         <RecipientVerificationModal
           open
           recipient={claimRecipient}
+          target={claimHolder?.email}
+          error={claimError}
+          busy={claimBusy}
+          onResend={() => claimHolder && void sendClaimCode(claimHolder)}
           deal={selectedDeal}
           onClose={() => setClaimDialog(null)}
-          onVerify={() => setClaimDialog('summary')}
+          onVerify={(code) => {
+            setClaimCode(code);
+            setClaimError(null);
+            setClaimDialog('summary');
+          }}
           onBack={() => setClaimDialog('other')}
         />
       )}
       {isDesktop && claimDialog === 'summary' && (
         <RecipientSummaryModal
+          detail={liveDeal.detail}
           open
           recipient={claimRecipient}
           deal={selectedDeal}
           onClose={() => setClaimDialog(null)}
-          onConfirm={() => finishDesktopClaim('someone-else')}
+          onConfirm={() => void finishDesktopClaim('someone-else')}
           onEdit={() => setClaimDialog('other')}
         />
       )}

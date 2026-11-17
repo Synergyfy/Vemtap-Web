@@ -1,5 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from './ui/Icon';
+import { Toast } from './ui/Toast';
+import type { LocationPlace } from '../context/LocationContext';
+import { useLocationPicker } from '../hooks/useLocationPicker';
 
 export interface LocationRadiusModalProps {
   open: boolean;
@@ -9,7 +12,7 @@ export interface LocationRadiusModalProps {
    * `onClose`, so the selection was discarded and every header label stayed
    * permanently hardcoded to "Apo, Abuja • Within 5 km".
    */
-  onApply?: (district: string, radius: number) => void;
+  onApply?: (district: string, radius: number, place?: LocationPlace) => void;
   district?: string;
   radius?: number;
 }
@@ -54,8 +57,22 @@ export function LocationRadiusModal({
   const [district, setDistrict] = useState(districtProp ?? 'Your area');
   const [query, setQuery] = useState(`${districtProp ?? 'Your area'}`);
   const [gpsActive, setGpsActive] = useState(true);
+  // Live: Auto-Detect and typed areas resolve to real places; demo keeps the sample picker.
+  const picker = useLocationPicker(open);
+  const { live } = picker;
+
+  useEffect(() => {
+    if (!open || !live) return;
+    setDistrict(districtProp ?? 'Your area');
+    setQuery(districtProp ?? 'Your area');
+    setRadius(radiusProp ?? 5);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   if (!open) return null;
+
+  const liveGps = picker.place.lat !== undefined && query.trim() === picker.place.district;
+  const busy = picker.detecting || picker.searching;
 
   const sliderPercent = (radius / 25) * 100;
   const deals = dealsForRadius(radius);
@@ -67,9 +84,26 @@ export function LocationRadiusModal({
   };
 
   const useAutoDetect = () => {
+    if (live) {
+      void picker.detect().then((found) => {
+        if (!found) return;
+        setDistrict(found.district);
+        setQuery(found.district);
+      });
+      return;
+    }
     setDistrict('Your area');
     setQuery('Your area');
     setGpsActive(true);
+  };
+
+  const applyLive = async () => {
+    // Live: send the full text so "Garki, Abuja" isn't read as plain "Garki".
+    const typed = query.trim();
+    const next = await picker.resolve(typed);
+    if (!next) return;
+    onApply?.(next.district, radius, { city: next.city, lat: next.lat, lng: next.lng });
+    onClose();
   };
 
   return (
@@ -110,6 +144,7 @@ export function LocationRadiusModal({
           <button
             type="button"
             onClick={useAutoDetect}
+            disabled={busy}
             className="w-full p-3.5 rounded-2xl bg-surface-tint-blue border border-border-active flex items-center justify-between text-left transition-transform active:scale-[0.99]"
           >
             <div className="flex items-center gap-3">
@@ -121,16 +156,24 @@ export function LocationRadiusModal({
                   <span className="font-label-md text-label-md text-text-primary font-semibold">
                     Auto-Detect Location
                   </span>
-                  <span className="px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-[10px] font-bold uppercase tracking-wider">
-                    Active GPS
-                  </span>
+                  {(!live || liveGps) && (
+                    <span className="px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-[10px] font-bold uppercase tracking-wider">
+                      Active GPS
+                    </span>
+                  )}
                 </div>
                 <span className="font-caption text-caption text-text-secondary truncate pt-0.5">
-                  Your current area • Live location
+                  {!live
+                    ? 'Your current area • Live location'
+                    : picker.detecting
+                      ? 'Detecting your location…'
+                      : liveGps
+                        ? `${[picker.place.district, picker.place.city].filter(Boolean).join(', ')} • Live location`
+                        : 'Tap to use your current location'}
                 </span>
               </div>
             </div>
-            {gpsActive && <Icon name="check_circle" className="text-primary text-[20px]" filled />}
+            {(live ? liveGps : gpsActive) && <Icon name="check_circle" className="text-primary text-[20px]" filled />}
           </button>
 
           <div className="flex flex-col space-y-2.5">
@@ -159,6 +202,7 @@ export function LocationRadiusModal({
                 <Icon name="cancel" className="text-[16px]" />
               </button>
             </div>
+            {!live && (
             <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pt-1">
               <span className="font-caption text-caption text-text-tertiary shrink-0">Popular:</span>
               {POPULAR_DISTRICTS.map((name) => {
@@ -179,6 +223,7 @@ export function LocationRadiusModal({
                 );
               })}
             </div>
+            )}
           </div>
 
           <div className="p-4 rounded-2xl bg-surface-container-low border border-subtle space-y-3.5">
@@ -251,10 +296,17 @@ export function LocationRadiusModal({
 
             <div className="flex items-start gap-2 pt-1 font-caption text-caption text-text-secondary bg-surface-container-lowest/80 p-2.5 rounded-xl border border-subtle">
               <Icon name="info" className="text-primary text-[18px] shrink-0" />
-              <span>
-                Found <strong>{deals} active deals</strong> and <strong>18 local businesses</strong>{' '}
-                within {radius} km of {district} District.
-              </span>
+              {live ? (
+                <span>
+                  Deals and businesses within <strong>{radius} km</strong> of {query.trim() || district} show nearest
+                  first.
+                </span>
+              ) : (
+                <span>
+                  Found <strong>{deals} active deals</strong> and <strong>18 local businesses</strong>{' '}
+                  within {radius} km of {district} District.
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -263,16 +315,23 @@ export function LocationRadiusModal({
           <button
             type="button"
             onClick={() => {
+              if (live) {
+                void applyLive();
+                return;
+              }
               // Prefer whatever the customer actually typed; fall back to the
               // district chip they last tapped.
               const typed = query.trim().replace(/,.*$/, '').trim();
               onApply?.(typed || district, radius);
               onClose();
             }}
+            disabled={busy}
             className="w-full h-12 rounded-xl bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary font-semibold shadow-md active:scale-[0.99] transition-all flex items-center justify-center gap-2"
           >
             <Icon name="tune" className="text-[20px]" />
-            <span>Apply Location &amp; Radius ({deals} Deals)</span>
+            <span>
+              {live ? (picker.searching ? 'Finding area…' : 'Apply Location & Radius') : `Apply Location & Radius (${deals} Deals)`}
+            </span>
           </button>
           <button
             type="button"
@@ -283,6 +342,7 @@ export function LocationRadiusModal({
           </button>
         </div>
       </div>
+      <Toast message={picker.toast} icon="location_off" />
     </div>
   );
 }

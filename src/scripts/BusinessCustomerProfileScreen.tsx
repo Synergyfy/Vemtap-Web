@@ -84,7 +84,7 @@ const TRANSACTIONS = [
 ];
 
 export function BusinessCustomerProfileScreen({
-  customerName: sampleName = 'Michael James',
+  customerName: sampleName,
   customerId,
   onBack,
   onMessage,
@@ -93,7 +93,8 @@ export function BusinessCustomerProfileScreen({
   const dossierQuery = useCustomerDossier(live ? (customerId ?? null) : null);
   const dossier = dossierQuery.data;
   const saveNote = useSaveCustomerNote(customerId ?? '');
-  const customerName = live && dossier ? liveCustomerName(dossier) : sampleName;
+  // Live: the API customer only; the sample name is for running without an API.
+  const customerName = live ? (dossier ? liveCustomerName(dossier) : sampleName || 'Customer') : sampleName ?? 'Michael James';
   const [note, setNote] = useState('');
   const [notes, setNotes] = useState<{ text: string; meta: string }[]>([
     { text: 'Prefers corner booth near the window. Allergic to shellfish.', meta: 'Added by Chidi (Manager) · Sep 30, 4:10 PM' },

@@ -3,6 +3,7 @@ import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { MENU_PRODUCT_ID, naira, nairaToNumber, type CatalogueProduct } from '../catalogueData';
+import { UserAvatar } from '../../components/ui/UserAvatar';
 
 interface DesktopStorefrontMenuScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -339,8 +340,8 @@ export function DesktopStorefrontMenuScreen({
                   <span>See All</span>
                   <Icon name="chevron_right" className="text-[18px]" />
                 </button>
-                <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-                  <Icon name="person" className="text-on-primary text-[18px]" />
+                <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 overflow-hidden">
+                  <UserAvatar textClassName="text-on-primary text-[13px]" />
                 </div>
               </div>
             </div>

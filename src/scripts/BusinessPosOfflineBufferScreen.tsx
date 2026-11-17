@@ -4,6 +4,7 @@ import { Icon } from '../components/ui/Icon';
 import { exportEncryptedBackup, printOfflineXTape } from '../utils/posOffline';
 import { hasApiConfig } from '../services/api/client';
 import { timeLabel, useLivePos } from './posLive';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessPosOfflineBufferScreenProps {
   onBack: () => void;
@@ -209,8 +210,8 @@ export function BusinessPosOfflineBufferScreen({ onBack, onReturnToRegister }: B
               </div>
             </div>
           </div>
-          <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-            <Icon name="person" className="text-on-primary text-[17px]" />
+          <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 overflow-hidden">
+            <UserAvatar textClassName="text-on-primary text-[13px]" />
           </span>
         </div>
       </header>

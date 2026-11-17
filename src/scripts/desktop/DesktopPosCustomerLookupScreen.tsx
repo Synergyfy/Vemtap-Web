@@ -5,6 +5,7 @@ import { hasApiConfig } from '../../services/api/client';
 import { apiErrorMessage } from '../../services/errorMessages';
 import type { PosCustomerRecord } from './posRegisterExtras';
 import { setDossierCustomerId, useDebounced, useLiveCustomerLookup, useLivePos } from '../posLive';
+import { UserAvatar } from '../../components/ui/UserAvatar';
 
 interface DesktopPosCustomerLookupScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -400,8 +401,8 @@ export function DesktopPosCustomerLookupScreen({
               </div>
               <div className="flex items-center justify-between gap-space-xs">
                 <div className="flex items-center gap-space-sm min-w-0">
-                  <span className="w-10 h-10 rounded-full bg-primary flex items-center justify-center shrink-0">
-                    <Icon name="person" className="text-on-primary text-[18px]" />
+                  <span className="w-10 h-10 rounded-full bg-primary flex items-center justify-center shrink-0 overflow-hidden">
+                    <UserAvatar textClassName="text-on-primary text-[15px]" />
                   </span>
                   <div className="flex flex-col min-w-0">
                     <span className="font-label-md text-label-md font-semibold text-on-surface">{live ? pos.cashierName : 'Emeka O.'}</span>

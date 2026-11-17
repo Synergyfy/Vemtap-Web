@@ -24,10 +24,37 @@ export interface AnalyticsFilter {
   days: number;
   /** A live branch id, or null for every branch. */
   branchId: string | null;
+  /** Deals: `active` | `scheduled` | `expired` | `paused`; empty = every deal. */
+  dealStatus: string[];
+  /** POS: `card` | `transfer` | `cash`; empty = every settlement. */
+  paymentMethod: string[];
+  /** POS: till ids; empty = every till. */
+  tillId: string[];
+  /** Customers: `new` | `returning` | `lapsed` | `vip`, or null for all. */
+  cohort: string | null;
 }
 
+/** Filter-screen chip labels and the API values they send. */
+export const DEAL_STATUS_VALUES: Record<string, string> = { Active: 'active', Scheduled: 'scheduled', Expired: 'expired', Paused: 'paused' };
+export const SETTLEMENT_VALUES: Record<string, string> = { Card: 'card', Transfer: 'transfer', Cash: 'cash' };
+export const COHORT_VALUES: Record<string, string> = { 'New customers': 'new', Returning: 'returning', 'At risk': 'lapsed', VIP: 'vip' };
+/** Chip labels for stored API values. */
+export const labelsFor = (map: Record<string, string>, values: string[]) =>
+  Object.keys(map).filter((label) => values.includes(map[label]));
+/** API values for selected chip labels. */
+export const valuesFor = (map: Record<string, string>, labels: string[]) =>
+  labels.map((label) => map[label]).filter((value): value is string => Boolean(value));
+
 const STORAGE_KEY = 'vemtap_analytics_filter';
-const DEFAULT_FILTER: AnalyticsFilter = { preset: '30 Days', days: 30, branchId: null };
+const DEFAULT_FILTER: AnalyticsFilter = {
+  preset: '30 Days',
+  days: 30,
+  branchId: null,
+  dealStatus: [],
+  paymentMethod: [],
+  tillId: [],
+  cohort: null,
+};
 
 const read = (): AnalyticsFilter => {
   try {
@@ -85,7 +112,7 @@ export const periodLabel = (filter: AnalyticsFilter) =>
 /** One analytics module under the current filter (disabled in demo mode). */
 export function useLiveAnalytics<M extends AnalyticsModule>(module: M) {
   const filter = useAnalyticsFilter();
-  const query = useBusinessAnalytics(module, filter.days, filter.branchId ?? undefined);
+  const query = useBusinessAnalytics(module, filter.days, filter.branchId ?? undefined, filter);
   return { live: hasApiConfig(), filter, ...query };
 }
 

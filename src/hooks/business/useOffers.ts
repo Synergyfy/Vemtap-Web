@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { hasApiConfig } from '../../services/api/client';
-import { offersService, type CreateOfferInput, type SetOfferGroupBranchPricingInput } from '../../services/offersService';
+import {
+  offersService,
+  type CreateOfferInput,
+  type OfferGroupBranchPricing,
+  type SetOfferGroupBranchPricingInput,
+} from '../../services/offersService';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 
 export const offerKeys = { all: ['offers'] as const };
@@ -58,6 +63,42 @@ export function useOfferGroupMutations(dealGroupId: string | null | undefined) {
     }),
     setStatus: useMutation({
       mutationFn: (status: 'active' | 'inactive') => offersService.setGroupStatus(id, status),
+      onSuccess: refresh,
+    }),
+  };
+}
+
+/** Total claims across every branch of a deal (customers' vouchers). */
+export const dealGroupClaims = (pricing: OfferGroupBranchPricing | undefined | null) =>
+  (pricing?.branches ?? []).reduce((sum, row) => sum + (row.claimedCount ?? 0), 0);
+
+/**
+ * Ending or removing a whole deal (every branch).
+ * - `close`: stops it now — hidden from feeds, no new claims, end date set to now so it
+ *   moves to Expired. Existing claims stay valid.
+ * - `remove`: deletes it. The API deletes a deal's claims with it, so this refuses when
+ *   anyone has claimed it (close it instead).
+ */
+export function useDealLifecycle() {
+  const queryClient = useQueryClient();
+  const refresh = () => queryClient.invalidateQueries({ queryKey: offerKeys.all });
+  return {
+    close: useMutation({
+      mutationFn: (dealGroupId: string) =>
+        offersService.updateGroup(dealGroupId, { status: 'inactive', endDate: new Date().toISOString() }),
+      onSuccess: refresh,
+    }),
+    remove: useMutation({
+      mutationFn: async (dealGroupId: string) => {
+        const pricing = await offersService.groupBranchPricing(dealGroupId);
+        const claims = dealGroupClaims(pricing);
+        if (claims > 0) {
+          throw new Error(
+            `This deal has ${claims} claim${claims === 1 ? '' : 's'}. Deleting it would cancel customers' vouchers — close it instead.`,
+          );
+        }
+        await Promise.all(pricing.branches.map((row) => offersService.remove(row.offerId)));
+      },
       onSuccess: refresh,
     }),
   };

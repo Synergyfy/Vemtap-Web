@@ -1,3 +1,5 @@
+import { useBusinessCard } from './subscriptionLive';
+import { NO_IMAGE } from '../utils/homeOffer';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { hasApiConfig } from '../services/api/client';
@@ -14,7 +16,7 @@ interface SubscriptionEndingScreenProps {
 const KEEP_BENEFITS = [
   'Keep your business profile & storefront active',
   'Keep your deals visible to local shoppers',
-  'Keep managing your branch locations (Apo & Wuse II)',
+  'Keep managing your branch locations',
   'Continue engaging customers via direct in-app chat',
   'Continue using analytics, QR tap codes & loyalty tools',
 ];
@@ -30,6 +32,7 @@ export function SubscriptionEndingScreen({
   onReviewBusiness,
 }: SubscriptionEndingScreenProps) {
   const live = hasApiConfig();
+  const card = useBusinessCard();
   const subscription = useActiveSubscription();
   const plans = useSubscriptionPlans();
 
@@ -87,18 +90,18 @@ export function SubscriptionEndingScreen({
                 Live Storefronts
               </span>
             </div>
-            <span className="font-caption text-caption text-text-secondary">2 active branches</span>
+            <span className="font-caption text-caption text-text-secondary">{card.live ? `${card.branchCount} active ${card.branchCount === 1 ? 'branch' : 'branches'}` : '2 active branches'}</span>
           </div>
           <div className="flex items-center gap-3 mt-1">
             <div className="w-10 h-10 rounded-lg bg-surface-container-high flex items-center justify-center overflow-hidden flex-shrink-0">
-              <img alt={STORE_ALT} className="w-full h-full object-cover" src={STORE_IMG} />
+              <img alt={card.live ? `${card.name} logo` : STORE_ALT} className="w-full h-full object-cover" src={card.live ? card.logo || NO_IMAGE : STORE_IMG} />
             </div>
             <div className="min-w-0 flex-1">
               <p className="font-heading-sm text-heading-sm font-semibold text-text-primary truncate">
-                Koffee & Co. Roasters
+                {card.live ? card.name : 'Koffee & Co. Roasters'}
               </p>
               <p className="font-label-sm text-label-sm text-text-secondary truncate mt-0.5">
-                Apo Resettlement • Wuse II Branch
+                {card.live ? card.branchLine : 'Apo Resettlement • Wuse II Branch'}
               </p>
             </div>
             <div className="w-8 h-8 rounded-full bg-surface-tint-blue flex items-center justify-center text-primary flex-shrink-0">

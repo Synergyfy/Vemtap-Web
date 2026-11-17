@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { Icon } from './ui/Icon';
 import {
   CUSTOMER_AUDIENCES,
-  activeAnnouncements,
+  type Announcement,
   type AnnouncementAudience,
   type AnnouncementDestination,
   type AnnouncementTone,
 } from '../scripts/announcementsData';
+import { useAnnouncements } from '../hooks/useAnnouncements';
 
 /**
  * Compact rotating announcement / promotional banner.
@@ -28,7 +29,7 @@ import {
 
 export interface AnnouncementBannerProps {
   /** Opens the destination the admin configured for that slide. */
-  onNavigate: (destination: AnnouncementDestination) => void;
+  onNavigate: (destination: AnnouncementDestination, item: Announcement) => void;
   /** Audiences the current viewer belongs to. Defaults to the consumer set. */
   audiences?: readonly AnnouncementAudience[];
   /** Milliseconds each slide stays on screen. */
@@ -65,7 +66,7 @@ export function AnnouncementBanner({
   intervalMs = 5000,
   className = '',
 }: AnnouncementBannerProps) {
-  const items = activeAnnouncements(new Date()).filter((item) => audiences.includes(item.audience));
+  const items = useAnnouncements().filter((item) => audiences.includes(item.audience));
 
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -119,7 +120,7 @@ export function AnnouncementBanner({
               type="button"
               tabIndex={isActive ? 0 : -1}
               aria-hidden={!isActive}
-              onClick={() => onNavigate(item.destination)}
+              onClick={() => onNavigate(item.destination, item)}
               className={`absolute inset-0 flex items-center gap-space-sm px-space-sm lg:px-space-md text-left transition-opacity duration-500 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-container/60 ${
                 isActive ? 'z-10 opacity-100' : 'z-0 opacity-0 pointer-events-none'
               }`}

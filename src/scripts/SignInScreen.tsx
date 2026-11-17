@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
@@ -7,11 +7,15 @@ interface SignInScreenProps {
   onBack: () => void;
   onSignIn: (credentials: { identifier: string; password: string }) => Promise<void> | void;
   onGoogleSignIn: () => void;
+  /** A failed live Google sign-in to show (set again for each failure). */
+  googleError?: { message: string } | null;
   onCreateAccount: () => void;
   onBusinessRegister: () => void;
   onForgotPin: () => void;
-  onCustomerSignIn: () => void;
-  onBusinessSignIn: () => void;
+  /** Prefills the email (e.g. business sign-up found an existing account). */
+  initialIdentifier?: string;
+  /** Why the visitor was sent here, shown above the form. */
+  notice?: string | null;
 }
 
 type Status = 'idle' | 'submitting';
@@ -22,7 +26,7 @@ const getAuthErrorMessage = (error: unknown) => {
   if (error && typeof error === 'object' && 'message' in error && typeof (error as { message?: unknown }).message === 'string') {
     return (error as { message: string }).message;
   }
-  return 'We could not sign you in. Please check your email or password and try again.';
+  return 'We could not sign you in. Please check your email or phone and your 6-digit PIN.';
 };
 
 function GoogleIcon() {
@@ -65,16 +69,23 @@ export function SignInScreen({
   onBack,
   onSignIn,
   onGoogleSignIn,
+  googleError,
   onCreateAccount,
   onBusinessRegister,
   onForgotPin,
-  onCustomerSignIn,
-  onBusinessSignIn,
+  initialIdentifier,
+  notice,
 }: SignInScreenProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [status, setStatus] = useState<Status>('idle');
   const [googleStatus, setGoogleStatus] = useState<Status>('idle');
+
+  useEffect(() => {
+    if (!googleError) return;
+    setError(googleError.message);
+    setGoogleStatus('idle');
+  }, [googleError]);
   const [error, setError] = useState<string | null>(null);
 
   const busy = status !== 'idle' || googleStatus !== 'idle';
@@ -91,6 +102,12 @@ export function SignInScreen({
     }
     if (!credential?.value) {
       credential?.focus();
+      return;
+    }
+    // Customer and business accounts sign in with a 6-digit PIN only.
+    if (!/^\d{6}$/.test(credential.value)) {
+      setError('Enter your 6-digit PIN.');
+      credential.focus();
       return;
     }
     const nextIdentifier = identifier.value.trim();
@@ -133,41 +150,6 @@ export function SignInScreen({
         </div>
 
         <div className="flex flex-col gap-space-md">
-          <div className="flex flex-col gap-space-2xs">
-            <span className="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">
-              Continue as
-            </span>
-            <div className="grid grid-cols-2 gap-space-xs">
-              <button
-                type="button"
-                onClick={onCustomerSignIn}
-                disabled={busy}
-                className="flex flex-col items-start gap-space-2xs p-space-sm rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm text-left active:scale-[0.98] transition-all duration-150 hover:border-primary/40 hover:shadow-md disabled:opacity-70"
-              >
-                <span className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center">
-                  <Icon name="person" className="text-[20px]" />
-                </span>
-                <span className="font-label-md text-label-md font-semibold text-text-primary">Customer</span>
-                <span className="font-caption text-caption text-text-secondary leading-4">
-                  Open customer dashboard
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={onBusinessSignIn}
-                disabled={busy}
-                className="flex flex-col items-start gap-space-2xs p-space-sm rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm text-left active:scale-[0.98] transition-all duration-150 hover:border-primary/40 hover:shadow-md disabled:opacity-70"
-              >
-                <span className="w-9 h-9 rounded-lg bg-secondary-fixed text-on-secondary-fixed-variant flex items-center justify-center">
-                  <Icon name="storefront" className="text-[20px]" />
-                </span>
-                <span className="font-label-md text-label-md font-semibold text-text-primary">Business</span>
-                <span className="font-caption text-caption text-text-secondary leading-4">
-                  Open business dashboard
-                </span>
-              </button>
-            </div>
-          </div>
 
           <button
             type="button"
@@ -198,6 +180,11 @@ export function SignInScreen({
           </div>
 
           <form className="flex flex-col gap-space-md" onSubmit={handleSubmit}>
+            {notice && !error ? (
+              <div className="rounded-xl bg-surface-tint-blue px-space-sm py-space-xs text-text-primary font-body-md text-body-md">
+                {notice}
+              </div>
+            ) : null}
             {error ? (
               <div className="rounded-xl border border-red-200 bg-red-50 px-space-sm py-space-xs text-red-700 font-body-md text-body-md">
                 {error}
@@ -215,6 +202,7 @@ export function SignInScreen({
                   className="w-full h-[52px] pl-[44px] pr-space-md bg-surface-container-lowest text-text-primary rounded-xl font-body-md text-body-md placeholder:text-text-tertiary focus:outline-none focus:bg-surface-tint-blue shadow-sm transition-colors"
                   id="identifier"
                   name="identifier"
+                  defaultValue={initialIdentifier}
                   placeholder="name@example.com or +234..."
                   type="text"
                   autoComplete="username"
@@ -225,7 +213,7 @@ export function SignInScreen({
             <div className="flex flex-col gap-space-2xs">
               <div className="flex items-center justify-between">
                 <label className="font-label-md text-label-md text-text-primary" htmlFor="security-credential">
-                  PIN or Password
+                  6-digit PIN
                 </label>
                 <button type="button" className="font-label-sm text-label-sm text-primary hover:underline" onClick={onForgotPin}>
                   Forgot?
@@ -239,13 +227,18 @@ export function SignInScreen({
                   className="w-full h-[52px] pl-[44px] pr-[48px] bg-surface-container-lowest text-text-primary rounded-xl font-body-md text-body-md placeholder:text-text-tertiary focus:outline-none focus:bg-surface-tint-blue shadow-sm transition-colors"
                   id="security-credential"
                   name="security-credential"
-                  maxLength={32}
+                  maxLength={6}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   placeholder="••••••"
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
+                  onInput={(event) => {
+                    event.currentTarget.value = event.currentTarget.value.replace(/\D/g, '').slice(0, 6);
+                  }}
                 />
                 <button
-                  aria-label={showPassword ? 'Hide PIN or password' : 'Show PIN or password'}
+                  aria-label={showPassword ? 'Hide PIN' : 'Show PIN'}
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
                   className="absolute right-0 top-0 bottom-0 px-space-md flex items-center justify-center text-outline hover:text-text-primary transition-colors"

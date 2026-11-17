@@ -1,9 +1,7 @@
-import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { useCart } from '../../context/CartContext';
 import { naira } from '../catalogueData';
-import { DELIVERY_FEE, VOUCHER_RATE, type FulfillmentMode } from '../orderData';
 
 interface DesktopCartScreenProps {
   onNav: (key: DesktopNavKey) => void;
@@ -11,19 +9,9 @@ interface DesktopCartScreenProps {
   onCheckout: () => void;
 }
 
-const FULFILLMENT_LABELS: Record<FulfillmentMode, string> = {
-  pickup: 'Pickup',
-  delivery: 'Delivery',
-};
-
 export function DesktopCartScreen({ onNav, onCheckout }: DesktopCartScreenProps) {
   const cart = useCart();
-  const [mode, setMode] = useState<FulfillmentMode>('pickup');
-
   const subtotal = cart.total;
-  const savings = Math.round(subtotal * VOUCHER_RATE);
-  const deliveryFee = mode === 'delivery' ? DELIVERY_FEE : 0;
-  const total = Math.max(0, subtotal - savings) + deliveryFee;
 
   return (
     <DesktopPage withHeader withFooter onNav={onNav} activeNav="cart" withCustomerRail>
@@ -72,16 +60,15 @@ export function DesktopCartScreen({ onNav, onCheckout }: DesktopCartScreenProps)
                   </div>
                   <h2 className="font-heading-sm text-heading-sm text-text-primary">Your cart is empty</h2>
                   <p className="font-body-md text-body-md text-text-secondary max-w-sm">
-                    Add items from a business storefront, the product catalogue, or scan an in-store product QR code to
-                    build your order.
+                    Add items from a business page to build your order.
                   </p>
                   <div className="flex items-center gap-3 pt-2">
                     <button
                       type="button"
-                      onClick={() => onNav('storefront')}
+                      onClick={() => onNav('discover')}
                       className="h-11 px-5 rounded-xl bg-primary text-on-primary font-button-secondary text-button-secondary font-semibold hover:bg-primary-container transition-colors"
                     >
-                      Browse Storefront
+                      Browse Businesses
                     </button>
                     <button
                       type="button"
@@ -114,7 +101,9 @@ export function DesktopCartScreen({ onNav, onCheckout }: DesktopCartScreenProps)
                         <p className="font-label-md text-label-md text-text-primary font-semibold truncate">
                           {line.name}
                         </p>
-                        <p className="font-caption text-caption text-text-secondary">{naira(line.price)} each</p>
+                        <p className="font-caption text-caption text-text-secondary">
+                          {[line.merchantName, `${naira(line.price)} each`].filter(Boolean).join(' • ')}
+                        </p>
                         {line.options && (
                           <p className="font-caption text-caption text-text-tertiary truncate mt-0.5">{line.options}</p>
                         )}
@@ -161,48 +150,14 @@ export function DesktopCartScreen({ onNav, onCheckout }: DesktopCartScreenProps)
               <div className="bg-surface-canvas rounded-2xl p-6 shadow-sm flex flex-col gap-4">
                 <h3 className="font-heading-sm text-heading-sm text-text-primary">Order Summary</h3>
 
-                <div className="flex flex-col gap-1.5">
-                  <span className="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider font-semibold">
-                    Fulfilment
-                  </span>
-                  <div className="flex items-center gap-2 p-1 bg-surface-subtle rounded-xl">
-                    {(Object.keys(FULFILLMENT_LABELS) as FulfillmentMode[]).map((key) => (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setMode(key)}
-                        className={`flex-1 py-2 rounded-lg font-label-md text-label-md transition-all ${
-                          mode === key
-                            ? 'bg-surface-canvas text-primary font-semibold shadow-sm'
-                            : 'text-text-secondary hover:text-text-primary'
-                        }`}
-                      >
-                        {FULFILLMENT_LABELS[key]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
                 <div className="space-y-1.5 pt-1 text-body-md font-body-md">
                   <div className="flex justify-between text-text-secondary">
                     <span>Subtotal ({cart.count} {cart.count === 1 ? 'item' : 'items'})</span>
                     <span className="text-text-primary font-medium">{naira(subtotal)}</span>
                   </div>
-                  {savings > 0 && (
-                    <div className="flex justify-between text-badge-discount-text">
-                      <span>Loyalty Voucher Discount</span>
-                      <span>-{naira(savings)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-text-secondary">
-                    <span>Delivery Fee{deliveryFee === 0 ? ' (Pickup)' : ''}</span>
-                    <span className="text-text-primary font-medium">
-                      {deliveryFee === 0 ? 'Free' : naira(deliveryFee)}
-                    </span>
-                  </div>
                   <div className="flex justify-between font-label-md text-label-md text-text-primary font-bold pt-2 border-t border-surface-subtle">
                     <span>Total Payable to Cashier</span>
-                    <span className="text-primary">{naira(total)}</span>
+                    <span className="text-primary">{naira(subtotal)}</span>
                   </div>
                 </div>
 
@@ -220,35 +175,20 @@ export function DesktopCartScreen({ onNav, onCheckout }: DesktopCartScreenProps)
                 </p>
               </div>
 
-              <div className="bg-badge-discount-bg/60 rounded-xl p-6 flex items-start gap-4 shadow-sm">
-                <div className="w-10 h-10 rounded-full bg-badge-discount-bg text-badge-discount-text flex items-center justify-center shrink-0">
-                  <Icon name="verified_user" className="text-[20px]" />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="font-label-md text-label-md font-semibold text-badge-discount-text">
-                    100% Price Match Guarantee
-                  </span>
-                  <p className="font-caption text-caption text-text-secondary leading-relaxed">
-                    No surge fees, no inflated in-app prices. Prices on VEMTAP are identical to in-store counter menus in
-                    Abuja.
-                  </p>
-                </div>
-              </div>
-
               <div className="bg-surface-canvas rounded-xl p-6 shadow-sm flex flex-col gap-3">
                 <div className="flex items-center gap-2 font-label-md text-label-md text-text-primary font-semibold">
                   <Icon name="help_outline" className="text-primary text-[20px]" />
                   <span>Need quick assistance?</span>
                 </div>
                 <p className="font-caption text-caption text-text-secondary">
-                  Our Abuja Local Concierge is active daily 8:00 AM – 10:00 PM for tray adjustments or location guidance.
+                  Message the business about your order before you collect it.
                 </p>
                 <button
                   onClick={() => onNav('messages')}
                   className="font-label-sm text-label-sm text-primary font-medium hover:underline inline-flex items-center gap-1 pt-1 self-start"
                   type="button"
                 >
-                  <span>Chat with Apo Desk</span>
+                  <span>Open Messages</span>
                   <Icon name="arrow_forward" className="text-[14px]" />
                 </button>
               </div>

@@ -95,6 +95,7 @@ function fieldIndexMap(mapping: ImportMapping): Record<ImportFieldKey, number[]>
     unit: [],
     variants: [],
     image: [],
+    points: [],
     ignore: [],
   };
   for (const [index, field] of Object.entries(mapping)) {

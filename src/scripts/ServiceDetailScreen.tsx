@@ -9,6 +9,7 @@ import {
   serviceSteps,
   type SpaCatalogueService,
 } from './spaBookingData';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface ServiceDetailScreenProps {
   service: SpaCatalogueService;
@@ -57,8 +58,8 @@ export function ServiceDetailScreen({ service, onBack, onBook }: ServiceDetailSc
             >
               <Icon name="share" className="text-[22px]" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>
@@ -263,7 +264,7 @@ export function ServiceDetailScreen({ service, onBack, onBook }: ServiceDetailSc
         </div>
       </div>
       {toast && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {toast}
         </div>
       )}

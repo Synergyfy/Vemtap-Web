@@ -7,6 +7,7 @@ import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ProductDraft } from './desktopProductDraft';
 import { getCentralCategories, addCentralCategory, type CentralCategory } from '../catalogueData';
 import { CategoryImageField } from '../../components/CategoryImageField';
+import { PRODUCT_TAG_CHIPS } from '../productTags';
 
 interface DesktopAddProductStep1ScreenProps {
   draft: ProductDraft;
@@ -22,12 +23,7 @@ const PREVIEW_IMAGE =
 
 const PREVIEW_ALT = 'Plated woodfire grilled lamb chops with herbs on customer discovery screen preview.';
 
-const DIETARY_CHIPS: Array<{ label: string; icon: string; active: boolean; tone: 'default' | 'tertiary' }> = [
-  { label: 'Gluten-free', icon: 'eco', active: false, tone: 'default' },
-  { label: 'Halal certified', icon: 'verified', active: true, tone: 'default' },
-  { label: 'Eco packaging', icon: 'recycling', active: false, tone: 'default' },
-  { label: 'Medium Spicy', icon: 'local_fire_department', active: true, tone: 'tertiary' },
-];
+const DIETARY_CHIPS = PRODUCT_TAG_CHIPS;
 
 const CONDITION_OPTIONS: Array<{
   value: ProductDraft['condition'];
@@ -65,9 +61,8 @@ export function DesktopAddProductStep1Screen({
   const Shell = onNav ? MerchantShell : BusinessSetupChrome;
   // Live: real categories, real photo uploads and no sample tags.
   const editor = useLiveItemEditor('product');
-  const [activeChips, setActiveChips] = useState<string[]>(
-    editor.live ? [] : DIETARY_CHIPS.filter((chip) => chip.active).map((chip) => chip.label),
-  );
+  // The chips are the product's tags, kept on the draft so they're saved with it.
+  const activeChips = draft.tags ?? [];
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
   const timers = useRef<number[]>([]);
@@ -149,12 +144,14 @@ export function DesktopAddProductStep1Screen({
   };
 
   const handleSaveDraft = () => {
+    // Live: the parent saves it (hidden from customers) and reports the outcome.
+    if (editor.live) return onSaveDraft();
     showToast('Product draft saved successfully.');
     timers.current.push(window.setTimeout(() => onSaveDraft(), 600));
   };
 
   const toggleChip = (label: string) => {
-    setActiveChips((prev) => (prev.includes(label) ? prev.filter((chip) => chip !== label) : [...prev, label]));
+    onDraftChange({ tags: activeChips.includes(label) ? activeChips.filter((chip) => chip !== label) : [...activeChips, label] });
   };
 
   return (

@@ -3,6 +3,8 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { isVariantProduct, getActiveVariants } from './productVariants';
 import type { ProductDraft } from './productDraft';
+import { draftImage, draftImageAlt } from './desktop/draftImage';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessProductPublishedScreenProps {
   draft: ProductDraft;
@@ -38,7 +40,10 @@ export function BusinessProductPublishedScreen({
   const variantPrices = activeVariants.map((variant) => parseAmount(variant.price)).filter((price) => price > 0);
   const lowPrice = variantPrices.length > 0 ? Math.min(...variantPrices) : parseAmount(draft.basePrice);
   const highPrice = variantPrices.length > 0 ? Math.max(...variantPrices) : lowPrice;
-  const thumbnail = PUBLISHED_IMAGES[0];
+  const thumbnail = {
+    src: draftImage(draft.mainImage, PUBLISHED_IMAGES[0].src),
+    alt: draftImageAlt(draft.title, PUBLISHED_IMAGES[0].alt),
+  };
 
   return (
     <AppScreen>
@@ -66,8 +71,8 @@ export function BusinessProductPublishedScreen({
             <div className="inline-flex items-center px-space-sm py-1 rounded-full bg-surface-tint-blue">
               <span className="font-label-sm text-label-sm text-primary font-semibold">Step 5 of 5</span>
             </div>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0 overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

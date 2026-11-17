@@ -1,18 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
+import { NO_IMAGE } from '../../utils/homeOffer';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { useCart } from '../../context/CartContext';
 import { useOrders, type SubmittedOrder } from '../../context/OrdersContext';
 import { useProfile } from '../../context/ProfileContext';
 import {
-  DELIVERY_FEE,
-  MERCHANT_IMAGE,
-  MERCHANT_NAME,
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
-  VOUCHER_CODE,
-  VOUCHER_RATE,
-  estimateReadyBy,
   type FulfillmentMode,
   type PaymentMethod,
 } from '../orderData';
@@ -21,9 +16,6 @@ const naira = (value: number) => `₦${value.toLocaleString('en-US')}`;
 
 const PAYMENT_CHOICES: { method: PaymentMethod; blurb: string; icon: string }[] = [
   { method: 'pay-at-counter', blurb: 'Cash or POS when you collect', icon: 'point_of_sale' },
-  { method: 'card', blurb: 'Debit / credit card (verified before pickup)', icon: 'credit_card' },
-  { method: 'transfer', blurb: 'Bank transfer (verified before pickup)', icon: 'account_balance' },
-  { method: 'wallet', blurb: 'VEMTAP wallet (verified before pickup)', icon: 'account_balance_wallet' },
 ];
 
 interface DesktopCheckoutScreenProps {
@@ -37,7 +29,7 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
   const orders = useOrders();
   const profile = useProfile();
   const [mode, setMode] = useState<FulfillmentMode>('pickup');
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState(cart.note);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pay-at-counter');
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -64,20 +56,22 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
   };
 
   const subtotal = cart.total;
-  const savings = Math.round(subtotal * VOUCHER_RATE);
-  const deliveryFee = mode === 'delivery' ? DELIVERY_FEE : 0;
-  const total = Math.max(0, subtotal - savings) + deliveryFee;
-  const readyBy = estimateReadyBy();
+  // Prices come from the business; orders are collected and paid at the counter.
+  const savings = 0;
+  const deliveryFee = 0;
+  const total = subtotal;
+  const businesses = [...new Set(cart.lines.map((line) => line.merchantName).filter(Boolean))];
+  const merchantLabel = businesses.length > 1 ? `${businesses.length} businesses` : businesses[0] ?? 'This business';
+  const merchantLogo = cart.lines.find((line) => line.merchantLogo)?.merchantLogo ?? NO_IMAGE;
 
   const placeOrder = () => {
     if (placing || cart.lines.length === 0) return;
     setSubmitError(null);
     setPlacing(true);
-    placeTimer.current = window.setTimeout(() => {
-      // BUG-015 Step 3: submit through the shared order store; never mark paid here.
-      const result = orders.submit({
-        merchantId: 'urban',
-        merchantName: MERCHANT_NAME,
+    void orders
+      .submit({
+        merchantId: cart.lines[0]?.branchId ?? '',
+        merchantName: merchantLabel,
         customerName: profile.fullName,
         customerPhone: profile.phone || undefined,
         lines: cart.lines.map((line) => ({
@@ -89,6 +83,9 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
           image: line.image,
           options: line.options,
           instructions: line.instructions || note.trim() || undefined,
+          branchId: line.branchId,
+          merchantName: line.merchantName,
+          merchantLogo: line.merchantLogo,
         })),
         subtotal,
         savings,
@@ -98,17 +95,17 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
         note: note.trim() || undefined,
         paymentMethod,
         marketingConsent,
-      });
-      placeTimer.current = null;
-      setPlacing(false);
+      })
+      .then((result) => {
+        setPlacing(false);
       if (!result.ok) {
         setSubmitError(result.error);
         showToast(result.error);
         return;
       }
       setPendingOrder(result.order);
-      setDialogOpen(true);
-    }, 900);
+        setDialogOpen(true);
+      });
   };
 
   const confirmOrder = () => {
@@ -168,8 +165,8 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
                 Order Checkout
               </h1>
               <p className="font-body-md text-body-md text-text-secondary max-w-2xl">
-                Review your ticket, confirm pickup or delivery details and settle directly with {MERCHANT_NAME}. VEMTAP
-                guarantees your deal discount but never collects your card funds.
+                Review your ticket, confirm your pickup details and settle directly with {merchantLabel}. VEMTAP
+                never collects your card funds.
               </p>
             </div>
           </div>
@@ -179,16 +176,15 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
               <section className="bg-surface-canvas rounded-xl border border-border-subtle p-4 shadow-sm">
                 <div className="flex items-center gap-space-sm">
                   <div className="w-14 h-14 rounded-lg bg-surface-container-high overflow-hidden shrink-0">
-                    <img className="w-full h-full object-cover" alt={MERCHANT_NAME} src={MERCHANT_IMAGE} />
+                    <img className="w-full h-full object-cover" alt={merchantLabel} src={merchantLogo} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1">
-                      <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">{MERCHANT_NAME}</h2>
-                      <Icon name="verified" filled className="text-primary text-[18px]" />
+                      <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">{merchantLabel}</h2>
                     </div>
                     <p className="font-caption text-caption text-text-secondary flex items-center gap-1 truncate">
                       <Icon name="location_on" className="text-[15px] text-text-tertiary" />
-                      Apo Boulevard, Abuja • 0.6 km away
+                      {businesses.length > 1 ? 'One order per business' : 'Collect at the business'}
                     </p>
                   </div>
                 </div>
@@ -217,43 +213,20 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
                       Pay at cashier
                     </span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setFulfillment('delivery')}
-                    className={fulfilmentButtonClass(mode === 'delivery')}
-                  >
-                    <span
-                      className={`font-button-secondary text-button-secondary flex items-center gap-1.5 ${
-                        mode === 'delivery' ? 'font-semibold' : 'font-medium'
-                      }`}
-                    >
-                      <Icon name="moped" className="text-[18px]" />
-                      Business Delivery
-                    </span>
-                    <span
-                      className={`font-caption text-caption mt-0.5 ${
-                        mode === 'delivery' ? 'text-text-secondary' : 'text-text-tertiary'
-                      }`}
-                    >
-                      Pay to dispatch
-                    </span>
-                  </button>
-                </div>
+                                  </div>
               </section>
 
               <section className="bg-surface-canvas rounded-xl border border-border-subtle p-6 shadow-sm flex flex-col gap-4">
                 <div className="flex items-start gap-space-sm bg-surface-tint-blue/60 p-space-sm rounded-lg">
                   <div className="w-8 h-8 rounded-full bg-surface-canvas flex items-center justify-center text-primary shrink-0 shadow-sm">
-                    <Icon name={mode === 'pickup' ? 'storefront' : 'two_wheeler'} className="text-[20px]" />
+                    <Icon name="storefront" className="text-[20px]" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="font-label-md text-label-md font-semibold text-text-primary">
-                      {mode === 'pickup' ? `Ready in ~25 mins (Est. ${readyBy})` : 'Direct Dispatch by Urban Grill Staff'}
+                      Collect at the business
                     </p>
                     <p className="font-caption text-caption text-text-secondary">
-                      {mode === 'pickup'
-                        ? 'Plot 104 Apo Boulevard, Ground Floor Food Court'
-                        : 'Delivering to Apo District (within 45 mins)'}
+                      The business confirms when it’s ready
                     </p>
                   </div>
                 </div>
@@ -286,7 +259,7 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
 
                 <div className="space-y-1.5">
                   <label className="font-label-sm text-label-sm text-text-secondary" htmlFor="order-notes">
-                    Kitchen &amp; Seating Note
+                    Order Note
                   </label>
                   <div className="flex items-start gap-space-xs bg-surface-subtle px-space-md py-2.5 rounded-lg">
                     <Icon name="edit_note" className="text-text-tertiary text-[20px] mt-0.5" />
@@ -305,7 +278,7 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
               <section className="bg-surface-canvas rounded-xl border border-border-subtle p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-space-sm">
                   <h3 className="font-heading-sm text-heading-sm text-text-primary">Ordered Items ({cart.count})</h3>
-                  <span className="font-label-sm text-label-sm text-text-secondary">Direct from Menu</span>
+                  <span className="font-label-sm text-label-sm text-text-secondary">Live prices</span>
                 </div>
                 {cart.lines.length === 0 ? (
                   <div className="py-space-md text-center flex flex-col items-center gap-2">
@@ -333,7 +306,7 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
                               </span>
                             </div>
                             <p className="font-caption text-caption text-text-secondary mt-0.5 truncate">
-                              {line.options ?? 'Standard preparation'}
+                              {line.options ?? line.merchantName ?? ''}
                             </p>
                             {line.instructions && (
                               <p className="font-caption text-caption text-text-tertiary truncate">
@@ -363,10 +336,6 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
                                   <Icon name="add" className="text-[16px]" />
                                 </button>
                               </div>
-                              <span className="w-1 h-1 rounded-full bg-surface-container-high" />
-                              <span className="font-caption text-caption text-badge-discount-text font-medium">
-                                Eligible for 20% Voucher
-                              </span>
                               <button
                                 type="button"
                                 onClick={() => cart.remove(line.id)}
@@ -384,32 +353,10 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
                 )}
               </section>
 
-              <section className="bg-badge-discount-bg rounded-xl p-4 shadow-sm">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-space-xs min-w-0">
-                    <span className="w-8 h-8 rounded-full bg-badge-discount-text/10 flex items-center justify-center text-badge-discount-text shrink-0">
-                      <Icon name="confirmation_number" className="text-[18px]" />
-                    </span>
-                    <div className="min-w-0">
-                      <p className="font-label-md text-label-md font-semibold text-badge-discount-text tracking-tight">
-                        20% OFF Deal Voucher APPLIED
-                      </p>
-                      <p className="font-caption text-caption text-text-secondary">
-                        Code: <span className="font-mono font-semibold text-text-primary">{VOUCHER_CODE}</span> •
-                        Lifetime VEMTAP Tap
-                      </p>
-                    </div>
-                  </div>
-                  <span className="bg-surface-canvas text-badge-discount-text font-label-sm text-label-sm font-semibold px-2.5 py-1 rounded-full shadow-sm shrink-0">
-                    -{naira(savings)}
-                  </span>
-                </div>
-              </section>
-
               <section className="bg-surface-container-lowest rounded-xl p-6 shadow-sm space-y-space-sm">
                 <h3 className="font-label-md text-label-md font-semibold text-text-primary">Payment Method</h3>
                 <p className="font-caption text-caption text-text-secondary">
-                  Choose how you&apos;ll settle {MERCHANT_NAME}. Your order is never marked paid until payment is
+                  Choose how you&apos;ll settle {merchantLabel}. Your order is never marked paid until payment is
                   verified.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-xs">
@@ -465,7 +412,7 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
                     className="mt-0.5 accent-primary w-4 h-4 rounded"
                   />
                   <span className="font-caption text-caption text-text-secondary">
-                    Also send me occasional offers from {MERCHANT_NAME} (optional). Your order works either way —
+                    Also send me occasional offers from {merchantLabel} (optional). Your order works either way —
                     transactional messages about this order are always allowed.
                   </span>
                 </label>
@@ -485,32 +432,12 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
                   <span>Items Subtotal ({cart.count} items)</span>
                   <span className="text-text-primary font-medium">{naira(subtotal)}</span>
                 </div>
-                <div className="flex justify-between font-body-md text-body-md text-badge-discount-text font-medium">
-                  <span className="flex items-center gap-1">
-                    <span>VEMTAP Deal Savings (20%)</span>
-                    <Icon name="check_circle" className="text-[16px]" />
-                  </span>
-                  <span>-{naira(savings)}</span>
-                </div>
-                <div className="flex justify-between font-body-md text-body-md text-text-secondary">
-                  <span className="flex items-center gap-1" title="Zero platform markups on VEMTAP">
-                    Restaurant Service Fee
-                    <Icon name="info" className="text-text-tertiary text-[15px]" />
-                  </span>
-                  <span className="text-badge-discount-text font-medium">₦0 (No Markup)</span>
-                </div>
-                {mode === 'delivery' && (
-                  <div className="flex justify-between font-body-md text-body-md text-text-secondary">
-                    <span>Direct Dispatch Logistics</span>
-                    <span className="text-text-primary font-medium">{naira(deliveryFee)}</span>
-                  </div>
-                )}
                 <div className="h-px bg-surface-container-high my-space-xs" />
                 <div className="flex justify-between items-baseline pt-1 gap-3">
                   <div className="min-w-0">
                     <p className="font-heading-sm text-heading-sm text-text-primary">Total Payable to Merchant</p>
                     <p className="font-caption text-caption text-text-secondary">
-                      Direct settlement at cashier / upon drop-off
+                      Pay at the cashier when you collect
                     </p>
                   </div>
                   <span className="font-heading-sm text-heading-sm text-primary font-bold tracking-tight shrink-0">
@@ -550,11 +477,11 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
                   {placing ? (
                     <>
                       <Icon name="autorenew" className="text-[20px] animate-spin" />
-                      <span>Transmitting to Kitchen…</span>
+                      <span>Placing Order…</span>
                     </>
                   ) : (
                     <>
-                      <span>Place Order with Urban Grill</span>
+                      <span>Place Order</span>
                       <Icon name="arrow_forward" className="text-[20px]" />
                     </>
                   )}
@@ -573,9 +500,9 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
               <div className="w-16 h-16 rounded-full bg-badge-discount-bg text-badge-discount-text mx-auto flex items-center justify-center">
                 <Icon name="check_circle" filled className="text-[36px]" />
               </div>
-              <h3 className="font-heading-sm text-heading-sm text-text-primary">Order Submitted to Kitchen!</h3>
+              <h3 className="font-heading-sm text-heading-sm text-text-primary">Order Sent!</h3>
               <p className="font-body-md text-body-md text-text-secondary">
-                {MERCHANT_NAME} has received your ticket. Present order reference{' '}
+                {merchantLabel} has received your ticket. Present order reference{' '}
                 <span className="font-mono font-semibold text-text-primary">#{pendingOrder?.ref ?? '—'}</span> to the
                 cashier when you collect.
               </p>
@@ -590,11 +517,7 @@ export function DesktopCheckoutScreen({ onNav, onBack, onPlaced }: DesktopChecko
                     {pendingOrder ? PAYMENT_STATUS_LABELS[pendingOrder.paymentStatus] : '—'}
                   </span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Expected by:</span>
-                  <span className="font-medium text-text-primary">{readyBy}</span>
-                </div>
-                <div className="flex justify-between">
+                                <div className="flex justify-between">
                   <span>Settlement:</span>
                   <span className="font-medium text-primary">{naira(total)}</span>
                 </div>

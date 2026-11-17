@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
+import { NO_IMAGE } from '../utils/homeOffer';
 import { Icon } from '../components/ui/Icon';
 import { OrderQrArt } from '../components/ui/OrderQrArt';
 import { useOrders } from '../context/OrdersContext';
@@ -17,17 +18,11 @@ interface OrderDetailScreenProps {
   /** BUG-015: the ref of the order opened from the Orders list. */
   orderRef?: string;
   onBack: () => void;
-  onChat: () => void;
+  /** Opens the chat with this branch. */
+  onChat: (branchId?: string) => void;
   onReorder: () => void;
   onSupport: () => void;
 }
-
-const URBAN_AVATAR =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuAI--zdhCQDqNIaUAFQUyyScD32B6PaFE8PYNPlwAAEUS3hvyURD_3XYhNE2ZssLu5cp1F51uX9_OJd2-F9zXtPPzyZDGx3PLSijXXJR7o0RYbFx2EPQ0JLA4pWSRlyejuc-I0MP3ps0FVbccbgwEQcsn5vt1_UUrHiJLzrXe_y0tOjDFe9tI_nByQxsEhv4gjxkXD-FKJyK57YQinUWWstMkdrx27HK_zhRFkspQSI';
-const URBAN_ALT =
-  'Woodfire dining grill interior with warm incandescent lighting and artisanal tables at Urban Grill and Bistro Apo Abuja';
-
-const DIRECTIONS_URL = 'https://www.google.com/maps/search/?api=1&query=Apo%20Boulevard%2C%20Abuja';
 
 const FULFILLMENT_LABELS = { pickup: 'Pickup', delivery: 'Delivery' } as const;
 
@@ -84,9 +79,15 @@ export function OrderDetailScreen({ orderRef, onBack, onChat, onReorder, onSuppo
     );
   }
 
+  const directionsUrl =
+    order.merchantLatitude != null && order.merchantLongitude != null
+      ? `https://www.google.com/maps/search/?api=1&query=${order.merchantLatitude},${order.merchantLongitude}`
+      : order.merchantAddress
+        ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.merchantAddress)}`
+        : null;
+
   const timeline = orderTimeline(order.status);
   const paymentCleared = isPaymentCleared(order.paymentStatus);
-  const pickupPin = (order.ref.replace(/\D/g, '') + '0000').slice(-4);
   const readyByLabel = order.readyByLabel ?? 'Shortly';
 
   const steps = [
@@ -178,18 +179,6 @@ export function OrderDetailScreen({ orderRef, onBack, onChat, onReorder, onSuppo
           <p className="font-caption text-caption text-text-secondary text-center">
             Show this code at the counter. Reopen it anytime from Orders → {order.ref}.
           </p>
-          <div className="flex items-center justify-center gap-space-xs pt-space-2xs w-full">
-            <span className="font-label-sm text-label-sm text-text-secondary">Counter Pickup PIN</span>
-            <span className="font-mono text-heading-sm font-bold tracking-[0.3em] text-text-primary">{pickupPin}</span>
-            <button
-              type="button"
-              onClick={() => copyValue(pickupPin, 'Pickup PIN')}
-              className="w-9 h-9 rounded-lg bg-surface-container text-primary hover:bg-surface-container-high flex items-center justify-center transition-colors"
-              aria-label="Copy pickup PIN"
-            >
-              <Icon name={copied === pickupPin ? 'check' : 'content_copy'} className="text-[17px]" />
-            </button>
-          </div>
         </section>
 
         <section className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm">
@@ -245,40 +234,40 @@ export function OrderDetailScreen({ orderRef, onBack, onChat, onReorder, onSuppo
             <div className="relative shrink-0">
               <img
                 className="w-12 h-12 rounded-full object-cover shadow-sm"
-                alt={URBAN_ALT}
-                src={URBAN_AVATAR}
+                alt={order.merchantName}
+                src={order.merchantLogo || NO_IMAGE}
               />
-              <span className="absolute bottom-0 right-0 w-3 h-3 bg-badge-discount-text rounded-full ring-2 ring-surface-container-lowest" />
             </div>
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-1">
                 <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">{order.merchantName}</h2>
-                <Icon name="verified" filled className="text-primary text-[16px] shrink-0" />
               </div>
               <span className="font-caption text-caption text-text-secondary truncate">
-                Plot 14 Apo Boulevard, Abuja • 0.8 km
+{order.merchantAddress}
               </span>
-              <span className="font-caption text-caption text-badge-discount-text">Open until 10:30 PM</span>
             </div>
           </div>
           <div className="grid grid-cols-3 gap-space-xs">
-            <a
-              href="tel:+2348039204491"
+            {order.merchantPhone ? (
+<a
+ href={`tel:${order.merchantPhone}`}
               className="h-10 rounded-xl bg-surface-container text-text-secondary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 hover:bg-surface-container-high transition-colors"
             >
               <Icon name="call" className="text-[16px]" />
               <span>Call</span>
             </a>
+) : null}
             <button
               type="button"
-              onClick={onChat}
+              onClick={() => onChat(order.merchantId)}
               className="h-10 rounded-xl bg-surface-container text-text-secondary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 hover:bg-surface-container-high transition-colors"
             >
               <Icon name="chat" className="text-[16px]" />
               <span>Chat</span>
             </button>
-            <a
-              href={DIRECTIONS_URL}
+            {directionsUrl ? (
+<a
+ href={directionsUrl}
               target="_blank"
               rel="noreferrer"
               className="h-10 rounded-xl bg-surface-container text-text-secondary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 hover:bg-surface-container-high transition-colors"
@@ -286,6 +275,7 @@ export function OrderDetailScreen({ orderRef, onBack, onChat, onReorder, onSuppo
               <Icon name="near_me" className="text-[16px]" />
               <span>Directions</span>
             </a>
+) : null}
           </div>
         </section>
 
@@ -381,13 +371,15 @@ export function OrderDetailScreen({ orderRef, onBack, onChat, onReorder, onSuppo
         </section>
 
         <section className="flex flex-col gap-space-xs">
-          <a
-            href="tel:+2348039204491"
+          {order.merchantPhone ? (
+<a
+ href={`tel:${order.merchantPhone}`}
             className="h-12 rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary flex items-center justify-center gap-2 shadow-sm active:scale-[0.98] transition-all hover:bg-primary"
           >
             <Icon name="call" className="text-[19px]" />
-            <span>Call Kitchen</span>
+            <span>Call Business</span>
           </a>
+) : null}
           <button
             type="button"
             onClick={onReorder}
@@ -418,7 +410,7 @@ export function OrderDetailScreen({ orderRef, onBack, onChat, onReorder, onSuppo
                      .join('')}
                    <tr class="total"><td>Total</td><td>${money(order.total)}</td></tr>
                  </tbody></table>
-                 <p class="foot">Vemtap receipt — proof of order. Pickup PIN ${pickupPin}.</p>`
+                 <p class="foot">Vemtap receipt — proof of order.</p>`
               );
               showToast('Receipt opened — save it as PDF from the print dialog');
             }}

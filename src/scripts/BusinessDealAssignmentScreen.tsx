@@ -6,6 +6,7 @@ import { useOfferGroup, useOfferGroupMutations, useOffers } from '../hooks/busin
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { apiErrorMessage } from '../services/errorMessages';
 import { planErrorMessage } from '../services/planErrors';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessDealAssignmentScreenProps {
   /** Live: the deal group whose branches and prices are edited. */
@@ -151,8 +152,8 @@ export function BusinessDealAssignmentScreen({ dealGroupId, onBack }: BusinessDe
             >
               <Icon name="more_vert" className="text-[22px]" />
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>
@@ -272,13 +273,13 @@ export function BusinessDealAssignmentScreen({ dealGroupId, onBack }: BusinessDe
             </div>
             <button
               aria-checked={locationPricing}
-              className={`w-12 h-7 rounded-full relative p-0.5 shrink-0 transition-colors ${locationPricing ? 'bg-primary' : 'bg-surface-variant'}`}
+              className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${locationPricing ? 'bg-primary' : 'bg-surface-container-highest'}`}
               role="switch"
               type="button"
               onClick={() => setLocationPricing((on) => !on)}
             >
               <span
-                className={`w-6 h-6 rounded-full bg-surface-container-lowest block shadow-md transition-transform ${locationPricing ? 'translate-x-5' : 'translate-x-0'}`}
+                className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${locationPricing ? 'translate-x-3.5' : 'translate-x-0'}`}
               />
             </button>
           </section>
@@ -621,7 +622,7 @@ export function BusinessDealAssignmentScreen({ dealGroupId, onBack }: BusinessDe
         </div>
       </div>
       {liveError && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {liveError}
         </div>
       )}

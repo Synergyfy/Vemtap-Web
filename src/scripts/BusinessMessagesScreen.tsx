@@ -25,10 +25,13 @@ export function BusinessMessagesScreen({
   initialStep = 'home',
   onTab,
   onSelectChannel,
+  onViewCustomerProfile,
 }: {
   initialStep?: BusinessMessagesStep;
   onTab: (tab: BusinessTabKey) => void;
   onSelectChannel?: (key: MessagesChannelKey) => void;
+  /** Opens the customer's CRM profile from a chat. */
+  onViewCustomerProfile?: (name: string, customerId?: string | null) => void;
 }) {
   const [step, setStep] = useState<BusinessMessagesStep>(initialStep);
   const [contact, setContact] = useState<BusinessChatContact>(DEFAULT_CHAT_CONTACTS.general);
@@ -105,7 +108,7 @@ export function BusinessMessagesScreen({
       case 'chatBooking':
         return <BusinessChatBookingScreen contact={contact} onBack={() => setStep('home')} />;
       case 'chatOrder':
-        return <BusinessChatOrderScreen contact={contact} onBack={() => setStep('home')} />;
+        return <BusinessChatOrderScreen contact={contact} onBack={() => setStep('home')} onViewProfile={onViewCustomerProfile} />;
     }
   };
 

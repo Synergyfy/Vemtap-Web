@@ -10,6 +10,7 @@ interface DesktopPosSwitchScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
   onBack: () => void;
   onConfirm: () => void;
+  onOpenSettings?: () => void;
 }
 
 interface BranchOption {
@@ -61,7 +62,7 @@ const TILLS = [
   },
 ];
 
-export function DesktopPosSwitchScreen({ onNav, onBack, onConfirm }: DesktopPosSwitchScreenProps) {
+export function DesktopPosSwitchScreen({ onNav, onBack, onConfirm, onOpenSettings }: DesktopPosSwitchScreenProps) {
   const pos = useLivePos();
   const live = pos.live;
   const { branch, branches: liveBranchList, switchTo } = useBusinessBranch();
@@ -316,6 +317,32 @@ export function DesktopPosSwitchScreen({ onNav, onBack, onConfirm }: DesktopPosS
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-xl items-start">
           {/* Left: till + branch pickers */}
           <div className="lg:col-span-7 flex flex-col gap-space-lg">
+            {/* What is a Till & Setup Explainer */}
+            <div className="bg-gradient-to-br from-surface-tint-blue/80 via-surface-canvas to-surface-container-low rounded-xl p-space-md border border-primary/20 shadow-sm flex flex-col gap-space-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-space-xs text-primary font-label-md text-label-md font-bold">
+                  <Icon name="info" className="text-[20px]" />
+                  <span>Understanding POS Registers &amp; Tills</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={onOpenSettings ?? (() => onNav('settings'))}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-surface-canvas border border-primary/30 text-primary text-[12px] font-semibold hover:bg-surface-tint-blue transition-colors shadow-xs"
+                >
+                  <Icon name="tune" className="text-[16px]" />
+                  <span>Configure Tills in Settings</span>
+                </button>
+              </div>
+              <p className="font-body-md text-body-md text-text-primary leading-relaxed">
+                A <strong>Till</strong> is an independent physical checkout counter and cash drawer (e.g. Counter Front, Bar, Terrace). Selecting a till routes all sales, card terminal pairings, and cash float balancing to that specific station's shift ledger.
+              </p>
+              <div className="flex items-center gap-space-md text-text-secondary font-caption text-caption pt-1 border-t border-border-subtle/40">
+                <span>• Isolated daily cash drawer counts</span>
+                <span>• Independent thermal receipt printers</span>
+                <span>• Individual cashier sign-in &amp; Z-Report reconciliation</span>
+              </div>
+            </div>
+
             {/* Tills */}
             <div className="flex flex-col gap-space-sm">
               <div className="flex items-center justify-between">

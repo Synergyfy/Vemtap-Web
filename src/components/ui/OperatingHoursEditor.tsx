@@ -180,16 +180,17 @@ export function OperatingHoursEditor({
         <button
           aria-label="Customize specific day hours"
           aria-pressed={customizeEnabled}
-          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
-            customizeEnabled ? 'bg-primary-container' : 'bg-surface-container'
+          className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
+            customizeEnabled ? 'bg-primary' : 'bg-surface-container-highest'
           }`}
+          role="switch"
           type="button"
           onClick={() => onCustomizeEnabledChange(!customizeEnabled)}
         >
           <span
             className={`${
-              customizeEnabled ? 'translate-x-5' : 'translate-x-0'
-            } pointer-events-none inline-block h-5 w-5 transform rounded-full bg-surface-canvas shadow transition duration-200 ease-in-out`}
+              customizeEnabled ? 'translate-x-3.5' : 'translate-x-0'
+            } pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out`}
           />
         </button>
       </div>

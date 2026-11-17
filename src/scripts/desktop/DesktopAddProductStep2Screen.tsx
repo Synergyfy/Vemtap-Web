@@ -62,10 +62,10 @@ export function DesktopAddProductStep2Screen({
         ...draft.variants,
         {
           id: `variant-${Date.now()}`,
-          name: 'New Option',
-          cut: 'Custom Cut',
-          price: '0',
-          inventory: '0',
+          name: '',
+          cut: '',
+          price: '',
+          inventory: '',
         },
       ],
     });
@@ -218,6 +218,40 @@ export function DesktopAddProductStep2Screen({
               </div>
             </section>
 
+            {/* Reward & Loyalty Points */}
+            <section className="bg-surface-canvas rounded-xl shadow-md p-space-lg flex flex-col gap-space-md border border-border/50">
+              <div className="flex items-center justify-between pb-space-xs border-b border-border/50">
+                <div className="flex items-center gap-space-2xs text-primary">
+                  <Icon name="stars" className="text-[22px]" />
+                  <h2 className="font-heading-md text-heading-md text-text-primary">Reward &amp; Loyalty Points</h2>
+                </div>
+                <span className="px-2.5 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-[11px] font-bold">
+                  Loyalty Points Engine
+                </span>
+              </div>
+              <div className="flex flex-col gap-1.5 max-w-md">
+                <label className="font-label-md text-label-md text-text-primary font-medium" htmlFor="inputLoyaltyPoints">
+                  Points Awarded on Purchase
+                </label>
+                <div className="relative flex items-center">
+                  <Icon name="stars" className="absolute left-3.5 text-text-tertiary text-[18px]" />
+                  <input
+                    id="inputLoyaltyPoints"
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 50 (leave empty for default store spend rate)"
+                    value={draft.loyaltyPoints || ''}
+                    onChange={(event) => onDraftChange({ loyaltyPoints: event.target.value })}
+                    className="w-full h-[46px] pl-10 pr-12 rounded-xl bg-surface-subtle font-body-md text-body-md text-text-primary focus:bg-surface-canvas focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-semibold"
+                  />
+                  <span className="absolute right-3.5 text-text-tertiary font-caption text-[11px] font-semibold">pts</span>
+                </div>
+                <p className="font-caption text-caption text-text-tertiary">
+                  Customers who purchase this item earn these bonus points. If left blank, the standard formula applies.
+                </p>
+              </div>
+            </section>
+
             <section className="bg-surface-canvas rounded-xl shadow-md p-space-lg flex flex-col gap-space-md">
               <div className="flex items-center justify-between gap-space-sm pb-space-xs">
                 <div>
@@ -293,11 +327,21 @@ export function DesktopAddProductStep2Screen({
                               <div className="w-8 h-8 rounded-lg bg-surface-canvas flex items-center justify-center text-text-secondary shadow-sm">
                                 <Icon name="scale" className="text-[18px]" />
                               </div>
-                              <div>
-                                <span className="font-label-md text-label-md text-text-primary font-semibold block leading-tight">
-                                  {variant.name}
-                                </span>
-                                <span className="font-caption text-caption text-text-secondary">{variant.cut}</span>
+                              <div className="flex flex-col gap-1 min-w-0 flex-1">
+                                <input
+                                  aria-label="Option name"
+                                  placeholder="Option name (e.g. Large)"
+                                  value={variant.name}
+                                  onChange={(event) => updateVariant(variant.id, { name: event.target.value })}
+                                  className="w-full bg-transparent font-label-md text-label-md text-text-primary font-semibold leading-tight outline-none focus:bg-surface-canvas rounded px-1"
+                                />
+                                <input
+                                  aria-label="Option detail"
+                                  placeholder="Detail (e.g. 450g)"
+                                  value={variant.cut}
+                                  onChange={(event) => updateVariant(variant.id, { cut: event.target.value })}
+                                  className="w-full bg-transparent font-caption text-caption text-text-secondary outline-none focus:bg-surface-canvas rounded px-1"
+                                />
                               </div>
                             </div>
                             <div className="col-span-3">
@@ -394,6 +438,22 @@ export function DesktopAddProductStep2Screen({
                   {draft.variantsEnabled ? `${totalUnits} units available` : 'Single standard item'}
                 </div>
               </div>
+              {!draft.variantsEnabled && (
+                <div className="flex flex-col gap-1.5 pt-space-xs">
+                  <label className="font-label-md text-label-md text-text-primary flex items-center justify-between" htmlFor="stock-on-hand">
+                    <span>Stock on Hand</span>
+                    <span className="font-caption text-caption text-text-tertiary">Leave blank if you don't track stock</span>
+                  </label>
+                  <input
+                    id="stock-on-hand"
+                    type="text"
+                    inputMode="numeric"
+                    value={draft.stock ?? ''}
+                    onChange={(event) => onDraftChange({ stock: event.target.value.replace(/[^0-9]/g, '') })}
+                    className="w-full h-[52px] px-4 rounded-xl bg-surface-subtle font-label-md text-label-md text-text-primary font-semibold focus:bg-surface-canvas focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md pt-space-xs">
                 <div className="flex flex-col gap-1.5">
                   <label className="font-label-md text-label-md text-text-primary flex items-center justify-between" htmlFor="sku-barcode">

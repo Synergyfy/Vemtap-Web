@@ -1,5 +1,6 @@
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
+import { useSavedAddresses } from '../../hooks/useSavedAddresses';
 import { AccountRowButton, RowGroup, type AccountRow, type AccountTarget } from '../../components/AccountRows';
 
 interface DesktopSettingsScreenProps {
@@ -13,7 +14,7 @@ const PREFERENCE_ROWS: AccountRow[] = [
     icon: 'notifications_active',
     iconClass: 'bg-surface-container-high text-on-surface-variant',
     label: 'Notifications & Alerts',
-    sub: 'Push, WhatsApp, Email',
+    sub: 'Push, Email, SMS',
     target: 'notifications',
   },
   {
@@ -27,7 +28,6 @@ const PREFERENCE_ROWS: AccountRow[] = [
     icon: 'location_on',
     iconClass: 'bg-surface-container-high text-on-surface-variant',
     label: 'Delivery & Neighborhood Addresses',
-    trail: 'Apo, Abuja',
     target: 'addresses',
   },
   {
@@ -47,6 +47,12 @@ const PREFERENCE_ROWS: AccountRow[] = [
 ];
 
 export function DesktopSettingsScreen({ onNav, onBack, onNavigate }: DesktopSettingsScreenProps) {
+  const { addresses } = useSavedAddresses();
+  const defaultAddress = addresses.find((address) => address.isDefault) ?? addresses[0];
+  // The addresses row shows the customer's default place, or nothing until one is saved.
+  const rows = PREFERENCE_ROWS.map((row) =>
+    row.target === 'addresses' && defaultAddress ? { ...row, trail: defaultAddress.area || defaultAddress.label } : row,
+  );
   return (
     <DesktopPage withHeader withFooter onNav={onNav} activeNav="account-settings">
       <div className="w-full bg-surface min-h-[calc(100vh-80px)]">
@@ -73,7 +79,7 @@ export function DesktopSettingsScreen({ onNav, onBack, onNavigate }: DesktopSett
 
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-8 items-start">
             <RowGroup title="Preferences">
-              {PREFERENCE_ROWS.map((row) => (
+              {rows.map((row) => (
                 <AccountRowButton key={row.label} row={row} onSelect={onNavigate} />
               ))}
             </RowGroup>

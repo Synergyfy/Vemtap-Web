@@ -3,9 +3,14 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
 import { downloadCsv } from '../utils/exportCsv';
+import { locationsView, useLiveAnalytics } from './analyticsLive';
+
+export type BranchComparisonTarget = 'business' | 'customers' | 'deals' | 'pos' | 'pricing';
 
 interface BusinessBranchComparisonScreenProps {
   onBack: () => void;
+  /** Opens another analytics view, or the catalogue where branch prices are set. */
+  onNavigate?: (target: BranchComparisonTarget) => void;
 }
 
 type MetricKey = 'revenue' | 'tickets' | 'retention';
@@ -102,7 +107,7 @@ const SUB_STRIP = [
   { key: 'pos', label: 'POS & Registers' },
 ];
 
-export function BusinessBranchComparisonScreen({ onBack }: BusinessBranchComparisonScreenProps) {
+export function BusinessBranchComparisonScreen({ onBack, onNavigate }: BusinessBranchComparisonScreenProps) {
   const [metric, setMetric] = useState<MetricKey>('revenue');
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -120,7 +125,71 @@ export function BusinessBranchComparisonScreen({ onBack }: BusinessBranchCompari
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
-  const active = METRICS[metric];
+  // Live: the business's own branches from the locations analytics; the samples are for running without an API.
+  const { live, data } = useLiveAnalytics('locations');
+  const view = locationsView(data);
+  const rawBranches = data?.branches ?? [];
+  const top = view.branches[0];
+  const widthOf = (value: number, best: number) => `${best > 0 ? Math.round((value / best) * 100) : 0}%`;
+  const bestOf = (pick: (branch: (typeof rawBranches)[number]) => number) => Math.max(0, ...rawBranches.map(pick));
+  const metrics: typeof METRICS = live
+    ? {
+        revenue: {
+          label: 'Revenue',
+          values: view.branches.map((branch) => branch.revenue),
+          widths: rawBranches.map((branch) => widthOf(branch.revenue.current, bestOf((b) => b.revenue.current))),
+        },
+        tickets: {
+          label: 'Orders',
+          values: view.branches.map((branch) => `${branch.orders} orders`),
+          widths: rawBranches.map((branch) => widthOf(branch.orders.current, bestOf((b) => b.orders.current))),
+        },
+        retention: {
+          label: 'Customers',
+          values: view.branches.map((branch) => `${branch.customers} customers`),
+          widths: rawBranches.map((branch) => widthOf(branch.customers, bestOf((b) => b.customers))),
+        },
+      }
+    : METRICS;
+  const branchBars = live
+    ? view.branches.map((branch, index) => ({ ...BRANCH_BARS[index % BRANCH_BARS.length], name: branch.name }))
+    : BRANCH_BARS;
+  const scorecards = live
+    ? view.branches.map((branch, index) => ({
+        ...SCORECARDS[index % SCORECARDS.length],
+        name: branch.name,
+        address: branch.status,
+        badge: index === 0 && view.branches.length > 1 ? 'Top Grossing' : '',
+        verified: rawBranches[index]?.isMainBranch ?? false,
+        sales: branch.revenue,
+        salesMeta: `${branch.orders} completed orders`,
+        aovLabel: 'Average Order Value',
+        aov: branch.aov,
+        aovClass: 'text-text-primary',
+        aovMeta: branch.change ?? 'No earlier period',
+        aovMetaClass: 'text-text-tertiary',
+        occupancy: `${branch.visits} visits`,
+        radius: `${branch.claims} deal claims`,
+        notice: null as string | null,
+      }))
+    : SCORECARDS;
+  const bestBasket = rawBranches.length
+    ? rawBranches.reduce((best, branch) => (branch.averageOrderValue > best.averageOrderValue ? branch : best))
+    : null;
+  const catchment = live
+    ? view.branches.slice(0, 3).map((branch, index) => ({
+        label: branch.name.split(' ')[0],
+        value: branch.visits,
+        tone: index === 0 ? 'text-primary' : 'text-text-primary',
+        tag: 'visits',
+        tagClass: 'text-text-tertiary',
+      }))
+    : [
+        { label: 'Wuse II', value: '4.2 km', tone: 'text-text-primary', tag: 'Urban Core', tagClass: 'text-badge-discount-text' },
+        { label: 'Maitama', value: '6.8 km', tone: 'text-primary', tag: 'Wide Draw', tagClass: 'text-badge-discount-text' },
+        { label: 'Garki', value: '2.1 km', tone: 'text-text-primary', tag: 'Hyperlocal', tagClass: 'text-text-tertiary' },
+      ];
+  const active = metrics[metric];
 
   return (
     <AppScreen>
@@ -136,7 +205,7 @@ export function BusinessBranchComparisonScreen({ onBack }: BusinessBranchCompari
               downloadCsv(
                 'vemtap_branch_comparison',
                 ['Branch', 'Sales', 'Orders', 'Avg Order Value', 'Occupancy', 'Draw Radius'],
-                SCORECARDS.map((card) => [card.name, card.sales, card.salesMeta, card.aov, card.occupancy, card.radius]),
+                scorecards.map((card) => [card.name, card.sales, card.salesMeta, card.aov, card.occupancy, card.radius]),
               );
               showToast('Branch metrics export downloaded');
             }}
@@ -161,7 +230,7 @@ export function BusinessBranchComparisonScreen({ onBack }: BusinessBranchCompari
                   }`}
                   key={item.key}
                   type="button"
-                  onClick={() => (isActive ? undefined : showToast(`${item.label} view is loading…`))}
+                  onClick={() => (isActive ? undefined : onNavigate ? onNavigate(item.key as BranchComparisonTarget) : showToast(`${item.label} view is loading…`))}
                 >
                   {isActive && <span className="w-2 h-2 rounded-full bg-primary inline-block" />}
                   <span>{item.label}</span>
@@ -182,7 +251,7 @@ export function BusinessBranchComparisonScreen({ onBack }: BusinessBranchCompari
                 <p className="font-heading-sm text-heading-sm text-text-primary">Branch Network Pulse</p>
               </div>
               <span className="inline-flex items-center px-space-xs py-space-2xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption">
-                <span className="w-2 h-2 rounded-full bg-primary animate-pulse mr-1.5" />3 Outlets Active
+                <span className="w-2 h-2 rounded-full bg-primary animate-pulse mr-1.5" />{live ? view.network.outlets : '3'} Outlets Active
               </span>
             </div>
             <div className="grid grid-cols-2 gap-space-sm">
@@ -191,9 +260,9 @@ export function BusinessBranchComparisonScreen({ onBack }: BusinessBranchCompari
                   <Icon name="emoji_events" className="text-[15px] text-primary" />
                   <span className="font-caption text-caption">Top Revenue Driver</span>
                 </div>
-                <p className="font-label-sm text-label-sm font-semibold text-text-primary truncate">Wuse II Flagship</p>
+                <p className="font-label-sm text-label-sm font-semibold text-text-primary truncate">{live ? top?.name ?? '—' : 'Wuse II Flagship'}</p>
                 <span className="inline-block mt-0.5 font-caption text-caption text-badge-discount-text font-medium bg-badge-discount-bg px-1.5 py-0.5 rounded">
-                  54% of Network Gross
+                  {live ? `${top?.share ?? 0}% of Network Gross` : '54% of Network Gross'}
                 </span>
               </div>
               <div className="bg-surface-subtle p-space-xs rounded-lg">
@@ -201,8 +270,8 @@ export function BusinessBranchComparisonScreen({ onBack }: BusinessBranchCompari
                   <Icon name="groups" className="text-[15px] text-secondary" />
                   <span className="font-caption text-caption">Combined Footfall</span>
                 </div>
-                <p className="font-heading-sm text-heading-sm font-bold text-text-primary">3,420</p>
-                <span className="font-caption text-caption text-text-secondary">Unique validated taps</span>
+                <p className="font-heading-sm text-heading-sm font-bold text-text-primary">{live ? view.network.visits : '3,420'}</p>
+                <span className="font-caption text-caption text-text-secondary">{live ? 'Store visits' : 'Unique validated taps'}</span>
               </div>
             </div>
           </div>
@@ -219,7 +288,7 @@ export function BusinessBranchComparisonScreen({ onBack }: BusinessBranchCompari
               </div>
             </div>
             <div className="flex rounded-lg bg-surface-container p-0.5">
-              {(Object.keys(METRICS) as MetricKey[]).map((key) => (
+              {(Object.keys(metrics) as MetricKey[]).map((key) => (
                 <button
                   className={`flex-1 py-1.5 rounded-lg font-label-sm text-label-sm transition-all ${
                     metric === key ? 'bg-surface-canvas text-primary font-semibold shadow-sm' : 'text-text-secondary'
@@ -228,12 +297,12 @@ export function BusinessBranchComparisonScreen({ onBack }: BusinessBranchCompari
                   type="button"
                   onClick={() => setMetric(key)}
                 >
-                  {METRICS[key].label}
+                  {metrics[key].label}
                 </button>
               ))}
             </div>
             <div className="space-y-space-sm pt-space-xs">
-              {BRANCH_BARS.map((branch, index) => (
+              {branchBars.map((branch, index) => (
                 <div className="space-y-1" key={branch.name}>
                   <div className="flex justify-between items-center font-label-sm text-label-sm">
                     <span className="font-semibold text-text-primary flex items-center gap-1.5">
@@ -259,10 +328,10 @@ export function BusinessBranchComparisonScreen({ onBack }: BusinessBranchCompari
               <h2 className="font-label-md text-label-md text-text-primary font-semibold">Branch Scorecards</h2>
               <span className="font-caption text-caption text-text-secondary">Updated 12m ago</span>
             </div>
-            {SCORECARDS.map((card) => (
+            {scorecards.map((card) => (
               <div
                 className={`bg-surface-canvas rounded-xl p-space-md shadow-sm space-y-space-sm ${
-                  card.name === 'Garki Area 11' ? 'opacity-95' : ''
+                  !live && card.name === 'Garki Area 11' ? 'opacity-95' : ''
                 }`}
                 key={card.name}
               >
@@ -279,11 +348,13 @@ export function BusinessBranchComparisonScreen({ onBack }: BusinessBranchCompari
                       <p className="font-caption text-caption text-text-secondary truncate">{card.address}</p>
                     </div>
                   </div>
+                  {card.badge && (
                   <span
                     className={`px-2 py-0.5 rounded-full font-caption text-caption font-semibold shrink-0 ${card.badgeClass}`}
                   >
                     {card.badge}
                   </span>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-space-xs pt-space-2xs">
                   <div className="bg-surface-subtle p-space-xs rounded-lg">
@@ -339,17 +410,13 @@ export function BusinessBranchComparisonScreen({ onBack }: BusinessBranchCompari
               <div className="w-full bg-surface-canvas/90 backdrop-blur-md rounded-md p-space-xs flex justify-between items-center shadow-sm">
                 <span className="font-caption text-caption text-text-primary font-semibold flex items-center gap-1">
                   <Icon name="pin_drop" className="text-[15px] text-primary" />
-                  Abuja Central Matrix
+                  {live ? 'Your branch network' : 'Abuja Central Matrix'}
                 </span>
-                <span className="font-caption text-caption text-text-secondary">3 geo-polygons mapped</span>
+                <span className="font-caption text-caption text-text-secondary">{live ? `${view.network.outlets} branches` : '3 geo-polygons mapped'}</span>
               </div>
             </div>
             <div className="grid grid-cols-3 gap-space-xs text-center">
-              {[
-                { label: 'Wuse II', value: '4.2 km', tone: 'text-text-primary', tag: 'Urban Core', tagClass: 'text-badge-discount-text' },
-                { label: 'Maitama', value: '6.8 km', tone: 'text-primary', tag: 'Wide Draw', tagClass: 'text-badge-discount-text' },
-                { label: 'Garki', value: '2.1 km', tone: 'text-text-primary', tag: 'Hyperlocal', tagClass: 'text-text-tertiary' },
-              ].map((item) => (
+              {catchment.map((item) => (
                 <div className="p-space-xs rounded-lg bg-surface-subtle" key={item.label}>
                   <span className="font-caption text-caption text-text-secondary block">{item.label}</span>
                   <span className={`font-label-sm text-label-sm font-bold ${item.tone}`}>{item.value}</span>
@@ -368,8 +435,22 @@ export function BusinessBranchComparisonScreen({ onBack }: BusinessBranchCompari
               <div className="space-y-1 min-w-0">
                 <h3 className="font-label-sm text-label-sm font-bold text-text-primary">Branch Margin Opportunity</h3>
                 <p className="font-body-md text-body-md text-text-secondary">
-                  Maitama Heights patrons exhibit a <strong className="text-text-primary">+15.7% spend willingness</strong>.
-                  We recommend activating branch-specific tier pricing for exclusive combos.
+                  {live ? (
+                    bestBasket ? (
+                      <>
+                        <strong className="text-text-primary">{bestBasket.name}</strong> has your highest basket at{' '}
+                        <strong className="text-text-primary">{view.branches.find((b) => b.name === bestBasket.name)?.aov}</strong>. Consider
+                        branch-specific pricing for combos there.
+                      </>
+                    ) : (
+                      'Branch insights appear once your branches record sales.'
+                    )
+                  ) : (
+                    <>
+                      Maitama Heights patrons exhibit a <strong className="text-text-primary">+15.7% spend willingness</strong>.
+                      We recommend activating branch-specific tier pricing for exclusive combos.
+                    </>
+                  )}
                 </p>
               </div>
             </div>
@@ -377,9 +458,9 @@ export function BusinessBranchComparisonScreen({ onBack }: BusinessBranchCompari
               <button
                 className="w-full py-space-xs px-space-md rounded-lg bg-surface-canvas text-primary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 shadow-sm active:scale-95 transition-transform"
                 type="button"
-                onClick={() => showToast('Opening Maitama pricing configurator…')}
+                onClick={() => (onNavigate ? onNavigate('pricing') : showToast('Opening Maitama pricing configurator…'))}
               >
-                <span>Configure Maitama Pricing</span>
+                <span>{live ? `Configure ${bestBasket?.name ?? 'Branch'} Pricing` : 'Configure Maitama Pricing'}</span>
                 <Icon name="chevron_right" className="text-[15px]" />
               </button>
             </div>
@@ -390,7 +471,7 @@ export function BusinessBranchComparisonScreen({ onBack }: BusinessBranchCompari
             <button
               className="w-full h-12 bg-primary-container text-on-primary rounded-xl font-label-md text-label-md font-semibold shadow-md flex items-center justify-center gap-space-xs active:scale-[0.99] transition-transform"
               type="button"
-              onClick={() => showToast('Opening branch pricing matrix…')}
+              onClick={() => (onNavigate ? onNavigate('pricing') : showToast('Opening branch pricing matrix…'))}
             >
               <Icon name="assignment" className="text-[18px]" />
               <span>Manage Branch Pricing Matrix</span>
@@ -400,9 +481,9 @@ export function BusinessBranchComparisonScreen({ onBack }: BusinessBranchCompari
               type="button"
               onClick={() => {
                 const rows: string[][] = [];
-                (Object.keys(METRICS) as MetricKey[]).forEach((key) => {
-                  METRICS[key].values.forEach((value, index) => {
-                    rows.push([BRANCH_BARS[index].name, METRICS[key].label, value]);
+                (Object.keys(metrics) as MetricKey[]).forEach((key) => {
+                  metrics[key].values.forEach((value, index) => {
+                    rows.push([branchBars[index]?.name ?? '', metrics[key].label, value]);
                   });
                 });
                 downloadCsv('vemtap_branch_performance', ['Branch', 'Metric', 'Value'], rows);

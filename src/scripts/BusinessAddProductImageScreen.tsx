@@ -5,6 +5,7 @@ import { CreateWithAiButton } from '../components/CreateWithAiButton';
 import type { AiPromptContext } from './aiDesignAssistant';
 import type { ProductDraft } from './productDraft';
 import { useLiveItemEditor } from '../hooks/business/useLiveItemEditor';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessAddProductImageScreenProps {
   draft: ProductDraft;
@@ -89,8 +90,8 @@ export function BusinessAddProductImageScreen({ draft, onBack, onNext, onSaveDra
             >
               Draft
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>
@@ -261,7 +262,7 @@ export function BusinessAddProductImageScreen({ draft, onBack, onNext, onSaveDra
         </div>
       </div>
       {editor.uploadError && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {editor.uploadError}
         </div>
       )}

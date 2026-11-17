@@ -5,6 +5,7 @@ import { naira } from './catalogueData';
 import { PUBLIC_IMAGES, publicCartCount, publicCartTotals, type PublicCartLine } from './publicPosData';
 import { apiErrorMessage } from '../services/errorMessages';
 import { GUEST_NO_IMAGE, guestTotals, useGuestMenu } from './publicPosLive';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface PublicPosMenuScreenProps {
   cart: PublicCartLine[];
@@ -180,8 +181,8 @@ export function PublicPosMenuScreen({ cart, onAddItem, onOpenCart }: PublicPosMe
                 </span>
               )}
             </button>
-            <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Icon name="person" className="text-on-primary text-[17px]" />
+            <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </span>
           </div>
         </div>

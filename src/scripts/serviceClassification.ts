@@ -266,13 +266,18 @@ const SECTOR_KEYWORDS: Array<{ sector: ServiceSector; keywords: string[] }> = [
 
 /** Turn a category value (`spa`) or label into a human-friendly label. */
 export function canonicalCategoryLabel(raw: string): string {
-  if (!raw) return '';
-  return CATEGORY_VALUE_LABELS[raw.toLowerCase()] ?? raw;
+  // Saved setup drafts are typed as strings, but anything odd (an object, an
+  // array slot past removal) must not crash the service editor at render time.
+  const value = typeof raw === 'string' ? raw : '';
+  if (!value) return '';
+  return CATEGORY_VALUE_LABELS[value.toLowerCase()] ?? value;
 }
 
 /** Resolve the most relevant service sector from any business classification. */
 export function resolveServiceSector(categories: string[], subcategories: string[] = []): ServiceSector {
-  const haystack = [...categories, ...subcategories].map((value) => value.toLowerCase());
+  const haystack = [...categories, ...subcategories]
+    .filter((value): value is string => typeof value === 'string')
+    .map((value) => value.toLowerCase());
   if (haystack.length === 0) return 'general';
 
   let best: ServiceSector = 'general';
@@ -324,19 +329,22 @@ export function getBusinessClassificationOptions(
   categories: string[] = [],
   subcategories: string[] = [],
 ): InheritedClassificationOption[] {
-  if (categories.length === 0) return [];
+  // Only real text classifications can be shown; anything else is skipped
+  // instead of crashing the "inherit from business profile" section.
+  const classes = categories.filter((value): value is string => typeof value === 'string' && value.trim() !== '');
+  if (classes.length === 0) return [];
 
-  return categories.map((cat, index) => {
+  return classes.map((cat, index) => {
     const primaryCategory = canonicalCategoryLabel(cat);
     const sector = resolveServiceSector([cat], subcategories);
     const preset = SECTOR_PRESETS[sector];
     const matchingSubcategory =
-      subcategories.find((sub) => {
-        const subLower = sub.toLowerCase();
+      (Array.isArray(subcategories) ? subcategories : []).find((sub) => {
+        const subLower = typeof sub === 'string' ? sub.toLowerCase() : '';
         const catLower = cat.toLowerCase();
-        return subLower.includes(catLower) || catLower.includes(subLower);
+        return subLower && (subLower.includes(catLower) || catLower.includes(subLower));
       }) ||
-      subcategories[index] ||
+      (typeof subcategories[index] === 'string' && subcategories[index] ? subcategories[index] : undefined) ||
       preset.defaultSubCategory;
 
     return {
@@ -357,12 +365,18 @@ export function classifyServiceFromBusiness(
   categories: string[],
   subcategories: string[] = [],
 ): ServiceClassification | null {
-  if (categories.length === 0) return null;
+  // Guard against any odd shape a saved setup draft may hold (nothing here may
+  // throw — it runs during the create-service render).
+  const classes = Array.isArray(categories)
+    ? categories.filter((value): value is string => typeof value === 'string' && value.trim() !== '')
+    : [];
+  if (classes.length === 0) return null;
 
-  const sector = resolveServiceSector(categories, subcategories);
+  const sector = resolveServiceSector(classes, Array.isArray(subcategories) ? subcategories : []);
   const preset = SECTOR_PRESETS[sector];
-  const primaryCategory = canonicalCategoryLabel(categories[0]) || preset.defaultCategory;
-  const subCategory = subcategories[0] || preset.defaultSubCategory;
+  const primaryCategory = canonicalCategoryLabel(classes[0]) || preset.defaultCategory;
+  const firstSub = Array.isArray(subcategories) ? subcategories[0] : undefined;
+  const subCategory = typeof firstSub === 'string' && firstSub.trim() !== '' ? firstSub : preset.defaultSubCategory;
 
   return { primaryCategory, subCategory, sector, preset };
 }

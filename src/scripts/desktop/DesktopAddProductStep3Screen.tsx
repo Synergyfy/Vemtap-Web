@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { hasApiConfig } from '../../services/api/client';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { Icon } from '../../components/ui/Icon';
@@ -85,8 +84,11 @@ export function DesktopAddProductStep3Screen({
   onNav,
 }: DesktopAddProductStep3ScreenProps) {
   const Shell = onNav ? MerchantShell : BusinessSetupChrome;
-  const [pickup, setPickup] = useState(true);
-  const [delivery, setDelivery] = useState(true);
+  // Saved on the draft so it reaches the API; older drafts default to both.
+  const pickup = draft.fulfillment?.pickup ?? true;
+  const delivery = draft.fulfillment?.delivery ?? true;
+  const setFulfillment = (patch: Partial<{ pickup: boolean; delivery: boolean }>) =>
+    onDraftChange({ fulfillment: { pickup, delivery, ...patch } });
 
   // Live: the business's real branches, keyed by branch id; demo keeps the samples.
   const live = hasApiConfig();
@@ -386,7 +388,7 @@ export function DesktopAddProductStep3Screen({
                     <input
                       type="checkbox"
                       checked={pickup}
-                      onChange={(event) => setPickup(event.target.checked)}
+                      onChange={(event) => setFulfillment({ pickup: event.target.checked })}
                       className="mt-1 w-4 h-4 rounded text-primary focus:ring-primary accent-primary cursor-pointer"
                     />
                     <div>
@@ -410,7 +412,7 @@ export function DesktopAddProductStep3Screen({
                     <input
                       type="checkbox"
                       checked={delivery}
-                      onChange={(event) => setDelivery(event.target.checked)}
+                      onChange={(event) => setFulfillment({ delivery: event.target.checked })}
                       className="mt-1 w-4 h-4 rounded text-primary focus:ring-primary accent-primary cursor-pointer"
                     />
                     <div>

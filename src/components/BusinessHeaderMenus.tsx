@@ -4,6 +4,13 @@ import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { Icon } from './ui/Icon';
 import { MOBILE_ACCOUNT_NAV_EVENT, SIGN_OUT_EVENT, type MobileAccountNavKey } from '../utils/appEvents';
 import { useHeaderNotifications } from '../hooks/business/useHeaderNotifications';
+import { useProfile } from '../context/ProfileContext';
+import { useSessionUser } from '../hooks/useSessionUser';
+import { hasApiConfig } from '../services/api/client';
+import { UserAvatar } from './ui/UserAvatar';
+
+/** "Owner" / "Manager" / "Staff" for the signed-in business account. */
+const accountRoleLabel = (role?: string | null, businessRole?: string | null) => businessRole || role || 'Business account';
 
 /**
  * Shared mobile/tablet dashboard header menus.
@@ -285,11 +292,16 @@ export function MobileAccountMenu({
   onDashboard,
   onSettings,
   onSignOut,
-  name = 'Musa Danladi',
-  role = 'Store Manager',
+  name: nameProp,
+  role: roleProp,
   className,
 }: MobileAccountMenuProps) {
   const { signOut } = useAuth();
+  // Live: the signed-in person and their business role; demo keeps the sample manager.
+  const profile = useProfile();
+  const session = useSessionUser().data;
+  const name = nameProp ?? (hasApiConfig() ? profile.fullName || 'Your account' : 'Musa Danladi');
+  const role = roleProp ?? (hasApiConfig() ? accountRoleLabel(session?.role, session?.businessRole) : 'Store Manager');
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -314,6 +326,10 @@ export function MobileAccountMenu({
       else dispatchNav('dashboard');
       return;
     }
+    if (key === 'customer') {
+      dispatchNav('customer');
+      return;
+    }
     if (onSettings) onSettings();
     else dispatchNav('settings');
   };
@@ -321,6 +337,7 @@ export function MobileAccountMenu({
   const items: Array<{ key: MobileAccountNavKey | 'sign-out'; icon: string; label: string; danger?: boolean }> = [
     { key: 'dashboard', icon: 'space_dashboard', label: 'Dashboard' },
     { key: 'settings', icon: 'settings', label: 'Settings' },
+    { key: 'customer', icon: 'swap_horiz', label: 'Switch to Customer Dashboard' },
     { key: 'sign-out', icon: 'logout', label: 'Sign Out', danger: true },
   ];
 
@@ -338,8 +355,8 @@ export function MobileAccountMenu({
         type="button"
         onClick={() => setOpen((current) => !current)}
       >
-        <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-          <Icon name="person" filled className="text-on-primary text-[18px]" />
+        <span className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+          <UserAvatar />
         </span>
       </button>
       {open && (

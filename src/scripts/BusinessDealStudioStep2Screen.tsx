@@ -2,6 +2,20 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import type { DealStudioDraft } from './dealStudio';
 import type { ProductDraft } from './productDraft';
+import { draftImage, draftImageAlt } from './desktop/draftImage';
+import { hasApiConfig } from '../services/api/client';
+import { useDealBundleCatalog } from '../hooks/business/useDealStudioLive';
+import { getActiveVariants } from './productVariants';
+import {
+  claimLimitLabel,
+  dealBadgeLabel,
+  dealMinSpend,
+  formatDealAmount,
+  parseDealAmount,
+  redemptionModesLabel,
+  resolveDealPricing,
+} from './deals/dealStudioShared';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessDealStudioStep2ScreenProps {
   draft: ProductDraft;
@@ -19,7 +33,6 @@ const PREVIEW_IMAGE = {
 
 function Toggle({
   checked,
-  small = false,
   onChange,
 }: {
   checked: boolean;
@@ -27,24 +40,27 @@ function Toggle({
   onChange: (next: boolean) => void;
 }) {
   return (
-    <label className="relative inline-flex items-center cursor-pointer">
-      <input
-        aria-label="Toggle setting"
-        className="sr-only peer"
-        type="checkbox"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
+    <button
+      aria-label="Toggle setting"
+      aria-checked={checked}
+      className={`relative inline-flex h-5 w-8 shrink-0 cursor-pointer rounded-full p-0.5 transition-colors duration-200 ease-in-out focus:outline-none ${
+        checked ? 'bg-primary' : 'bg-surface-container-highest'
+      }`}
+      role="switch"
+      type="button"
+      onClick={() => onChange(!checked)}
+    >
+      <span
+        className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+          checked ? 'translate-x-3.5' : 'translate-x-0'
+        }`}
       />
-      <div
-        className={`${
-          small ? 'w-10 h-6 peer-checked:after:translate-x-full peer-checked:after:top-[2px] peer-checked:after:left-[2px] after:h-5 after:w-5' : 'w-12 h-7 peer-checked:after:translate-x-full peer-checked:after:top-[2px] peer-checked:after:left-[3px] after:h-6 after:w-6'
-        } bg-surface-container-highest peer-focus:outline-none rounded-full peer peer-checked:after:border-white after:content-[''] after:absolute after:bg-surface-canvas after:rounded-full after:transition-all peer-checked:bg-primary-container`}
-      />
-    </label>
+    </button>
   );
 }
 
 export function BusinessDealStudioStep2Screen({
+  draft,
   studio,
   onStudioChange,
   onBack,
@@ -52,6 +68,17 @@ export function BusinessDealStudioStep2Screen({
   onSaveDraft,
 }: BusinessDealStudioStep2ScreenProps) {
   const clampVouchers = (value: number) => Math.max(5, Math.min(500, value));
+  // Live: the badge preview is built from this deal; sample-only promises
+  // (per-order cap, "Almost Gone" badge) are hidden.
+  const live = hasApiConfig();
+  const activeVariants = getActiveVariants(draft);
+  const basePrice = parseDealAmount(
+    activeVariants.find((variant) => variant.name === 'Regular')?.price ?? activeVariants[0]?.price ?? draft.basePrice,
+  );
+  const bundleCatalog = useDealBundleCatalog(draft.title, basePrice);
+  const pricing = resolveDealPricing({ ...studio, strategy: studio.strategy ?? 'percentage' }, basePrice, bundleCatalog);
+  const minSpend = dealMinSpend(studio);
+  const modes = redemptionModesLabel(studio);
 
   return (
     <AppScreen>
@@ -84,8 +111,8 @@ export function BusinessDealStudioStep2Screen({
             >
               Save
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-[0_2px_8px_rgba(6,108,244,0.25)]">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-[0_2px_8px_rgba(6,108,244,0.25)] overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>
@@ -150,47 +177,52 @@ export function BusinessDealStudioStep2Screen({
                   </button>
                 </div>
               </div>
-              <div className="flex items-center justify-between">
-                <div className="flex flex-col pr-space-sm">
-                  <span className="font-label-md text-label-md text-text-primary">Max units per order</span>
-                  <span className="font-caption text-caption text-text-secondary">
-                    How many units one customer may redeem in a single order
-                  </span>
+              {/* Not stored by the API yet, so it can't be enforced — demo only. */}
+              {!live && (
+                <>
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col pr-space-sm">
+                    <span className="font-label-md text-label-md text-text-primary">Max units per order</span>
+                    <span className="font-caption text-caption text-text-secondary">
+                      How many units one customer may redeem in a single order
+                    </span>
+                  </div>
+                  <div className="flex items-center bg-surface-container-lowest rounded-lg p-1 shadow-sm">
+                    <button
+                      aria-label="Decrease max units per order"
+                      className="w-9 h-9 flex items-center justify-center text-on-surface-variant hover:text-primary active:scale-95 transition-transform rounded-md"
+                      type="button"
+                      onClick={() => onStudioChange({ maxUnitsPerOrder: Math.max(1, studio.maxUnitsPerOrder - 1) })}
+                    >
+                      <Icon name="remove" className="text-[20px]" />
+                    </button>
+                    <span className="font-button-primary text-button-primary text-text-primary px-3 min-w-[48px] text-center">
+                      {studio.maxUnitsPerOrder}
+                    </span>
+                    <button
+                      aria-label="Increase max units per order"
+                      className="w-9 h-9 flex items-center justify-center text-on-surface-variant hover:text-primary active:scale-95 transition-transform rounded-md"
+                      type="button"
+                      onClick={() => onStudioChange({ maxUnitsPerOrder: Math.min(50, studio.maxUnitsPerOrder + 1) })}
+                    >
+                      <Icon name="add" className="text-[20px]" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center bg-surface-container-lowest rounded-lg p-1 shadow-sm">
-                  <button
-                    aria-label="Decrease max units per order"
-                    className="w-9 h-9 flex items-center justify-center text-on-surface-variant hover:text-primary active:scale-95 transition-transform rounded-md"
-                    type="button"
-                    onClick={() => onStudioChange({ maxUnitsPerOrder: Math.max(1, studio.maxUnitsPerOrder - 1) })}
-                  >
-                    <Icon name="remove" className="text-[20px]" />
-                  </button>
-                  <span className="font-button-primary text-button-primary text-text-primary px-3 min-w-[48px] text-center">
-                    {studio.maxUnitsPerOrder}
-                  </span>
-                  <button
-                    aria-label="Increase max units per order"
-                    className="w-9 h-9 flex items-center justify-center text-on-surface-variant hover:text-primary active:scale-95 transition-transform rounded-md"
-                    type="button"
-                    onClick={() => onStudioChange({ maxUnitsPerOrder: Math.min(50, studio.maxUnitsPerOrder + 1) })}
-                  >
-                    <Icon name="add" className="text-[20px]" />
-                  </button>
+                <div className="flex items-start gap-1.5 mt-1 text-badge-discount-text">
+                  <Icon name="bolt" className="text-[16px] mt-0.5" />
+                  <p className="font-caption text-caption">
+                    The deal automatically shows the ‘Almost Gone’ badge at 80% of the quantity limit claimed.
+                  </p>
                 </div>
-              </div>
-              <div className="flex items-start gap-1.5 mt-1 text-badge-discount-text">
-                <Icon name="bolt" className="text-[16px] mt-0.5" />
-                <p className="font-caption text-caption">
-                  The deal automatically shows the ‘Almost Gone’ badge at 80% of the quantity limit claimed.
-                </p>
-              </div>
+                </>
+              )}
             </div>
             <div className="flex items-center justify-between pt-space-2xs">
               <div className="flex flex-col pr-space-sm">
                 <span className="font-label-md text-label-md text-text-primary">Auto-pause when sold out</span>
                 <span className="font-caption text-caption text-text-secondary">
-                  Prevent overbooking during peak dining hours
+                  {live ? 'Stops new claims once every voucher has been claimed' : 'Prevent overbooking during peak dining hours'}
                 </span>
               </div>
               <Toggle checked={studio.autoPause} onChange={(next) => onStudioChange({ autoPause: next })} />
@@ -330,7 +362,7 @@ export function BusinessDealStudioStep2Screen({
                 <Toggle checked={studio.gifting} onChange={(next) => onStudioChange({ gifting: next })} />
               </div>
               <p className="font-caption text-caption text-text-secondary pl-7">
-                Allows verified diners to gift this voucher code to friends via WhatsApp or SMS. Recipient claims in
+                Allows {live ? 'customers' : 'verified diners'} to gift this voucher code to friends via WhatsApp or SMS. Recipient claims in
                 their own name.
               </p>
               <label className="flex items-center gap-space-xs pl-7 mt-space-2xs cursor-pointer">
@@ -422,8 +454,8 @@ export function BusinessDealStudioStep2Screen({
                     </span>
                   </div>
                 </div>
-                <div className="w-10 h-6 bg-surface-container-highest rounded-full flex items-center p-0.5 cursor-not-allowed">
-                  <div className="bg-outline-variant w-5 h-5 rounded-full" />
+                <div className="w-8 h-5 bg-surface-container-highest rounded-full flex items-center p-0.5 cursor-not-allowed">
+                  <div className="bg-outline-variant w-3.5 h-3.5 rounded-full" />
                 </div>
               </div>
               <div className="flex flex-col p-space-sm bg-surface-subtle rounded-lg gap-space-xs">
@@ -431,7 +463,7 @@ export function BusinessDealStudioStep2Screen({
                   <div className="flex items-center gap-space-xs">
                     <Icon name="calendar_clock" className="text-text-secondary text-[20px]" />
                     <span className="font-label-md text-label-md text-text-primary">
-                      Advance Reservation Required
+                      {live ? 'Redeem with a Reservation' : 'Advance Reservation Required'}
                     </span>
                   </div>
                   <Toggle
@@ -441,7 +473,9 @@ export function BusinessDealStudioStep2Screen({
                   />
                 </div>
                 <p className="font-caption text-caption text-text-secondary pl-7">
-                  Guests must call or book at least 1 hour prior to arrival.
+                  {live
+                    ? 'Customers can also use this deal when they book or reserve with you.'
+                    : 'Guests must call or book at least 1 hour prior to arrival.'}
                 </p>
               </div>
             </div>
@@ -457,8 +491,8 @@ export function BusinessDealStudioStep2Screen({
             <div className="relative overflow-hidden rounded-lg bg-surface-container p-space-sm flex items-center gap-space-sm">
               <img
                 className="w-16 h-16 rounded-lg object-cover shadow-sm"
-                alt={PREVIEW_IMAGE.alt}
-                src={PREVIEW_IMAGE.src}
+                alt={draftImageAlt(draft.title, PREVIEW_IMAGE.alt)}
+                src={draftImage(draft.mainImage, PREVIEW_IMAGE.src)}
               />
               <div className="flex flex-col flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
@@ -466,21 +500,27 @@ export function BusinessDealStudioStep2Screen({
                     {studio.vouchers} Left
                   </span>
                   <span className="bg-surface-canvas text-primary font-caption text-caption font-medium px-2 py-0.5 rounded-full shadow-sm">
-                    {studio.claimOnce
-                      ? '1 Per Diner'
-                      : studio.unlimitedClaims
-                        ? 'Unlimited Per Diner'
-                        : `${studio.maxClaims} Per Diner`}
+                    {live
+                      ? claimLimitLabel(studio)
+                      : studio.claimOnce
+                        ? '1 Per Diner'
+                        : studio.unlimitedClaims
+                          ? 'Unlimited Per Diner'
+                          : `${studio.maxClaims} Per Diner`}
                   </span>
-                  <span className="bg-surface-canvas text-secondary font-caption text-caption font-medium px-2 py-0.5 rounded-full shadow-sm">
-                    Max {studio.maxUnitsPerOrder} per order
-                  </span>
+                  {!live && (
+                    <span className="bg-surface-canvas text-secondary font-caption text-caption font-medium px-2 py-0.5 rounded-full shadow-sm">
+                      Max {studio.maxUnitsPerOrder} per order
+                    </span>
+                  )}
                 </div>
                 <span className="font-heading-sm text-heading-sm text-text-primary truncate mt-1">
-                  {studio.discountPct}% Off Weekend Dining
+                  {live ? `${dealBadgeLabel(studio, pricing.savingsPct)} ${draft.title}` : `${studio.discountPct}% Off Weekend Dining`}
                 </span>
                 <span className="font-caption text-caption text-text-secondary">
-                  Min spend ₦5,000 • Dine-in &amp; Pickup
+                  {live
+                    ? [minSpend > 0 ? `Min spend ₦${formatDealAmount(minSpend)}` : '', modes].filter(Boolean).join(' • ')
+                    : 'Min spend ₦5,000 • Dine-in & Pickup'}
                 </span>
               </div>
             </div>

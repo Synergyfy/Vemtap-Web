@@ -1,4 +1,6 @@
 export interface ProductDraft {
+  /** Live: the catalogue item this draft already published — publishing again updates it. */
+  publishedItemId?: string;
   title: string;
   /** Uploaded photo URL (live). */
   mainImage?: string;
@@ -22,6 +24,13 @@ export interface ProductDraft {
   branches: Record<string, boolean>;
   pricingMode: 'uniform' | 'custom';
   prepWindow: string;
+  /** How customers can get it: collect at the counter and/or delivery. */
+  fulfillment: { pickup: boolean; delivery: boolean };
+  /** Attribute badges customers see ("Halal certified", "Gluten-free", …). */
+  tags: string[];
+  /** Units on hand when the product has no variants. */
+  stock: string;
+  loyaltyPoints?: string;
 }
 
 export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
@@ -50,12 +59,17 @@ export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
   backorder: false,
   branches: { wuse: true, garki: true, maitama: false },
   pricingMode: 'custom',
+  fulfillment: { pickup: true, delivery: true },
+  tags: ['Halal certified', 'Medium Spicy'],
+  stock: '',
   prepWindow: '20 – 30 Mins',
+  loyaltyPoints: '50',
 };
 
 /** Live catalogue starts from an empty product — the sample above is demo-only. */
 export const BLANK_PRODUCT_DRAFT: ProductDraft = {
   ...INITIAL_PRODUCT_DRAFT,
+  loyaltyPoints: '',
   title: '',
   producer: '',
   sku: '',
@@ -70,4 +84,5 @@ export const BLANK_PRODUCT_DRAFT: ProductDraft = {
   lowStock: '',
   branches: {},
   pricingMode: 'uniform',
+  tags: [],
 };

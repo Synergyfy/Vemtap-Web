@@ -4,6 +4,7 @@ import { getActiveVariants } from '../productVariants';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import type { ProductDraft } from './desktopProductDraft';
 import type { DealStudioDraft } from './desktopDealStudio';
+import { draftImage, draftImageAlt } from './draftImage';
 
 interface DesktopDealAutoImportScreenProps {
   draft: ProductDraft;
@@ -457,7 +458,7 @@ export function DesktopDealAutoImportScreen({
             <div className="bg-surface-subtle p-space-md rounded-2xl shadow-md">
               <div className="max-w-[340px] mx-auto bg-surface-canvas rounded-2xl overflow-hidden shadow-lg transition-transform duration-300 hover:scale-[1.01]">
                 <div className="relative w-full h-48 bg-surface-dim overflow-hidden">
-                  <img className="w-full h-full object-cover" alt={FEED_IMAGES[0].alt} src={FEED_IMAGES[0].src} />
+                  <img className="w-full h-full object-cover" alt={draftImageAlt(draft.title, FEED_IMAGES[0].alt)} src={draftImage(draft.mainImage, FEED_IMAGES[0].src)} />
                   <div className="absolute top-3 left-3 flex flex-col gap-1 items-start">
                     <span className="px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold shadow-sm flex items-center gap-1">
                       <Icon name="local_offer" className="text-[13px]" />

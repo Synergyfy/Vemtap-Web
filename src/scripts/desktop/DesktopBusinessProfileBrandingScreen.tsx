@@ -564,10 +564,18 @@ export function DesktopBusinessProfileBrandingScreen({
                 </div>
                 <div className="p-space-md flex flex-col gap-space-xs bg-surface-canvas">
                   <div className="flex items-start gap-space-sm">
-                    <div className="w-12 h-12 rounded-xl bg-primary-container text-on-primary flex flex-col items-center justify-center flex-shrink-0 shadow-sm relative -mt-6 ring-2 ring-surface-canvas">
-                      <Icon name="restaurant" className="text-[20px] leading-none" />
-                      <span className="text-[8px] font-bold tracking-widest mt-0.5">{avatarLabel}</span>
-                    </div>
+                    {hasLogo && logoUrl ? (
+                      <img
+                        src={logoUrl}
+                        alt="Your logo"
+                        className="w-12 h-12 rounded-xl object-cover bg-surface-canvas flex-shrink-0 shadow-sm relative -mt-6 ring-2 ring-surface-canvas"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-xl bg-primary-container text-on-primary flex flex-col items-center justify-center flex-shrink-0 shadow-sm relative -mt-6 ring-2 ring-surface-canvas">
+                        <Icon name="restaurant" className="text-[20px] leading-none" />
+                        <span className="text-[8px] font-bold tracking-widest mt-0.5">{avatarLabel}</span>
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
                         <h3 className="font-heading-sm text-heading-sm text-text-primary truncate">{displayName}</h3>
@@ -661,7 +669,7 @@ export function DesktopBusinessProfileBrandingScreen({
         </div>
       </div>
       {uploadError && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-on-inverse-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {uploadError}
         </div>
       )}

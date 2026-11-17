@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { UserAvatar } from '../../components/ui/UserAvatar';
 
 interface CheckoutHubShellProps {
   children: ReactNode;
@@ -32,8 +33,8 @@ export function CheckoutHubShell({ children }: CheckoutHubShellProps) {
                 {isLive ? [branch.name, branch.area].filter(Boolean).join(', ') : 'Wuse II Branch, Abuja'}
               </span>
             </div>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <Icon name="person" className="text-on-primary text-[18px]" />
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
+              <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>

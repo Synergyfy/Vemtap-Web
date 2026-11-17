@@ -54,8 +54,9 @@ export function resolveBusinessPath(path: string): {
 
   const rawSlug = decodeURIComponent(parts[0]);
   const migratedSlug = LEGACY_BUSINESS_PATHS[`/business/${rawSlug}`]?.replace('/business/', '');
-  const business = findBusinessBySlug(migratedSlug ?? rawSlug);
-  if (!business) return null;
+  // Live businesses are not in a bundled list: an unknown slug is the business's public code,
+  // which the business page loads from `GET /public/businesses/code/:code`.
+  const business = findBusinessBySlug(migratedSlug ?? rawSlug) ?? { slug: rawSlug, id: '', name: '', venue: 'urban' as const };
 
   const section = parts[1] ?? '';
   if (section === 'products' && parts[2]) {

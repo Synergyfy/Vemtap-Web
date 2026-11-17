@@ -2,15 +2,22 @@ import { useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Icon } from '../ui/Icon';
 import { SheetShell } from './SheetShell';
-import { maskPhone } from '../../utils/format';
 
 export interface RecipientVerificationSheetProps {
   open: boolean;
   onClose: () => void;
-  onVerify: () => void;
+  /** Called with the code the holder typed. */
+  onVerify: (code: string) => void;
+  /** Sends a new code. */
+  onResend: () => void;
+  /** Why the last step failed. */
+  error?: string | null;
+  busy?: boolean;
   onBack: () => void;
-  /** Recipient whose contact details should be verified. */
+  /** Recipient being verified; none means the customer is claiming for themselves. */
   recipient?: { name: string; email: string; phone?: string } | null;
+  /** The email the code went to. */
+  target?: string;
 }
 
 export function RecipientVerificationSheet({
@@ -19,12 +26,17 @@ export function RecipientVerificationSheet({
   onVerify,
   onBack,
   recipient,
+  target,
+  onResend,
+  error,
+  busy,
 }: RecipientVerificationSheetProps) {
-  const [digits, setDigits] = useState(['5', '8', '2', '9', '', '']);
-  const [focusedIndex, setFocusedIndex] = useState(4);
+  const [digits, setDigits] = useState(['', '', '', '']);
+  const [focusedIndex, setFocusedIndex] = useState(0);
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
 
-  const maskedTarget = recipient?.phone ? maskPhone(recipient.phone) : recipient?.email ?? 'recipient@example.com';
+  const maskedTarget = target ?? recipient?.email ?? '';
+  const code = digits.join('');
 
   const focusInput = (index: number) => {
     setFocusedIndex(index);
@@ -35,7 +47,7 @@ export function RecipientVerificationSheet({
     const cleaned = value.replace(/\D/g, '');
     const digit = cleaned.slice(-1);
     setDigits((prev) => prev.map((item, i) => (i === index ? digit : item)));
-    if (digit && index < 5) focusInput(index + 1);
+    if (digit && index < 3) focusInput(index + 1);
   };
 
   const handleKeyDown = (index: number, event: KeyboardEvent<HTMLInputElement>) => {
@@ -54,7 +66,7 @@ export function RecipientVerificationSheet({
         <div className="flex items-center justify-between mt-1 mb-5">
           <div className="inline-flex items-center gap-1.5 bg-surface-tint-blue/80 px-2.5 py-1 rounded-md text-[11px] font-semibold tracking-wider text-primary-container uppercase">
             <Icon name="verified_user" className="text-[14px]" />
-            <span>Recipient Verification</span>
+            <span>{recipient ? 'Recipient Verification' : 'Claim Verification'}</span>
           </div>
           <button
             aria-label="Close modal"
@@ -68,12 +80,11 @@ export function RecipientVerificationSheet({
 
         <div className="mb-5">
           <h1 className="text-heading-lg font-bold text-text-primary tracking-tight mb-2">
-            Verify recipient's contact
+            {recipient ? "Verify recipient's email" : 'Enter your claim code'}
           </h1>
           <p className="text-body-md leading-relaxed text-text-secondary font-normal">
-            We sent a 6-digit verification code to{' '}
-            <span className="font-semibold text-text-primary">{maskedTarget}</span> to confirm their identity for this
-            claim voucher.
+            We sent a 4-digit code to <span className="font-semibold text-text-primary">{maskedTarget}</span>
+            {recipient ? ' to confirm their identity for this voucher.' : ' to confirm this voucher.'}
           </p>
           <button
             type="button"
@@ -81,15 +92,15 @@ export function RecipientVerificationSheet({
             className="inline-flex items-center gap-1.5 mt-2.5 text-xs font-semibold text-primary-container hover:text-primary active:opacity-80 transition-opacity"
           >
             <Icon name="edit" className="text-[14px]" />
-            <span>Change contact details</span>
+            <span>{recipient ? 'Change contact details' : 'Cancel'}</span>
           </button>
         </div>
 
         <section className="mb-6">
           <label className="block text-xs font-semibold text-text-tertiary uppercase tracking-wider mb-3">
-            Enter 6-digit authorization code
+            Enter 4-digit code
           </label>
-          <div className="grid grid-cols-6 gap-2.5 sm:gap-3">
+          <div className="grid grid-cols-4 gap-2.5 sm:gap-3">
             {digits.map((digit, index) => (
               <input
                 key={index}
@@ -119,11 +130,15 @@ export function RecipientVerificationSheet({
 
           <div className="flex items-center justify-between mt-3.5 px-0.5 text-xs">
             <span className="text-text-tertiary">Didn't receive the email?</span>
-            <button type="button" className="font-semibold text-text-tertiary cursor-not-allowed flex items-center gap-1">
+            <button type="button" disabled={busy} onClick={onResend} className="font-semibold text-primary-container flex items-center gap-1 disabled:opacity-50">
               <span>Resend code</span>
-              <span className="text-primary-container font-medium">(0:45)</span>
             </button>
           </div>
+          {error ? (
+            <p role="alert" className="mt-3 text-xs font-medium text-error">
+              {error}
+            </p>
+          ) : null}
         </section>
 
         <aside className="bg-surface-tint-blue/70 border border-border-active rounded-xl p-3.5 flex items-start gap-3 mb-6">
@@ -131,18 +146,20 @@ export function RecipientVerificationSheet({
             <Icon name="info" className="text-[16px]" />
           </div>
           <p className="text-xs text-text-secondary leading-relaxed font-normal">
-            The recipient must verify this code to authorize claiming the deal and registering the redemption voucher
-            directly under their name.
+            {recipient
+              ? 'The recipient must share this code with you. The voucher is issued under their name.'
+              : 'The voucher is issued to your account once this code is confirmed.'}
           </p>
         </aside>
 
         <div className="flex flex-col items-center gap-3 w-full">
           <button
             type="button"
-            onClick={onVerify}
-            className="w-full h-[52px] bg-primary-container hover:bg-primary active:bg-primary text-on-primary font-semibold rounded-xl text-base flex items-center justify-center gap-2 shadow-lg shadow-primary-container/25 transition-all"
+            disabled={code.length !== 4 || busy}
+            onClick={() => onVerify(code)}
+            className="w-full h-[52px] bg-primary-container hover:bg-primary active:bg-primary text-on-primary font-semibold rounded-xl text-base flex items-center justify-center gap-2 shadow-lg shadow-primary-container/25 transition-all disabled:opacity-50"
           >
-            <span>Verify &amp; Continue</span>
+            <span>{busy ? 'Confirming…' : 'Verify & Continue'}</span>
             <Icon name="arrow_forward" className="text-[16px]" />
           </button>
           <button
@@ -150,7 +167,7 @@ export function RecipientVerificationSheet({
             onClick={onBack}
             className="w-full py-2.5 text-sm font-semibold text-text-secondary hover:text-text-primary transition-colors text-center"
           >
-            Back to recipient details
+            {recipient ? 'Back to recipient details' : 'Back to deal'}
           </button>
         </div>
 

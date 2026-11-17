@@ -1,11 +1,16 @@
-import { useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { Toast } from '../../components/ui/Toast';
+import { hasApiConfig } from '../../services/api/client';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 
 interface DesktopManualLocationScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onBack: () => void;
-  onContinue: () => void;
+  /** Live: resolves once the typed area is found and saved; rejects with a customer-facing message. */
+  onContinue: (area: string) => Promise<void> | void;
+  /** Live: detect and save the browser's position (same as the permission step). */
+  onUseCurrentLocation?: () => Promise<void> | void;
 }
 
 interface Area {
@@ -41,11 +46,46 @@ const STATS = [
   { icon: 'restaurant', tint: 'text-tertiary-container', value: '12', label: 'Cafes & Bistros' },
 ];
 
-export function DesktopManualLocationScreen({ onNav, onBack, onContinue }: DesktopManualLocationScreenProps) {
-  const [query, setQuery] = useState('Apo');
+export function DesktopManualLocationScreen({ onNav, onBack, onContinue, onUseCurrentLocation }: DesktopManualLocationScreenProps) {
+  // Live: the customer types their own area; demo keeps the sample Abuja picker.
+  const live = hasApiConfig();
+  const [query, setQuery] = useState(live ? '' : 'Apo');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+  }, []);
 
   const selected = AREAS[selectedIndex];
+  const areaName = live ? query.trim() : selected.name;
+
+  const runLive = (action: () => Promise<void> | void) => {
+    if (busy) return;
+    setBusy(true);
+    Promise.resolve(action())
+      .catch((error: unknown) => {
+        setToast(error instanceof Error && error.message ? error.message : "We couldn't find that area.");
+        if (toastTimer.current) window.clearTimeout(toastTimer.current);
+        toastTimer.current = window.setTimeout(() => setToast(null), 3200);
+      })
+      .finally(() => setBusy(false));
+  };
+
+  const continueWithArea = () => {
+    if (!live) {
+      onContinue(selected.name);
+      return;
+    }
+    if (areaName) runLive(() => onContinue(areaName));
+  };
+
+  const useCurrentLocation = () => {
+    if (live && onUseCurrentLocation) runLive(onUseCurrentLocation);
+    else onContinue(selected.name);
+  };
 
   const selectArea = (index: number) => {
     setSelectedIndex(index);
@@ -53,7 +93,7 @@ export function DesktopManualLocationScreen({ onNav, onBack, onContinue }: Deskt
   };
 
   const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter') onContinue();
+    if (event.key === 'Enter') continueWithArea();
   };
 
   return (
@@ -130,7 +170,8 @@ export function DesktopManualLocationScreen({ onNav, onBack, onContinue }: Deskt
             <button
               className="group flex items-center justify-between p-space-md rounded-xl bg-surface-canvas shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04),0_2px_6px_-1px_rgba(13,37,76,0.02)] hover:bg-surface-tint-blue/30 transition-all text-left"
               type="button"
-              onClick={onContinue}
+              onClick={useCurrentLocation}
+              disabled={busy}
             >
               <div className="flex items-center gap-space-md">
                 <div className="w-10 h-10 rounded-full bg-surface-tint-blue flex items-center justify-center text-primary group-hover:scale-105 transition-transform">
@@ -154,6 +195,8 @@ export function DesktopManualLocationScreen({ onNav, onBack, onContinue }: Deskt
               />
             </button>
 
+            {!live && (
+            <>
             <div className="flex flex-col gap-space-xs">
               <div className="flex items-center justify-between">
                 <span className="font-caption text-caption uppercase tracking-wider text-text-tertiary font-semibold">
@@ -229,14 +272,17 @@ export function DesktopManualLocationScreen({ onNav, onBack, onContinue }: Deskt
                 </p>
               </div>
             </div>
+            </>
+            )}
 
             <div className="flex flex-col gap-space-sm pt-space-xs">
               <button
                 className="h-[52px] w-full rounded-2xl bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-space-xs shadow-[0_8px_24px_-4px_rgba(6,108,244,0.3)] transition-all transform active:scale-[0.98]"
                 type="button"
-                onClick={onContinue}
+                onClick={continueWithArea}
+                disabled={busy || (live && !areaName)}
               >
-                <span>Continue with {selected.name}</span>
+                <span>{busy ? 'Finding your area…' : `Continue with ${areaName || 'an area'}`}</span>
                 <Icon name="arrow_forward" className="text-[20px]" />
               </button>
               <div className="text-center font-caption text-caption text-text-tertiary">
@@ -267,13 +313,15 @@ export function DesktopManualLocationScreen({ onNav, onBack, onContinue }: Deskt
                   <div className="flex items-center gap-space-xs bg-surface-canvas/95 backdrop-blur-md px-space-sm py-space-2xs rounded-full shadow-sm">
                     <span className="w-2.5 h-2.5 rounded-full bg-badge-discount-text animate-pulse" />
                     <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                      FCT Zone • {selected.name} Sector Active
+                      {live ? `${areaName || 'Your area'} • Live` : `FCT Zone • ${selected.name} Sector Active`}
                     </span>
                   </div>
-                  <div className="flex items-center gap-space-2xs bg-primary-container text-on-primary px-space-sm py-space-2xs rounded-full font-label-sm text-label-sm shadow-md font-semibold">
-                    <Icon name="local_offer" className="text-[16px]" />
-                    <span>142 Offers Nearby</span>
-                  </div>
+                  {!live && (
+                    <div className="flex items-center gap-space-2xs bg-primary-container text-on-primary px-space-sm py-space-2xs rounded-full font-label-sm text-label-sm shadow-md font-semibold">
+                      <Icon name="local_offer" className="text-[16px]" />
+                      <span>142 Offers Nearby</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -287,6 +335,8 @@ export function DesktopManualLocationScreen({ onNav, onBack, onContinue }: Deskt
                   </div>
                 </div>
 
+                {!live && (
+                <>
                 <div className="absolute top-28 left-16 flex items-center gap-space-2xs bg-surface-canvas/90 backdrop-blur-md px-space-xs py-1 rounded-lg shadow-md animate-bounce">
                   <Icon name="local_cafe" filled className="text-tertiary-container text-[16px]" />
                   <span className="font-caption text-caption font-semibold text-text-primary">Cafe Neo • -25%</span>
@@ -295,14 +345,16 @@ export function DesktopManualLocationScreen({ onNav, onBack, onContinue }: Deskt
                   <Icon name="shopping_bag" filled className="text-badge-discount-text text-[16px]" />
                   <span className="font-caption text-caption font-semibold text-text-primary">Grand Square • BOGO</span>
                 </div>
+                </>
+                )}
 
                 <div className="absolute bottom-space-md left-space-md right-space-md bg-surface-canvas/95 backdrop-blur-xl p-space-md rounded-xl shadow-lg flex items-center justify-between">
                   <div className="flex flex-col">
                     <span className="font-label-md text-label-md font-bold text-text-primary">
-                      {selected.deckTitle}
+                      {live ? areaName || 'Your area' : selected.deckTitle}
                     </span>
                     <span className="font-caption text-caption text-text-secondary">
-                      Estimated coverage radius: 4.8 km around center point
+                      {live ? 'Deals nearest to this area show first' : 'Estimated coverage radius: 4.8 km around center point'}
                     </span>
                   </div>
                   <Icon name="verified" className="text-primary text-[24px]" />
@@ -341,6 +393,7 @@ export function DesktopManualLocationScreen({ onNav, onBack, onContinue }: Deskt
           </div>
         </div>
       </div>
+      <Toast message={toast} icon="location_off" />
     </DesktopPage>
   );
 }

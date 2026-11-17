@@ -1,4 +1,5 @@
 import { Icon } from '../components/ui/Icon';
+import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessChatHeaderProps {
   onBack: () => void;
@@ -77,8 +78,8 @@ export function BusinessChatHeader({
           >
             <Icon name="more_vert" className="text-[22px]" />
           </button>
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs">
-            <Icon name="person" className="text-on-primary text-[18px]" />
+          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-2xs overflow-hidden">
+            <UserAvatar textClassName="text-on-primary text-[13px]" />
           </div>
         </div>
       </div>

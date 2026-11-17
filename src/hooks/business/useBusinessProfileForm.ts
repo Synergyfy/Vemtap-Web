@@ -105,7 +105,10 @@ export function useBusinessProfileForm() {
       if (!url || !live) return url;
       const patch: Partial<MyBusiness> = kind === 'logo' ? { logoUrl: url } : { coverImage: url };
       await businessService.updateMyBusiness(patch);
+      // Show the image now, then reload the record so the page reflects what the server stored.
+      await queryClient.cancelQueries({ queryKey: myBusinessKeys.all });
       queryClient.setQueryData<MyBusiness>(myBusinessKeys.all, (current) => (current ? { ...current, ...patch } : current));
+      void queryClient.invalidateQueries({ queryKey: myBusinessKeys.all });
       return url;
     },
   });

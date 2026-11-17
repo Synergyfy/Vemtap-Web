@@ -9,6 +9,9 @@ import { useBusinessAnalytics } from '../../hooks/business/useBusinessAnalytics'
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { posService } from '../../services/posService';
 import { branchAddressLabel, branchOpenLabel } from '../branchLive';
+import { getAddedBusinessLocations } from '../businessLocationsStore';
+import { formatNaira } from '../locationPricing';
+import { useBusinessOfferings } from '../../context/BusinessOfferingsContext';
 
 interface DesktopBusinessLocationsHubScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -150,6 +153,12 @@ export function DesktopBusinessLocationsHubScreen({
   const states = Array.from(new Set(liveList.map((branch) => branch.state || branch.city).filter(Boolean))) as string[];
   const skuTotal = liveList.reduce((sum, branch) => sum + (counts[branch.id]?.products ?? 0) + (counts[branch.id]?.services ?? 0), 0);
   const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
+  const { getEffectiveBranchOfferings } = useBusinessOfferings();
+  // Locations bought from the dashboard (seeded demo entries already match the
+  // cards below, so only real additions are rendered as extra cards).
+  const addedLocations = getAddedBusinessLocations().filter(
+    (location) => !location.id.startsWith('seed-'),
+  );
   return (
     <MerchantShell activeNav="business-locations" onNav={onNav}>
       <div className="flex flex-col gap-space-2xs mb-space-lg">
@@ -413,6 +422,23 @@ export function DesktopBusinessLocationsHubScreen({
                   >
                     {branch.tag2}
                   </span>
+                  {(() => {
+                    const eff = getEffectiveBranchOfferings(branch.id);
+                    return (
+                      <>
+                        {eff.includes('products') && (
+                          <span className="px-space-xs py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
+                            Products
+                          </span>
+                        )}
+                        {eff.includes('services') && (
+                          <span className="px-space-xs py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
+                            Services
+                          </span>
+                        )}
+                      </>
+                    );
+                  })()}
                   <span className="ml-auto inline-flex items-center gap-1.5 px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
                     <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
                     {branch.openLabel}
@@ -570,6 +596,77 @@ export function DesktopBusinessLocationsHubScreen({
           </div>
         </div>
         )}
+
+        {/* Locations added from the dashboard (paid ₦2,000 each) */}
+        {addedLocations.map((location, index) => (
+          <div
+            key={location.id}
+            className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm hover:shadow-md transition-shadow relative overflow-hidden"
+          >
+            <div className="flex flex-wrap items-center gap-space-xs mb-space-xs">
+              <span className="font-label-sm text-label-sm font-bold text-primary tracking-wide">
+                BRANCH #{String(3 + index + 1).padStart(2, '0')}
+              </span>
+              <span className="text-text-tertiary">•</span>
+              <span className="px-space-xs py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
+                Active
+              </span>
+              <span className="px-space-xs py-0.5 rounded bg-surface-container text-text-secondary font-caption text-caption font-semibold">
+                {location.district}
+              </span>
+              {(() => {
+                const eff = getEffectiveBranchOfferings(location.id || location.name);
+                return (
+                  <>
+                    {eff.includes('products') && (
+                      <span className="px-space-xs py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
+                        Products
+                      </span>
+                    )}
+                    {eff.includes('services') && (
+                      <span className="px-space-xs py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
+                        Services
+                      </span>
+                    )}
+                  </>
+                );
+              })()}
+              <span className="ml-auto inline-flex items-center gap-1.5 px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
+                <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
+                Open Now
+              </span>
+            </div>
+            <h3 className="font-heading-md text-heading-md text-on-surface font-bold">{location.name}</h3>
+            <div className="flex items-center gap-space-2xs text-text-secondary font-body-md text-body-md mt-space-2xs">
+              <Icon name="location_on" className="text-[18px] text-text-tertiary" />
+              <span className="truncate">{location.address}</span>
+            </div>
+            <div className="mt-space-md p-space-sm rounded-xl bg-surface-container-low flex flex-wrap items-center justify-between gap-space-sm">
+              <span className="flex items-center gap-space-2xs text-text-secondary font-label-sm text-label-sm">
+                <Icon name="payments" className="text-[16px] text-primary" />
+                {location.feePaid > 0
+                  ? `${formatNaira(location.feePaid)} one-time location fee paid`
+                  : 'Included with your plan'}
+              </span>
+              <div className="flex items-center gap-space-xs">
+                <button
+                  type="button"
+                  className="px-space-md py-space-xs rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5"
+                >
+                  <Icon name="edit_note" className="text-[18px]" />
+                  <span>Edit Branch Details</span>
+                </button>
+                <button
+                  type="button"
+                  className="px-space-md py-space-xs rounded-xl bg-surface-tint-blue hover:bg-primary-fixed text-primary font-label-md text-label-md transition-colors flex items-center gap-1.5"
+                >
+                  <Icon name="settings_input_antenna" className="text-[18px]" />
+                  <span>Manage Geofence</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Architecture card */}
