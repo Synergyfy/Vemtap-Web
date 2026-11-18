@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { SocialChannelPicker } from '../components/SocialChannelPicker';
@@ -6,9 +6,11 @@ import { useProfile } from '../context/ProfileContext';
 import {
   CHANNEL_PLATFORMS,
   CHANNEL_PLATFORM_BY_ID,
+  isChannelPlatform,
   normalizeChannel,
   type ChannelPlatformId,
 } from '../utils/socialChannels';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
 import type { BusinessProfileDraft } from './BusinessOnboardingScreen';
 import { UserAvatar } from '../components/ui/UserAvatar';
 
@@ -31,13 +33,31 @@ type Status = 'idle' | 'saving';
 
 const CORE_PLATFORMS: ChannelPlatformId[] = ['instagram', 'whatsapp', 'x'];
 
-const seedChannels = (draft: BusinessProfileDraft): ChannelDraft[] =>
-  (['instagram', 'whatsapp', 'x'] as const).map((platform) => ({
-    id: platform,
-    platform,
-    value: draft[platform] ?? '',
-    touched: false,
-  }));
+/** Core channels live in their own draft fields; every other picker channel lives in `draft.socials`. */
+const seedChannels = (draft: BusinessProfileDraft): ChannelDraft[] => {
+  const socials = draft.socials ?? {};
+  return [
+    ...(['instagram', 'whatsapp', 'x'] as const).map((platform) => ({
+      id: platform,
+      platform,
+      value: draft[platform] ?? '',
+      touched: false,
+    })),
+    ...Object.entries(socials)
+      .filter(
+        ([platform, value]) =>
+          isChannelPlatform(platform) &&
+          !CORE_PLATFORMS.includes(platform) &&
+          Boolean(value?.trim()),
+      )
+      .map(([platform, value]) => ({
+        id: platform,
+        platform: platform as ChannelPlatformId,
+        value,
+        touched: false,
+      })),
+  ];
+};
 
 export function BusinessProfileContactScreen({
   draft,
@@ -47,6 +67,9 @@ export function BusinessProfileContactScreen({
   onSaveDraft,
 }: BusinessProfileContactScreenProps) {
   const profile = useProfile();
+  // Live: what the business already has saved, so a channel saved from the
+  // storefront studio is not wiped when this step saves. Demo: nothing.
+  const businessSocials = useMyBusiness().data?.socials;
   const [status, setStatus] = useState<Status>('idle');
   const [channels, setChannels] = useState<ChannelDraft[]>(() => seedChannels(draft));
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -57,10 +80,50 @@ export function BusinessProfileContactScreen({
   const usedPlatforms = channels.map((channel) => channel.platform);
   const allPlatformsAdded = usedPlatforms.length >= CHANNEL_PLATFORMS.length;
 
+  // A run saved before channels were part of the draft starts from what the
+  // business record already holds, so the first save keeps every channel.
+  useEffect(() => {
+    if (draft.socials !== undefined || !businessSocials) return;
+    const extras = Object.fromEntries(
+      Object.entries(businessSocials).filter(
+        ([platform, value]) => isChannelPlatform(platform) && !CORE_PLATFORMS.includes(platform) && Boolean(value?.trim()),
+      ),
+    );
+    if (Object.keys(extras).length > 0) onChange({ socials: extras });
+  }, [draft.socials, businessSocials, onChange]);
+
+  // Channels added on another visit (or restored from the saved run) show up
+  // without remounting the step.
+  useEffect(() => {
+    setChannels((prev) => {
+      const missing = Object.entries(draft.socials ?? {})
+        .filter(
+          ([platform, value]) =>
+            isChannelPlatform(platform) &&
+            !CORE_PLATFORMS.includes(platform) &&
+            Boolean(value?.trim()) &&
+            !prev.some((channel) => channel.platform === platform),
+        )
+        .map(([platform, value]) => ({
+          id: platform,
+          platform: platform as ChannelPlatformId,
+          value,
+          touched: false,
+        }));
+      return missing.length > 0 ? [...prev, ...missing] : prev;
+    });
+  }, [draft.socials]);
+
   const setChannelValue = (id: string, value: string) => {
     const channel = channels.find((item) => item.id === id);
-    if (channel && CORE_PLATFORMS.includes(channel.platform)) {
-      onChange({ [channel.platform]: value });
+    if (channel) {
+      if (CORE_PLATFORMS.includes(channel.platform)) {
+        onChange({ [channel.platform]: value });
+      } else {
+        // Every extra channel round-trips through the draft so it survives
+        // reloads and is saved to the business on Next.
+        onChange({ socials: { ...(draft.socials ?? {}), [channel.platform]: value } });
+      }
     }
     setChannels((prev) => prev.map((item) => (item.id === id ? { ...item, value, touched: true } : item)));
   };
@@ -72,11 +135,18 @@ export function BusinessProfileContactScreen({
     setPickerOpen(false);
     if (usedPlatforms.includes(platform)) return;
     const id = `${platform}-${channelSeq.current++}`;
+    // The value lands in `draft.socials` on the first keystroke (setChannelValue).
     setChannels((prev) => [...prev, { id, platform, value: '', touched: false }]);
   };
 
-  const removeChannel = (id: string) =>
-    setChannels((prev) => prev.filter((channel) => channel.id !== id));
+  const removeChannel = (id: string) => {
+    const channel = channels.find((item) => item.id === id);
+    if (channel && !CORE_PLATFORMS.includes(channel.platform) && draft.socials) {
+      const { [channel.platform]: _removed, ...rest } = draft.socials;
+      onChange({ socials: rest });
+    }
+    setChannels((prev) => prev.filter((item) => item.id !== id));
+  };
 
   const accountEmail = profile.email.trim().toLowerCase();
   const isAccountEmail = accountEmail.length > 0 && draft.email.trim().toLowerCase() === accountEmail;

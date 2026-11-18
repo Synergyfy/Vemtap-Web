@@ -24,6 +24,7 @@ import { useSessionUser } from '../useSessionUser';
 import { isBusinessRole } from '../../services/sessionService';
 import { ownerAuthService, pendingPin, rememberUpgradePin } from '../../services/ownerAuthService';
 import { getProvisionalReferralCode } from '../../scripts/referralData';
+import { isChannelPlatform } from '../../utils/socialChannels';
 
 /** The setup draft fields both onboarding screens share. */
 export interface OnboardingProfileDraft {
@@ -37,6 +38,8 @@ export interface OnboardingProfileDraft {
   instagram: string;
   whatsapp: string;
   x: string;
+  /** Extra picker channels (facebook, tiktok, …) keyed by platform. */
+  socials?: Record<string, string>;
 }
 
 const handle = (value: string) => value.trim().replace(/^@/, '');
@@ -161,7 +164,16 @@ export function useOnboardingSync() {
   };
 
   const contactUpdate = (draft: OnboardingProfileDraft) => {
+    // Every picker channel the step knows about: the draft's own map once the
+    // step has touched it, otherwise what the business record already holds so
+    // this save never wipes a channel saved elsewhere.
+    const extras = draft.socials ?? queryClient.getQueryData<MyBusiness>(myBusinessKeys.all)?.socials ?? {};
     const socials: Record<string, string> = {};
+    for (const [platform, value] of Object.entries(extras)) {
+      if (!isChannelPlatform(platform) || platform === 'whatsapp') continue;
+      const cleaned = handle(String(value ?? '').trim());
+      if (cleaned) socials[platform] = cleaned;
+    }
     if (handle(draft.instagram)) socials.instagram = handle(draft.instagram);
     if (handle(draft.x)) socials.x = handle(draft.x);
     return {
@@ -169,7 +181,8 @@ export function useOnboardingSync() {
       officialEmail: draft.email.trim() || undefined,
       website: draft.website.trim() || undefined,
       whatsappNumber: draft.whatsapp.trim() || undefined,
-      ...(Object.keys(socials).length ? { socials } : {}),
+      // Always sent: an empty object is how a removed channel is cleared.
+      socials,
     };
   };
 

@@ -40,16 +40,20 @@ export function findBusinessBySlug(slug: string): BusinessProfileRef | undefined
   return BUSINESSES.find((business) => business.slug === slug);
 }
 
-/** Resolves any /business/... path (current slug, legacy slug, or sub-page) to a business + section. */
+/** Resolves public business paths and the short `/b/:code` links embedded in business QR codes. */
 export function resolveBusinessPath(path: string): {
   business: BusinessProfileRef;
   section: string;
   productId?: string;
   serviceSlug?: string;
 } | null {
-  if (!path.startsWith('/business/')) return null;
+  const url = new URL(path, 'https://vemtap.local');
+  const shortLink = url.pathname.startsWith('/b/');
+  if (!shortLink && !url.pathname.startsWith('/business/')) return null;
 
-  const parts = path.slice('/business/'.length).split('/').filter(Boolean);
+  const parts = shortLink
+    ? url.pathname.slice('/b/'.length).split('/').filter(Boolean)
+    : url.pathname.slice('/business/'.length).split('/').filter(Boolean);
   if (parts.length === 0) return null;
 
   const rawSlug = decodeURIComponent(parts[0]);
@@ -58,9 +62,9 @@ export function resolveBusinessPath(path: string): {
   // which the business page loads from `GET /public/businesses/code/:code`.
   const business = findBusinessBySlug(migratedSlug ?? rawSlug) ?? { slug: rawSlug, id: '', name: '', venue: 'urban' as const };
 
-  const section = parts[1] ?? '';
-  if (section === 'products' && parts[2]) {
-    return { business, section, productId: decodeURIComponent(parts[2]) };
+  const section = shortLink ? 'products' : parts[1] ?? '';
+  if (section === 'products' && (parts[2] || url.searchParams.get('product'))) {
+    return { business, section, productId: decodeURIComponent(parts[2] ?? url.searchParams.get('product') ?? '') };
   }
   if (section === 'services' && parts[2]) {
     return { business, section, serviceSlug: decodeURIComponent(parts[2]) };

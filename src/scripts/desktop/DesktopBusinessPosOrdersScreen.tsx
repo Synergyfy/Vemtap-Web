@@ -7,6 +7,8 @@ import { apiErrorMessage } from '../../services/errorMessages';
 import { money } from '../../services/posService';
 import { usePosSales } from '../../hooks/business/usePos';
 import { useBusinessOrders } from '../../hooks/business/useBusinessOrders';
+import { useDealLedger } from '../../hooks/business/useDealLedger';
+import { DealClaimsLedger } from '../../components/DealClaimsLedger';
 import { methodLabel, naira, saleItemsLine, setSelectedSaleId, timeLabel, useLivePos } from '../posLive';
 
 const isToday = (iso?: string | null) => Boolean(iso) && new Date(iso as string).toDateString() === new Date().toDateString();
@@ -18,12 +20,13 @@ interface DesktopBusinessPosOrdersScreenProps {
   onOpenSale?: () => void;
 }
 
-type PosFilter = 'all' | 'online' | 'pos';
+type PosFilter = 'all' | 'online' | 'pos' | 'deals';
 
 const FILTERS: Array<{ key: PosFilter; label: string; count: number }> = [
   { key: 'all', label: 'All', count: 12 },
   { key: 'online', label: 'Online', count: 5 },
   { key: 'pos', label: 'POS', count: 7 },
+  { key: 'deals', label: 'Deals', count: 0 },
 ];
 
 const RECENT = [
@@ -54,9 +57,11 @@ export function DesktopBusinessPosOrdersScreen({
   const pos = useLivePos();
   const sales = usePosSales({ limit: 100, search: search.trim() || undefined });
   const storeOrders = useBusinessOrders();
+  const dealLedger = useDealLedger({ limit: 100 });
   const todaySales = (sales.data?.data ?? []).filter((sale) => isToday(sale.createdAt));
   const paidSales = todaySales.filter((sale) => sale.status !== 'refunded');
   const onlineToday = (storeOrders.data ?? []).filter((order) => isToday(order.createdAt) && !order.payment?.posSaleId).length;
+  const liveDealCount = dealLedger.isLoading ? '…' : dealLedger.isError ? '—' : dealLedger.data?.total ?? dealLedger.data?.data.length ?? 0;
   const sum = (pick: (sale: (typeof todaySales)[number]) => unknown) => paidSales.reduce((total, sale) => total + money(pick(sale) as number), 0);
   const gross = sum((sale) => sale.subtotal ?? sale.total);
   const discounts = sum((sale) => sale.discountAmount);
@@ -72,6 +77,7 @@ export function DesktopBusinessPosOrdersScreen({
         { key: 'all' as const, label: 'All', count: onlineToday + todaySales.length },
         { key: 'online' as const, label: 'Online', count: onlineToday },
         { key: 'pos' as const, label: 'POS', count: todaySales.length },
+        { key: 'deals' as const, label: 'Deals', count: dealLedger.data?.total ?? dealLedger.data?.data.length ?? 0 },
       ]
     : FILTERS;
   const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
@@ -83,7 +89,7 @@ export function DesktopBusinessPosOrdersScreen({
   };
   const syncLive = () => {
     setSyncing(true);
-    Promise.all([sales.refetch(), storeOrders.refetch()]).finally(() => {
+    Promise.all([sales.refetch(), storeOrders.refetch(), dealLedger.refetch()]).finally(() => {
       setSyncing(false);
       showToast('Sales refreshed');
     });
@@ -285,7 +291,9 @@ export function DesktopBusinessPosOrdersScreen({
                       ? `${todaySales.length} POS sales`
                       : filter === 'online'
                         ? `${onlineToday} Online orders`
-                        : `${onlineToday + todaySales.length} transactions`
+                          : filter === 'deals'
+                            ? `${liveDealCount} deal vouchers`
+                            : `${onlineToday + todaySales.length} transactions`
                     : filter === 'pos'
                       ? '7 POS sales'
                       : filter === 'online'
@@ -388,6 +396,11 @@ export function DesktopBusinessPosOrdersScreen({
                     <button type="button" onClick={() => onNav('orders')} className="text-primary hover:underline">
                       Open Orders Hub →
                     </button>
+                  </div>
+                )}
+                {live && filter === 'deals' && (
+                  <div className="p-space-md">
+                    <DealClaimsLedger title="Deal vouchers" limit={100} search={search} allowRedeem />
                   </div>
                 )}
               </section>

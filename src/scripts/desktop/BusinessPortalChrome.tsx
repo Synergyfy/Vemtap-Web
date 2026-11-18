@@ -4,14 +4,13 @@ import { Logo } from '../../components/ui/Logo';
 import {
   PortalBody,
   PORTAL_CONTENT,
-  POS_RAIL_OFFSET,
+  BUSINESS_SECONDARY_RAIL_OFFSET,
   RAIL_OFFSET,
   ShellAccountMenu,
   type ShellAccountKey,
 } from './PortalShell';
 import { BusinessSidebarRail } from './BusinessSidebarRail';
-import { PosNavRail } from './PosNavRail';
-import { MessagesNavRail } from './MessagesNavRail';
+import { BusinessSectionNavRail, isBusinessSecondarySectionKey } from './BusinessSectionNavRail';
 import { resolveSidebarActive } from './businessSidebarConfig';
 import { BusinessBranchSelect } from '../../components/BusinessBranchSelect';
 import { useHeaderNotifications } from '../../hooks/business/useHeaderNotifications';
@@ -70,19 +69,14 @@ export function BusinessPortalChrome({
   };
 
 
-  // POS section pages run in "POS mode": the main business rail collapses to an
-  // icon strip and the POS menu opens beside it, so the side menu is never swapped.
-  // Messages works the same way: the rail collapses and the Messages menu
-  // (In-App Chat / SMS / Email) opens beside it.
   const { sectionKey, itemKey } = resolveSidebarActive(activeNav);
-  const posMode = sectionKey === 'pos';
-  const messagesMode = sectionKey === 'messages';
-  const nestedMode = posMode || messagesMode;
+  const nestedSectionKey = isBusinessSecondarySectionKey(sectionKey) ? sectionKey : null;
+  const nestedMode = nestedSectionKey !== null;
 
   return (
     <div
       className={`w-full min-h-screen bg-surface-subtle font-body-md text-body-md text-on-surface antialiased flex flex-col ${
-        nestedMode ? POS_RAIL_OFFSET : RAIL_OFFSET
+        nestedMode ? BUSINESS_SECONDARY_RAIL_OFFSET : RAIL_OFFSET
       }`}
     >
       <header className="fixed top-0 left-0 right-0 w-full z-50 bg-surface-canvas/95 backdrop-blur-md shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
@@ -219,11 +213,7 @@ export function BusinessPortalChrome({
       {nestedMode ? (
         <>
           <BusinessSidebarRail collapsed active={activeNav} onSelect={onNav} headerHeight="16" />
-          {posMode ? (
-            <PosNavRail active={itemKey} onSelect={onNav} headerHeight="16" />
-          ) : (
-            <MessagesNavRail active={itemKey} onSelect={onNav} headerHeight="16" />
-          )}
+          <BusinessSectionNavRail sectionKey={nestedSectionKey} active={itemKey} onSelect={onNav} headerHeight="16" />
         </>
       ) : (
         <BusinessSidebarRail active={activeNav} onSelect={onNav} headerHeight="16" />

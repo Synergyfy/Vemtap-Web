@@ -9,59 +9,10 @@ import { useCatalogueCategories } from '../../hooks/business/useCatalogueCategor
 import { useCatalogueItems } from '../../hooks/business/useCatalogueItems';
 import { toPrice } from '../../services/catalogueItemsService';
 import { getCentralCategories, URBAN_PRODUCTS } from '../catalogueData';
+import { OrderQrArt } from '../../components/ui/OrderQrArt';
 
 interface DesktopStoreOrderingQrScreenProps {
   onNav: (key: string) => void;
-}
-
-function VemtapQrSvg({ size = 180 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 100 100" className="w-auto h-auto max-w-full drop-shadow-sm">
-      <rect fill="#FFFFFF" width="100" height="100" rx="10" />
-      {/* Corner Positional Finders */}
-      <rect fill="#141B2B" height="28" rx="4" width="28" x="4" y="4" />
-      <rect fill="#FFFFFF" height="18" rx="2" width="18" x="9" y="9" />
-      <rect fill="#141B2B" height="10" rx="2" width="10" x="13" y="13" />
-
-      <rect fill="#141B2B" height="28" rx="4" width="28" x="68" y="4" />
-      <rect fill="#FFFFFF" height="18" rx="2" width="18" x="73" y="9" />
-      <rect fill="#141B2B" height="10" rx="2" width="10" x="77" y="13" />
-
-      <rect fill="#141B2B" height="28" rx="4" width="28" x="4" y="68" />
-      <rect fill="#FFFFFF" height="18" rx="2" width="18" x="9" y="73" />
-      <rect fill="#141B2B" height="10" rx="2" width="10" x="13" y="77" />
-
-      {/* Synthetic QR Code data modules */}
-      <rect fill="#141B2B" height="6" rx="1" width="6" x="36" y="6" />
-      <rect fill="#141B2B" height="6" rx="1" width="8" x="48" y="6" />
-      <rect fill="#141B2B" height="6" rx="1" width="6" x="38" y="18" />
-      <rect fill="#141B2B" height="6" rx="1" width="6" x="52" y="18" />
-      <rect fill="#141B2B" height="6" rx="1" width="6" x="6" y="38" />
-      <rect fill="#141B2B" height="6" rx="1" width="8" x="16" y="46" />
-      <rect fill="#141B2B" height="12" rx="1" width="6" x="28" y="38" />
-      <rect fill="#141B2B" height="6" rx="1" width="12" x="68" y="38" />
-      <rect fill="#141B2B" height="8" rx="1" width="8" x="86" y="44" />
-      <rect fill="#141B2B" height="8" rx="1" width="6" x="38" y="68" />
-      <rect fill="#141B2B" height="6" rx="1" width="8" x="48" y="74" />
-      <rect fill="#141B2B" height="6" rx="1" width="6" x="62" y="68" />
-      <rect fill="#141B2B" height="8" rx="1" width="8" x="76" y="78" />
-      <rect fill="#141B2B" height="6" rx="1" width="8" x="88" y="70" />
-      <rect fill="#141B2B" height="6" rx="1" width="14" x="38" y="86" />
-      <rect fill="#141B2B" height="6" rx="1" width="8" x="60" y="88" />
-      <rect fill="#141B2B" height="6" rx="1" width="10" x="82" y="90" />
-
-      {/* Center VEMTAP Branded Icon Shield */}
-      <rect fill="#FFFFFF" height="26" rx="6" width="26" x="37" y="37" />
-      <rect fill="#066CF4" height="22" rx="5" width="22" x="39" y="39" />
-      <path
-        d="M45 46L50 54L55 46"
-        stroke="#FFFFFF"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2.5"
-      />
-    </svg>
-  );
 }
 
 export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrScreenProps) {
@@ -85,9 +36,18 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
   const businessQr = useBusinessQr();
   const liveCategories = useCatalogueCategories();
   const liveProducts = useCatalogueItems('product');
-  const storeBase = live ? businessQr.url ?? '' : 'https://vemtap.com/business/urban-grill-bistro-104/products';
+  const storeBase = live && businessQr.url
+    ? /^https?:\/\//i.test(businessQr.url)
+      ? businessQr.url
+      : businessQr.url.startsWith('/')
+        ? new URL(businessQr.url, window.location.origin).toString()
+        : `https://${businessQr.url}`
+    : live
+      ? ''
+      : 'https://vemtap.com/business/urban-grill-bistro-104/products';
   const withParams = (params: string) => (storeBase ? `${storeBase}${storeBase.includes('?') ? '&' : '?'}${params}` : '');
   const storeName = live ? businessQr.name ?? 'Your business' : 'Urban Grill & Bistro';
+  const storeUrl = withParams('src=store-qr');
   const categories = live
     ? (liveCategories.data ?? []).map((category) => ({
         id: category.id,
@@ -131,6 +91,14 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
     setToastMessage(msg);
     window.setTimeout(() => setToastMessage(null), 3000);
   };
+  const renderQr = (url: string, alt: string) =>
+    url ? (
+      <OrderQrArt value={url} alt={alt} size={140} />
+    ) : (
+      <span role={businessQr.error ? 'alert' : 'status'} className="px-3 text-center font-caption text-caption text-text-secondary">
+        {businessQr.error ? 'Could not load the business QR link.' : 'Loading QR link…'}
+      </span>
+    );
 
   // The branch list loads after first render: keep the picked branch one of the real options.
   useEffect(() => {
@@ -269,11 +237,7 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
               <div className="flex flex-col md:flex-row items-center gap-space-xl">
                 <div className="flex flex-col items-center gap-3 shrink-0">
                   <div className="p-4 bg-white rounded-2xl shadow-md border border-border-subtle">
-                    {live && businessQr.qrImage ? (
-                      <img alt={`${storeName} store QR code`} className="w-[140px] h-[140px]" src={businessQr.qrImage} />
-                    ) : (
-                      <VemtapQrSvg size={140} />
-                    )}
+                    {renderQr(storeUrl, `${storeName} store QR code`)}
                   </div>
                   <span className="text-caption text-text-tertiary font-mono">Store QR</span>
                 </div>
@@ -283,7 +247,7 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                     <div className="text-body-sm text-text-secondary mt-1">Opens the full storefront catalogue — every product with search &amp; category tabs. Customers browse all items and order directly.</div>
                   </div>
                   <div className="p-2.5 rounded-xl bg-surface-subtle border border-border-subtle font-mono text-[11px] text-text-secondary break-all">
-                    {withParams('src=store-qr') || '—'}
+                    {storeUrl || '—'}
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <div className="p-3 rounded-xl bg-surface-subtle text-center">
@@ -333,7 +297,7 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                     <div className="flex flex-col md:flex-row items-center gap-space-xl">
                       <div className="flex flex-col items-center gap-3 shrink-0">
                         <div className="p-4 bg-white rounded-2xl shadow-md border border-border-subtle">
-                          <VemtapQrSvg size={140} />
+                          {renderQr(catUrl, `${cat.name} category QR code`)}
                         </div>
                         <span className="text-caption text-text-tertiary font-mono">Category QR</span>
                       </div>
@@ -399,7 +363,7 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                     <div className="flex flex-col md:flex-row items-center gap-space-xl">
                       <div className="flex flex-col items-center gap-3 shrink-0">
                         <div className="p-4 bg-white rounded-2xl shadow-md border border-border-subtle">
-                          <VemtapQrSvg size={140} />
+                          {renderQr(prodUrl, `${prod.name} product QR code`)}
                         </div>
                         <span className="text-caption text-text-tertiary font-mono">Product QR</span>
                       </div>

@@ -194,6 +194,7 @@ export function usePosProducts() {
     id: item.id,
     name: item.name,
     sku: item.sku ?? undefined,
+    barcode: item.barcode ?? undefined,
     desc: item.shortDescription ?? '',
     category: item.category?.id ?? 'other',
     price: itemPrice(item),

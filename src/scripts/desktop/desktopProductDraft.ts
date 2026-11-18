@@ -19,6 +19,7 @@ export interface ProductDraft {
   variantsEnabled: boolean;
   variants: Array<{ id: string; name: string; cut: string; price: string; inventory: string }>;
   skuCode: string;
+  barcode: string;
   lowStock: string;
   backorder: boolean;
   branches: Record<string, boolean>;
@@ -38,9 +39,9 @@ export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
   producer: 'Urban Grill Kitchen',
   sku: 'UGK-RIBEYE-400',
   unbranded: true,
-  categoryId: 'grills',
-  primaryCategory: 'Food & Dining',
-  subCategory: 'Grill, Steaks & BBQ',
+  categoryId: undefined,
+  primaryCategory: '',
+  subCategory: '',
   classification: 'Fresh Cooked / Made to order',
   description:
     'Prime grass-fed Angus beef aged 28 days. Flame-seared with artisanal house herb butter and served with crisp rosemary sea-salt potatoes.',
@@ -55,6 +56,7 @@ export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
     { id: 'variant-3', name: "Chef's Reserve", cut: '600g Premium Cut', price: '19,500', inventory: '8' },
   ],
   skuCode: 'UG-RB-042',
+  barcode: '',
   lowStock: '5',
   backorder: false,
   branches: { wuse: true, garki: true, maitama: false },
@@ -81,6 +83,7 @@ export const BLANK_PRODUCT_DRAFT: ProductDraft = {
   variantsEnabled: false,
   variants: [],
   skuCode: '',
+  barcode: '',
   lowStock: '',
   branches: {},
   pricingMode: 'uniform',

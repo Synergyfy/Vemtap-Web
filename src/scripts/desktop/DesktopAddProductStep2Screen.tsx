@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { getActiveVariants } from '../productVariants';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
@@ -31,6 +32,7 @@ export function DesktopAddProductStep2Screen({
   onNext,
   onNav,
 }: DesktopAddProductStep2ScreenProps) {
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
   const Shell = onNav ? MerchantShell : BusinessSetupChrome;
   const base = parseNaira(draft.basePrice);
   const cost = parseNaira(draft.costPrice);
@@ -457,27 +459,18 @@ export function DesktopAddProductStep2Screen({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md pt-space-xs">
                 <div className="flex flex-col gap-1.5">
                   <label className="font-label-md text-label-md text-text-primary flex items-center justify-between" htmlFor="sku-barcode">
-                    <span>SKU / Merchant Barcode</span>
+                    <span>SKU</span>
                     <span className="font-caption text-caption text-text-tertiary">Optional</span>
                   </label>
-                  <div className="relative flex items-center">
-                    <input
-                      id="sku-barcode"
-                      type="text"
-                      value={draft.skuCode}
-                      onChange={(event) => onDraftChange({ skuCode: event.target.value })}
-                      className="w-full h-[52px] pl-4 pr-12 rounded-xl bg-surface-subtle font-label-md text-label-md text-text-primary font-semibold tracking-wide focus:bg-surface-canvas focus:outline-none focus:ring-2 focus:ring-primary/20 uppercase"
-                    />
-                    <button
-                      type="button"
-                      title="Scan physical barcode"
-                      className="absolute right-3 w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-primary hover:bg-surface-container-high transition-colors"
-                    >
-                      <Icon name="barcode_scanner" className="text-[20px]" />
-                    </button>
-                  </div>
+                  <input
+                    id="sku-barcode"
+                    type="text"
+                    value={draft.skuCode}
+                    onChange={(event) => onDraftChange({ skuCode: event.target.value })}
+                    className="w-full h-[52px] px-4 rounded-xl bg-surface-subtle font-label-md text-label-md text-text-primary font-semibold tracking-wide focus:bg-surface-canvas focus:outline-none focus:ring-2 focus:ring-primary/20 uppercase"
+                  />
                   <p className="font-caption text-caption text-text-secondary">
-                    Unique inventory code for thermal receipt printouts.
+                    Internal inventory code.
                   </p>
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -505,6 +498,36 @@ export function DesktopAddProductStep2Screen({
                     <Icon name="chat" className="text-[16px] text-badge-discount-text" />
                     <span>Automated WhatsApp alert sent to branch manager when reached.</span>
                   </div>
+                </div>
+                <div className="flex flex-col gap-1.5 pt-space-xs">
+                  <label className="font-label-md text-label-md text-text-primary flex items-center justify-between" htmlFor="product-barcode">
+                    <span>Product Barcode (UPC / EAN)</span>
+                    <span className="font-caption text-caption text-text-tertiary">Optional</span>
+                  </label>
+                  <div className="relative flex items-center">
+                    <input
+                      ref={barcodeInputRef}
+                      id="product-barcode"
+                      type="text"
+                      inputMode="text"
+                      autoComplete="off"
+                      value={draft.barcode ?? ''}
+                      onChange={(event) => onDraftChange({ barcode: event.target.value })}
+                      placeholder="Scan or enter barcode"
+                      className="w-full h-[52px] pl-4 pr-12 rounded-xl bg-surface-subtle font-label-md text-label-md text-text-primary font-semibold tracking-wide focus:bg-surface-canvas focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    />
+                    <button
+                      type="button"
+                      title="Focus barcode input for scanner"
+                      onClick={() => barcodeInputRef.current?.focus()}
+                      className="absolute right-3 w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-primary hover:bg-surface-container-high transition-colors"
+                    >
+                      <Icon name="barcode_scanner" className="text-[20px]" />
+                    </button>
+                  </div>
+                  <p className="font-caption text-caption text-text-secondary">
+                    Scan with a connected barcode reader or enter the UPC / EAN.
+                  </p>
                 </div>
               </div>
               <div className="bg-surface-subtle p-space-md rounded-xl flex items-center justify-between gap-space-md mt-space-xs">

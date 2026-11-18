@@ -30,10 +30,11 @@ export const POS_RAIL_WIDTH_LG = '240px';
 export const POS_RAIL_WIDTH_XL = '240px';
 
 /**
- * Content offset for POS mode: the collapsed business rail sits at `left-0`
- * (`72px`) and the POS rail sits beside it at `left-[72px]` (`240px` from `lg`).
+ * Content offset for a secondary section rail: the collapsed business rail
+ * sits at `left-0` (`72px`) and the section rail sits beside it at `left-[72px]`.
  */
-export const POS_RAIL_OFFSET = 'lg:pl-[312px]';
+export const BUSINESS_SECONDARY_RAIL_OFFSET = 'lg:pl-[312px]';
+export const POS_RAIL_OFFSET = BUSINESS_SECONDARY_RAIL_OFFSET;
 
 /**
  * Desktop layout rules for every merchant / business dashboard shell.

@@ -22,6 +22,8 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
     substituteItem,
     removeItem,
     assignStaff,
+    staffOptionsFor,
+    staffValueFor,
     recordStorePayment,
     completeCollection,
     settings,
@@ -73,6 +75,23 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
     setToastMessage(msg);
     window.setTimeout(() => setToastMessage(null), 3000);
   };
+
+  /**
+   * Payment, handover and the POS hand-off all close an order, and an order is
+   * only ever closed by a named person: when nobody is assigned yet the drawer
+   * opens on the "Assigned Staff Member" picker instead of completing.
+   */
+  const requireCompleter = (order: StoreOrder) => {
+    if (order.assignedStaff) return true;
+    setSelectedOrderId(order.id);
+    showToast(
+      `Order ${order.orderRef}: assign the person completing this order under "Assigned Staff Member" first.`,
+    );
+    return false;
+  };
+
+  const completedBy = (order: StoreOrder) =>
+    order.statusHistory.find((h) => h.status === 'completed')?.staffName || order.assignedStaff || '';
 
   useEffect(() => {
     if (!lastError) return;
@@ -126,14 +145,15 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
   const handleAction = (order: StoreOrder, action: 'accept' | 'start-prep' | 'mark-ready' | 'payment' | 'collect' | 'reject' | 'cancel') => {
     if (action === 'accept') {
       const res = updateOrderStatus(order.id, 'accepted', 'Order accepted by store staff');
-      if (res.ok) showToast(`Order ${order.id} accepted.`);
+      showToast(res.ok ? `Order ${order.id} accepted.` : res.message);
     } else if (action === 'start-prep') {
       const res = updateOrderStatus(order.id, 'preparing', 'Preparation started in kitchen');
-      if (res.ok) showToast(`Order ${order.id} is now preparing.`);
+      showToast(res.ok ? `Order ${order.id} is now preparing.` : res.message);
     } else if (action === 'mark-ready') {
       const res = updateOrderStatus(order.id, 'ready', 'Order ready for customer pickup');
-      if (res.ok) showToast(`Order ${order.id} marked ready for pickup.`);
+      showToast(res.ok ? `Order ${order.id} marked ready for pickup.` : res.message);
     } else if (action === 'payment') {
+      if (!requireCompleter(order)) return;
       if (settings?.usePosForCompletion) {
         setActivePosHandoffOrderId(order.id);
         showToast(`Proceeding to VEMTAP POS Register for Order ${order.orderRef}...`);
@@ -143,6 +163,7 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
         setConfirmAction({ type: 'payment', order });
       }
     } else if (action === 'collect') {
+      if (!requireCompleter(order)) return;
       setConfirmAction({ type: 'collection', order });
     } else if (action === 'reject') {
       setConfirmAction({ type: 'reject', order });
@@ -157,16 +178,16 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
 
     if (type === 'payment') {
       const res = recordStorePayment(order.id, paymentMethod, paymentRef, paymentNotes);
-      if (res.ok) showToast(res.message);
+      showToast(res.message);
     } else if (type === 'collection') {
       const res = completeCollection(order.id);
-      if (res.ok) showToast(res.message);
+      showToast(res.message);
     } else if (type === 'reject') {
       const res = updateOrderStatus(order.id, 'rejected', rejectReason || 'Declined by merchant');
-      if (res.ok) showToast(`Order ${order.id} rejected.`);
+      showToast(res.ok ? `Order ${order.id} rejected.` : res.message);
     } else if (type === 'cancel') {
       const res = updateOrderStatus(order.id, 'cancelled', 'Cancelled by store staff');
-      if (res.ok) showToast(`Order ${order.id} cancelled.`);
+      showToast(res.ok ? `Order ${order.id} cancelled.` : res.message);
     }
 
     setConfirmAction(null);
@@ -895,17 +916,40 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
                     Assigned Staff Member
                   </label>
                   <select
-                    value={selectedOrder.assignedStaff || ''}
-                    onChange={(e) => assignStaff(selectedOrder.id, e.target.value)}
+                    value={staffValueFor(selectedOrder)}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (!value) return;
+                      assignStaff(selectedOrder.id, value);
+                      const label =
+                        staffOptionsFor(selectedOrder).find((option) => option.value === value)?.label ?? value;
+                      showToast(`Order ${selectedOrder.orderRef} assigned to ${label}.`);
+                    }}
                     className="w-full px-3 py-2 rounded-xl bg-surface-canvas border border-border text-body-md text-on-surface focus:outline-hidden focus:border-primary"
                   >
-                    <option value="">Unassigned</option>
-                    <option value="Chef Adebayo (Head Chef)">Chef Adebayo (Head Chef)</option>
-                    <option value="Ibrahim Bello (Kitchen Lead)">Ibrahim Bello (Kitchen Lead)</option>
-                    <option value="Musa Danladi (Store Manager)">Musa Danladi (Store Manager)</option>
-                    <option value="Grace Udoh (Front Desk)">Grace Udoh (Front Desk)</option>
+                    <option value="" disabled>
+                      Select a staff member…
+                    </option>
+                    {staffOptionsFor(selectedOrder).map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
+                  <p className="text-caption text-text-tertiary">
+                    {selectedOrder.assignedStaff
+                      ? 'Recorded on every status change and in the audit history.'
+                      : 'Required — an order cannot be marked complete until someone is assigned.'}
+                  </p>
                 </div>
+
+                {/* Who completed the order (once it is closed) */}
+                {selectedOrder.status === 'completed' && completedBy(selectedOrder) && (
+                  <div className="p-3 rounded-xl bg-badge-discount-bg/70 border border-badge-discount-text/40 flex items-center justify-between gap-2">
+                    <span className="text-caption font-semibold text-badge-discount-text">Completed by</span>
+                    <span className="text-body-sm font-semibold text-text-primary">{completedBy(selectedOrder)}</span>
+                  </div>
+                )}
 
                 {/* Status Timeline History */}
                 <div className="space-y-2">
@@ -989,6 +1033,7 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
                         <button
                           type="button"
                           onClick={() => {
+                            if (!requireCompleter(selectedOrder)) return;
                             setPaymentRef(`STORE-${Math.floor(10000 + Math.random() * 89999)}`);
                             setConfirmAction({ type: 'payment', order: selectedOrder });
                           }}
@@ -1060,6 +1105,11 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
 
                   <div className="p-3 rounded-lg bg-surface-subtle text-caption text-text-secondary">
                     VEMTAP does not charge customer cards online. The cashier records payment collected directly in the store.
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-surface-subtle text-caption text-text-secondary">
+                    <span className="font-semibold text-text-primary">Completed by: </span>
+                    {confirmAction.order.assignedStaff || 'Unassigned'}
                   </div>
 
                   <div className="space-y-1">
@@ -1137,6 +1187,11 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
                   <p className="text-body-sm text-text-secondary">
                     Verify that the customer has received all packaged items for {confirmAction.order.id}. This will mark the order as Completed.
                   </p>
+
+                  <div className="p-3 rounded-lg bg-surface-subtle text-caption text-text-secondary">
+                    <span className="font-semibold text-text-primary">Completed by: </span>
+                    {confirmAction.order.assignedStaff || 'Unassigned'}
+                  </div>
 
                   <div className="flex items-center justify-end gap-2 pt-2">
                     <button

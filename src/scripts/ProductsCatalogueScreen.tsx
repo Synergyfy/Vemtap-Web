@@ -6,12 +6,34 @@ import { CartSheet } from '../components/sheets/CartSheet';
 import { useCart } from '../context/CartContext';
 import { naira, nairaToNumber, PRODUCT_ID_BY_KEY, type CatalogueProduct } from './catalogueData';
 import { UserAvatar } from '../components/ui/UserAvatar';
+import { hasApiConfig } from '../services/api/client';
+import { usePublicBusiness } from '../hooks/usePublicBusiness';
 
 interface ProductsCatalogueScreenProps {
   onBack: () => void;
   onListView: () => void;
   onOpenProduct: (productId: string, display?: Partial<CatalogueProduct>) => void;
   onCheckout: () => void;
+  businessCode?: string;
+}
+
+interface ProductCardModel {
+  id: string;
+  cartId: string;
+  category: string;
+  name: string;
+  price: string;
+  priceValue: number;
+  was?: string;
+  rating?: string;
+  reviews?: string;
+  badge?: string;
+  badgeClass?: string;
+  topRightBadge?: string;
+  topRightClass?: string;
+  image: string;
+  imageAlt: string;
+  display: Partial<CatalogueProduct>;
 }
 
 const PRODUCTS = [
@@ -163,19 +185,61 @@ const CATEGORIES: { label: string; slug: string }[] = [
   { label: 'Desserts', slug: 'desserts' },
 ];
 
-/** Category QR links land here with ?category=<slug> — open pre-filtered, tabs stay for navigation. */
+/** Category QR links land here with ?category=<id-or-slug> — keep the tabs available for navigation. */
 function initialCategorySlug(): string {
   const param = new URLSearchParams(window.location.search).get('category');
-  return param && CATEGORIES.some((item) => item.slug === param) ? param : 'all';
+  return param ?? 'all';
 }
 
-export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onCheckout }: ProductsCatalogueScreenProps) {
+export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onCheckout, businessCode }: ProductsCatalogueScreenProps) {
   const [categorySlug, setCategorySlug] = useState<string>(initialCategorySlug);
   const [searchQuery, setSearchQuery] = useState('');
   const [minRating, setMinRating] = useState('');
   const [cartOpen, setCartOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const cart = useCart();
+  const live = hasApiConfig();
+  const publicBusiness = usePublicBusiness(businessCode);
+  const products: ProductCardModel[] = live
+    ? publicBusiness.products.map((item) => ({
+        id: item.id,
+        cartId: item.id,
+        category: item.categoryId ?? item.category ?? '',
+        name: item.name,
+        price: naira(item.price),
+        priceValue: item.price,
+        image: item.image ?? '',
+        imageAlt: item.name,
+        display: {
+          id: item.id,
+          name: item.name,
+          desc: item.description ?? '',
+          category: item.categoryId ?? item.category ?? '',
+          price: item.price,
+          image: item.image ?? '',
+          imageAlt: item.name,
+        },
+      }))
+    : PRODUCTS.map((product) => {
+        const id = PRODUCT_ID_BY_KEY[product.id] ?? '';
+        return {
+          ...product,
+          id,
+          cartId: id,
+          priceValue: nairaToNumber(product.price),
+          display: {},
+        };
+      });
+  const categories = live
+    ? [
+        { label: 'All Products', slug: 'all' },
+        ...[...new Map(
+          publicBusiness.products
+            .filter((item) => item.categoryId || item.category)
+            .map((item) => [item.categoryId ?? item.category ?? '', { label: item.category ?? 'Category', slug: item.categoryId ?? item.category ?? '' }]),
+        ).values()],
+      ]
+    : CATEGORIES;
 
   const showToast = (message: string) => {
     setToast(message);
@@ -189,20 +253,19 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
   ];
 
   /** Category, search and minimum rating all have to agree before a card shows. */
-  const filteredProducts = PRODUCTS.filter((p) => {
+  const filteredProducts = products.filter((p) => {
     if (categorySlug !== 'all' && p.category !== categorySlug) return false;
     if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    if (minRating !== '' && Number(p.rating) < Number(minRating)) return false;
+    if (minRating !== '' && (!p.rating || Number(p.rating) < Number(minRating))) return false;
     return true;
   });
 
-  const addToCart = (key: number, name: string, price: string, image: string) => {
-    const id = PRODUCT_ID_BY_KEY[key];
-    if (!id) return;
-    cart.add({ id, name, price: nairaToNumber(price), image });
+  const addToCart = (product: ProductCardModel) => {
+    if (!product.cartId) return;
+    cart.add({ id: product.cartId, productId: product.id, name: product.name, price: product.priceValue, image: product.image });
   };
 
-  const isAdded = (id?: string) => (id ? cart.qtyOf(id) > 0 : false);
+  const isAdded = (id: string) => Boolean(id) && cart.qtyOf(id) > 0;
 
   return (
     <AppScreen>
@@ -239,10 +302,14 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
           <div className="px-margin pt-space-xs pb-space-xs flex items-center justify-between bg-surface-canvas shadow-sm">
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-space-2xs">
-                <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse shrink-0" />
-                <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold">Kitchen Open Now</span>
+                  {!live && <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse shrink-0" />}
+                  <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold">
+                    {live ? publicBusiness.business?.name ?? 'Business storefront' : 'Kitchen Open Now'}
+                  </span>
               </div>
-              <p className="font-caption text-caption text-text-secondary truncate">Full Catalogue • 42 Items</p>
+                <p className="font-caption text-caption text-text-secondary truncate">
+                  Full Catalogue • {live ? products.length : 42} Items
+                </p>
             </div>
             <div className="flex items-center gap-space-xs shrink-0">
               <button
@@ -276,7 +343,7 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
               <Icon name="search" className="absolute left-space-md top-1/2 -translate-y-1/2 text-text-tertiary text-[20px] pointer-events-none" />
               <input
                 type="search"
-                placeholder="Search products in Urban Grill..."
+                placeholder={`Search products in ${live ? publicBusiness.business?.name ?? 'this business' : 'Urban Grill'}...`}
                 className="w-full h-11 pl-11 pr-10 rounded-xl bg-surface-subtle font-body-md text-body-md text-text-primary placeholder:text-text-tertiary placeholder:font-normal focus:outline-none focus:bg-surface-canvas shadow-sm transition-all"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -335,7 +402,7 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
           </div>
 
           <div className="flex items-center gap-space-2xs overflow-x-auto no-scrollbar py-0.5 -mx-margin px-margin">
-            {CATEGORIES.map((cat) => (
+            {categories.map((cat) => (
               <button
                 key={cat.slug}
                 type="button"
@@ -351,7 +418,7 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
             ))}
           </div>
 
-          <div className="px-margin mt-space-sm">
+          {!live && <div className="px-margin mt-space-sm">
             <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-tertiary-container via-tertiary to-tertiary-container p-3 text-on-tertiary shadow-md flex items-center justify-between gap-space-xs">
               <div className="flex items-start gap-2.5 min-w-0">
                 <div className="w-8 h-8 rounded-xl bg-surface-canvas/20 flex items-center justify-center shrink-0 mt-0.5">
@@ -372,9 +439,10 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
                 Claimed
               </button>
             </div>
-          </div>
+          </div>}
 
-          <div className="px-margin mt-space-xs">
+          {!live && (
+            <div className="px-margin mt-space-xs">
             <div className="flex items-center justify-between py-1 px-2.5 bg-surface-tint-blue rounded-lg">
               <div className="flex items-center gap-1.5">
                 <Icon name="bolt" className="text-[16px] text-primary" />
@@ -382,14 +450,15 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
               </div>
               <span className="font-caption text-caption text-text-secondary">Express Delivery</span>
             </div>
-          </div>
+            </div>
+          )}
 
           <div className="px-margin mt-space-sm mb-28">
             <div className="grid grid-cols-2 gap-space-xs">
               {filteredProducts.map((product) => (
                 <div
                   key={product.id}
-                  onClick={() => onOpenProduct(PRODUCT_ID_BY_KEY[product.id] ?? '')}
+                  onClick={() => onOpenProduct(product.id, product.display)}
                   className="group relative flex flex-col bg-surface-canvas rounded-2xl shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md cursor-pointer"
                 >
                   <div className="relative w-full aspect-square bg-surface-subtle overflow-hidden">
@@ -411,13 +480,13 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
                   </div>
                   <div className="p-2.5 flex flex-col flex-1 justify-between gap-1.5">
                     <div>
-                      <div className="flex items-center gap-1">
+                      {(product.rating || product.reviews) && <div className="flex items-center gap-1">
                         <div className="flex items-center text-tertiary">
                           <Icon name="star" className="text-[13px]" filled />
                           <span className="font-caption text-[11px] font-bold ml-0.5 text-text-primary">{product.rating}</span>
                         </div>
                         <span className="font-caption text-[11px] text-text-tertiary">{product.reviews}</span>
-                      </div>
+                      </div>}
                       <h2 className="font-label-md text-label-md text-text-primary font-semibold line-clamp-2 mt-1 leading-snug">
                         {product.name}
                       </h2>
@@ -427,30 +496,28 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
                         <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{product.price}</span>
                         {product.was && <span className="font-caption text-caption text-text-tertiary line-through">{product.was}</span>}
                       </div>
-                      {isAdded(PRODUCT_ID_BY_KEY[product.id]) ? (
+                      {isAdded(product.cartId) ? (
                         <div className="w-full h-9 rounded-xl bg-badge-discount-bg text-badge-discount-text flex items-center justify-between px-1.5 active:scale-95 transition-all shadow-sm">
                           <button
                             aria-label={`Remove one ${product.name}`}
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              const id = PRODUCT_ID_BY_KEY[product.id];
-                              if (id) cart.decrement(id);
+                              cart.decrement(product.cartId);
                             }}
                             className="w-7 h-7 rounded-lg bg-surface-canvas/70 hover:bg-surface-canvas flex items-center justify-center text-text-primary active:scale-95 transition-all"
                           >
                             <Icon name="remove" className="text-[16px]" />
                           </button>
                           <span className="font-label-sm text-label-sm font-bold min-w-[16px] text-center">
-                            {cart.qtyOf(PRODUCT_ID_BY_KEY[product.id])}
+                            {cart.qtyOf(product.cartId)}
                           </span>
                           <button
                             aria-label={`Add one ${product.name}`}
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              const id = PRODUCT_ID_BY_KEY[product.id];
-                              if (id) cart.increment(id);
+                              cart.increment(product.cartId);
                             }}
                             className="w-7 h-7 rounded-lg bg-surface-canvas/70 hover:bg-surface-canvas flex items-center justify-center text-text-primary active:scale-95 transition-all"
                           >
@@ -462,7 +529,7 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
                           type="button"
                           onClick={(event) => {
                             event.stopPropagation();
-                            addToCart(product.id, product.name, product.price, product.image);
+                            addToCart(product);
                           }}
                           className="add-to-bag-btn w-full h-9 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 active:scale-95 transition-all shadow-sm"
                         >
@@ -481,8 +548,10 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
             <div className="w-10 h-10 rounded-full bg-surface-subtle flex items-center justify-center text-text-tertiary mb-1">
               <Icon name="restaurant_menu" className="text-[22px]" />
             </div>
-            <p className="font-label-sm text-label-sm font-semibold text-text-secondary">You've reached the end of this category</p>
-            <p className="font-caption text-caption text-text-tertiary">Fresh cuts and special marinades are prepared on order</p>
+            <p className="font-label-sm text-label-sm font-semibold text-text-secondary">
+              {live && publicBusiness.loading ? 'Loading products…' : filteredProducts.length ? "You've reached the end of this category" : 'No products in this category'}
+            </p>
+            {!live && <p className="font-caption text-caption text-text-tertiary">Fresh cuts and special marinades are prepared on order</p>}
           </div>
 
           <div className="fixed bottom-3 left-0 right-0 z-50 px-4 max-w-lg mx-auto pointer-events-none">

@@ -339,7 +339,9 @@ export function DesktopPosProductShiftScreen({ onNav, onBack, onAddToSale }: Des
                 </span>
                 <span className="font-caption text-caption text-text-secondary truncate">
                   {liveRow
-                    ? `${liveRow.item.category?.name ?? 'Uncategorised'} · SKU ${liveRow.item.sku ?? '—'}`
+                    ? `${liveRow.item.category?.name ?? 'Uncategorised'} · SKU ${liveRow.item.sku ?? '—'}${
+                        liveRow.item.barcode ? ` · Barcode ${liveRow.item.barcode}` : ''
+                      }`
                     : '400g · Grills station · SKU WRS-400'}
                 </span>
                 <span className="flex items-center gap-space-2xs">

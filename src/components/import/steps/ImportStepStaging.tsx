@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../ui/Icon';
 import { BulkActionsBar, type BulkAction } from '../../BulkActionsBar';
 import { downloadCsv } from '../../../utils/exportCsv';
-import { getCentralCategories } from '../../../scripts/catalogueData';
+import { useCatalogueCategories } from '../../../hooks/business/useCatalogueCategories';
 import {
   IMPORT_FIELDS,
   type ImportFieldKey,
@@ -55,6 +55,7 @@ export function ImportStepStaging({
 }: ImportStepStagingProps) {
   const [page, setPage] = useState(0);
   const [bulkCategory, setBulkCategory] = useState('');
+  const categories = useCatalogueCategories();
 
   // Jump to the page containing a row highlighted from the validation list.
   useEffect(() => {
@@ -67,7 +68,10 @@ export function ImportStepStaging({
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages - 1);
   const pageRows = rows.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE);
-  const categoryOptions = useMemo(() => getCentralCategories('product').map((category) => category.name), []);
+  const categoryOptions = useMemo(
+    () => (categories.data ?? []).filter((category) => category.kind !== 'service').map((category) => category.name),
+    [categories.data],
+  );
   const categoryColumn = columnOrder.find((index) => mapping[index] === 'category');
 
   const includedCount = rows.filter((row) => !row.excluded).length;

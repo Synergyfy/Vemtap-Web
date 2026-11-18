@@ -20,8 +20,8 @@ export interface BusinessSidebarSection {
   badge?: string;
   badgeClass?: string;
   /**
-   * Hidden from the main business rail. The section still exists in this config
-   * because the POS rail reuses its items — Store Front moved inside POS.
+   * Hidden from the main business rail when its items are presented in a
+   * secondary navigation rail.
    */
   hidden?: boolean;
   /**
@@ -215,8 +215,7 @@ export function resolveSidebarActive(activeKey?: string): { sectionKey: string; 
 
   // Direct matches in sub items
   for (const section of BUSINESS_SIDEBAR_SECTIONS) {
-    // Hidden sections (Store Front) only render inside the POS side menu, so they
-    // resolve into the POS section for chrome / layout purposes.
+    // Hidden sections resolve into the secondary navigation chrome that hosts them.
     if (section.key === activeKey) {
       return { sectionKey: section.hidden ? 'pos' : section.key, itemKey: section.defaultKey };
     }
@@ -272,12 +271,10 @@ export function resolveSidebarActive(activeKey?: string): { sectionKey: string; 
     'pos-stock': { sectionKey: 'pos', itemKey: 'pos-stock' },
     'pos-ledger': { sectionKey: 'pos', itemKey: 'pos-ledger' },
     'pos-settings': { sectionKey: 'pos', itemKey: 'pos-settings' },
-    // Store Front pages run inside POS mode: the main rail collapses and the POS
-    // menu (with the Store Front group) opens beside it.
-    'store-ordering': { sectionKey: 'pos', itemKey: 'store-ordering-dashboard' },
-    'store-ordering-dashboard': { sectionKey: 'pos', itemKey: 'store-ordering-dashboard' },
-    'store-ordering-qr': { sectionKey: 'pos', itemKey: 'store-ordering-qr' },
-    'store-ordering-settings': { sectionKey: 'pos', itemKey: 'store-ordering-settings' },
+    'store-ordering': { sectionKey: 'store-ordering', itemKey: 'store-ordering-dashboard' },
+    'store-ordering-dashboard': { sectionKey: 'store-ordering', itemKey: 'store-ordering-dashboard' },
+    'store-ordering-qr': { sectionKey: 'store-ordering', itemKey: 'store-ordering-qr' },
+    'store-ordering-settings': { sectionKey: 'store-ordering', itemKey: 'store-ordering-settings' },
     'cluster-system': { sectionKey: 'cluster-system', itemKey: 'cluster-system' },
     cluster: { sectionKey: 'cluster-system', itemKey: 'cluster-system' },
     'cluster-onboarding': { sectionKey: 'cluster-system', itemKey: 'cluster-system' },
@@ -296,12 +293,12 @@ export function resolveSidebarActive(activeKey?: string): { sectionKey: string; 
     settings: { sectionKey: 'more', itemKey: 'more-settings' },
   };
 
-  // Any sub-page key that belongs to a nested-menu section (POS / Store Front,
-  // Messages) resolves back into that section so the inner side menu never
-  // disappears while the user drills into detail pages (e.g. pos-txn-detail,
-  // messages-search, store-ordering sub-flows).
-  if (activeKey.startsWith('pos-') || activeKey.startsWith('store-ordering-')) {
+  // Keep nested pages attached to their own navigation section.
+  if (activeKey.startsWith('pos-')) {
     return { sectionKey: 'pos', itemKey: activeKey };
+  }
+  if (activeKey.startsWith('store-ordering-')) {
+    return { sectionKey: 'store-ordering', itemKey: activeKey };
   }
   if (activeKey.startsWith('messages-')) {
     return { sectionKey: 'messages', itemKey: activeKey };

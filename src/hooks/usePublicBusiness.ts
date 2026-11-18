@@ -62,6 +62,7 @@ export interface PublicCatalogueItem {
   image: string | null;
   kind: 'product' | 'service';
   category: string | null;
+  categoryId: string | null;
   /** Branches that carry the item (an order goes to one branch). */
   branchIds: string[];
 }
@@ -164,6 +165,7 @@ const toItem = (value: unknown): PublicCatalogueItem | null => {
     image: str(item.mainImage) ?? str(item.image),
     kind: type === 'service' ? 'service' : 'product',
     category: str(rec(item.category).name) ?? str(item.categoryName),
+    categoryId: str(rec(item.category).id) ?? str(item.categoryId),
     branchIds: [],
   };
 };

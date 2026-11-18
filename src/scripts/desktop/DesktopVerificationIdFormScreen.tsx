@@ -10,6 +10,8 @@ interface DesktopVerificationIdFormScreenProps {
   onDraftChange: (patch: Partial<VerificationDraft>) => void;
   onResult: (outcome: 'success' | 'review') => void;
   onBrand?: () => void;
+  inDashboard?: boolean;
+  dashboardNav?: (key: string) => void;
 }
 
 export function DesktopVerificationIdFormScreen({
@@ -18,6 +20,8 @@ export function DesktopVerificationIdFormScreen({
   onDraftChange,
   onResult,
   onBrand,
+  inDashboard = false,
+  dashboardNav,
 }: DesktopVerificationIdFormScreenProps) {
   const config = ID_TYPE_CONFIG[draft.idType];
   const [submitting, setSubmitting] = useState(false);
@@ -69,7 +73,7 @@ export function DesktopVerificationIdFormScreen({
   };
 
   return (
-    <BusinessVerificationChrome activeNav="trust" onBrand={onBrand}>
+    <BusinessVerificationChrome activeNav="trust" onBrand={onBrand} inDashboard={inDashboard} dashboardNav={dashboardNav}>
       <div className="max-w-7xl mx-auto px-margin py-space-xl w-full">
         <div className="mb-space-xl">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-space-md mb-space-sm">
@@ -77,7 +81,7 @@ export function DesktopVerificationIdFormScreen({
               <div className="flex items-center gap-space-2xs bg-surface-tint-blue px-space-sm py-space-2xs rounded-full">
                 <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                 <span className="font-label-sm text-label-sm text-primary font-semibold uppercase tracking-wider">
-                  Step 2 of 3
+                  Step {inDashboard ? '2 of 2' : '2 of 3'}
                 </span>
               </div>
               <span className="text-text-tertiary font-label-sm text-label-sm">•</span>
@@ -88,10 +92,10 @@ export function DesktopVerificationIdFormScreen({
               <span>Bank-Grade 256-Bit SSL Pipeline Active</span>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-space-xs h-1.5 w-full bg-surface-container rounded-full overflow-hidden">
+          <div className={`grid ${inDashboard ? 'grid-cols-2' : 'grid-cols-3'} gap-space-xs h-1.5 w-full bg-surface-container rounded-full overflow-hidden`}>
             <div className="h-full bg-primary rounded-full transition-all duration-500" />
             <div className="h-full bg-primary rounded-full transition-all duration-500" />
-            <div className="h-full bg-surface-container-high rounded-full" />
+            {!inDashboard && <div className="h-full bg-surface-container-high rounded-full" />}
           </div>
         </div>
 
