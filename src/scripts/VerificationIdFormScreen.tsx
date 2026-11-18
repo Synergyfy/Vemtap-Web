@@ -10,9 +10,10 @@ interface VerificationIdFormScreenProps {
   draft: VerificationDraft;
   onDraftChange: (patch: Partial<VerificationDraft>) => void;
   onResult: (outcome: 'success' | 'review') => void;
+  inDashboard?: boolean;
 }
 
-export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResult }: VerificationIdFormScreenProps) {
+export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResult, inDashboard = false }: VerificationIdFormScreenProps) {
   const config = ID_TYPE_CONFIG[draft.idType];
   const [submitting, setSubmitting] = useState(false);
   const [stage, setStage] = useState<'selfie' | 'checking' | null>(null);
@@ -71,12 +72,12 @@ export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResul
               <Icon name="verified_user" filled className="text-[14px]" />
               <span className="font-label-sm text-label-sm">{config.pill}</span>
             </div>
-            <span className="font-caption text-caption text-text-tertiary">Step 2 of 3</span>
+            <span className="font-caption text-caption text-text-tertiary">Step {inDashboard ? '2 of 2' : '2 of 3'}</span>
           </div>
           <div className="flex items-center gap-space-2xs pt-1">
             <div className="w-6 h-1.5 rounded-full bg-primary" />
             <div className="w-6 h-1.5 rounded-full bg-primary" />
-            <div className="w-1.5 h-1.5 rounded-full bg-surface-variant" />
+            {!inDashboard && <div className="w-1.5 h-1.5 rounded-full bg-surface-variant" />}
           </div>
         </div>
 

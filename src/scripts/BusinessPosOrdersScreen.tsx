@@ -8,7 +8,8 @@ import { hasApiConfig } from '../services/api/client';
 import { money, type PosSale } from '../services/posService';
 import { usePosSales } from '../hooks/business/usePos';
 import { useBusinessOrders } from '../hooks/business/useBusinessOrders';
-import { useOfferSummary } from '../hooks/business/useOffers';
+import { useDealLedger } from '../hooks/business/useDealLedger';
+import { DealClaimsLedger } from '../components/DealClaimsLedger';
 import { methodLabel, naira, saleCustomer, saleItemsLine, saleStatusLabel, setSelectedSaleId, timeLabel, useLivePos } from './posLive';
 
 const METHOD_ICON: Record<string, string> = { cash: 'payments', card: 'contactless', transfer: 'account_balance', split: 'call_split' };
@@ -40,17 +41,18 @@ export function BusinessPosOrdersScreen({ onTab, onOpenOrder, onOpenDisplay, onO
   const pos = useLivePos();
   const sales = usePosSales({ limit: 100, search: search.trim() || undefined });
   const storeOrders = useBusinessOrders();
-  const offers = useOfferSummary().data;
+  const dealLedger = useDealLedger({ limit: 100 });
   const todaySales: PosSale[] = (sales.data?.data ?? []).filter((sale) => isToday(sale.createdAt));
   const onlineToday = (storeOrders.data ?? []).filter((order) => isToday(order.createdAt) && !order.payment?.posSaleId).length;
   const dealSales = todaySales.filter((sale) => money(sale.discountAmount) > 0);
-  const visibleSales = chip === 'online' ? [] : chip === 'deals' ? dealSales : todaySales;
+  const visibleSales = chip === 'online' || (live && chip === 'deals') ? [] : chip === 'deals' ? dealSales : todaySales;
+  const liveDealCount = dealLedger.isLoading ? '…' : dealLedger.isError ? '—' : dealLedger.data?.total ?? dealLedger.data?.data.length ?? 0;
   const chips = live
     ? [
         { key: 'all' as const, label: `All Orders (${onlineToday + todaySales.length})` },
         { key: 'online' as const, label: `Online Only (${onlineToday})` },
         { key: 'pos' as const, label: `POS In-Store (${todaySales.length})`, icon: 'point_of_sale' },
-        { key: 'deals' as const, label: `Deals Redeemed (${offers?.redeemedToday ?? dealSales.length})` },
+        { key: 'deals' as const, label: `Deal Vouchers (${liveDealCount})` },
       ]
     : POS_CHIPS;
   const openSale = (id: string) => {
@@ -191,7 +193,7 @@ export function BusinessPosOrdersScreen({ onTab, onOpenOrder, onOpenDisplay, onO
             </button>
           </div>
 
-          {live && !visibleSales.length && (
+          {live && chip !== 'deals' && !visibleSales.length && (
             <div className="rounded-xl bg-surface-canvas p-space-md shadow-sm text-center flex flex-col items-center gap-space-2xs">
               <Icon name={chip === 'online' ? 'storefront' : 'point_of_sale'} className="text-[28px] text-text-tertiary" />
               <span className="font-label-md text-label-md font-semibold text-text-primary">
@@ -287,6 +289,9 @@ export function BusinessPosOrdersScreen({ onTab, onOpenOrder, onOpenDisplay, onO
                 </button>
               );
             })}
+          {live && chip === 'deals' && (
+            <DealClaimsLedger title="Deal vouchers" limit={100} search={search} allowRedeem />
+          )}
           {!live && (
             <>
           {/* Card 1: POS Dine-In with Verified Deal */}

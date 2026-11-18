@@ -23,6 +23,7 @@ import {
 } from './ordersLive';
 
 import { BusinessModeHeader } from './BusinessModeHeader';
+import { DealClaimsLedger } from '../components/DealClaimsLedger';
 
 interface BusinessOrdersHubScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -500,6 +501,7 @@ export function BusinessOrdersHubScreen({
               </button>
             ))}
           </div>
+          <DealClaimsLedger title="Deal claims and vouchers" search={search} />
           <div className="h-4" />
         </div>
       </div>

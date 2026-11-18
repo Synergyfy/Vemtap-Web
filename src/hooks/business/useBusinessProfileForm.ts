@@ -32,6 +32,18 @@ const DEMO_PROFILE: BusinessProfileForm = {
   isVisible: true,
 };
 
+const EMPTY_PROFILE: BusinessProfileForm = {
+  name: '',
+  description: '',
+  phone: '',
+  officialEmail: '',
+  website: '',
+  socials: {},
+  whatsappNumber: '',
+  amenities: [],
+  isVisible: true,
+};
+
 const fromBusiness = (b: MyBusiness): BusinessProfileForm => ({
   name: b.name ?? '',
   description: b.description ?? '',
@@ -54,9 +66,10 @@ export function useBusinessProfileForm() {
   const live = hasApiConfig();
   const queryClient = useQueryClient();
   const business = useMyBusiness();
-  const [saved, setSaved] = useState<BusinessProfileForm>(DEMO_PROFILE);
-  const [form, setForm] = useState<BusinessProfileForm>(DEMO_PROFILE);
-  const savedRef = useRef<BusinessProfileForm>(DEMO_PROFILE);
+  const initialProfile = live ? EMPTY_PROFILE : DEMO_PROFILE;
+  const [saved, setSaved] = useState<BusinessProfileForm>(initialProfile);
+  const [form, setForm] = useState<BusinessProfileForm>(initialProfile);
+  const savedRef = useRef<BusinessProfileForm>(initialProfile);
 
   // Reset the form whenever a fresh copy of the business arrives — unless the
   // owner has unsaved edits (e.g. a logo upload refetched the business mid-edit).
@@ -104,12 +117,10 @@ export function useBusinessProfileForm() {
       const url = await pickAndUploadImage();
       if (!url || !live) return url;
       const patch: Partial<MyBusiness> = kind === 'logo' ? { logoUrl: url } : { coverImage: url };
-      await businessService.updateMyBusiness(patch);
-      // Show the image now, then reload the record so the page reflects what the server stored.
-      await queryClient.cancelQueries({ queryKey: myBusinessKeys.all });
-      queryClient.setQueryData<MyBusiness>(myBusinessKeys.all, (current) => (current ? { ...current, ...patch } : current));
+      const updated = await businessService.updateMyBusiness(patch);
+      queryClient.setQueryData<MyBusiness>(myBusinessKeys.all, (current) => (current ? { ...current, ...updated } : updated));
       void queryClient.invalidateQueries({ queryKey: myBusinessKeys.all });
-      return url;
+      return kind === 'logo' ? updated.logoUrl ?? url : updated.coverImage ?? url;
     },
   });
 
@@ -117,14 +128,19 @@ export function useBusinessProfileForm() {
     form,
     set: <K extends keyof BusinessProfileForm>(key: K, value: BusinessProfileForm[K]) => setForm((current) => ({ ...current, [key]: value })),
     dirty: Object.keys(changes).length > 0,
-    reset: () => setForm(saved),
+    reset: () => {
+      setForm(saved);
+      return saved;
+    },
     save,
     uploadImage,
     isLoading: live && business.isLoading,
     loadError: live ? business.error : null,
     category: business.data
       ? [business.data.category?.name, business.data.subcategory?.name].filter(Boolean).join(' • ')
-      : 'Restaurant & Grill • Casual Dining',
+      : live
+        ? ''
+        : 'Restaurant & Grill • Casual Dining',
     uniqueCode: business.data?.uniqueCode ?? null,
   };
 }

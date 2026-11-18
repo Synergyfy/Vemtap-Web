@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { getActiveVariants } from './productVariants';
@@ -21,6 +22,7 @@ export function BusinessAddProductStep2Screen({
   onNext,
   onSaveDraft,
 }: BusinessAddProductStep2ScreenProps) {
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
   const base = parseNaira(draft.basePrice);
   const cost = parseNaira(draft.costPrice);
   const compare = parseNaira(draft.comparePrice);
@@ -418,21 +420,39 @@ export function BusinessAddProductStep2Screen({
             </div>
             <div className="flex flex-col gap-space-2xs">
               <label className="font-label-md text-label-md text-on-surface font-medium flex items-center justify-between" htmlFor="sku-code">
-                SKU / Barcode
+                SKU
+                <span className="text-text-tertiary font-caption text-caption">Optional</span>
+              </label>
+              <input
+                className="w-full h-[52px] px-4 rounded-xl bg-surface-subtle text-on-surface font-body-md text-body-md uppercase tracking-wider focus:outline-none focus:bg-surface-canvas"
+                id="sku-code"
+                placeholder="e.g. PRD-001"
+                type="text"
+                value={draft.skuCode}
+                onChange={(event) => onDraftChange({ skuCode: event.target.value })}
+              />
+            </div>
+            <div className="flex flex-col gap-space-2xs">
+              <label className="font-label-md text-label-md text-on-surface font-medium flex items-center justify-between" htmlFor="product-barcode">
+                Product Barcode (UPC / EAN)
                 <span className="text-text-tertiary font-caption text-caption">Optional</span>
               </label>
               <div className="relative flex items-center">
                 <input
-                  className="w-full h-[52px] px-4 rounded-xl bg-surface-subtle text-on-surface font-body-md text-body-md uppercase tracking-wider focus:outline-none focus:bg-surface-canvas"
-                  id="sku-code"
-                  placeholder="e.g. PRD-001"
+                  ref={barcodeInputRef}
+                  className="w-full h-[52px] px-4 pr-12 rounded-xl bg-surface-subtle text-on-surface font-body-md text-body-md tracking-wider focus:outline-none focus:bg-surface-canvas"
+                  id="product-barcode"
+                  placeholder="Scan or enter barcode"
                   type="text"
-                  value={draft.skuCode}
-                  onChange={(event) => onDraftChange({ skuCode: event.target.value })}
+                  inputMode="text"
+                  autoComplete="off"
+                  value={draft.barcode ?? ''}
+                  onChange={(event) => onDraftChange({ barcode: event.target.value })}
                 />
                 <button
-                  aria-label="Scan barcode"
+                  aria-label="Focus barcode input for scanner"
                   className="absolute right-3 w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-primary"
+                  onClick={() => barcodeInputRef.current?.focus()}
                   type="button"
                 >
                   <Icon name="barcode_scanner" className="text-[20px]" />

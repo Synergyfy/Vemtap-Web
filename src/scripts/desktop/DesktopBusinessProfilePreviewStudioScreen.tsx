@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { CreateWithAiButton } from '../../components/CreateWithAiButton';
 import { useBusinessOfferings, type OfferingType } from '../../context/BusinessOfferingsContext';
 import { MerchantPortalChrome } from './MerchantPortalChrome';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { useBusinessProfileForm, type BusinessProfileForm } from '../../hooks/business/useBusinessProfileForm';
 import { useStorefrontPreview } from '../../hooks/business/useStorefrontPreview';
 import { apiErrorMessage } from '../../services/errorMessages';
+import type { AiPromptContext } from '../aiDesignAssistant';
 
 /** Neutral tile while the business has no cover / logo / item photo. */
 const NO_IMAGE =
@@ -14,8 +16,6 @@ const NO_IMAGE =
 interface DesktopBusinessProfilePreviewStudioScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onPreviewStorefront?: () => void;
-  /** Opens the full profile editor (Business Profile & Storefront studio). */
-  onEditProfile?: () => void;
 }
 
 interface Amenity {
@@ -82,20 +82,22 @@ const PREVIEW_ITEMS: Array<{ image: string; alt: string; name: string; note: str
 export function DesktopBusinessProfilePreviewStudioScreen({
   onNav,
   onPreviewStorefront,
-  onEditProfile,
 }: DesktopBusinessProfilePreviewStudioScreenProps) {
   const { offerings, setOfferings } = useBusinessOfferings();
-  const [offeringsDraft, setOfferingsDraft] = useState(offerings);
-  const [confirmDisable, setConfirmDisable] = useState<OfferingType | null>(null);
-  const [activeAmenities, setActiveAmenities] = useState<string[]>(AMENITIES.map((a) => a.label));
-  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
-  const [copied, setCopied] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  // Live: the business record, verification and storefront figures; demo keeps the samples.
   const profile = useBusinessProfileForm();
   const preview = useStorefrontPreview();
   const live = preview.live;
   const form = profile.form;
+  const [offeringsDraft, setOfferingsDraft] = useState(offerings);
+  const [confirmDisable, setConfirmDisable] = useState<OfferingType | null>(null);
+  const [activeAmenities, setActiveAmenities] = useState<string[]>(() =>
+    live ? AMENITIES.filter((amenity) => form.amenities.includes(amenity.label)).map((amenity) => amenity.label) : AMENITIES.map((a) => a.label),
+  );
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [editing, setEditing] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  // Live: the business record, verification and storefront figures; demo keeps the samples.
   const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
   const showToast = (message: string) => {
     setToast(message);
@@ -104,15 +106,22 @@ export function DesktopBusinessProfilePreviewStudioScreen({
   /** Live: inputs are bound to the profile form; demo keeps its uncontrolled samples. */
   const field = (key: keyof Pick<BusinessProfileForm, 'name' | 'description' | 'phone' | 'officialEmail'>, demo: string) =>
     live
-      ? { value: form[key], onChange: (event: { target: { value: string } }) => profile.set(key, event.target.value) }
-      : { defaultValue: demo };
+      ? { value: form[key], onChange: (event: { target: { value: string } }) => profile.set(key, event.target.value), readOnly: !editing }
+      : { defaultValue: demo, readOnly: !editing };
   const socialField = (platform: string, demo: string) =>
     live
       ? {
           value: (form.socials[platform] ?? '').replace(/^@/, ''),
           onChange: (event: { target: { value: string } }) => profile.set('socials', { ...form.socials, [platform]: event.target.value }),
+          readOnly: !editing,
         }
-      : { defaultValue: demo };
+      : { defaultValue: demo, readOnly: !editing };
+  const aiProfileContext: AiPromptContext = {
+    businessName: live ? (profile.isLoading ? undefined : form.name) : 'Urban Grill & Bistro',
+    category: live ? profile.category || undefined : 'Restaurant & Grill • Casual Dining',
+    location: live ? preview.location ?? undefined : undefined,
+    description: live ? (profile.isLoading ? undefined : form.description) : 'Premium casual dining and woodfire grill serving Lagos and Abuja. Famous for dry-aged steaks, artisan burgers, and handcrafted mocktails.',
+  };
   const verificationBadge = live ? preview.verificationLabel ?? (preview.verified ? 'Verified' : 'Not verified') : 'Tier 3 Verified';
   const trustItems = live
     ? [
@@ -145,6 +154,27 @@ export function DesktopBusinessProfilePreviewStudioScreen({
     if (live && profile.loadError) showToast(apiErrorMessage(profile.loadError, 'Could not load your business profile.'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.loadError]);
+
+  const hasChanges =
+    !profile.isLoading &&
+    (profile.dirty ||
+      AMENITIES.some((amenity) => activeAmenities.includes(amenity.label) !== form.amenities.includes(amenity.label)) ||
+      offeringsDraft.hasProducts !== offerings.hasProducts ||
+      offeringsDraft.hasServices !== offerings.hasServices);
+
+  const cancelEditing = () => {
+    const saved = profile.reset();
+    setActiveAmenities(AMENITIES.filter((amenity) => saved.amenities.includes(amenity.label)).map((amenity) => amenity.label));
+    setOfferingsDraft(offerings);
+    setConfirmDisable(null);
+    setSaveState('idle');
+    setEditing(false);
+  };
+
+  const startEditing = () => {
+    setSaveState('idle');
+    setEditing(true);
+  };
 
   const handleToggleOffering = (type: OfferingType) => {
     const isCurrentlyOn = type === 'products' ? offeringsDraft.hasProducts : offeringsDraft.hasServices;
@@ -180,7 +210,7 @@ export function DesktopBusinessProfilePreviewStudioScreen({
 
   /** Live: uploads a new logo / cover and saves it to the business right away. */
   const changeImage = (kind: 'logo' | 'cover') => {
-    if (!live) return;
+    if (!live || !editing) return;
     profile.uploadImage.mutate(kind, {
       onSuccess: (url) => {
         if (url) showToast(kind === 'logo' ? 'Logo updated on your storefront.' : 'Cover photo updated on your storefront.');
@@ -198,7 +228,7 @@ export function DesktopBusinessProfilePreviewStudioScreen({
   };
 
   const saveChanges = () => {
-    if (saveState !== 'idle') return;
+    if (saveState !== 'idle' || !editing || !hasChanges) return;
     if (live) {
       // Keep amenities this screen doesn't list (e.g. set on mobile) untouched.
       const listed = AMENITIES.map((a) => a.label);
@@ -208,6 +238,8 @@ export function DesktopBusinessProfilePreviewStudioScreen({
         { ...form, amenities },
         {
           onSuccess: () => {
+            setOfferings(offeringsDraft);
+            setEditing(false);
             setSaveState('saved');
             window.setTimeout(() => setSaveState('idle'), 1800);
           },
@@ -222,6 +254,7 @@ export function DesktopBusinessProfilePreviewStudioScreen({
     setSaveState('saving');
     setOfferings(offeringsDraft);
     window.setTimeout(() => {
+      setEditing(false);
       setSaveState('saved');
       window.setTimeout(() => setSaveState('idle'), 1800);
     }, 800);
@@ -256,28 +289,33 @@ export function DesktopBusinessProfilePreviewStudioScreen({
           <div className="flex flex-wrap items-center gap-space-sm flex-shrink-0">
             <button
               type="button"
-              onClick={onEditProfile}
+              onClick={() => (editing ? cancelEditing() : startEditing())}
               className="h-[44px] px-space-md rounded-xl bg-surface-canvas text-text-primary font-button-secondary text-button-secondary hover:bg-surface-container-low transition-all shadow-sm flex items-center gap-space-xs"
             >
-              <Icon name="edit" className="text-[18px]" />
-              <span>Edit Profile Details</span>
+              <Icon name={editing ? 'close' : 'edit'} className="text-[18px]" />
+              <span>{editing ? 'Cancel' : 'Edit Profile'}</span>
             </button>
-            <button
-              type="button"
-              onClick={onPreviewStorefront}
-              className="h-[44px] px-space-md rounded-xl bg-surface-tint-blue text-primary font-button-secondary text-button-secondary hover:bg-secondary-container transition-all flex items-center gap-space-xs"
-            >
-              <span>Preview Public Storefront</span>
-              <Icon name="open_in_new" className="text-[18px]" />
-            </button>
-            <button
-              type="button"
-              onClick={saveChanges}
-              className="h-[44px] px-space-lg rounded-xl bg-primary-container text-on-primary-container font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)] hover:opacity-95 active:scale-95 transition-all flex items-center gap-space-xs"
-            >
-              <Icon name={saveState === 'saving' ? 'progress_activity' : saveState === 'saved' ? 'done_all' : 'save'} className={`text-[18px] ${saveState === 'saving' ? 'animate-spin' : ''}`} />
-              <span>{saveState === 'saving' ? 'Saving...' : saveState === 'saved' ? 'Saved Successfully' : 'Save Changes'}</span>
-            </button>
+            {!editing && (
+              <button
+                type="button"
+                onClick={onPreviewStorefront}
+                className="h-[44px] px-space-md rounded-xl bg-surface-tint-blue text-primary font-button-secondary text-button-secondary hover:bg-secondary-container transition-all flex items-center gap-space-xs"
+              >
+                <span>Preview Public Storefront</span>
+                <Icon name="open_in_new" className="text-[18px]" />
+              </button>
+            )}
+            {editing && hasChanges && (
+              <button
+                type="button"
+                onClick={saveChanges}
+                disabled={profile.isLoading || profile.save.isPending || profile.uploadImage.isPending}
+                className="h-[44px] px-space-lg rounded-xl bg-primary-container text-on-primary-container font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)] hover:opacity-95 active:scale-95 transition-all flex items-center gap-space-xs disabled:opacity-60"
+              >
+                <Icon name={saveState === 'saving' ? 'progress_activity' : saveState === 'saved' ? 'done_all' : 'save'} className={`text-[18px] ${saveState === 'saving' ? 'animate-spin' : ''}`} />
+                <span>{saveState === 'saving' ? 'Saving...' : 'Save Changes'}</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -302,15 +340,17 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                     src={live ? preview.coverImage || NO_IMAGE : DEMO_COVER}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-                  <button
-                    type="button"
-                    onClick={() => changeImage('cover')}
-                    disabled={uploadingKind === 'cover'}
-                    className="absolute top-space-sm right-space-sm bg-surface-canvas/90 backdrop-blur-md hover:bg-surface-canvas text-text-primary px-space-sm py-1.5 rounded-lg font-label-sm text-label-sm shadow-md flex items-center gap-1.5 transition-all disabled:opacity-70"
-                  >
-                    <Icon name="photo_camera" className="text-[16px] text-primary" />
-                    <span>{uploadingKind === 'cover' ? 'Uploading…' : live && !preview.coverImage ? 'Add Cover Photo' : 'Change Cover Photo'}</span>
-                  </button>
+                  {editing && (!live || !profile.isLoading) && (
+                    <button
+                      type="button"
+                      onClick={() => changeImage('cover')}
+                      disabled={uploadingKind === 'cover'}
+                      className="absolute top-space-sm right-space-sm bg-surface-canvas/90 backdrop-blur-md hover:bg-surface-canvas text-text-primary px-space-sm py-1.5 rounded-lg font-label-sm text-label-sm shadow-md flex items-center gap-1.5 transition-all disabled:opacity-70"
+                    >
+                      <Icon name="photo_camera" className="text-[16px] text-primary" />
+                      <span>{uploadingKind === 'cover' ? 'Uploading…' : live && !preview.coverImage ? 'Add Cover Photo' : 'Change Cover Photo'}</span>
+                    </button>
+                  )}
                   <div className="absolute bottom-space-sm left-space-md text-surface-canvas flex items-center gap-space-xs">
                     <span className="px-space-xs py-0.5 rounded-md bg-black/40 backdrop-blur-sm font-caption text-caption">1920 × 840 px optimal</span>
                     <span className="font-caption text-caption text-white/80">• High-Res Brand Banner</span>
@@ -332,19 +372,29 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                         />
                       )}
                     </div>
-                    <button
-                      type="button"
-                      title="Change store logo"
-                      onClick={() => changeImage('logo')}
-                      disabled={uploadingKind === 'logo'}
-                      className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center shadow-md hover:scale-105 transition-transform disabled:opacity-70"
-                    >
-                      <Icon name={uploadingKind === 'logo' ? 'progress_activity' : 'edit'} className={`text-[16px] ${uploadingKind === 'logo' ? 'animate-spin' : ''}`} />
-                    </button>
+                    {editing && (
+                      <button
+                        type="button"
+                        title="Change store logo"
+                        onClick={() => changeImage('logo')}
+                        disabled={uploadingKind === 'logo'}
+                        className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center shadow-md hover:scale-105 transition-transform disabled:opacity-70"
+                      >
+                        <Icon name={uploadingKind === 'logo' ? 'progress_activity' : 'edit'} className={`text-[16px] ${uploadingKind === 'logo' ? 'animate-spin' : ''}`} />
+                      </button>
+                    )}
                   </div>
                   <div className="flex flex-col flex-grow">
                     <div className="flex flex-wrap items-center gap-space-xs">
-                      <span className="font-heading-md text-heading-md text-text-primary tracking-tight">{v(form.name || 'Your business', 'Urban Grill & Bistro')}</span>
+                      {editing ? (
+                        <input
+                          aria-label="Business name"
+                          className="w-full max-w-md rounded-lg bg-surface-subtle px-3 py-2 font-heading-md text-heading-md text-text-primary outline-none focus:ring-2 focus:ring-primary/20"
+                          {...field('name', 'Urban Grill & Bistro')}
+                        />
+                      ) : (
+                        <span className="font-heading-md text-heading-md text-text-primary tracking-tight">{v(form.name || 'Your business', 'Urban Grill & Bistro')}</span>
+                      )}
                       {(!live || preview.verified) && (
                         <span title="VEMTAP Verified Merchant" className="flex items-center">
                           <Icon name="verified" className="text-primary text-[20px]" filled />
@@ -357,6 +407,13 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                     <p className="font-label-sm text-label-sm text-text-secondary mt-0.5">{v([profile.category || 'Add a category', preview.location].filter(Boolean).join(' • '), 'Restaurant & Grill • Casual Dining • Wuse II, Abuja')}</p>
                   </div>
                 </div>
+
+                {editing && (!live || !profile.isLoading) && (
+                  <div className="flex flex-wrap items-center gap-space-md px-space-xs">
+                    <CreateWithAiButton assetType="banner" context={aiProfileContext} aspectRatio="16/9" />
+                    <CreateWithAiButton assetType="logo" context={aiProfileContext} aspectRatio="square" />
+                  </div>
+                )}
 
                 <div className="flex flex-col gap-1.5 pt-space-xs">
                   <div className="flex items-center justify-between">
@@ -446,10 +503,11 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                     role="switch"
                     aria-label="Toggle Products"
                     aria-checked={offeringsDraft.hasProducts}
+                    disabled={!editing}
                     onClick={() => handleToggleOffering('products')}
-                    className={`w-12 h-6 rounded-full transition-colors relative shrink-0 cursor-pointer ${
+                    className={`w-12 h-6 rounded-full transition-colors relative shrink-0 ${
                       offeringsDraft.hasProducts ? 'bg-primary' : 'bg-surface-container-high'
-                    }`}
+                    } ${editing ? 'cursor-pointer' : 'cursor-default'}`}
                   >
                     <span
                       className={`block w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
@@ -481,10 +539,11 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                     role="switch"
                     aria-label="Toggle Services"
                     aria-checked={offeringsDraft.hasServices}
+                    disabled={!editing}
                     onClick={() => handleToggleOffering('services')}
-                    className={`w-12 h-6 rounded-full transition-colors relative shrink-0 cursor-pointer ${
+                    className={`w-12 h-6 rounded-full transition-colors relative shrink-0 ${
                       offeringsDraft.hasServices ? 'bg-primary' : 'bg-surface-container-high'
-                    }`}
+                    } ${editing ? 'cursor-pointer' : 'cursor-default'}`}
                   >
                     <span
                       className={`block w-5 h-5 rounded-full bg-white shadow-sm transition-transform ${
@@ -598,10 +657,11 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                     <button
                       key={amenity.label}
                       type="button"
+                      disabled={!editing}
                       onClick={() => toggleAmenity(amenity.label)}
-                      className={`group flex flex-col items-center justify-center p-space-sm rounded-xl cursor-pointer transition-all shadow-sm text-center ${
+                      className={`group flex flex-col items-center justify-center p-space-sm rounded-xl transition-all shadow-sm text-center ${
                         active ? 'bg-surface-tint-blue' : 'bg-surface-subtle opacity-60'
-                      }`}
+                      } ${editing ? 'cursor-pointer' : 'cursor-default'}`}
                     >
                       <Icon name={amenity.icon} className={`text-[22px] mb-1 ${active ? 'text-primary' : 'text-text-tertiary'}`} />
                       <span className="font-label-sm text-label-sm text-text-primary font-medium">{amenity.label}</span>

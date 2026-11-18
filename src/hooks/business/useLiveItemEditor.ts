@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { hasApiConfig } from '../../services/api/client';
-import { categoriesService, type CatalogueCategory } from '../../services/categoriesService';
+import { categoriesService, type CatalogueCategory, type CategoryDetails } from '../../services/categoriesService';
 import { pickAndUploadImage } from '../../services/uploadService';
 import { useCatalogueCategories } from './useCatalogueCategories';
 import { categoriesKeys } from './useCatalogueCategories';
@@ -37,8 +37,9 @@ export function useLiveItemEditor(type: 'product' | 'service') {
     live,
     categories: (categories.data ?? []).map((c) => toCentral(c, type)),
     categoriesLoading: categories.isLoading,
-    createCategory: async (name: string) => {
-      const created = await categoriesService.create(name);
+    categoriesError: categories.error,
+    createCategory: async (name: string, details: CategoryDetails = {}) => {
+      const created = await categoriesService.create(name, { kind: type, ...details });
       await queryClient.invalidateQueries({ queryKey: categoriesKeys.all });
       return toCentral(created, type);
     },

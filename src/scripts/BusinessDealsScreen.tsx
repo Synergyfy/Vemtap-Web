@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
+import { DealClaimsLedger } from '../components/DealClaimsLedger';
 import { FilterMenu } from '../components/FilterMenu';
 import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 import { hasApiConfig } from '../services/api/client';
@@ -542,6 +543,10 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
             </div>
           )}
         </div>
+      </div>
+
+      <div className="px-margin pb-space-md">
+        <DealClaimsLedger title="Recent deal claims" limit={30} />
       </div>
 
       {/* Floating Create Deal */}

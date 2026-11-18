@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
 import { type SubmittedOrder } from '../../context/OrdersContext';
@@ -18,10 +18,11 @@ interface DesktopPosOrderLookupScreenProps {
   onBack: () => void;
 }
 
-type LookupMode = 'qr' | 'order-number' | 'phone';
+type LookupMode = 'qr' | 'barcode' | 'order-number' | 'phone';
 
 const MODES: { key: LookupMode; label: string; icon: string; hint: string }[] = [
   { key: 'qr', label: 'QR Code', icon: 'qr_code_scanner', hint: 'Scan the collection code or paste its value' },
+  { key: 'barcode', label: 'Barcode', icon: 'barcode_scanner', hint: 'Scan an order-reference barcode; reader should send Enter' },
   { key: 'order-number', label: 'Order #', icon: 'tag', hint: 'e.g. UG-10231 (with or without the #)' },
   { key: 'phone', label: 'Phone', icon: 'phone_iphone', hint: 'Customer name or last 4 digits of their number' },
 ];
@@ -35,6 +36,11 @@ export function DesktopPosOrderLookupScreen({ onNav, onBack }: DesktopPosOrderLo
   const [input, setInput] = useState('');
   const [searched, setSearched] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (mode === 'barcode') inputRef.current?.focus();
+  }, [mode]);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -44,7 +50,7 @@ export function DesktopPosOrderLookupScreen({ onNav, onBack }: DesktopPosOrderLo
   const query = input.trim();
 
   // Idempotent retrieval, scoped to the active tab so each mode behaves as the
-  // cashier expects: QR / Order # read the order reference, Phone reads the
+  // cashier expects: QR / Barcode / Order # read the order reference, Phone reads the
   // customer identity. Nothing is looked up until Look up is pressed.
   const order: SubmittedOrder | null = useMemo(() => {
     if (!searched || !query) return null;
@@ -110,7 +116,7 @@ export function DesktopPosOrderLookupScreen({ onNav, onBack }: DesktopPosOrderLo
                 Find Customer Order
               </h1>
               <p className="font-body-md text-body-md text-text-secondary">
-                QR scan • order number • phone — retrieval is idempotent and never mutates the order.
+                QR scan • barcode • order number • phone — retrieval is idempotent and never mutates the order.
               </p>
             </div>
             <button
@@ -156,6 +162,7 @@ export function DesktopPosOrderLookupScreen({ onNav, onBack }: DesktopPosOrderLo
             </div>
             <div className="flex gap-3">
               <input
+                ref={inputRef}
                 value={input}
                 onChange={(event) => {
                   setInput(event.target.value);
@@ -164,18 +171,24 @@ export function DesktopPosOrderLookupScreen({ onNav, onBack }: DesktopPosOrderLo
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') handleLookup();
                 }}
-                placeholder={mode === 'phone' ? 'e.g. 0192 or Zainab' : 'UG-10231'}
+                placeholder={
+                  mode === 'phone'
+                    ? 'e.g. 0192 or Zainab'
+                    : mode === 'barcode'
+                      ? 'Scan barcode or enter order reference'
+                      : 'UG-10231'
+                }
                 className="flex-1 h-12 rounded-xl border border-outline-variant bg-surface-canvas px-4 font-mono text-body-md text-text-primary placeholder:text-text-tertiary placeholder:font-sans focus:outline-none focus:border-primary"
                 aria-label={activeMode.hint}
               />
-              {mode === 'qr' && (
+              {(mode === 'qr' || mode === 'barcode') && (
                 <button
                   type="button"
-                  onClick={handleScan}
+                  onClick={() => (mode === 'qr' ? handleScan() : inputRef.current?.focus())}
                   className="w-12 h-12 rounded-xl bg-surface-subtle text-primary flex items-center justify-center shrink-0 hover:bg-surface-tint-blue transition-colors"
-                  aria-label="Simulate QR scan"
+                  aria-label={mode === 'qr' ? 'Simulate QR scan' : 'Focus barcode input for scanner'}
                 >
-                  <Icon name="qr_code_scanner" className="text-[22px]" />
+                  <Icon name={mode === 'qr' ? 'qr_code_scanner' : 'barcode_scanner'} className="text-[22px]" />
                 </button>
               )}
               <button

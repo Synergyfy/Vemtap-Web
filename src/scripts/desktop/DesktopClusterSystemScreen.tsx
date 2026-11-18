@@ -514,13 +514,13 @@ export function DesktopClusterSystemScreen({
                     Your Cluster Performance
                   </h3>
                   <span className="text-xs font-bold text-primary bg-surface-tint-blue px-2.5 py-1 rounded-full">
-                    Urban Grill &amp; Bistro
+                    {live ? clusterState.memberRecord?.businessName ?? 'Your business' : 'Urban Grill & Bistro'}
                   </span>
                 </div>
 
                 <p className="text-xs text-text-secondary">
-                  Customer interaction and footfall generated for your store via the Amaka Mall
-                  collective pass.
+                  Customer interaction and footfall generated for your store via the{' '}
+                  {live ? cluster?.name ?? 'cluster' : 'Amaka Mall'} collective pass.
                 </p>
 
                 <div className="grid grid-cols-2 gap-3 pt-1">
@@ -553,9 +553,11 @@ export function DesktopClusterSystemScreen({
                   <div className="p-3.5 rounded-2xl bg-surface-canvas border border-border-subtle">
                     <p className="text-[11px] text-text-tertiary">Scans Contributed</p>
                     <p className="text-2xl font-extrabold text-purple-600 mt-1">
-                      {clusterState.memberRecord?.scansContributed.toLocaleString() || '3,480'}
+                      {live ? '—' : (clusterState.memberRecord?.scansContributed ?? 0).toLocaleString()}
                     </p>
-                    <p className="text-[10px] text-text-secondary mt-0.5">From till standee</p>
+                    <p className="text-[10px] text-text-secondary mt-0.5">
+                      {live ? 'Per-business scan totals are not available yet' : 'From till standee'}
+                    </p>
                   </div>
                 </div>
 

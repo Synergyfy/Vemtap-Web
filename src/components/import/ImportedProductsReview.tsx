@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../ui/Icon';
 import { BulkActionsBar, type BulkAction } from '../BulkActionsBar';
 import { ConfirmActionDialog } from '../ConfirmActionDialog';
-import { naira, getCentralCategories, getCategoryImageByName } from '../../scripts/catalogueData';
+import { naira, getCategoryImageByName } from '../../scripts/catalogueData';
+import { useCatalogueCategories } from '../../hooks/business/useCatalogueCategories';
 import {
   publishImportedProducts,
   removeImportedProducts,
@@ -65,6 +66,7 @@ export function ImportedProductsReview({ onBack }: ImportedProductsReviewProps) 
   const [deleteConfirm, setDeleteConfirm] = useState<{ ids: string[]; count: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadTargetId = useRef<string | null>(null);
+  const categories = useCatalogueCategories();
 
   const [editForm, setEditForm] = useState({
     name: '',
@@ -79,7 +81,10 @@ export function ImportedProductsReview({ onBack }: ImportedProductsReviewProps) 
     description: '',
   });
 
-  const categoryOptions = useMemo(() => getCentralCategories('product').map((category) => category.name), []);
+  const categoryOptions = useMemo(
+    () => (categories.data ?? []).filter((category) => category.kind !== 'service').map((category) => category.name),
+    [categories.data],
+  );
 
   const showToast = (message: string) => {
     setToast(message);

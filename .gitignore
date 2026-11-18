@@ -9,6 +9,8 @@ node_modules/
 dist/
 
 # Environment variables and secrets
+.env
+.env.*
 !.env.example
 
 # Documentation to ignore

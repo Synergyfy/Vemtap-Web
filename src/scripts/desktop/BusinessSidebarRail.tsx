@@ -48,8 +48,7 @@ export function BusinessSidebarRail({
     return subItem.label;
   };
 
-  // Sections hidden from the main rail (e.g. Store Front, which moved inside POS),
-  // minus the tools the business has switched off.
+  // Hide explicitly hidden sections and tools the business has switched off.
   const visibleSections = filterSidebarSections(sections, (id) => Boolean(features[id])).filter(
     (section) => !section.hidden
   );

@@ -2,6 +2,12 @@ import { useState } from 'react';
 import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
+import { DealClaimsLedger } from '../../components/DealClaimsLedger';
+import { useOfferMutations, useOffers, useOfferSummary } from '../../hooks/business/useOffers';
+import { hasApiConfig } from '../../services/api/client';
+import { apiErrorMessage } from '../../services/errorMessages';
+import type { BusinessOffer } from '../../services/offersService';
+import { dealBadgeLabel, isOfferPaused, offerClaimStats, offerComparePriceLabel, offerPriceLabel, offerScheduleLabel, offerSlot } from '../catalogueLive';
 
 interface DesktopBusinessDealsScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -134,18 +140,74 @@ const TABS: Array<{ key: DealStatus; label: string }> = [
   { key: 'all', label: 'All Campaigns' },
 ];
 
+const LIVE_IMAGE_PLACEHOLDER =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23e9eef9'/></svg>";
+
+function offerToCard(offer: BusinessOffer): DealCard {
+  const stats = offerClaimStats(offer);
+  return {
+    id: offer.id,
+    title: offer.name,
+    image: offer.mainImage || LIVE_IMAGE_PLACEHOLDER,
+    discount: dealBadgeLabel(offer),
+    typeLabel: offer.offerType || 'Deal',
+    typeTone: 'bg-surface-canvas/90 text-primary',
+    status: `${isOfferPaused(offer) ? 'Paused · ' : ''}${offerScheduleLabel(offer)}`,
+    statusTone: 'normal',
+    sku: offer.id,
+    participating: offer.branchName || 'Current branch',
+    price: offerPriceLabel(offer),
+    was: offerComparePriceLabel(offer) || undefined,
+    saveLabel: stats.claims ? `${stats.claims} claims` : 'No claims yet',
+    saveTone: 'bg-surface-tint-blue text-primary',
+    claims: `${stats.claims} Claims • ${stats.redeemed} Redeemed`,
+    conversion: `${stats.rate}% Redeemed`,
+    conversionTone: 'text-primary',
+    progress: stats.rate,
+    progressTone: 'bg-primary-container',
+    capLine: offer.maxClaims ? `Cap: ${offer.maxClaims} vouchers` : 'No voucher cap',
+    speedLine: '',
+    metaIcon1: 'schedule',
+    meta1: offerScheduleLabel(offer),
+    metaIcon2: 'sell',
+    meta2: offer.description || offer.name,
+    bucket: offerSlot(offer),
+  };
+}
+
 export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDeal }: DesktopBusinessDealsScreenProps) {
+  const live = hasApiConfig();
+  const offersQuery = useOffers();
+  const summaryQuery = useOfferSummary();
+  const offerSummary = summaryQuery.data;
+  const offerMutations = useOfferMutations();
+  const liveOffers = offersQuery.data ?? [];
+  const deals = live ? liveOffers.map(offerToCard) : DEALS;
+  const liveById = new Map(liveOffers.map((offer) => [offer.id, offer]));
   const [tab, setTab] = useState<DealStatus>('active');
   const [search, setSearch] = useState('');
   const [type, setType] = useState('');
   const [boosted, setBoosted] = useState<Record<string, boolean>>({});
   const [paused, setPaused] = useState<Record<string, boolean>>({});
   const [quotaCap, setQuotaCap] = useState(18);
+  const [toast, setToast] = useState<string | null>(null);
 
   const query = search.trim().toLowerCase();
+  const showToast = (message: string) => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3000);
+  };
+  const toggleLivePause = (id: string) => {
+    const offer = liveById.get(id);
+    if (!offer) return;
+    offerMutations.setStatus.mutate(
+      { id, status: isOfferPaused(offer) ? 'active' : 'inactive' },
+      { onError: (error) => showToast(apiErrorMessage(error, 'Could not update this deal.')) },
+    );
+  };
 
   /** Tab, deal-type filter and search all have to agree before a card shows. */
-  const filtered = DEALS.filter((d) => {
+  const filtered = deals.filter((d) => {
     if (tab !== 'all' && d.bucket !== tab) return false;
     if (type !== '' && d.typeLabel !== type) return false;
     if (
@@ -158,16 +220,19 @@ export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDea
   });
 
   const tabCount = (key: DealStatus) =>
-    key === 'all' ? DEALS.length : DEALS.filter((deal) => deal.bucket === key).length;
+    key === 'all' ? deals.length : deals.filter((deal) => deal.bucket === key).length;
 
   const typeChoices = [
     { value: '', label: 'All deal types' },
-    ...Array.from(new Set(DEALS.map((deal) => deal.typeLabel))).map((label) => ({ value: label, label })),
+    ...Array.from(new Set(deals.map((deal) => deal.typeLabel))).map((label) => ({ value: label, label })),
   ];
+  const totalClaims = liveOffers.reduce((sum, offer) => sum + (offer.claimedCount ?? 0), 0);
+  const totalRedeemed = liveOffers.reduce((sum, offer) => sum + (offer.redeemedCount ?? 0), 0);
+  const currency = (amount: number) => `₦${Math.round(amount).toLocaleString('en-NG')}`;
 
   return (
     <BusinessPortalChrome activeNav="business-deals" onNav={onNav}>
-      <aside aria-label="Surge Announcement" className="w-full bg-gradient-to-r from-tertiary-container via-tertiary to-on-tertiary-fixed text-on-tertiary px-space-lg py-2.5 shadow-sm">
+      {!live && <aside aria-label="Surge Announcement" className="w-full bg-gradient-to-r from-tertiary-container via-tertiary to-on-tertiary-fixed text-on-tertiary px-space-lg py-2.5 shadow-sm">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-xs text-center sm:text-left">
           <div className="flex items-center gap-space-xs min-w-0">
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-on-tertiary/20 text-on-tertiary">
@@ -188,7 +253,7 @@ export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDea
             </button>
           </div>
         </div>
-      </aside>
+      </aside>}
 
       <div className="w-full py-space-xl flex flex-col gap-space-xl">
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-space-lg">
@@ -230,10 +295,18 @@ export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDea
               </span>
             </div>
             <div className="mt-4">
-              <div className="font-heading-lg text-heading-lg font-bold text-text-primary tracking-tight">₦1,248,000</div>
+              <div className="font-heading-lg text-heading-lg font-bold text-text-primary tracking-tight">
+                {live
+                  ? summaryQuery.isLoading
+                    ? '…'
+                    : summaryQuery.isError
+                      ? '—'
+                      : currency(offerSummary?.netRevenue30d ?? 0)
+                  : '₦1,248,000'}
+              </div>
               <p className="font-caption text-caption text-badge-discount-text font-semibold flex items-center gap-1 mt-1">
                 <Icon name="trending_up" className="text-[14px]" />
-                <span>+18.4% generated from deals</span>
+                <span>{live ? 'Net revenue from deals in the last 30 days' : '+18.4% generated from deals'}</span>
               </p>
             </div>
             <div className="w-full bg-surface-subtle h-1.5 rounded-full mt-4 overflow-hidden">
@@ -242,19 +315,27 @@ export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDea
           </div>
           <div className="rounded-xl p-space-lg bg-badge-discount-bg text-badge-discount-text shadow-sm flex flex-col justify-between relative overflow-hidden">
             <div className="flex items-start justify-between">
-              <span className="font-label-md text-label-md font-semibold text-text-primary">Direct Payouts</span>
+              <span className="font-label-md text-label-md font-semibold text-text-primary">{live ? 'Discount Given' : 'Direct Payouts'}</span>
               <span className="w-8 h-8 rounded-lg bg-surface-canvas flex items-center justify-center text-badge-discount-text shadow-sm">
                 <Icon name="verified" className="text-[18px]" filled />
               </span>
             </div>
             <div className="mt-4">
-              <div className="font-heading-lg text-heading-lg font-bold text-text-primary tracking-tight">₦0 Paid</div>
-              <p className="font-caption text-caption text-text-secondary mt-1">100% direct merchant settlement</p>
+              <div className="font-heading-lg text-heading-lg font-bold text-text-primary tracking-tight">
+                {live
+                  ? summaryQuery.isLoading
+                    ? '…'
+                    : summaryQuery.isError
+                      ? '—'
+                      : currency(offerSummary?.discountGiven30d ?? 0)
+                  : '₦0 Paid'}
+              </div>
+              <p className="font-caption text-caption text-text-secondary mt-1">{live ? 'Discounts given in the last 30 days' : '100% direct merchant settlement'}</p>
             </div>
-            <button type="button" className="mt-4 font-label-sm text-caption font-semibold text-badge-discount-text hover:underline flex items-center gap-1 self-start">
+            {!live && <button type="button" className="mt-4 font-label-sm text-caption font-semibold text-badge-discount-text hover:underline flex items-center gap-1 self-start">
               <span>Ledger Statement</span>
               <Icon name="arrow_forward" className="text-[14px]" />
-            </button>
+            </button>}
           </div>
           <div className="rounded-xl p-space-lg bg-surface-canvas shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
             <div className="flex items-start justify-between">
@@ -264,33 +345,49 @@ export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDea
               </span>
             </div>
             <div className="mt-4">
-              <div className="font-heading-lg text-heading-lg font-bold text-text-primary tracking-tight">68 Vouchers</div>
+              <div className="font-heading-lg text-heading-lg font-bold text-text-primary tracking-tight">
+                {live ? offersQuery.isLoading ? '…' : offersQuery.isError ? '—' : `${totalRedeemed} Vouchers` : '68 Vouchers'}
+              </div>
               <p className="font-caption text-caption text-text-secondary mt-1">
-                <strong className="text-text-primary font-semibold">74%</strong> conversion rate to till checkout
+                {live
+                  ? offersQuery.isLoading
+                    ? 'Loading claim totals…'
+                    : offersQuery.isError
+                      ? 'Claim totals unavailable'
+                      : <><strong className="text-text-primary font-semibold">{totalClaims} claimed</strong> across this branch</>
+                  : <><strong className="text-text-primary font-semibold">74%</strong> conversion rate to till checkout</>}
               </p>
             </div>
-            <div className="flex items-center gap-2 mt-4 text-caption font-caption text-text-tertiary">
+            {!live && <div className="flex items-center gap-2 mt-4 text-caption font-caption text-text-tertiary">
               <Icon name="speed" className="text-[15px] text-badge-discount-text" />
               <span>Average tap-to-checkout: 4.8 min</span>
-            </div>
+            </div>}
           </div>
           <div className="rounded-xl p-space-lg bg-surface-canvas shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
             <div className="flex items-start justify-between">
-              <span className="font-label-md text-label-md text-text-secondary">Hyperlocal Radius</span>
+              <span className="font-label-md text-label-md text-text-secondary">{live ? 'Pending Vouchers' : 'Hyperlocal Radius'}</span>
               <span className="w-8 h-8 rounded-lg bg-surface-tint-blue flex items-center justify-center text-primary">
                 <Icon name="radar" className="text-[18px]" />
               </span>
             </div>
             <div className="mt-4">
-              <div className="font-heading-lg text-heading-lg font-bold text-text-primary tracking-tight">3,840 Foodies</div>
+              <div className="font-heading-lg text-heading-lg font-bold text-text-primary tracking-tight">
+                {live ? offersQuery.isLoading ? '…' : offersQuery.isError ? '—' : `${liveOffers.filter((offer) => offer.status === 'active').length} Active Deals` : '3,840 Foodies'}
+              </div>
               <p className="font-caption text-caption text-text-secondary mt-1">
-                Active app users within <strong className="text-text-primary font-semibold">5km radius</strong>
+                {live
+                  ? offersQuery.isLoading
+                    ? 'Loading voucher totals…'
+                    : offersQuery.isError
+                      ? 'Voucher totals unavailable'
+                      : `${Math.max(0, totalClaims - totalRedeemed)} vouchers awaiting redemption`
+                  : <>Active app users within <strong className="text-text-primary font-semibold">5km radius</strong></>}
               </p>
             </div>
-            <div className="flex items-center gap-2 mt-4 text-caption font-caption text-primary font-semibold">
+            {!live && <div className="flex items-center gap-2 mt-4 text-caption font-caption text-primary font-semibold">
               <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
               <span>432 active app opens right now</span>
-            </div>
+            </div>}
           </div>
         </section>
 
@@ -334,6 +431,17 @@ export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDea
           </div>
         </div>
 
+        {live && offersQuery.isError && (
+          <p role="alert" className="rounded-xl bg-error-container px-space-md py-space-sm font-body-md text-body-md text-on-error-container">
+            Could not load deals. Try again shortly.
+          </p>
+        )}
+        {live && summaryQuery.isError && (
+          <p role="alert" className="rounded-xl bg-error-container px-space-md py-space-sm font-body-md text-body-md text-on-error-container">
+            Could not load deal metrics. Try again shortly.
+          </p>
+        )}
+        {live && offersQuery.isLoading && <p className="font-body-md text-body-md text-text-secondary">Loading deals…</p>}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-space-lg">
           {filtered.map((d) => (
             <article key={d.id} className="bg-surface-canvas rounded-2xl shadow-sm hover:shadow-md transition-all flex flex-col overflow-hidden group">
@@ -344,11 +452,11 @@ export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDea
                   <span className="px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-caption font-bold shadow-sm">{d.discount}</span>
                   <span className={`px-2.5 py-1 rounded-full font-label-sm text-caption font-semibold ${d.typeTone}`}>{d.typeLabel}</span>
                 </div>
-                <div className="absolute top-3 right-3">
+                {!live && <div className="absolute top-3 right-3">
                   <button type="button" aria-label="Card Options" className="w-8 h-8 rounded-full bg-surface-canvas/80 hover:bg-surface-canvas text-text-primary flex items-center justify-center transition-colors">
                     <Icon name="more_vert" className="text-[18px]" />
                   </button>
-                </div>
+                </div>}
                 <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-on-primary">
                   <div className={`flex items-center gap-1.5 text-caption font-label-sm px-2.5 py-1 rounded-lg ${d.statusTone === 'alert' ? 'bg-tertiary/90 backdrop-blur-md text-on-tertiary font-medium' : 'bg-black/40 backdrop-blur-md'}`}>
                     <span className={`w-2 h-2 rounded-full ${d.statusTone === 'alert' ? 'bg-surface-canvas animate-ping' : 'bg-badge-discount-text animate-pulse'}`} />
@@ -395,17 +503,19 @@ export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDea
                   </div>
                 </div>
                 <div className="pt-4 flex flex-col gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setBoosted((p) => ({ ...p, [d.id]: !p[d.id] }))}
-                    className={`w-full py-2.5 px-3 rounded-xl font-button-secondary text-button-secondary flex items-center justify-center gap-2 transition-colors shadow-sm ${
-                      boosted[d.id] ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-primary-container text-on-primary hover:bg-primary'
-                    }`}
-                  >
-                    <Icon name="rocket_launch" className="text-[18px]" filled={boosted[d.id]} />
-                    <span>{boosted[d.id] ? 'Boosted 🚀' : 'Boost Deal 🚀'}</span>
-                  </button>
-                  <div className="grid grid-cols-3 gap-1.5 pt-1">
+                  {!live ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setBoosted((p) => ({ ...p, [d.id]: !p[d.id] }))}
+                        className={`w-full py-2.5 px-3 rounded-xl font-button-secondary text-button-secondary flex items-center justify-center gap-2 transition-colors shadow-sm ${
+                          boosted[d.id] ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-primary-container text-on-primary hover:bg-primary'
+                        }`}
+                      >
+                        <Icon name="rocket_launch" className="text-[18px]" filled={boosted[d.id]} />
+                        <span>{boosted[d.id] ? 'Boosted 🚀' : 'Boost Deal 🚀'}</span>
+                      </button>
+                      <div className="grid grid-cols-3 gap-1.5 pt-1">
                     <button type="button" className="py-1.5 px-2 rounded-lg bg-surface-subtle text-text-secondary hover:text-text-primary hover:bg-surface-container font-label-sm text-caption font-medium flex items-center justify-center gap-1 transition-colors">
                       <Icon name="edit" className="text-[14px]" />
                       <span>Edit</span>
@@ -425,11 +535,21 @@ export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDea
                       <span>Log</span>
                     </button>
                   </div>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => toggleLivePause(d.id)}
+                      className="w-full py-2.5 px-3 rounded-xl bg-surface-subtle text-text-primary font-button-secondary text-button-secondary"
+                    >
+                      {liveById.get(d.id)?.status === 'active' ? 'Pause deal' : 'Resume deal'}
+                    </button>
+                  )}
                 </div>
               </div>
             </article>
           ))}
-          {filtered.length === 0 && (
+          {filtered.length === 0 && (!live || (!offersQuery.isLoading && !offersQuery.isError)) && (
             <div className="col-span-full py-space-2xl text-center">
               <Icon name="local_offer" className="text-[40px] text-text-tertiary" />
               <p className="mt-space-sm font-heading-sm text-heading-sm text-text-primary">No campaigns in this view</p>
@@ -442,7 +562,9 @@ export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDea
           )}
         </div>
 
-        <section className="rounded-2xl bg-surface-canvas p-space-lg shadow-sm flex flex-col lg:flex-row items-center justify-between gap-space-lg">
+        <DealClaimsLedger title="Recent deal claims" limit={30} />
+
+        {!live && <section className="rounded-2xl bg-surface-canvas p-space-lg shadow-sm flex flex-col lg:flex-row items-center justify-between gap-space-lg">
           <div className="flex items-center gap-space-md">
             <div className="w-14 h-14 rounded-2xl bg-surface-tint-blue flex items-center justify-center text-primary flex-shrink-0">
               <Icon name="point_of_sale" className="text-[32px]" />
@@ -467,7 +589,7 @@ export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDea
               <span>Terminal Settings</span>
             </button>
           </div>
-        </section>
+        </section>}
 
         <aside aria-label="Commission Policy" className="rounded-2xl bg-surface-tint-blue p-space-lg shadow-sm flex flex-col md:flex-row items-center justify-between gap-space-md">
           <div className="flex items-start gap-space-md">
@@ -487,6 +609,11 @@ export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDea
           </button>
         </aside>
       </div>
+      {toast && (
+        <div role="status" className="fixed bottom-6 right-6 z-50 rounded-xl bg-inverse-surface px-space-md py-space-sm font-label-md text-label-md text-inverse-on-surface shadow-xl">
+          {toast}
+        </div>
+      )}
     </BusinessPortalChrome>
   );
 }

@@ -72,6 +72,16 @@ export interface StoreOrderPayment {
   notes?: string;
 }
 
+/**
+ * One row of the "Assigned Staff Member" picker. Live mode fills it from the
+ * Staff page's team (`GET /users/team?allBranches=true`, owner included); the
+ * demo mode uses its own crew.
+ */
+export interface StoreOrderStaffOption {
+  value: string;
+  label: string;
+}
+
 export interface StoreOrder {
   id: string;
   orderRef: string;
@@ -95,6 +105,8 @@ export interface StoreOrder {
   isTotalConfirmed: boolean;
   status: StoreOrderStatus;
   assignedStaff?: string;
+  /** Account id of `assignedStaff` (live mode), so the picker can hold the value. */
+  assignedStaffId?: string;
   customerNotes?: string;
   pickupInstructions: string;
   estimatedPrepMins: number;
@@ -160,6 +172,17 @@ export const INITIAL_ORDERING_SETTINGS: StoreOrderingSettings = {
   autoNotifyCustomerWhatsApp: true,
   notifiedStaff: ['Chef Adebayo (Head Chef)', 'Musa Danladi (Store Manager)', 'Grace Udoh (Front Desk)'],
 };
+
+/**
+ * Demo-mode crew for the assignment picker. Live mode never reads this: it
+ * uses the real team from the Staff page.
+ */
+export const DEMO_STORE_STAFF_OPTIONS: StoreOrderStaffOption[] = [
+  { value: 'Chef Adebayo (Head Chef)', label: 'Chef Adebayo (Head Chef)' },
+  { value: 'Ibrahim Bello (Kitchen Lead)', label: 'Ibrahim Bello (Kitchen Lead)' },
+  { value: 'Musa Danladi (Store Manager)', label: 'Musa Danladi (Store Manager)' },
+  { value: 'Grace Udoh (Front Desk)', label: 'Grace Udoh (Front Desk)' },
+];
 
 export const SEED_STORE_ORDERS: StoreOrder[] = [
   {

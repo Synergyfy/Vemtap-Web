@@ -9,6 +9,7 @@ import { useBusinessFeatures } from '../../context/BusinessFeaturesContext';
 import { OrderCompletionModal } from '../../components/desktop/dialogs/OrderCompletionModal';
 import { useBranches } from '../../hooks/business/useBranchesAndTeam';
 import { hasApiConfig } from '../../services/api/client';
+import { DealClaimsLedger } from '../../components/DealClaimsLedger';
 
 /** Sample branches, only for running without an API. */
 const DEMO_BRANCHES = [
@@ -692,8 +693,10 @@ export function DesktopBusinessOrdersScreen({
                           <button
                             type="button"
                             onClick={() => {
-                              updateOrderStatus(order.id, 'completed', 'Order handed over', 'Store Staff');
-                              showToast(`Order #${order.orderRef} completed`);
+                              const res = updateOrderStatus(order.id, 'completed', 'Order handed over', 'Store Staff');
+                              showToast(
+                                res.ok ? `Order #${order.orderRef} completed by ${order.assignedStaff || 'the signed-in account'}` : res.message,
+                              );
                             }}
                             className="px-3.5 py-1.5 rounded-lg bg-badge-discount-text text-on-primary font-label-sm text-label-sm font-semibold hover:opacity-90 transition-all flex items-center gap-1 shadow-2xs"
                           >
@@ -730,6 +733,15 @@ export function DesktopBusinessOrdersScreen({
             )}
           </div>
         </div>
+      </div>
+
+      <div className="px-margin pb-space-xl">
+        <DealClaimsLedger
+          title="Deal claims and vouchers"
+          limit={50}
+          branchId={branchFilter === 'all' ? null : branchFilter}
+          search={searchQuery}
+        />
       </div>
 
       {/* Method A Payment Modal */}

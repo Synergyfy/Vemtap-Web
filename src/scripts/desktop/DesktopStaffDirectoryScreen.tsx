@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { ConfirmActionDialog } from '../../components/ConfirmActionDialog';
 import { useBranches, useTeam, useTeamMutations } from '../../hooks/business/useBranchesAndTeam';
 import { hasApiConfig } from '../../services/api/client';
 import type { TeamMember } from '../../services/teamService';
 import { apiErrorMessage } from '../../services/errorMessages';
 import { formatRelativeTime } from '../../utils/format';
+import { TeamMemberActionDialog, type TeamMemberAction } from '../TeamMemberActionDialog';
 import {
   isOwnerMember,
   isPendingMember,
@@ -143,10 +145,11 @@ function PermissionsPanel({ icon, iconClass, title, body }: { icon: string; icon
   );
 }
 
-function MatrixButton() {
+function MatrixButton({ onClick }: { onClick?: () => void }) {
   return (
     <button
       type="button"
+      onClick={onClick}
       className="h-9 px-space-md rounded-lg bg-surface-tint-blue hover:bg-secondary-container text-primary font-label-md text-label-md font-semibold transition-colors flex items-center gap-1.5"
     >
       <Icon name="tune" className="text-[16px]" />
@@ -157,6 +160,9 @@ function MatrixButton() {
 
 const CARD_CLASS =
   'rounded-xl bg-surface-canvas p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] relative overflow-hidden transition-all hover:shadow-[0_8px_24px_-4px_rgba(13,37,76,0.08)]';
+
+type LiveMemberAction = TeamMemberAction | 'branch' | 'pin' | 'remove';
+type StaffToast = { message: string; tone: 'success' | 'error' | 'info' };
 
 /** Live: the role description shown in a member's permissions panel. */
 const roleCapabilities = (member: TeamMember) => {
@@ -187,14 +193,17 @@ function LiveMemberCard({
   branchName,
   onResend,
   onCancel,
+  onAction,
   busy,
 }: {
   member: TeamMember;
   branchName: string;
   onResend: () => void;
   onCancel: () => void;
+  onAction: (action: LiveMemberAction) => void;
   busy: boolean;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const name = memberName(member);
   if (isOwnerMember(member)) {
     return (
@@ -359,7 +368,62 @@ function LiveMemberCard({
             </div>
           </div>
         </div>
-        <AssignBranchActions />
+        <div className="shrink-0 flex items-center gap-space-xs">
+          <button
+            type="button"
+            title="Branch reassignment is not available in the current team API"
+            onClick={() => onAction('branch')}
+            className="h-9 px-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container text-text-secondary font-label-sm text-label-sm flex items-center gap-1 transition-colors"
+          >
+            <Icon name="swap_horiz" className="text-[16px] text-primary" />
+            <span>Assign Branch</span>
+          </button>
+          <div className="relative">
+            <button
+              type="button"
+              aria-label={`More options for ${name}`}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((open) => !open)}
+              className="w-9 h-9 rounded-lg bg-surface-subtle hover:bg-surface-container text-text-secondary flex items-center justify-center transition-colors"
+            >
+              <Icon name="more_vert" className="text-[18px]" />
+            </button>
+            {menuOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 top-full z-20 mt-1 min-w-48 rounded-xl border border-border-subtle bg-surface-canvas py-1 shadow-xl"
+              >
+                {([
+                  ['edit', 'Edit details', 'edit'],
+                  ['role', 'Change role', 'swap_horiz'],
+                  ['permissions', 'Permissions matrix', 'tune'],
+                  ['pin', 'Reset PIN', 'pin'],
+                  ['remove', 'Remove from team', 'person_remove'],
+                ] as const).map(([action, label, icon]) => (
+                  <button
+                    key={action}
+                    type="button"
+                    role="menuitem"
+                    disabled={busy}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onAction(action);
+                    }}
+                    className={`w-full px-space-sm py-2 flex items-center gap-space-xs text-left font-label-sm text-label-sm disabled:opacity-50 ${
+                      action === 'remove'
+                        ? 'text-error hover:bg-error-container'
+                        : 'text-text-primary hover:bg-surface-subtle'
+                    }`}
+                  >
+                    <Icon name={icon} className="text-[16px]" />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
       <PermissionsPanel
         icon={manager ? 'verified_user' : 'point_of_sale'}
@@ -371,7 +435,7 @@ function LiveMemberCard({
         <span className="font-caption text-caption text-text-tertiary">
           Joined {member.createdAt ? new Date(member.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
         </span>
-        <MatrixButton />
+        <MatrixButton onClick={() => onAction('permissions')} />
       </div>
     </div>
   );
@@ -380,6 +444,10 @@ function LiveMemberCard({
 export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDirectoryScreenProps) {
   const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
   const [query, setQuery] = useState('');
+  const [actionDialog, setActionDialog] = useState<{ member: TeamMember; action: TeamMemberAction } | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<TeamMember | null>(null);
+  const [toast, setToast] = useState<StaffToast | null>(null);
+  const toastTimer = useRef<number | null>(null);
 
   const matches = (haystack: string) =>
     query.trim() === '' || haystack.toLowerCase().includes(query.trim().toLowerCase());
@@ -394,14 +462,21 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
   const live = hasApiConfig();
   const team = useTeam();
   const branchList = useBranches();
-  const { resend, remove } = useTeamMutations();
-  const [toast, setToast] = useState<string | null>(null);
-  const showToast = (message: string) => {
-    setToast(message);
-    window.setTimeout(() => setToast(null), 3000);
+  const { resend, remove, update, resetPin } = useTeamMutations();
+  const showToast = (message: string, tone: StaffToast['tone'] = 'success') => {
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    setToast({ message, tone });
+    toastTimer.current = window.setTimeout(() => setToast(null), 3000);
   };
+  useEffect(
+    () => () => {
+      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    },
+    [],
+  );
   useEffect(() => {
-    if (live && team.isError) showToast("Couldn't load your team. Try again shortly.");
+    if (live && team.isError) showToast("Couldn't load your team. Try again shortly.", 'error');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live, team.isError]);
   const members = team.data ?? [];
   const branchName = (member: TeamMember) =>
@@ -434,13 +509,58 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
   const resendInvite = (member: TeamMember) =>
     resend.mutate(
       { id: member.id, branchId: member.branchId ?? undefined },
-      { onSuccess: () => showToast(`Invite sent again to ${member.email}`), onError: (error) => showToast(apiErrorMessage(error)) },
+      {
+        onSuccess: () => showToast(`Invite sent again to ${member.email}`),
+        onError: (error) => showToast(apiErrorMessage(error), 'error'),
+      },
     );
   const cancelInvite = (member: TeamMember) =>
     remove.mutate(
       { id: member.id, branchId: member.branchId ?? undefined },
-      { onSuccess: () => showToast(`Invite for ${memberName(member)} cancelled`), onError: (error) => showToast(apiErrorMessage(error)) },
+      {
+        onSuccess: () => showToast(`Invite for ${memberName(member)} cancelled`),
+        onError: (error) => showToast(apiErrorMessage(error), 'error'),
+      },
     );
+  const runMemberAction = (member: TeamMember, action: LiveMemberAction) => {
+    if (action === 'branch') {
+      showToast('Branch reassignment is not available in the current team API', 'info');
+      return;
+    }
+    if (isOwnerMember(member)) {
+      showToast('The owner account cannot be changed here', 'error');
+      return;
+    }
+    if (action === 'pin') {
+      resetPin.mutate(
+        { id: member.id, branchId: member.branchId ?? undefined },
+        {
+          onSuccess: () => showToast(`New PIN sent to ${member.email}`),
+          onError: (error) => showToast(apiErrorMessage(error), 'error'),
+        },
+      );
+      return;
+    }
+    if (action === 'remove') {
+      setRemoveTarget(member);
+      return;
+    }
+    setActionDialog({ member, action });
+  };
+  const confirmMemberRemoval = () => {
+    if (!removeTarget) return;
+    const member = removeTarget;
+    remove.mutate(
+      { id: member.id, branchId: member.branchId ?? undefined },
+      {
+        onSuccess: () => {
+          setRemoveTarget(null);
+          showToast(`${memberName(member)} removed from the team`);
+        },
+        onError: (error) => showToast(apiErrorMessage(error), 'error'),
+      },
+    );
+  };
 
   return (
     <EnterpriseShell activeNav="business-staff" onNav={onNav}>
@@ -572,9 +692,10 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
                   key={member.id}
                   member={member}
                   branchName={branchName(member)}
-                  busy={resend.isPending || remove.isPending}
+                  busy={resend.isPending || remove.isPending || update.isPending || resetPin.isPending}
                   onResend={() => resendInvite(member)}
                   onCancel={() => cancelInvite(member)}
+                  onAction={(action) => runMemberAction(member, action)}
                 />
               ))}
             {live && !team.isLoading && !visibleMembers.length && (
@@ -957,7 +1078,7 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
                   </span>
                 </div>
                 <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-                  Deactivating or reassigning a team member automatically preserves all historical transaction ledgers,
+                  Removing a team member automatically preserves all historical transaction ledgers,
                   shift audit trails, and POS logs.
                 </p>
               </div>
@@ -1008,9 +1129,44 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
           </div>
         </div>
       </div>
+      {actionDialog && (
+        <TeamMemberActionDialog
+          key={`${actionDialog.member.id}-${actionDialog.action}`}
+          member={actionDialog.member}
+          action={actionDialog.action}
+          busy={update.isPending}
+          onClose={() => setActionDialog(null)}
+          onSave={(input) =>
+            update.mutate(
+              { id: actionDialog.member.id, branchId: actionDialog.member.branchId ?? undefined, input },
+              {
+                onSuccess: () => {
+                  setActionDialog(null);
+                  showToast('Team member updated');
+                },
+                onError: (error) => showToast(apiErrorMessage(error), 'error'),
+              },
+            )
+          }
+        />
+      )}
+      <ConfirmActionDialog
+        open={Boolean(removeTarget)}
+        onClose={() => setRemoveTarget(null)}
+        onConfirm={confirmMemberRemoval}
+        title="Remove team member?"
+        message={removeTarget ? `Remove ${memberName(removeTarget)} from this business? Their team access will be revoked.` : ''}
+        confirmLabel="Remove member"
+        tone="danger"
+        busy={remove.isPending}
+      />
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-on-surface text-inverse-on-surface px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
-          {toast}
+        <div className="fixed bottom-6 right-6 z-[70] max-w-md bg-inverse-surface text-inverse-on-surface px-space-md py-space-sm rounded-xl shadow-lg font-label-md text-label-md flex items-center gap-space-xs">
+          <Icon
+            name={toast.tone === 'error' ? 'error' : toast.tone === 'info' ? 'info' : 'check_circle'}
+            className={`text-[18px] shrink-0 ${toast.tone === 'success' ? 'text-badge-discount-text' : 'text-inverse-on-surface'}`}
+          />
+          <span>{toast.message}</span>
         </div>
       )}
     </EnterpriseShell>

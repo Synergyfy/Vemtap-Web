@@ -5,6 +5,7 @@ import { PRODUCT_TAG_CHIPS } from './productTags';
 import { Icon } from '../components/ui/Icon';
 import type { ProductDraft } from './productDraft';
 import { UserAvatar } from '../components/ui/UserAvatar';
+import { apiErrorMessage } from '../services/errorMessages';
 
 interface BusinessAddProductStep1ScreenProps {
   draft: ProductDraft;
@@ -40,9 +41,10 @@ export function BusinessAddProductStep1Screen({
 }: BusinessAddProductStep1ScreenProps) {
   // Live: the business's own categories; picked from the Sub-Category "Change" control.
   const editor = useLiveItemEditor('product');
+  const selectedCategory = editor.categories.find((category) => category.id === draft.categoryId);
   const categoryLevels = [
-    { caption: 'Primary Category', value: draft.primaryCategory, icon: 'restaurant', active: true },
-    { caption: 'Sub-Category', value: draft.subCategory, icon: 'outdoor_grill', active: false },
+    { caption: 'Primary Category', value: editor.live ? selectedCategory?.name ?? '' : draft.primaryCategory, icon: 'restaurant', active: true },
+    { caption: 'Sub-Category', value: editor.live ? selectedCategory?.name ?? '' : draft.subCategory, icon: 'outdoor_grill', active: false },
     { caption: 'Item Classification', value: draft.classification, icon: 'local_fire_department', active: false },
   ];
 
@@ -56,14 +58,22 @@ export function BusinessAddProductStep1Screen({
     setCreatingCategory(true);
     setCategoryError(null);
     try {
-      const created = await editor.createCategory(name);
-      onDraftChange({ categoryId: created.id, subCategory: created.name });
+      const created = await editor.createCategory(name, { kind: 'product' });
+      onDraftChange({ categoryId: created.id, primaryCategory: created.name, subCategory: created.name });
       setNewCategory('');
-    } catch {
-      setCategoryError('Could not create the category. Try again.');
+    } catch (error) {
+      setCategoryError(apiErrorMessage(error, 'Could not create the category. Try again.'));
     } finally {
       setCreatingCategory(false);
     }
+  };
+
+  const handleNext = () => {
+    if (editor.live && !editor.categories.some((category) => category.id === draft.categoryId)) {
+      setCategoryError('Choose or create a category before continuing.');
+      return;
+    }
+    onNext();
   };
 
   // The chips are the product's tags, kept on the draft so they're saved with it.
@@ -237,7 +247,12 @@ export function BusinessAddProductStep1Screen({
                           value={draft.categoryId ?? ''}
                           onChange={(event) => {
                             const found = editor.categories.find((category) => category.id === event.target.value);
-                            onDraftChange({ categoryId: event.target.value || undefined, subCategory: found?.name ?? '' });
+                            setCategoryError(null);
+                            onDraftChange({
+                              categoryId: event.target.value || undefined,
+                              primaryCategory: found?.name ?? '',
+                              subCategory: found?.name ?? '',
+                            });
                           }}
                         >
                           <option value="">{editor.categories.length ? 'No category' : 'No categories yet'}</option>
@@ -265,6 +280,11 @@ export function BusinessAddProductStep1Screen({
             </div>
             {editor.live && (
               <div className="flex flex-col gap-1 pt-space-xs">
+                {editor.categoriesError && (
+                  <span role="alert" className="font-caption text-caption text-error">
+                    {apiErrorMessage(editor.categoriesError, 'Could not load your categories.')}
+                  </span>
+                )}
                 <div className="flex items-center gap-space-xs">
                   <input
                     aria-label="New category name"
@@ -391,7 +411,7 @@ export function BusinessAddProductStep1Screen({
         <button
           className="w-full h-[52px] rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)] hover:bg-primary active:scale-[0.98] transition-all cursor-pointer"
           type="button"
-          onClick={onNext}
+          onClick={handleNext}
         >
           <span>Continue to Pricing &amp; Inventory</span>
           <Icon name="arrow_forward" className="text-[20px]" />

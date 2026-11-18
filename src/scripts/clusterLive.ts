@@ -44,6 +44,32 @@ const NO_IMAGE =
   'data:image/svg+xml;utf8,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"%3E%3Crect width="40" height="40" fill="%23e7e0ec"/%3E%3Cpath d="M11 27l6-7 4 5 3-3 5 5z" fill="%23938f99"/%3E%3Ccircle cx="25" cy="15" r="3" fill="%23938f99"/%3E%3C/svg%3E';
 
 const CATEGORIES: ClusterBusinessMember['category'][] = ['food', 'fashion', 'beauty', 'electronics', 'health', 'services'];
+type CoordinateValue = number | string | null | undefined;
+
+const validCoordinates = (latitudeValue: CoordinateValue, longitudeValue: CoordinateValue) => {
+  if (
+    latitudeValue == null ||
+    longitudeValue == null ||
+    (typeof latitudeValue === 'string' && !latitudeValue.trim()) ||
+    (typeof longitudeValue === 'string' && !longitudeValue.trim())
+  ) {
+    return null;
+  }
+  const latitude = Number(latitudeValue);
+  const longitude = Number(longitudeValue);
+  if (
+    !Number.isFinite(latitude) ||
+    latitude < -90 ||
+    latitude > 90 ||
+    !Number.isFinite(longitude) ||
+    longitude < -180 ||
+    longitude > 180 ||
+    (latitude === 0 && longitude === 0)
+  ) {
+    return null;
+  }
+  return { latitude, longitude };
+};
 
 export const toCluster = (mine: MyCluster): Cluster => ({
   id: mine.id,
@@ -123,7 +149,6 @@ const toMember = (member: ClusterMember, clusterId: string): ClusterBusinessMemb
   hours: '—',
   bio: member.bio || '',
   dealsCount: member.dealsCount,
-  scansContributed: 0,
   topOffers: [],
 });
 
@@ -153,6 +178,12 @@ export function useLiveCluster() {
   const branches = useBranches();
   const queryClient = useQueryClient();
   const scope = activeBranchId ?? 'none';
+  const activeBranch = (branches.data ?? []).find((row) => row.id === activeBranchId);
+  const profileBranch = business.data?.branches?.find((row) => row.id === activeBranchId);
+  const savedCoordinates =
+    validCoordinates(activeBranch?.latitude, activeBranch?.longitude) ??
+    validCoordinates(profileBranch?.latitude, profileBranch?.longitude) ??
+    validCoordinates(business.data?.latitude, business.data?.longitude);
   const enabled = live && Boolean(activeBranchId);
 
   const detection = useQuery({
@@ -208,17 +239,16 @@ export function useLiveCluster() {
   });
   const leave = useMutation({ mutationFn: () => clustersService.leave(activeBranchId), onSuccess: refresh });
   const propose = useMutation({
-    mutationFn: (input: { name: string; address: string; kind: ClusterKind; description?: string }) => {
-      const branch = (branches.data ?? []).find((row) => row.id === activeBranchId);
-      const latitude = Number(branch?.latitude);
-      const longitude = Number(branch?.longitude);
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || (!latitude && !longitude)) {
-        return Promise.reject(new Error('Add this branch’s map location first, then propose a cluster.'));
+    mutationFn: (input: {
+      name: string;
+      kind: ClusterKind;
+      radiusMeters: number;
+      description?: string;
+    }) => {
+      if (!savedCoordinates) {
+        return Promise.reject(new Error('The active business branch needs a valid saved location to create a cluster.'));
       }
-      return clustersService.propose(
-        { ...input, city: branch?.city ?? undefined, state: branch?.state ?? undefined, latitude, longitude },
-        activeBranchId,
-      );
+      return clustersService.propose({ ...input, ...savedCoordinates }, activeBranchId);
     },
     onSuccess: refresh,
   });
@@ -240,6 +270,10 @@ export function useLiveCluster() {
     state,
     loading: detection.isLoading || mine.isLoading,
     error: detection.error ?? mine.error ?? members.error ?? showcase.error,
+    activeBranch,
+    hasSavedCoordinates: Boolean(savedCoordinates),
+    locationLoading: branches.isLoading || business.isLoading,
+    locationError: branches.error ?? business.error ?? null,
     detected: detected ? cardToCluster(detected) : null,
     detectReason: detection.data?.reason ?? null,
     refresh,

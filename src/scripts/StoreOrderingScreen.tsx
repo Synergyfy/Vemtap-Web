@@ -3,6 +3,7 @@ import { Icon } from '../components/ui/Icon';
 import { Logo } from '../components/ui/Logo';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessMobileDrawer } from '../components/BusinessMobileDrawer';
+import { OrderQrArt } from '../components/ui/OrderQrArt';
 import { useStoreOrdering } from '../context/StoreOrderingContext';
 import {
   STORE_ORDER_STATUS_CONFIG,
@@ -26,6 +27,9 @@ export function StoreOrderingScreen({
     updateOrderStatus,
     recordStorePayment,
     completeCollection,
+    assignStaff,
+    staffOptionsFor,
+    staffValueFor,
     qrCodes,
     settings,
     updateSettings,
@@ -39,7 +43,9 @@ export function StoreOrderingScreen({
   const [originFilter, setOriginFilter] = useState<'all' | 'storefront' | 'deals' | 'pos'>('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [search, setSearch] = useState('');
-  const [selectedOrder, setSelectedOrder] = useState<StoreOrder | null>(null);
+  // Keyed (not object) state so the sheet keeps reflecting live assignment/status changes.
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const selectedOrder = orders.find((o) => o.id === selectedOrderId || o.orderRef === selectedOrderId) ?? null;
 
   // Quick Action confirmation
   const [paymentModalOrder, setPaymentModalOrder] = useState<StoreOrder | null>(null);
@@ -88,29 +94,48 @@ export function StoreOrderingScreen({
     return true;
   });
 
+  /**
+   * Mobile parity with the desktop dashboard: payment, handover and POS
+   * completion all need a named person, so an unassigned order opens the
+   * detail sheet (where the picker lives) instead of being completed.
+   */
+  const requireCompleter = (order: StoreOrder) => {
+    if (order.assignedStaff) return true;
+    setSelectedOrderId(order.id);
+    showToast(
+      `Order ${order.orderRef}: assign the person completing this order under "Assigned Staff Member" first.`,
+    );
+    return false;
+  };
+
+  const completedBy = (order: StoreOrder) =>
+    order.statusHistory.find((h) => h.status === 'completed')?.staffName || order.assignedStaff || '';
+
   const handleAction = (order: StoreOrder, action: 'accept' | 'prep' | 'ready' | 'pay' | 'collect') => {
     if (action === 'accept') {
-      updateOrderStatus(order.id, 'accepted', 'Order accepted via Mobile');
-      showToast(`Order ${order.id} accepted.`);
+      const res = updateOrderStatus(order.id, 'accepted', 'Order accepted via Mobile');
+      showToast(res.ok ? `Order ${order.id} accepted.` : res.message);
     } else if (action === 'prep') {
-      updateOrderStatus(order.id, 'preparing', 'Preparation started');
-      showToast(`Order ${order.id} is preparing.`);
+      const res = updateOrderStatus(order.id, 'preparing', 'Preparation started');
+      showToast(res.ok ? `Order ${order.id} is preparing.` : res.message);
     } else if (action === 'ready') {
-      updateOrderStatus(order.id, 'ready', 'Marked ready for customer pickup');
-      showToast(`Order ${order.id} is ready for pickup.`);
+      const res = updateOrderStatus(order.id, 'ready', 'Marked ready for customer pickup');
+      showToast(res.ok ? `Order ${order.id} is ready for pickup.` : res.message);
     } else if (action === 'pay') {
+      if (!requireCompleter(order)) return;
       setPaymentRef(`POS-${Math.floor(10000 + Math.random() * 89999)}`);
       setPaymentModalOrder(order);
     } else if (action === 'collect') {
-      completeCollection(order.id);
-      showToast(`Order ${order.id} completed collection.`);
+      if (!requireCompleter(order)) return;
+      const res = completeCollection(order.id);
+      showToast(res.message);
     }
   };
 
   const handleConfirmPayment = () => {
     if (!paymentModalOrder) return;
-    recordStorePayment(paymentModalOrder.id, paymentMethod, paymentRef);
-    showToast(`Store payment recorded for ${paymentModalOrder.id}.`);
+    const res = recordStorePayment(paymentModalOrder.id, paymentMethod, paymentRef);
+    showToast(res.message);
     setPaymentModalOrder(null);
   };
 
@@ -307,7 +332,7 @@ export function StoreOrderingScreen({
                   return (
                     <div
                       key={order.id}
-                      onClick={() => setSelectedOrder(order)}
+                      onClick={() => setSelectedOrderId(order.id)}
                       className="p-3.5 rounded-2xl bg-surface-canvas border border-border-subtle shadow-xs space-y-2.5 active:bg-surface-subtle transition-colors cursor-pointer"
                     >
                       <div className="flex items-center justify-between">
@@ -360,6 +385,15 @@ export function StoreOrderingScreen({
 
                       <div className="text-caption text-text-secondary line-clamp-1 bg-surface-subtle p-2 rounded-lg">
                         {order.items.map((it) => `${it.name} ×${it.qty}`).join(', ')}
+                      </div>
+
+                      {/* Assigned staff (same column as the desktop table) */}
+                      <div className="flex items-center gap-1.5 text-[11px] text-text-secondary">
+                        <Icon name="badge" className="text-[13px] text-text-tertiary" />
+                        <span className="text-text-tertiary">Assigned:</span>
+                        <span className={`font-semibold ${order.assignedStaff ? 'text-text-primary' : 'text-amber-600'}`}>
+                          {order.assignedStaff || 'Unassigned'}
+                        </span>
                       </div>
 
                       {/* Action buttons row */}
@@ -449,6 +483,17 @@ export function StoreOrderingScreen({
                     <span className="text-[11px] text-text-tertiary">{qr.branchName}</span>
                   </div>
 
+                  <div className="flex flex-col items-center gap-2 rounded-xl bg-white p-3">
+                    {qr.destinationUrl ? (
+                      <OrderQrArt value={qr.destinationUrl} alt={`${qr.name} QR code`} size={128} />
+                    ) : (
+                      <p role="alert" className="font-caption text-caption text-error">QR destination is unavailable.</p>
+                    )}
+                    {qr.destinationUrl && (
+                      <p className="w-full break-all text-center font-caption text-caption text-text-secondary">{qr.destinationUrl}</p>
+                    )}
+                  </div>
+
                   <div className="grid grid-cols-3 gap-2 bg-surface-subtle p-2 rounded-xl text-center text-caption font-semibold">
                     <div>
                       <span className="text-[10px] text-text-tertiary block font-normal">Scans</span>
@@ -534,7 +579,7 @@ export function StoreOrderingScreen({
       {/* Mobile Order Detail Full Sheet */}
       {selectedOrder && (
         <div className="fixed inset-0 z-50 overflow-hidden flex flex-col justify-end">
-          <div className="fixed inset-0 bg-black/60" onClick={() => setSelectedOrder(null)} />
+          <div className="fixed inset-0 bg-black/60" onClick={() => setSelectedOrderId(null)} />
           <div className="relative w-full max-w-[430px] mx-auto bg-surface-canvas rounded-t-3xl max-h-[85vh] flex flex-col overflow-hidden z-10 shadow-2xl animate-in slide-in-from-bottom">
             <div className="p-4 border-b border-border-subtle flex items-center justify-between bg-surface-subtle">
               <div className="flex items-center gap-2">
@@ -543,7 +588,7 @@ export function StoreOrderingScreen({
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedOrder(null)}
+                onClick={() => setSelectedOrderId(null)}
                 className="w-8 h-8 rounded-full flex items-center justify-center text-text-secondary"
               >
                 <Icon name="close" className="text-[18px]" />
@@ -587,12 +632,77 @@ export function StoreOrderingScreen({
                 <span>Total Amount:</span>
                 <span className="text-primary text-[16px]">₦{selectedOrder.confirmedTotal.toLocaleString()}</span>
               </div>
+
+              {/* Assigned Staff Member (same control as the desktop drawer) */}
+              <div className="space-y-1">
+                <span className="font-bold text-text-primary text-caption uppercase block">
+                  Assigned Staff Member
+                </span>
+                <select
+                  value={staffValueFor(selectedOrder)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (!value) return;
+                    assignStaff(selectedOrder.id, value);
+                    const label =
+                      staffOptionsFor(selectedOrder).find((option) => option.value === value)?.label ?? value;
+                    showToast(`Order ${selectedOrder.orderRef} assigned to ${label}.`);
+                  }}
+                  className="w-full px-3 py-2 rounded-xl bg-surface-canvas border border-border text-body-sm text-on-surface focus:outline-hidden focus:border-primary"
+                >
+                  <option value="" disabled>
+                    Select a staff member…
+                  </option>
+                  {staffOptionsFor(selectedOrder).map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-text-tertiary">
+                  {selectedOrder.assignedStaff
+                    ? 'Recorded on every status change and in the history below.'
+                    : 'Required — this order cannot be marked complete until someone is assigned.'}
+                </p>
+              </div>
+
+              {/* Who completed the order (once it is closed) */}
+              {selectedOrder.status === 'completed' && completedBy(selectedOrder) && (
+                <div className="p-3 rounded-xl bg-badge-discount-bg border border-badge-discount-text/40 flex items-center justify-between gap-2">
+                  <span className="text-caption font-semibold text-badge-discount-text">Completed by</span>
+                  <span className="text-body-sm font-semibold text-text-primary">{completedBy(selectedOrder)}</span>
+                </div>
+              )}
+
+              {/* Audit status history (parity with the desktop drawer) */}
+              <div className="space-y-1.5">
+                <span className="font-bold text-text-primary text-caption uppercase block">
+                  Status History
+                </span>
+                {selectedOrder.statusHistory.length === 0 ? (
+                  <p className="text-caption text-text-tertiary">No status changes recorded yet.</p>
+                ) : (
+                  <div className="space-y-2 border-l-2 border-border-subtle pl-3 ml-2">
+                    {selectedOrder.statusHistory.map((hist, idx) => (
+                      <div key={idx} className="relative text-[11px]">
+                        <span className="absolute -left-[17px] top-1 w-2 h-2 rounded-full bg-primary ring-4 ring-surface-canvas" />
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold text-text-primary capitalize">{hist.status}</span>
+                          <span className="text-text-tertiary font-mono">{hist.timestamp}</span>
+                        </div>
+                        {hist.note && <span className="text-text-secondary block">{hist.note}</span>}
+                        {hist.staffName && <span className="text-text-tertiary block">By {hist.staffName}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="p-4 border-t border-border-subtle flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setSelectedOrder(null)}
+                onClick={() => setSelectedOrderId(null)}
                 className="flex-1 py-2.5 rounded-xl border border-border font-semibold text-caption"
               >
                 Close
@@ -602,7 +712,7 @@ export function StoreOrderingScreen({
                   type="button"
                   onClick={() => {
                     const o = selectedOrder;
-                    setSelectedOrder(null);
+                    setSelectedOrderId(null);
                     handleAction(o, 'pay');
                   }}
                   className="flex-1 py-2.5 rounded-xl bg-primary text-on-primary font-semibold text-caption"
@@ -624,6 +734,11 @@ export function StoreOrderingScreen({
             <p className="text-caption text-text-secondary">
               Confirm payment for {paymentModalOrder.id}: ₦{paymentModalOrder.confirmedTotal.toLocaleString()}
             </p>
+
+            <div className="p-2.5 rounded-lg bg-surface-subtle text-[11px] text-text-secondary">
+              <span className="font-semibold text-text-primary">Completed by: </span>
+              {paymentModalOrder.assignedStaff || 'Unassigned'}
+            </div>
 
             <div className="space-y-1">
               <label className="text-[11px] font-semibold text-text-primary">Tender</label>

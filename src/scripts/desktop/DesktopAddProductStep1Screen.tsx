@@ -8,6 +8,8 @@ import type { ProductDraft } from './desktopProductDraft';
 import { getCentralCategories, addCentralCategory, type CentralCategory } from '../catalogueData';
 import { CategoryImageField } from '../../components/CategoryImageField';
 import { PRODUCT_TAG_CHIPS } from '../productTags';
+import { apiErrorMessage } from '../../services/errorMessages';
+import { uploadDataUrlImage } from '../../services/uploadService';
 
 interface DesktopAddProductStep1ScreenProps {
   draft: ProductDraft;
@@ -70,49 +72,60 @@ export function DesktopAddProductStep1Screen({
   // Category management & inline category creation
   const [demoCategories, setCategories] = useState<CentralCategory[]>(() => getCentralCategories('product'));
   const categories = editor.live ? editor.categories : demoCategories;
-  const defaultCategoryId = editor.live ? '' : 'grills';
+  const defaultCategoryId = '';
   const [showInlineCategoryModal, setShowInlineCategoryModal] = useState(false);
   const [newCatName, setNewCatName] = useState('');
   const [newCatDescription, setNewCatDescription] = useState('');
   const [newCatIcon, setNewCatIcon] = useState('restaurant');
+  const [creatingCategory, setCreatingCategory] = useState(false);
   /** Optional category image (data URL) — categories never require an image. */
   const [newCatImage, setNewCatImage] = useState('');
 
-  const handleCreateCategoryInline = (e: React.FormEvent) => {
+  const handleCreateCategoryInline = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCatName.trim()) return;
+    const name = newCatName.trim();
+    if (!name || creatingCategory) return;
     if (editor.live) {
-      editor
-        .createCategory(newCatName.trim())
-        .then((created) => {
-          onDraftChange({ categoryId: created.id, subCategory: created.name });
-          setNewCatName('');
-          setNewCatDescription('');
-          setNewCatImage('');
-          setShowInlineCategoryModal(false);
-          showToast(`Category "${created.name}" created and selected!`);
-        })
-        .catch(() => showToast('Could not create the category. Try again.'));
+      setCreatingCategory(true);
+      try {
+        const imageUrl = newCatImage ? await uploadDataUrlImage(newCatImage, 'category') : undefined;
+        const created = await editor.createCategory(name, {
+          kind: 'product',
+          description: newCatDescription.trim(),
+          icon: newCatIcon,
+          ...(imageUrl ? { imageUrl } : {}),
+        });
+        onDraftChange({ categoryId: created.id, primaryCategory: created.name, subCategory: created.name });
+        setNewCatName('');
+        setNewCatDescription('');
+        setNewCatImage('');
+        setShowInlineCategoryModal(false);
+        showToast(`Category "${created.name}" created and selected.`);
+      } catch (error) {
+        showToast(apiErrorMessage(error, 'Could not create the category.'));
+      } finally {
+        setCreatingCategory(false);
+      }
       return;
     }
-    const slug = newCatName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
     const created = addCentralCategory({
       id: slug,
-      name: newCatName.trim(),
+      name,
       slug,
       type: 'product',
-      description: newCatDescription.trim() || `${newCatName.trim()} selections`,
+      description: newCatDescription.trim(),
       icon: newCatIcon,
       image: newCatImage || undefined,
-      productCount: 1,
+      productCount: 0,
       activeBranches: ['all'],
-      qrDestinationUrl: `/business/urban-grill-bistro-104/products?category=${slug}`,
+      qrDestinationUrl: '',
     });
     setCategories(getCentralCategories('product'));
     onDraftChange({
       categoryId: created.id,
+      primaryCategory: created.name,
       subCategory: created.name,
-      primaryCategory: 'Food & Dining',
     });
     setNewCatName('');
     setNewCatDescription('');
@@ -122,7 +135,7 @@ export function DesktopAddProductStep1Screen({
   };
 
   const handleNext = () => {
-    if (!draft.categoryId && !draft.subCategory) {
+    if (!categories.some((category) => category.id === draft.categoryId)) {
       showToast('Please select or create a category before continuing.');
       return;
     }
@@ -236,7 +249,7 @@ export function DesktopAddProductStep1Screen({
             </button>
             <button
               type="button"
-              onClick={onNext}
+              onClick={handleNext}
               className="px-space-lg py-space-xs rounded-xl bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary shadow-sm hover:shadow-md transition-all flex items-center gap-space-xs"
             >
               <span>Continue to Pricing &amp; Variants</span>
@@ -341,37 +354,40 @@ export function DesktopAddProductStep1Screen({
                 <div className="flex flex-col gap-1.5">
                   <label className="text-label-sm font-semibold text-text-primary flex items-center justify-between">
                     <span>Select Assigned Category</span>
-                    <span className="text-caption text-text-tertiary">{categories.length} Central Categories Available</span>
+                    <span className="text-caption text-text-tertiary">{categories.length} Categories Available</span>
                   </label>
                   <select
-                    value={draft.categoryId || defaultCategoryId}
+                    value={draft.categoryId ?? defaultCategoryId}
                     onChange={(e) => {
                       const selectedId = e.target.value;
                       const found = categories.find((c) => c.id === selectedId);
                       onDraftChange({
-                        categoryId: selectedId,
-                        subCategory: found ? found.name : draft.subCategory,
-                        primaryCategory: 'Food & Dining',
+                        categoryId: selectedId || undefined,
+                        subCategory: found?.name ?? '',
+                        primaryCategory: found?.name ?? '',
                       });
                     }}
                     className="w-full px-4 py-3 rounded-xl bg-surface-subtle border border-border text-body-md font-medium text-text-primary focus:outline-hidden focus:border-primary"
                   >
-                    {editor.live ? (
-                      <option value="" disabled>
-                        {categories.length ? 'Choose a category' : 'No categories yet — create one'}
-                      </option>
-                    ) : null}
+                    <option value="" disabled>
+                      {categories.length ? 'Choose a category' : 'No categories yet — create one'}
+                    </option>
                     {categories.map((cat) => (
                       <option key={cat.id} value={cat.id}>
                         {editor.live ? cat.name : `${cat.name} (${cat.productCount} items)`}
                       </option>
                     ))}
                   </select>
+                  {editor.live && editor.categoriesError && (
+                    <span role="alert" className="text-caption text-error">
+                      {apiErrorMessage(editor.categoriesError, 'Could not load your categories.')}
+                    </span>
+                  )}
                 </div>
 
                 {/* Selected Category Preview Info Card */}
                 {(() => {
-                  const activeCat = categories.find((c) => c.id === (draft.categoryId || defaultCategoryId)) || (editor.live ? undefined : categories[0]);
+                  const activeCat = categories.find((c) => c.id === (draft.categoryId ?? defaultCategoryId));
                   if (!activeCat) return null;
                   return (
                     <div className="p-space-md rounded-xl bg-surface-subtle/80 border border-border-subtle flex items-start gap-space-sm">
@@ -487,9 +503,10 @@ export function DesktopAddProductStep1Screen({
                       </button>
                       <button
                         type="submit"
+                        disabled={creatingCategory}
                         className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-on-primary font-semibold text-label-md shadow-sm"
                       >
-                        Save &amp; Select
+                        {creatingCategory ? 'Creating…' : 'Save & Select'}
                       </button>
                     </div>
                   </form>

@@ -88,7 +88,9 @@ export function ClusterMemberProfileModal({
             <div>
               <p className="text-[11px] text-text-tertiary">Cluster Footfall</p>
               <p className="font-semibold text-text-primary mt-0.5">
-                {member.scansContributed.toLocaleString()} scans contributed
+                {member.scansContributed == null
+                  ? 'Scan contribution data is not available yet'
+                  : `${member.scansContributed.toLocaleString()} scans contributed`}
               </p>
             </div>
           </div>

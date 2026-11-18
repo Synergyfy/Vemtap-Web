@@ -448,7 +448,7 @@ export function ClusterSystemScreen({
                     Your Business Footfall &amp; Engagement
                   </h3>
                   <p className="text-[11px] text-text-secondary">
-                    From Amaka Mall QR pass &amp; rotator
+                    From {live ? `${cluster?.name ?? 'your cluster'} QR pass & rotator` : 'Amaka Mall QR pass & rotator'}
                   </p>
                 </div>
                 <button
@@ -460,7 +460,7 @@ export function ClusterSystemScreen({
                 </button>
               </div>
 
-              <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
                 <div className="p-2.5 rounded-xl bg-surface-canvas border border-border-subtle">
                   <p className="text-base font-bold text-text-primary">
                     {fig(analytics.businessViews.toLocaleString())}
@@ -479,7 +479,18 @@ export function ClusterSystemScreen({
                   </p>
                   <p className="text-[10px] text-text-secondary">Clicks ({fig(`${analytics.businessCtr}%`)})</p>
                 </div>
+                <div className="p-2.5 rounded-xl bg-surface-canvas border border-border-subtle">
+                  <p className="text-base font-bold text-purple-600">
+                    {live ? '—' : (clusterState.memberRecord?.scansContributed ?? 0).toLocaleString()}
+                  </p>
+                  <p className="text-[10px] text-text-secondary">Scans Contributed</p>
+                </div>
               </div>
+              {live && (
+                <p className="text-[10px] text-text-secondary">
+                  Per-business scan totals are not available from live cluster analytics yet.
+                </p>
+              )}
             </div>
 
             {/* Member Directory Preview */}

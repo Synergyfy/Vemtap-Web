@@ -4,9 +4,8 @@ import { MerchantShell } from './MerchantShell';
 import { useStoreOrdering } from '../../context/StoreOrderingContext';
 import type { StoreOrderingSettings } from '../storeOrderingData';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
-import { useQuery } from '@tanstack/react-query';
+import { useTeam } from '../../hooks/business/useBranchesAndTeam';
 import { hasApiConfig } from '../../services/api/client';
-import { teamService } from '../../services/teamService';
 
 interface DesktopStoreOrderingSettingsScreenProps {
   onNav: (key: string) => void;
@@ -63,13 +62,9 @@ export function DesktopStoreOrderingSettingsScreen({ onNav }: DesktopStoreOrderi
         { key: 'maitama', name: 'Maitama Heights', address: 'Plot 14 Amazon Street, Maitama, Abuja' },
         { key: 'garki', name: 'Garki Branch', address: 'Area 11 Commercial District, Abuja' },
       ];
-  // Live: the business's real team (saved by member id); demo: sample staff names.
-  const team = useQuery({
-    queryKey: ['store-ordering', 'team'],
-    queryFn: () => teamService.list({ allBranches: true }),
-    enabled: live,
-    staleTime: 5 * 60_000,
-  });
+  // Live: the business's real team — the same query the Staff page uses — saved
+  // by member id; demo: sample staff names.
+  const team = useTeam();
   const staffOptions = live
     ? (team.data ?? []).map((member) => {
         const name = [member.firstName, member.lastName].filter(Boolean).join(' ') || member.email || 'Team member';

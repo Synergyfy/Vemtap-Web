@@ -109,24 +109,24 @@ export function DesktopBusinessOrderDetailScreen({
   ];
 
   const handleAccept = () => {
-    updateOrderStatus(currentOrder.id, 'accepted', 'Order accepted by store staff', 'Store Staff');
+    const res = updateOrderStatus(currentOrder.id, 'accepted', 'Order accepted by store staff', 'Store Staff');
     onAccept?.();
-    showToast(`Order #${currentOrder.orderRef} accepted and sent to kitchen`);
+    showToast(res.ok ? `Order #${currentOrder.orderRef} accepted and sent to kitchen` : res.message);
   };
 
   const handleStartPrep = () => {
-    updateOrderStatus(currentOrder.id, 'preparing', 'Preparation started', 'Store Staff');
-    showToast(`Order #${currentOrder.orderRef} marked as in preparation`);
+    const res = updateOrderStatus(currentOrder.id, 'preparing', 'Preparation started', 'Store Staff');
+    showToast(res.ok ? `Order #${currentOrder.orderRef} marked as in preparation` : res.message);
   };
 
   const handleMarkReady = () => {
-    updateOrderStatus(currentOrder.id, 'ready', 'Order ready for customer pickup', 'Store Staff');
-    showToast(`Order #${currentOrder.orderRef} marked ready for pickup`);
+    const res = updateOrderStatus(currentOrder.id, 'ready', 'Order ready for customer pickup', 'Store Staff');
+    showToast(res.ok ? `Order #${currentOrder.orderRef} marked ready for pickup` : res.message);
   };
 
   const handleCompleteHandover = () => {
-    updateOrderStatus(currentOrder.id, 'completed', 'Order handed over to customer', 'Store Staff');
-    showToast(`Order #${currentOrder.orderRef} completed!`);
+    const res = updateOrderStatus(currentOrder.id, 'completed', 'Order handed over to customer', 'Store Staff');
+    showToast(res.ok ? `Order #${currentOrder.orderRef} completed!` : res.message);
   };
 
   const handlePosHandoff = () => {

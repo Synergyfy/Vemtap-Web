@@ -886,7 +886,8 @@ function dealDetailPath(deal?: ClaimDealSummary | null): string {
  * reopens an unfinished business sign-up or setup from the bare entry URL.
  */
 function entryRoute(rawPath: string, authed: boolean, isDesktop: boolean, resume = false): Route {
-  const path = rawPath.replace(/\/+$/, '') || '/';
+  const url = new URL(rawPath, window.location.origin);
+  const path = url.pathname.replace(/\/+$/, '') || '/';
   // Public customer invite page — reachable signed-out via /join/{business-slug}.
   if (path.startsWith('/join/')) return 'customer-invite-join';
   if (path === ROUTE_PATH['gift-reject']) return 'gift-reject';
@@ -905,10 +906,12 @@ function entryRoute(rawPath: string, authed: boolean, isDesktop: boolean, resume
   if (direct && direct !== 'welcome' && direct !== 'home') {
     return guardRoute(direct, authed, isDesktop);
   }
-  const businessPathMatch = resolveBusinessPath(path);
+  const businessPathMatch = resolveBusinessPath(`${path}${url.search}`);
   if (businessPathMatch) {
     return guardRoute(
-      businessSectionRoute(businessPathMatch.section, businessPathMatch.business.venue, businessPathMatch.serviceSlug),
+      businessPathMatch.productId
+        ? 'product-detail'
+        : businessSectionRoute(businessPathMatch.section, businessPathMatch.business.venue, businessPathMatch.serviceSlug),
       authed,
       isDesktop,
     );
@@ -1278,7 +1281,7 @@ function AppInner() {
   /** A failed "Continue with Google", shown on the screen it started from. */
   const [googleError, setGoogleError] = useState<{ route: Route; message: string } | null>(null);
   const [selectedBusiness, setSelectedBusiness] = useState<BusinessProfileRef | null>(() => {
-    const match = resolveBusinessPath(window.location.pathname);
+    const match = resolveBusinessPath(`${window.location.pathname}${window.location.search}`);
     return match?.business ?? null;
   });
   const [confirmFrom, setConfirmFrom] = useState<'location-permission' | 'manual-location'>('location-permission');
@@ -1364,16 +1367,16 @@ function AppInner() {
   const [catalogueFrom, setCatalogueFrom] = useState<Route>('storefront');
   const [detailFrom, setDetailFrom] = useState<Route>('storefront-products');
   const [detailProduct, setDetailProduct] = useState<CatalogueProduct | null>(() => {
-    const match = resolveBusinessPath(window.location.pathname);
+    const match = resolveBusinessPath(`${window.location.pathname}${window.location.search}`);
     return (match?.productId ? findProduct(match.productId) : undefined) ?? null;
   });
   /** The live product/service page: `/business/<code>/products/<itemId>`. */
   const [liveItem, setLiveItem] = useState<{ code: string; id: string } | null>(() => {
-    const match = resolveBusinessPath(window.location.pathname);
+    const match = resolveBusinessPath(`${window.location.pathname}${window.location.search}`);
     return match?.productId ? { code: match.business.slug, id: match.productId } : null;
   });
   const [detailService, setDetailService] = useState<SpaCatalogueService | null>(() => {
-    const match = resolveBusinessPath(window.location.pathname);
+    const match = resolveBusinessPath(`${window.location.pathname}${window.location.search}`);
     return (match?.serviceSlug ? findSpaService(match.serviceSlug) : undefined) ?? null;
   });
   const [serviceFrom, setServiceFrom] = useState<Route>('spa-services');
@@ -1551,11 +1554,12 @@ function AppInner() {
 
   const openProduct = (id: string, display?: Partial<CatalogueProduct>, from?: Route) => {
     const base = findProduct(id);
-    if (!base) return;
     if (!selectedBusiness || selectedBusiness.venue !== 'urban') return;
-    setDetailProduct({ ...base, ...display, id: base.id });
+    if (!base && !hasApiConfig()) return;
+    setDetailProduct(base ? { ...base, ...display, id: base.id } : null);
+    setLiveItem({ code: selectedBusiness.slug, id });
     if (from) setDetailFrom(from);
-    const target = productPath(selectedBusiness.slug, base.id);
+    const target = productPath(selectedBusiness.slug, id);
     if (window.location.pathname !== target) window.history.pushState(null, '', target);
     setRouteState('product-detail');
   };
@@ -1775,9 +1779,12 @@ function AppInner() {
   }, [authed, route]);
 
   useEffect(() => {
+    const qrCatalogueAlias =
+      /^\/b\/[^/]+\/?$/.test(window.location.pathname) && route === 'storefront-products';
     const expected =
       route === 'customer-invite-join' ||
       route === 'not-found' ||
+      qrCatalogueAlias ||
       (route === 'claimed-deal' && passIdFromPath(window.location.pathname)) ||
       (route === 'deal-detail' && window.location.pathname.startsWith('/deals/'))
         ? null // dynamic /join/{slug}?invite=…, a deal's own link and unknown paths — never overwritten
@@ -1786,7 +1793,7 @@ function AppInner() {
       window.history.replaceState(null, '', expected);
     }
 
-    const pathMatch = resolveBusinessPath(window.location.pathname);
+    const pathMatch = resolveBusinessPath(`${window.location.pathname}${window.location.search}`);
     if (pathMatch) {
       setSelectedBusiness((prev) => (prev && prev.slug === pathMatch.business.slug ? prev : pathMatch.business));
     } else {
@@ -1795,7 +1802,7 @@ function AppInner() {
 
     const onPopState = () => {
       const path = window.location.pathname;
-      setRouteState(entryRoute(path, authed, isDesktop));
+      setRouteState(entryRoute(`${path}${window.location.search}`, authed, isDesktop));
       const orderRef = orderRefFromPath(path);
       if (orderRef) setActiveOrderRef(orderRef);
       const bookingRef = bookingRefFromPath(path);
@@ -1805,7 +1812,7 @@ function AppInner() {
       const conversationRef = conversationRefFromPath(path);
       if (conversationRef) setActiveConversation(conversationRef);
       if (authed && hasApiConfig() && isSignedOutPath(path)) setReturningToShell(true);
-      const match = resolveBusinessPath(path);
+      const match = resolveBusinessPath(`${path}${window.location.search}`);
       if (match) {
         setSelectedBusiness((prev) => (prev && prev.slug === match.business.slug ? prev : match.business));
       }
@@ -1824,7 +1831,7 @@ function AppInner() {
 
   useEffect(() => {
     if (route !== 'product-detail' || liveItem) return;
-    const match = resolveBusinessPath(window.location.pathname);
+    const match = resolveBusinessPath(`${window.location.pathname}${window.location.search}`);
     if (match?.productId) setLiveItem({ code: match.business.slug, id: match.productId });
     else setRouteState('discover');
   }, [route, liveItem]);
@@ -4686,13 +4693,21 @@ function AppInner() {
 
     case 'storefront-products':
       if (isDesktop)
-        return <DesktopAllProductsScreen onNav={feedNav} onBack={() => setRoute('storefront')} />;
+        return (
+          <DesktopAllProductsScreen
+            onNav={feedNav}
+            onBack={() => setRoute('storefront')}
+            businessCode={selectedBusiness?.slug}
+            onOpenProduct={(id, display) => openProduct(id, display, 'storefront-products')}
+          />
+        );
       return (
         <ProductsCatalogueScreen
           onBack={() => setRoute(catalogueFrom)}
           onListView={() => setRoute('storefront-menu')}
           onOpenProduct={(id, display) => openProduct(id, display, 'storefront-products')}
           onCheckout={startCheckout}
+          businessCode={selectedBusiness?.slug}
         />
       );
 
@@ -5669,14 +5684,12 @@ function AppInner() {
           <DesktopVerificationStatusCenterScreen
             onNav={businessPortalNav}
             onBack={() => setRoute('business-overview')}
-            onUpdateInfo={() => setRoute('business-verification')}
             onManageLocations={() => setRoute('hub-locations')}
           />
         );
       return (
         <VerificationStatusCenterScreen
           onBack={() => setRoute('business-overview')}
-          onUpdateInfo={() => setRoute('business-verification')}
           onManageLocations={() => setRoute('hub-locations')}
         />
       );
@@ -6326,7 +6339,6 @@ function AppInner() {
           <DesktopBusinessProfilePreviewStudioScreen
             onNav={businessPortalNav}
             onPreviewStorefront={() => setRoute('hub-storefront-preview')}
-            onEditProfile={() => setRoute('business-profile-studio')}
           />
         );
       return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;

@@ -10,7 +10,7 @@ import { ImportedProductsReview } from '../components/import/ImportedProductsRev
 import { useImportedProducts, resolveProductDisplayImage, saveImportedProducts, publishImportedProducts } from './productImport/importedProductStore';
 import { parseMoney } from './productImport/importRecords';
 import { summariseImport } from './productImport/importSummary';
-import { getCategoryImageByName, naira } from './catalogueData';
+import { getCategoryImageByName, getCentralCategories, naira } from './catalogueData';
 import type { ImportedProduct } from './productImport/importTypes';
 import { BusinessAddProductStep1Screen } from './BusinessAddProductStep1Screen';
 import { BusinessAddProductStep2Screen } from './BusinessAddProductStep2Screen';
@@ -25,6 +25,7 @@ import { BLANK_SERVICE_DRAFT, INITIAL_SERVICE_DRAFT, type ServiceDraft } from '.
 import { BLANK_PRODUCT_DRAFT, INITIAL_PRODUCT_DRAFT } from './productDraft';
 import { hasApiConfig } from '../services/api/client';
 import { useCatalogueItemMutations, useCatalogueItems } from '../hooks/business/useCatalogueItems';
+import { useCatalogueCategories } from '../hooks/business/useCatalogueCategories';
 import { useOffers } from '../hooks/business/useOffers';
 import { useOnboardingSync } from '../hooks/business/useOnboardingSync';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
@@ -61,6 +62,7 @@ interface CatalogItem {
   key: string;
   category: string;
   sku: string;
+  barcode?: string;
   statusLabel: string;
   statusDot: string;
   statusClass: string;
@@ -193,6 +195,7 @@ function importedToItem(product: ImportedProduct): CatalogItem {
     key: product.id,
     category: product.category || 'General',
     sku: product.sku || '—',
+    barcode: product.barcode || undefined,
     statusLabel: published ? 'Published' : product.needsReview ? 'Draft • Needs Review' : 'Imported Draft',
     statusDot: published ? 'bg-badge-discount-text' : 'bg-outline',
     statusClass: published ? 'text-badge-discount-text' : 'text-text-secondary',
@@ -225,6 +228,7 @@ function liveToItem(item: LiveCatalogueItem, offers: BusinessOffer[], branchCoun
     key: item.id,
     category: item.category?.name || (item.itemType === 'service' ? 'Service' : 'Product'),
     sku: item.sku || '—',
+    barcode: item.barcode ?? undefined,
     statusLabel: active ? 'Active & Published' : 'Hidden',
     statusDot: active ? 'bg-badge-discount-text' : 'bg-outline',
     statusClass: active ? 'text-badge-discount-text' : 'text-text-secondary',
@@ -252,14 +256,16 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
   // Live: the active branch's real catalogue; demo keeps the sample cards.
   const live = hasApiConfig();
   const itemsQuery = useCatalogueItems();
+  const categoriesQuery = useCatalogueCategories();
   const offersQuery = useOffers();
   const { branches } = useBusinessBranch();
   const { create, update } = useCatalogueItemMutations();
   const sync = useOnboardingSync();
   const liveItems = itemsQuery.data ?? [];
+  const categoryRows = live ? categoriesQuery.data ?? [] : getCentralCategories();
   const liveById = new Map(liveItems.map((item) => [item.id, item]));
   const [addOpen, setAddOpen] = useState(false);
-  const [tab, setTab] = useState('products');
+  const [tab, setTab] = useState<'products' | 'services' | 'categories'>('products');
   const [chip, setChip] = useState('All Status');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
@@ -371,7 +377,8 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
       query === '' ||
       item.name.toLowerCase().includes(query) ||
       item.category.toLowerCase().includes(query) ||
-      item.sku.toLowerCase().includes(query)
+      item.sku.toLowerCase().includes(query) ||
+      (item.barcode ?? '').toLowerCase().includes(query)
     );
   });
 
@@ -503,7 +510,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
             name: manualDraft.title,
             description: manualDraft.description,
             sku: manualDraft.skuCode,
-            barcode: '',
+            barcode: manualDraft.barcode,
             category: manualDraft.primaryCategory,
             price: parseMoney(manualDraft.basePrice),
             salePrice: parseMoney(manualDraft.comparePrice),
@@ -650,9 +657,9 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
         <div className="px-margin mb-space-xs">
           <div className="flex items-center bg-surface-container-high p-0.5 rounded-lg">
             {[
-              { key: 'products', label: live ? `Products (${liveCount('product')})` : 'Products (28)' },
-              { key: 'services', label: live ? `Services (${liveCount('service')})` : 'Services (14)' },
-              { key: 'categories', label: 'Categories (6)' },
+              { key: 'products' as const, label: live ? `Products (${liveCount('product')})` : 'Products (28)' },
+              { key: 'services' as const, label: live ? `Services (${liveCount('service')})` : 'Services (14)' },
+              { key: 'categories' as const, label: `Categories (${categoryRows.length})` },
             ].map((catalogTab) => {
               const active = tab === catalogTab.key;
               return (
@@ -672,7 +679,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
         </div>
 
         {/* Imported drafts banner */}
-        {draftImportCount > 0 && (
+        {draftImportCount > 0 && tab === 'products' && (
           <div className="px-margin mb-space-sm">
             <button
               className="w-full flex items-center gap-space-sm bg-surface-tint-blue rounded-xl px-space-sm py-space-xs text-left active:scale-[0.99] transition-all"
@@ -695,6 +702,53 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
           </div>
         )}
 
+        {tab === 'categories' && (
+          <div className="px-margin flex flex-col gap-2 pb-space-2xl">
+            {live && categoriesQuery.isLoading ? (
+              <p className="py-space-lg text-center font-body-md text-body-md text-text-secondary">Loading categories…</p>
+            ) : live && categoriesQuery.isError ? (
+              <p role="alert" className="py-space-lg text-center font-body-md text-body-md text-error">
+                {apiErrorMessage(categoriesQuery.error, 'Could not load your categories.')}
+              </p>
+            ) : categoryRows.length === 0 ? (
+              <div className="py-space-xl flex flex-col items-center text-center">
+                <div className="w-16 h-16 rounded-full bg-surface-container-high text-primary flex items-center justify-center mb-space-sm">
+                  <Icon name="category" className="text-[32px]" />
+                </div>
+                <h4 className="font-heading-sm text-heading-sm text-text-primary">No categories yet</h4>
+                <p className="font-body-md text-body-md text-text-secondary max-w-xs mt-1">
+                  Create a category while adding a product to see it here.
+                </p>
+              </div>
+            ) : (
+              categoryRows.map((entry) => {
+                const type = 'type' in entry ? entry.type : entry.kind ?? 'product';
+                const linkedItems = liveItems.filter(
+                  (item) => item.categoryId === entry.id || item.category?.id === entry.id,
+                ).length;
+                return (
+                  <div
+                    key={entry.id}
+                    className="bg-surface-canvas rounded-xl p-3 shadow-xs border border-border-subtle/50 flex items-center gap-3"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+                      <Icon name={entry.icon || (type === 'service' ? 'spa' : 'category')} className="text-[20px]" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="block font-label-md text-label-md font-semibold text-text-primary truncate">{entry.name}</span>
+                      <span className="font-caption text-caption text-text-secondary">
+                        {type === 'service' ? 'Service' : 'Product'} · {linkedItems} {type === 'service' ? 'services' : 'products'}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {tab !== 'categories' && (
+          <>
         {/* Search & Quick Filter */}
         <div className="px-margin flex flex-col gap-1.5 mb-space-sm">
           <div className="relative flex items-center w-full">
@@ -752,7 +806,9 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
                 <span className="flex items-center gap-1">
                   <span className="font-semibold text-text-primary">{item.category}</span>
                   <span>•</span>
-                  <span className="font-mono text-outline text-[10px]">{item.sku}</span>
+                  <span className="font-mono text-outline text-[10px]">
+                    {item.sku}{item.barcode ? ` · ${item.barcode}` : ''}
+                  </span>
                 </span>
                 <div className="flex items-center gap-1">
                   <span className={`w-1.5 h-1.5 rounded-full ${item.statusDot}`} />
@@ -918,6 +974,8 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
             </div>
           )}
         </div>
+          </>
+        )}
       </div>
 
       {/* Item Options Action Sheet */}
