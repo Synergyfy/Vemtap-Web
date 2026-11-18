@@ -1276,7 +1276,7 @@ function AppInner() {
   const [route, setRouteState] = useState<Route>(() =>
     GOOGLE_REDIRECT
       ? ((GOOGLE_REDIRECT.pending.from in ROUTE_PATH ? GOOGLE_REDIRECT.pending.from : 'welcome') as Route)
-      : entryRoute(`${window.location.pathname}${window.location.search}`, authed, isDesktop, true),
+      : entryRoute(window.location.pathname, authed, isDesktop, true),
   );
   /** A failed "Continue with Google", shown on the screen it started from. */
   const [googleError, setGoogleError] = useState<{ route: Route; message: string } | null>(null);
