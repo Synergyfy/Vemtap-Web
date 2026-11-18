@@ -40,6 +40,7 @@ export interface CatalogueProduct {
   id: string;
   name: string;
   sku?: string;
+  barcode?: string;
   desc: string;
   category: string; // Required link to CentralCategory id
   price: number;
@@ -432,8 +433,8 @@ export const SERVICE_CATEGORIES: CentralCategory[] = [
   },
 ];
 
-// In-memory / session persistent category store
-let memoryCategories: CentralCategory[] = [...CENTRAL_CATEGORIES, ...SERVICE_CATEGORIES];
+// The business catalogue starts empty; live categories come from the API.
+let memoryCategories: CentralCategory[] = [];
 
 export function getCentralCategories(type?: 'product' | 'service'): CentralCategory[] {
   if (!type) return memoryCategories.filter((c) => !c.isArchived);

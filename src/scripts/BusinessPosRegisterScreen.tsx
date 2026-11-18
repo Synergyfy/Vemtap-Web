@@ -82,7 +82,12 @@ export function BusinessPosRegisterScreen({
     const q = query.trim().toLowerCase();
     return allProducts.filter((p) => {
       const inCategory = category === 'all' || p.category === category;
-      const matches = !q || p.name.toLowerCase().includes(q) || (p.desc ?? '').toLowerCase().includes(q);
+      const matches =
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        (p.desc ?? '').toLowerCase().includes(q) ||
+        (p.sku ?? '').toLowerCase().includes(q) ||
+        (p.barcode ?? '').toLowerCase().includes(q);
       return inCategory && matches;
     });
   }, [query, category, allProducts]);
@@ -132,12 +137,11 @@ export function BusinessPosRegisterScreen({
     if (e) e.preventDefault();
     const clean = manualSku.trim().toLowerCase();
     if (!clean) return;
-    const match = allProducts.find(
-      (p) =>
-        (p.sku ?? '').toLowerCase() === clean ||
-        p.name.toLowerCase().includes(clean) ||
-        (p.desc ?? '').toLowerCase().includes(clean),
-    );
+    const match =
+      allProducts.find(
+        (p) => (p.barcode ?? '').trim().toLowerCase() === clean || (p.sku ?? '').trim().toLowerCase() === clean,
+      ) ??
+      allProducts.find((p) => p.name.toLowerCase().includes(clean) || (p.desc ?? '').toLowerCase().includes(clean));
     if (match) {
       addProduct(match.id, match.name, match.price);
       setManualSku('');
@@ -257,6 +261,22 @@ export function BusinessPosRegisterScreen({
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter') return;
+                event.preventDefault();
+                const scanned = query.trim().toLowerCase();
+                const match = allProducts.find(
+                  (product) =>
+                    (product.barcode ?? '').trim().toLowerCase() === scanned ||
+                    (product.sku ?? '').trim().toLowerCase() === scanned,
+                );
+                if (match) {
+                  addProduct(match.id, match.name, match.price);
+                  setQuery('');
+                } else if (scanned) {
+                  showToast(`No item found for "${query.trim()}"`);
+                }
+              }}
               placeholder="Search menu items…"
               autoComplete="off"
               className="flex-1 min-w-0 bg-transparent outline-none font-label-sm text-label-sm text-on-surface placeholder:text-text-tertiary"
@@ -706,7 +726,9 @@ export function BusinessPosRegisterScreen({
                     {scannerMode === 'barcode' ? 'Barcode Scanner' : 'QR Code Scanner'}
                   </h3>
                   <p className="font-caption text-caption text-text-secondary">
-                    {scannerMode === 'barcode' ? 'Align product barcode in frame' : 'Scan customer or item QR code'}
+                    {scannerMode === 'barcode'
+                      ? 'Scan with a connected USB or Bluetooth barcode reader'
+                      : 'Scan customer or item QR code'}
                   </p>
                 </div>
               </div>
@@ -720,16 +742,18 @@ export function BusinessPosRegisterScreen({
               </button>
             </div>
 
-            {/* Viewfinder simulation */}
-            <div className="relative w-full h-48 rounded-2xl bg-black/90 overflow-hidden flex items-center justify-center border-2 border-primary/50 shadow-inner">
-              <div className="absolute inset-x-8 top-1/2 -translate-y-1/2 h-28 border-2 border-dashed border-primary/60 rounded-xl pointer-events-none flex items-center justify-center">
-                {/* Laser scan line */}
-                <div className="w-full h-0.5 bg-primary shadow-[0_0_12px_rgba(6,108,244,1)] animate-pulse" />
+            {scannerMode === 'barcode' ? (
+              <p className="rounded-xl bg-surface-container px-3 py-3 font-caption text-caption text-text-secondary">
+                Scan with a connected USB or Bluetooth barcode reader. The reader types the code here and submits it
+                with Enter.
+              </p>
+            ) : (
+              <div className="relative w-full h-48 rounded-2xl bg-black/90 overflow-hidden flex items-center justify-center border-2 border-primary/50 shadow-inner">
+                <span className="font-caption text-caption text-white/80 bg-black/60 px-3 py-1 rounded-full z-10">
+                  Enter a QR value below to search
+                </span>
               </div>
-              <span className="font-caption text-caption text-white/80 bg-black/60 px-3 py-1 rounded-full z-10">
-                Camera active · ready to scan
-              </span>
-            </div>
+            )}
 
             {/* Quick simulate tap for testing (demo only) */}
             {!live && (
@@ -763,7 +787,8 @@ export function BusinessPosRegisterScreen({
                 type="text"
                 value={manualSku}
                 onChange={(e) => setManualSku(e.target.value)}
-                placeholder="Or type SKU / item name..."
+                autoFocus={scannerMode === 'barcode'}
+                placeholder={scannerMode === 'barcode' ? 'Scan or enter product barcode…' : 'Enter QR value or item name…'}
                 className="flex-1 h-10 px-3 rounded-xl bg-surface-container font-caption text-caption text-on-surface outline-none border border-transparent focus:border-primary"
               />
               <button

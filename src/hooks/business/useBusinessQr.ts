@@ -19,6 +19,8 @@ export function useBusinessQr() {
   const qr = summary.data?.business.qr;
   return {
     live,
+    loading: summary.isLoading,
+    error: summary.isError,
     url: qr?.url ?? null,
     /** Shown without the protocol, e.g. `vemtap.com/b/7ZP2UF75H`. */
     link: qr?.url ? qr.url.replace(/^https?:\/\//, '') : null,

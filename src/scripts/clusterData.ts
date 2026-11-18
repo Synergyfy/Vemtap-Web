@@ -11,6 +11,28 @@
 export type ClusterType = 'mall' | 'plaza' | 'market' | 'commercial-axis' | 'strip';
 export type ShowcaseEntityType = 'deal' | 'product' | 'service' | 'profile';
 
+export const CLUSTER_TYPE_LABELS: Record<ClusterType, string> = {
+  mall: 'Shopping Mall',
+  plaza: 'Commercial Plaza',
+  market: 'Open Market / Bazaar',
+  'commercial-axis': 'Shopping Street / Business Area',
+  strip: 'Shopping Arcade / Row of Shops',
+};
+
+const LOCAL_CLUSTER_RADII = [300, 500, 1000, 2000, 3000, 4000, 5000];
+const MARKET_CLUSTER_RADII = Array.from({ length: 15 }, (_, index) => (index + 1) * 1000);
+
+export const CLUSTER_RADIUS_SETTINGS: Record<ClusterType, { options: number[]; defaultRadius: number }> = {
+  mall: { options: LOCAL_CLUSTER_RADII, defaultRadius: 1000 },
+  plaza: { options: LOCAL_CLUSTER_RADII, defaultRadius: 1000 },
+  market: { options: MARKET_CLUSTER_RADII, defaultRadius: 5000 },
+  'commercial-axis': { options: LOCAL_CLUSTER_RADII, defaultRadius: 1000 },
+  strip: { options: LOCAL_CLUSTER_RADII, defaultRadius: 1000 },
+};
+
+export const formatClusterRadius = (meters: number) =>
+  meters >= 1000 ? `${Number((meters / 1000).toFixed(1))} km` : `${meters} m`;
+
 export interface ClusterQRCode {
   url: string;
   displayCode: string;
@@ -88,7 +110,7 @@ export interface ClusterBusinessMember {
   hours: string;
   bio: string;
   dealsCount: number;
-  scansContributed: number;
+  scansContributed?: number;
   topOffers: Array<{ title: string; price: number; discount?: string }>;
 }
 
@@ -1091,7 +1113,7 @@ export function createCluster(data: {
   const updatedClusters = [newCluster, ...state.allClusters];
   setStored(STORAGE_KEYS.CLUSTERS, updatedClusters);
 
-  joinCluster(newCluster.id, data.unitOrSuite || 'Suite 1');
+  joinCluster(newCluster.id, data.unitOrSuite ?? '');
   return newCluster;
 }
 

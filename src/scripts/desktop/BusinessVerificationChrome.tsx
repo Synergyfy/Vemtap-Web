@@ -4,6 +4,7 @@ import { Logo } from '../../components/ui/Logo';
 import { BusinessSetupProgress } from '../../components/BusinessSetupProgress';
 import { useBusinessSetupNav } from '../businessSetup';
 import { UserAvatar } from '../../components/ui/UserAvatar';
+import { BusinessPortalChrome } from './BusinessPortalChrome';
 
 export type BusinessVerificationNavKey =
   | 'profile'
@@ -21,6 +22,8 @@ interface BusinessVerificationChromeProps {
   activeNav?: BusinessVerificationNavKey;
   onNav?: (key: BusinessVerificationNavKey) => void;
   onBrand?: () => void;
+  inDashboard?: boolean;
+  dashboardNav?: (key: string) => void;
 }
 
 export function BusinessVerificationChrome({
@@ -28,8 +31,17 @@ export function BusinessVerificationChrome({
   activeNav: _activeNav = 'trust',
   onNav,
   onBrand,
+  inDashboard = false,
+  dashboardNav,
 }: BusinessVerificationChromeProps) {
   const setupNav = useBusinessSetupNav();
+  if (inDashboard) {
+    return (
+      <BusinessPortalChrome activeNav="more-verification" onNav={dashboardNav} onBrand={onBrand}>
+        {children}
+      </BusinessPortalChrome>
+    );
+  }
   return (
     <div className="w-full min-h-screen bg-background font-body-md text-body-md text-on-surface antialiased flex flex-col">
       <header className="fixed top-0 left-0 right-0 z-50 bg-surface-canvas/95 backdrop-blur-md shadow-[0_1px_8px_rgba(0,0,0,0.04)]">

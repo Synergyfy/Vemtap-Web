@@ -19,6 +19,7 @@ interface StockRow {
   name: string;
   category: string;
   sku: string;
+  barcode?: string;
   unit: number;
   onHand: number;
   reorder: number;
@@ -216,6 +217,7 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
               name: item.name,
               category: item.category?.name ?? 'Uncategorised',
               sku: item.sku ?? '—',
+              barcode: item.barcode ?? undefined,
               unit: product.price,
               onHand,
               reorder,
@@ -265,7 +267,8 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
       const matchesQuery =
         !query ||
         row.name.toLowerCase().includes(query.toLowerCase()) ||
-        row.sku.toLowerCase().includes(query.toLowerCase());
+        row.sku.toLowerCase().includes(query.toLowerCase()) ||
+        (row.barcode ?? '').toLowerCase().includes(query.toLowerCase());
       if (!matchesQuery) return false;
       if (filter === 'low') return row.status === 'low' || row.status === 'critical';
       if (filter === 'eighty-sixed') return row.status === 'eighty-sixed' || (!live && eightySix[row.id]);
@@ -322,7 +325,7 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search name or SKU…"
+                placeholder="Search name, SKU or barcode…"
                 className="h-11 w-full sm:w-64 pl-10 pr-3 rounded-lg bg-surface text-text-primary placeholder:text-text-tertiary font-label-md text-label-md focus:outline-none focus:ring-2 focus:ring-primary"
               />
             </div>

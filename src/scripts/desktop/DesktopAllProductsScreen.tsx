@@ -3,10 +3,14 @@ import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { useCart } from '../../context/CartContext';
 import { URBAN_PRODUCTS, naira, type CatalogueProduct } from '../catalogueData';
+import { hasApiConfig } from '../../services/api/client';
+import { usePublicBusiness } from '../../hooks/usePublicBusiness';
 
 interface DesktopAllProductsScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onBack: () => void;
+  businessCode?: string;
+  onOpenProduct: (productId: string, display?: Partial<CatalogueProduct>) => void;
 }
 
 const CATEGORIES: { key: string; label: string }[] = [
@@ -18,24 +22,42 @@ const CATEGORIES: { key: string; label: string }[] = [
   { key: 'drinks', label: 'Drinks' },
 ];
 
-export function DesktopAllProductsScreen({ onNav, onBack }: DesktopAllProductsScreenProps) {
+export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenProduct }: DesktopAllProductsScreenProps) {
   const cart = useCart();
-  // Category QR links land here with ?category=<id> — open pre-filtered while the
-  // category tabs stay available for easy navigation.
-  const [category, setCategory] = useState(() => {
-    const param = new URLSearchParams(window.location.search).get('category');
-    return param && CATEGORIES.some((item) => item.key === param) ? param : 'all';
-  });
+  const live = hasApiConfig();
+  const publicBusiness = usePublicBusiness(businessCode);
+  const [category, setCategory] = useState(() => new URLSearchParams(window.location.search).get('category') ?? 'all');
   const [query, setQuery] = useState('');
+  const sourceProducts: CatalogueProduct[] = live
+    ? publicBusiness.products.map((item) => ({
+        id: item.id,
+        name: item.name,
+        desc: item.description ?? '',
+        category: item.categoryId ?? item.category ?? '',
+        price: item.price,
+        image: item.image ?? '',
+        imageAlt: item.name,
+      }))
+    : URBAN_PRODUCTS;
+  const categories = live
+    ? [
+        { key: 'all', label: 'All Products' },
+        ...[...new Map(
+          publicBusiness.products
+            .filter((item) => item.categoryId || item.category)
+            .map((item) => [item.categoryId ?? item.category ?? '', { key: item.categoryId ?? item.category ?? '', label: item.category ?? 'Category' }]),
+        ).values()],
+      ]
+    : CATEGORIES;
 
   const products = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return URBAN_PRODUCTS.filter(
+    return sourceProducts.filter(
       (product) =>
         (category === 'all' || product.category === category) &&
         (!needle || product.name.toLowerCase().includes(needle) || product.desc.toLowerCase().includes(needle)),
     );
-  }, [category, query]);
+  }, [category, query, sourceProducts]);
 
   const addToCart = (product: CatalogueProduct) => {
     cart.add({ id: product.id, name: product.name, price: product.price, image: product.image, productId: product.id });
@@ -52,7 +74,7 @@ export function DesktopAllProductsScreen({ onNav, onBack }: DesktopAllProductsSc
               className="hover:text-primary transition-colors flex items-center gap-1"
             >
               <Icon name="arrow_back" className="text-[15px]" />
-              <span>Urban Grill &amp; Bistro</span>
+              <span>{live ? publicBusiness.business?.name ?? 'Business' : 'Urban Grill &amp; Bistro'}</span>
             </button>
             <span className="text-outline-variant">/</span>
             <span className="text-on-surface font-semibold">All Products</span>
@@ -60,9 +82,11 @@ export function DesktopAllProductsScreen({ onNav, onBack }: DesktopAllProductsSc
 
           <div className="flex items-end justify-between gap-4">
             <div>
-              <h1 className="font-heading-lg text-heading-lg text-on-surface font-bold">All Products</h1>
+              <h1 className="font-heading-lg text-heading-lg text-on-surface font-bold">
+                {live ? publicBusiness.business?.name ?? 'Business storefront' : 'All Products'}
+              </h1>
               <p className="font-body-md text-body-md text-text-secondary">
-                Full Urban Grill &amp; Bistro catalogue — {URBAN_PRODUCTS.length} items priced in Nigerian Naira (₦).
+                {live ? `Full catalogue — ${products.length} items.` : `Full Urban Grill & Bistro catalogue — ${products.length} items priced in Nigerian Naira (₦).`}
               </p>
             </div>
             <button
@@ -98,7 +122,7 @@ export function DesktopAllProductsScreen({ onNav, onBack }: DesktopAllProductsSc
               />
             </div>
             <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              {CATEGORIES.map((item) => (
+              {categories.map((item) => (
                 <button
                   key={item.key}
                   type="button"
@@ -128,15 +152,17 @@ export function DesktopAllProductsScreen({ onNav, onBack }: DesktopAllProductsSc
               <div className="w-12 h-12 rounded-full bg-surface-subtle flex items-center justify-center text-text-tertiary">
                 <Icon name="search_off" className="text-[24px]" />
               </div>
-              <p className="font-label-md text-label-md text-text-secondary">No products match your search</p>
-              <p className="font-caption text-caption text-text-tertiary">Try another dish, cut or ingredient</p>
+              <p className="font-label-md text-label-md text-text-secondary">
+                {live && publicBusiness.loading ? 'Loading products…' : 'No products match this category'}
+              </p>
+              {!live && <p className="font-caption text-caption text-text-tertiary">Try another dish, cut or ingredient</p>}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
               {products.map((product) => (
                 <div
                   key={product.id}
-                  onClick={() => onNav('product-detail')}
+                  onClick={() => onOpenProduct(product.id, product)}
                   className="group bg-surface-canvas rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col cursor-pointer"
                 >
                   <div className="relative h-44 w-full overflow-hidden bg-surface-container">
@@ -161,13 +187,13 @@ export function DesktopAllProductsScreen({ onNav, onBack }: DesktopAllProductsSc
                     )}
                   </div>
                   <div className="p-4 flex flex-col gap-2 flex-1">
-                    <div className="flex items-center gap-1.5">
+                    {(product.rating || product.reviews) && <div className="flex items-center gap-1.5">
                       <div className="flex items-center text-primary">
                         <Icon name="star" className="text-[14px]" filled />
-                        <span className="font-caption text-caption font-bold ml-0.5 text-on-surface">{product.rating ?? '4.8'}</span>
+                        {product.rating && <span className="font-caption text-caption font-bold ml-0.5 text-on-surface">{product.rating}</span>}
                       </div>
-                      <span className="font-caption text-caption text-text-tertiary">{product.reviews ?? '(32)'}</span>
-                    </div>
+                      {product.reviews && <span className="font-caption text-caption text-text-tertiary">{product.reviews}</span>}
+                    </div>}
                     <h3 className="font-heading-sm text-heading-sm text-on-surface group-hover:text-primary transition-colors line-clamp-1">
                       {product.name}
                     </h3>

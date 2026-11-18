@@ -153,7 +153,7 @@ export function DesktopProductPublishedScreen({
                     </span>
                   </div>
                   <span className="px-2.5 py-0.5 rounded-full bg-surface-container font-caption text-caption text-on-surface-variant font-medium">
-                    SKU: {draft.skuCode}
+                    SKU: {draft.skuCode}{draft.barcode ? ` · Barcode: ${draft.barcode}` : ''}
                   </span>
                 </div>
                 <div className="relative rounded-xl overflow-hidden aspect-[16/10] bg-surface-container mb-space-md group">

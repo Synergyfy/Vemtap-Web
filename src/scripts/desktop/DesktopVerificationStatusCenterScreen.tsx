@@ -3,10 +3,10 @@ import { Icon } from '../../components/ui/Icon';
 import { VerificationCheckSheet } from '../../components/sheets/VerificationCheckSheet';
 import { useVerificationSummary } from '../../hooks/business/useVerification';
 import { BusinessPortalChrome, type BusinessPortalNavKey } from './BusinessPortalChrome';
+import { DashboardIdentityVerificationFlow } from '../DashboardIdentityVerificationFlow';
 
 interface DesktopVerificationStatusCenterScreenProps {
   onBack: () => void;
-  onUpdateInfo: () => void;
   onManageLocations?: () => void;
   onBrand?: () => void;
   /** Dashboard rail navigation — keeps the status centre inside the portal. */
@@ -29,7 +29,6 @@ const TRUST_PATH = 'M0 40 L30 36 L60 38 L90 28 L120 32 L150 18 L180 20 L210 12 L
 
 export function DesktopVerificationStatusCenterScreen({
   onBack,
-  onUpdateInfo,
   onManageLocations,
   onBrand,
   onNav,
@@ -39,6 +38,8 @@ export function DesktopVerificationStatusCenterScreen({
   const live = summary.live;
   const [sheet, setSheet] = useState<'id' | 'cac' | null>(null);
   const [letterRequested, setLetterRequested] = useState(false);
+  const [identityFlowOpen, setIdentityFlowOpen] = useState(false);
+  const [identityNotice, setIdentityNotice] = useState<string | null>(null);
   const branchCount = summary.locations.length;
   const branchNames = summary.locations.map((branch) => branch.name).join(' & ');
   const railChecks = live
@@ -58,9 +59,34 @@ export function DesktopVerificationStatusCenterScreen({
     : RAIL_CHECKS;
   const pill = (ok: boolean) =>
     ok || !live ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary';
+  const startIdentity = () => {
+    setSheet(null);
+    setIdentityNotice(null);
+    setIdentityFlowOpen(true);
+  };
+
+  if (identityFlowOpen) {
+    return (
+      <DashboardIdentityVerificationFlow
+        desktop
+        onNav={onNav}
+        onBack={() => setIdentityFlowOpen(false)}
+        onComplete={(result) => {
+          setIdentityFlowOpen(false);
+          setIdentityNotice(result === 'success' ? 'Your identity is verified.' : 'Your identity details were submitted for review.');
+        }}
+      />
+    );
+  }
+
   return (
     <BusinessPortalChrome activeNav="more-verification" onNav={onNav} onBrand={onBrand}>
       <div className="max-w-6xl mx-auto py-space-lg px-margin flex flex-col gap-space-xl w-full">
+        {identityNotice && (
+          <p role="status" className="rounded-xl bg-badge-discount-bg px-space-sm py-space-xs font-label-md text-label-md text-badge-discount-text">
+            {identityNotice}
+          </p>
+        )}
         <section className="relative overflow-hidden rounded-xl bg-surface-container-lowest shadow-sm">
           <div className="absolute -right-20 -top-24 w-80 h-80 rounded-full bg-primary/5 pointer-events-none blur-2xl" />
           <div className="p-space-xl flex flex-col lg:flex-row lg:items-center justify-between gap-space-lg relative z-10">
@@ -444,7 +470,7 @@ export function DesktopVerificationStatusCenterScreen({
               <button
                 className="w-full h-11 rounded-lg bg-surface-subtle hover:bg-surface-container-high text-text-primary font-button-secondary text-button-secondary font-semibold transition-colors flex items-center justify-center gap-space-xs shadow-sm"
                 type="button"
-                onClick={onUpdateInfo}
+                onClick={startIdentity}
               >
                 <Icon name="edit_document" className="text-[18px]" />
                 <span>Update Verification Information</span>
@@ -527,7 +553,7 @@ export function DesktopVerificationStatusCenterScreen({
           live={live}
           demo={DEMO_CERTIFICATE}
           onClose={() => setSheet(null)}
-          onStart={onUpdateInfo}
+          onStart={startIdentity}
         />
       )}
     </BusinessPortalChrome>

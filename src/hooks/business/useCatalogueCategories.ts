@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { categoriesService, type CatalogueCategory, type CategoryDetails } from '../../services/categoriesService';
+import { hasApiConfig } from '../../services/api/client';
 
 export const categoriesKeys = { all: ['catalogue-categories'] as const };
 
 export function useCatalogueCategories() {
-  return useQuery({ queryKey: categoriesKeys.all, queryFn: categoriesService.list });
+  return useQuery({ queryKey: categoriesKeys.all, queryFn: categoriesService.list, enabled: hasApiConfig() });
 }
 
 export type CategoryMutation =

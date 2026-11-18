@@ -8,10 +8,10 @@ import {
 import { useVerificationSummary } from '../hooks/business/useVerification';
 import { UserAvatar } from '../components/ui/UserAvatar';
 import { VerificationCheckSheet } from '../components/sheets/VerificationCheckSheet';
+import { DashboardIdentityVerificationFlow } from './DashboardIdentityVerificationFlow';
 
 interface VerificationStatusCenterScreenProps {
   onBack: () => void;
-  onUpdateInfo: () => void;
   onManageLocations?: () => void;
 }
 
@@ -22,9 +22,11 @@ const BUSINESS_ALT =
 
 type CertificateModal = 'id' | 'cac' | null;
 
-export function VerificationStatusCenterScreen({ onBack, onUpdateInfo, onManageLocations }: VerificationStatusCenterScreenProps) {
+export function VerificationStatusCenterScreen({ onBack, onManageLocations }: VerificationStatusCenterScreenProps) {
   const [modal, setModal] = useState<CertificateModal>(null);
   const [letterSent, setLetterSent] = useState(false);
+  const [identityFlowOpen, setIdentityFlowOpen] = useState(false);
+  const [identityNotice, setIdentityNotice] = useState<string | null>(null);
 
   const draft = INITIAL_VERIFICATION_DRAFT;
   const idConfig = ID_TYPE_CONFIG[draft.idType];
@@ -36,6 +38,24 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo, onManageL
   const branchWord = `${branchCount} ${branchCount === 1 ? 'Location' : 'Locations'}`;
   const pill = (ok: boolean) =>
     ok || !live ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary';
+  const startIdentity = () => {
+    setModal(null);
+    setIdentityNotice(null);
+    setIdentityFlowOpen(true);
+  };
+
+  if (identityFlowOpen) {
+    return (
+      <DashboardIdentityVerificationFlow
+        desktop={false}
+        onBack={() => setIdentityFlowOpen(false)}
+        onComplete={(result) => {
+          setIdentityFlowOpen(false);
+          setIdentityNotice(result === 'success' ? 'Your identity is verified.' : 'Your identity details were submitted for review.');
+        }}
+      />
+    );
+  }
 
   return (
     <div className="biz-flow">
@@ -71,6 +91,11 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo, onManageL
         </header>
 
         <div className="flex flex-col w-full flex-1 pb-10">
+          {identityNotice && (
+            <p role="status" className="mx-margin mt-space-md rounded-xl bg-badge-discount-bg px-space-sm py-space-xs font-label-md text-label-md text-badge-discount-text">
+              {identityNotice}
+            </p>
+          )}
           {/* Overview Trust Card */}
           <div className="px-margin pt-space-md">
             <div className="relative overflow-hidden rounded-xl bg-surface-container-lowest shadow-sm p-space-md">
@@ -352,7 +377,7 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo, onManageL
             <button
               className="w-full rounded-xl bg-surface-container-high text-text-primary font-button-secondary text-button-secondary hover:bg-surface-container-highest active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs font-semibold shadow-sm h-11"
               type="button"
-              onClick={onUpdateInfo}
+              onClick={startIdentity}
             >
               <Icon name="edit_document" className="text-[20px] text-text-secondary" />
               Update Verification Information
@@ -395,7 +420,7 @@ export function VerificationStatusCenterScreen({ onBack, onUpdateInfo, onManageL
             live={live}
             demo={{ cacNumber: draft.cacNumber, businessName: draft.businessName }}
             onClose={() => setModal(null)}
-            onStart={onUpdateInfo}
+            onStart={startIdentity}
           />
         )}
       </AppScreen>

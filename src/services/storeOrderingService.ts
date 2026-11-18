@@ -44,6 +44,8 @@ interface ApiStoreOrder {
   isTotalConfirmed: boolean;
   status: StoreOrderStatus;
   assignedStaff?: string;
+  /** Account id behind `assignedStaff` in live mode (`attendedById` on the API). */
+  assignedStaffId?: string;
   customerNotes?: string;
   statusHistory: Array<{ status: StoreOrderStatus; timestamp: string; note?: string; staffName?: string }>;
   payment: StoreOrder['payment'];
@@ -121,6 +123,7 @@ export function storeOrderFromApi(row: ApiStoreOrder): StoreOrder {
     isTotalConfirmed: row.isTotalConfirmed,
     status: row.status,
     assignedStaff: row.assignedStaff,
+    assignedStaffId: row.assignedStaffId,
     customerNotes: row.customerNotes,
     pickupInstructions: '',
     estimatedPrepMins: 0,

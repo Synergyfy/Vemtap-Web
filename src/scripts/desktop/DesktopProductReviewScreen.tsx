@@ -243,6 +243,9 @@ export function DesktopProductReviewScreen({
                   <span className="font-label-md text-label-md text-text-primary font-semibold mt-0.5">
                     {draft.skuCode}
                   </span>
+                  {draft.barcode && (
+                    <span className="font-caption text-caption text-text-secondary mt-0.5">Barcode: {draft.barcode}</span>
+                  )}
                 </div>
                 <div className="flex flex-col items-center">
                   <span className="font-caption text-caption text-text-secondary uppercase tracking-wider">

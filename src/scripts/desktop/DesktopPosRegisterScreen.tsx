@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { PosTerminalChrome, type PosTerminalNavKey } from './PosTerminalChrome';
 import {
@@ -115,7 +115,11 @@ export function DesktopPosRegisterScreen({
     return catalogue.desktop.filter((item, index) => {
       const source = catalogue.items[index];
       const inCategory = key === 'all' || source?.category?.id === key;
-      const matches = !q || item.name.toLowerCase().includes(q) || (source?.sku ?? '').toLowerCase().includes(q);
+      const matches =
+        !q ||
+        item.name.toLowerCase().includes(q) ||
+        (source?.sku ?? '').toLowerCase().includes(q) ||
+        (source?.barcode ?? '').toLowerCase().includes(q);
       return inCategory && matches;
     });
   }, [live, catalogue.desktop, catalogue.items, catalogue.categories, category, search]);
@@ -200,6 +204,23 @@ export function DesktopPosRegisterScreen({
     onCartChange(addLine(cart, item));
   };
 
+  const submitScannedBarcode = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter' || !live) return;
+    event.preventDefault();
+    const code = search.trim().toLowerCase();
+    if (!code) return;
+    const index = catalogue.items.findIndex(
+      (item) => item.barcode?.trim().toLowerCase() === code || item.sku?.trim().toLowerCase() === code,
+    );
+    const item = index >= 0 ? catalogue.desktop[index] : undefined;
+    if (!item) {
+      flash(`No product found for barcode "${search.trim()}".`);
+      return;
+    }
+    addItem(item);
+    setSearch('');
+  };
+
   const changeQty = (id: string, delta: number) => {
     onCartChange(
       cart
@@ -268,7 +289,7 @@ export function DesktopPosRegisterScreen({
   const simulateScan = () => {
     if (live) {
       searchRef.current?.focus();
-      flash('Camera scanning is coming soon — type the SKU or name in search.');
+      flash('Ready for a barcode scanner. Scan a product barcode into the search field.');
       return;
     }
     const order = pendingOrders[0];
@@ -286,8 +307,18 @@ export function DesktopPosRegisterScreen({
 
   const handleCompleteHandoffPayment = (tender: string) => {
     if (!handedOffOrder) return;
-    const txnId = `TXN-${Math.floor(1000 + Math.random() * 9000)}`;
-    completeOrderFromPos(handedOffOrder.id, tender, txnId);
+    // The store-ordering API records the POS sale by transaction id, which
+    // must be a UUID — `TXN-…` would be refused and the order never closed.
+    const txnId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `TXN-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const res = completeOrderFromPos(handedOffOrder.id, tender, txnId);
+    if (!res.ok) {
+      setHandoffToast(res.message);
+      window.setTimeout(() => setHandoffToast(null), 3500);
+      return;
+    }
     setCompletedHandoff({
       orderRef: handedOffOrder.orderRef,
       tender,
@@ -296,7 +327,7 @@ export function DesktopPosRegisterScreen({
       items: handedOffOrder.items.map((i) => `${i.name} ×${i.qty}`).join(', '),
       customer: handedOffOrder.customerName,
     });
-    setHandoffToast(`Order #${handedOffOrder.orderRef} payment recorded in POS (${tender}).`);
+    setHandoffToast(`Order #${handedOffOrder.orderRef} payment recorded in POS (${tender}). ${res.message}`);
     window.setTimeout(() => setHandoffToast(null), 3500);
   };
 
@@ -347,7 +378,7 @@ export function DesktopPosRegisterScreen({
             <div className="flex items-center gap-space-xs px-space-sm py-1 rounded-lg bg-badge-discount-bg text-badge-discount-text">
               <Icon name="barcode_scanner" className="text-[17px]" />
               <span className="font-label-sm text-label-sm font-semibold tracking-tight">
-                FAST-SCAN LIVE: Ready (Opticon OPN-2006 BT)
+                {live ? 'BARCODE SCAN: Scan into search to add a product' : 'DEMO SCANNER: Ready'}
               </span>
               <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-ping ml-1" />
             </div>
@@ -504,6 +535,7 @@ export function DesktopPosRegisterScreen({
                   placeholder="Scan barcode or search by item name, SKU, modifier tag... [F3]"
                   value={live ? search : undefined}
                   onChange={live ? (event) => setSearch(event.target.value) : undefined}
+                  onKeyDown={submitScannedBarcode}
                   className="w-full h-12 pl-11 pr-14 rounded-xl bg-surface text-text-primary placeholder:text-text-tertiary text-body-md font-body-md focus:bg-surface-canvas focus:outline-none focus:shadow-[0_0_0_3px_rgba(6,108,244,0.18)] transition-all"
                 />
                 <div className="absolute right-3 top-1/2 -translate-y-1/2 px-1.5 py-0.5 rounded bg-surface-container-high text-primary font-caption text-caption font-bold">
@@ -515,7 +547,7 @@ export function DesktopPosRegisterScreen({
                 <button
                   type="button"
                   onClick={simulateScan}
-                  title="Scan QR or barcode"
+                  title={live ? 'Focus search for a barcode scanner' : 'Simulate QR or barcode scan'}
                   className="h-12 w-12 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center hover:bg-surface-container-high transition-colors shadow-sm"
                 >
                   <Icon name="qr_code_scanner" className="text-[22px]" />

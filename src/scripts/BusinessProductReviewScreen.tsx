@@ -336,7 +336,7 @@ export function BusinessProductReviewScreen({
                 </span>
               </div>
               <span className="font-caption text-caption bg-surface-container px-2 py-0.5 rounded text-on-surface-variant font-mono">
-                SKU: {draft.skuCode}
+                SKU: {draft.skuCode || '—'}{draft.barcode ? ` · Barcode: ${draft.barcode}` : ''}
               </span>
             </div>
           </section>

@@ -3,17 +3,21 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { hasApiConfig } from '../services/api/client';
 import { apiErrorMessage } from '../services/errorMessages';
 import { storeOrderingService } from '../services/storeOrderingService';
-import { teamService } from '../services/teamService';
 import { ordersService } from '../services/ordersService';
 import {
   type StoreOrder,
   type StoreOrderStatus,
+  type StoreOrderStaffOption,
   type StoreQrRecord,
   type StoreOrderingSettings,
   SEED_STORE_ORDERS,
   SEED_STORE_QRS,
   INITIAL_ORDERING_SETTINGS,
+  DEMO_STORE_STAFF_OPTIONS,
 } from '../scripts/storeOrderingData';
+import { useTeam } from '../hooks/business/useBranchesAndTeam';
+import { useSessionUser } from '../hooks/useSessionUser';
+import type { TeamMember } from '../services/teamService';
 
 export interface RecordPaymentParams {
   method: 'cash' | 'pos-terminal' | 'bank-transfer' | 'store-credit' | string;
@@ -56,6 +60,14 @@ interface StoreOrderingContextValue {
   ) => void;
   removeItem: (orderId: string, itemId: string) => void;
   assignStaff: (orderId: string, staffName: string) => void;
+  /**
+   * Everyone who can be assigned to an order: the Staff page's team (the
+   * owner included) in live mode, the demo crew otherwise. The order's current
+   * assignee is always kept in the list so the picker can hold its value.
+   */
+  staffOptionsFor: (order: StoreOrder) => StoreOrderStaffOption[];
+  /** The picker value for an order's current assignee (account id live, name in the demo). */
+  staffValueFor: (order: StoreOrder) => string;
   recordStorePayment: (
     orderId: string,
     methodOrParams: 'cash' | 'pos-terminal' | 'bank-transfer' | 'store-credit' | string | RecordPaymentParams,
@@ -104,6 +116,49 @@ const VALID_TRANSITIONS: Record<StoreOrderStatus, StoreOrderStatus[]> = {
 
 const PAID_STATUSES = ['paid-in-store', 'paid-pos'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Display name of a team row from the Staff page. */
+const memberName = (m: TeamMember) =>
+  `${m.firstName ?? ''} ${m.lastName ?? ''}`.trim() || m.email || m.phone || 'Team member';
+
+const memberRole = (m: TeamMember) =>
+  m.roleTag ||
+  m.jobTitle ||
+  (m.role === 'Owner' || m.role === 'Manager' ? m.role : null);
+
+const memberLabel = (m: TeamMember) => {
+  const role = memberRole(m);
+  return role ? `${memberName(m)} (${role})` : memberName(m);
+};
+
+/** Display name of the signed-in account (`GET /auth/profile`). */
+const sessionLabel = (user?: { firstName?: string | null; lastName?: string | null; email?: string | null; role?: string | null; businessRole?: string | null; roleTag?: string | null } | null) => {
+  if (!user) return '';
+  const name = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email || '';
+  if (!name) return '';
+  const role = user.businessRole || user.roleTag || user.role;
+  return role ? `${name} (${role})` : name;
+};
+
+/**
+ * Keeps the person who completed an order inside the history note, so every
+ * completion carries a name alongside the entry's own `staffName`.
+ */
+const withCompleter = (note: string | undefined, completer: string, fallback: string) =>
+  note && note.toLowerCase().includes(completer.toLowerCase())
+    ? note
+    : `${note || fallback} — completed by ${completer}.`;
+
+/** Demo picker: the demo crew, with the order's current assignee kept in the list. */
+const demoStaffValueFor = (order: StoreOrder) => order.assignedStaffId || order.assignedStaff || '';
+
+const demoStaffOptionsFor = (order: StoreOrder): StoreOrderStaffOption[] => {
+  const current = demoStaffValueFor(order);
+  return current && !DEMO_STORE_STAFF_OPTIONS.some((o) => o.value === current)
+    ? [{ value: current, label: order.assignedStaff || current }, ...DEMO_STORE_STAFF_OPTIONS]
+    : DEMO_STORE_STAFF_OPTIONS;
+};
+
 const liveKeys = {
   orders: ['store-ordering', 'orders'] as const,
   summary: ['store-ordering', 'summary'] as const,
@@ -220,6 +275,9 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
         hour12: true,
       });
 
+      // A completed order always carries the person who completed it.
+      const completer = newStatus === 'completed' ? order.assignedStaff || staffName || 'Store Staff' : '';
+
       setOrders((prev) =>
         prev.map((o) => {
           if (o.id !== order.id) return o;
@@ -230,8 +288,10 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
               {
                 status: newStatus,
                 timestamp,
-                note: note || `Status updated to ${newStatus}`,
-                staffName: staffName || o.assignedStaff || 'Staff',
+                note: completer
+                  ? withCompleter(note, completer, `Status updated to ${newStatus}`)
+                  : note || `Status updated to ${newStatus}`,
+                staffName: completer || staffName || o.assignedStaff || 'Staff',
               },
               ...o.statusHistory,
             ],
@@ -239,7 +299,12 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
         })
       );
 
-      return { ok: true, message: `Order status updated to ${newStatus}` };
+      return {
+        ok: true,
+        message: completer
+          ? `Order status updated to ${newStatus} — completed by ${completer}`
+          : `Order status updated to ${newStatus}`,
+      };
     },
     [orders]
   );
@@ -330,6 +395,7 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
         return {
           ...o,
           assignedStaff: staffName,
+          assignedStaffId: staffName || undefined,
         };
       })
     );
@@ -373,6 +439,8 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
       const finalStatus: StoreOrderStatus = params.markCompleted && isFull ? 'completed' : isFull ? 'paid' : 'awaiting-payment';
       const paymentStatus = isFull ? 'paid-in-store' : 'partially-paid';
       const refCode = params.reference || `REC-STORE-${Math.floor(10000 + Math.random() * 89999)}`;
+      // A payment that closes the order records who completed it.
+      const completer = finalStatus === 'completed' ? order.assignedStaff || 'Store Staff' : '';
 
       setOrders((prev) =>
         prev.map((o) => {
@@ -389,7 +457,7 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
               change: params.change ?? (params.method === 'cash' ? Math.max(0, received - due) : 0),
               balance: params.balance ?? Math.max(0, due - received),
               reference: refCode,
-              recordedBy: 'Store Staff (Verified)',
+              recordedBy: completer || 'Store Staff (Verified)',
               recordedAt: timestamp,
               completionType: params.completionType || 'external-pos',
               staffVerified: params.staffVerified ?? true,
@@ -399,8 +467,12 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
               {
                 status: finalStatus,
                 timestamp,
-                note: `Payment of ₦${received.toLocaleString()} recorded via ${params.method}${params.notes ? ` (${params.notes})` : ''}`,
-                staffName: 'Store Staff',
+                note: withCompleter(
+                  `Payment of ₦${received.toLocaleString()} recorded via ${params.method}${params.notes ? ` (${params.notes})` : ''}`,
+                  completer,
+                  `Payment of ₦${received.toLocaleString()} recorded via ${params.method}`
+                ),
+                staffName: completer || 'Store Staff',
               },
               ...o.statusHistory,
             ],
@@ -425,6 +497,7 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
       minute: '2-digit',
       hour12: true,
     });
+    const completer = order.assignedStaff || 'Store Staff';
 
     setOrders((prev) =>
       prev.map((o) => {
@@ -436,8 +509,12 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
             {
               status: 'completed',
               timestamp,
-              note: 'Customer verified order and completed collection.',
-              staffName: o.assignedStaff || 'Store Staff',
+              note: withCompleter(
+                'Customer verified order and completed collection.',
+                completer,
+                'Customer verified order and completed collection.'
+              ),
+              staffName: completer,
             },
             ...o.statusHistory,
           ],
@@ -445,7 +522,7 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
       })
     );
 
-    return { ok: true, message: `Order ${order.id} handed over and marked as Completed.` };
+    return { ok: true, message: `Order ${order.id} handed over and marked as Completed by ${completer}.` };
   }, [orders]);
 
   const submitCustomerStoreOrder = useCallback(
@@ -544,6 +621,7 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
     (orderId: string, tender: string, posTransactionId: string, notes?: string) => {
       const order = orders.find((o) => o.id === orderId || o.orderRef === orderId);
       if (!order) return { ok: false, message: 'Order not found' };
+      const completer = order.assignedStaff || 'Store Staff';
 
       const timestamp = new Date().toLocaleTimeString('en-US', {
         hour: 'numeric',
@@ -563,7 +641,7 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
               method: 'pos-integrated',
               reference: `POS-${posTransactionId}`,
               posTransactionId,
-              recordedBy: 'VEMTAP POS',
+              recordedBy: completer,
               recordedAt: timestamp,
               notes,
             },
@@ -571,8 +649,12 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
               {
                 status: 'completed',
                 timestamp,
-                note: `Payment completed via VEMTAP POS (${tender}). Txn: ${posTransactionId}`,
-                staffName: 'VEMTAP POS',
+                note: withCompleter(
+                  `Payment completed via VEMTAP POS (${tender}). Txn: ${posTransactionId}`,
+                  completer,
+                  `Payment completed via VEMTAP POS (${tender}). Txn: ${posTransactionId}`
+                ),
+                staffName: completer,
               },
               ...o.statusHistory,
             ],
@@ -604,7 +686,62 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
   const liveSummary = useQuery({ queryKey: liveKeys.summary, queryFn: storeOrderingService.summary, enabled: fetchLive, refetchInterval: 30_000 });
   const liveQr = useQuery({ queryKey: liveKeys.qr, queryFn: storeOrderingService.qrCodes, enabled: fetchLive });
   const liveSettings = useQuery({ queryKey: liveKeys.settings, queryFn: storeOrderingService.settings, enabled: fetchLive });
-  const team = useQuery({ queryKey: ['store-ordering', 'team'], queryFn: () => teamService.list({ allBranches: true }), enabled: fetchLive, staleTime: 5 * 60_000 });
+  // Same query the Staff page uses (`['team']`, every branch, owner included),
+  // so the assignment picker always offers exactly the people on the staff page.
+  const team = useTeam();
+  const sessionUser = useSessionUser();
+
+  const teamRows = useMemo(() => team.data ?? [], [team.data]);
+  const signedIn = sessionUser.data ?? null;
+
+  const staffValueFor = useCallback(
+    (order: StoreOrder) => {
+      if (order.assignedStaffId) return order.assignedStaffId;
+      if (!order.assignedStaff) return '';
+      const match = teamRows.find((m) => memberName(m) === order.assignedStaff);
+      return match?.id ?? order.assignedStaff;
+    },
+    [teamRows]
+  );
+
+  const staffOptionsFor = useCallback(
+    (order: StoreOrder): StoreOrderStaffOption[] => {
+      const base: StoreOrderStaffOption[] = !live
+        ? DEMO_STORE_STAFF_OPTIONS
+        : [
+            ...teamRows.map((m) => ({ value: m.id, label: memberLabel(m) })),
+            // The signed-in account (usually the owner) is assignable even when
+            // it is not part of the team directory yet.
+            ...(signedIn?.id && !teamRows.some((m) => m.id === signedIn.id)
+              ? [{ value: signedIn.id, label: sessionLabel(signedIn) || 'Signed-in account' }]
+              : []),
+          ];
+      const current = staffValueFor(order);
+      return current && !base.some((o) => o.value === current)
+        ? [{ value: current, label: order.assignedStaff || current }, ...base]
+        : base;
+    },
+    [live, teamRows, signedIn, staffValueFor]
+  );
+
+  /**
+   * Live: the person recorded as completing an order — the assigned staff
+   * member when there is one, otherwise the signed-in account (the owner),
+   * which is also persisted onto the order so nothing is completed anonymously.
+   */
+  const resolveCompleter = useCallback(
+    (order: StoreOrder): string => {
+      if (order.assignedStaff) return order.assignedStaff;
+      const name = sessionLabel(signedIn);
+      if (!name || !signedIn?.id) return 'Store Staff';
+      void storeOrderingService
+        .assign(order.id, signedIn.id)
+        .then(() => void queryClient.invalidateQueries({ queryKey: liveKeys.orders }))
+        .catch(() => undefined);
+      return name;
+    },
+    [signedIn, queryClient]
+  );
 
   const run = useCallback(
     (request: () => Promise<unknown>, keys: ReadonlyArray<readonly string[]> = [liveKeys.orders, liveKeys.summary]) => {
@@ -633,6 +770,8 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
         totalRevenueToday: 0,
       },
       getOrderById: (id) => find(id),
+      staffOptionsFor,
+      staffValueFor,
       updateOrderStatus: (orderId, newStatus, note) => {
         const order = find(orderId);
         if (!order) return { ok: false, message: 'Order not found' };
@@ -642,6 +781,14 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
           return { ok: false, message: `Cannot transition order directly from "${order.status}" to "${newStatus}".` };
         if (newStatus === 'completed' && !PAID_STATUSES.includes(order.payment.status))
           return { ok: false, message: 'Record the payment before completing the order.' };
+        if (newStatus === 'completed') {
+          // The completion entry always names the person who completed it.
+          const completer = resolveCompleter(order);
+          run(() =>
+            storeOrderingService.setStatus(order.id, newStatus, withCompleter(note, completer, `Status updated to ${newStatus}`)),
+          );
+          return { ok: true, message: `Order status updated to ${newStatus} — completed by ${completer}` };
+        }
         run(() => storeOrderingService.setStatus(order.id, newStatus, note));
         return { ok: true, message: `Order status updated to ${newStatus}` };
       },
@@ -657,16 +804,17 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
         const order = find(orderId);
         if (order) run(() => storeOrderingService.updateItem(order.id, itemId, { removed: true }));
       },
-      assignStaff: (orderId, staffName) => {
+      assignStaff: (orderId, staffValue) => {
         const order = find(orderId);
-        const needle = staffName.toLowerCase();
-        const member = (team.data ?? []).find((m) => {
-          const name = `${m.firstName} ${m.lastName}`.trim().toLowerCase();
-          return name && (needle.startsWith(name) || name.startsWith(needle));
-        });
-        if (!order) return;
+        if (!order || !staffValue) return;
+        // The picker sends the account id (falling back to a display name).
+        const member = teamRows.find((m) => m.id === staffValue) ?? teamRows.find((m) => memberName(m) === staffValue);
         if (!member) {
-          setLastError(`${staffName} is not on your team yet — invite them first.`);
+          if (signedIn?.id === staffValue) {
+            run(() => storeOrderingService.assign(order.id, staffValue));
+            return;
+          }
+          setLastError('That person is not on your team yet — invite them from the Staff page first.');
           return;
         }
         run(() => storeOrderingService.assign(order.id, member.id));
@@ -679,24 +827,37 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
           typeof methodOrParams === 'object' && methodOrParams !== null
             ? methodOrParams
             : { method: methodOrParams, reference, notes, markCompleted: true };
+        // A payment that closes the order carries the person completing it.
+        const completer = params.markCompleted ? resolveCompleter(order) : '';
+        const paymentNotes = [params.notes, completer ? `Completed by ${completer}` : '']
+          .filter(Boolean)
+          .join(' — ');
         run(() =>
           storeOrderingService.recordPayment(order.id, {
             method: params.method,
             ...(params.amountReceived !== undefined ? { amountReceived: params.amountReceived } : {}),
             ...(params.reference ? { reference: params.reference } : {}),
-            ...(params.notes ? { notes: params.notes } : {}),
+            ...(paymentNotes ? { notes: paymentNotes } : {}),
             ...(params.markCompleted ? { markCompleted: true } : {}),
           }),
         );
-        return { ok: true, message: `Payment recorded for ${order.orderRef}.` };
+        return { ok: true, message: `Payment recorded for ${order.orderRef}.${completer ? ` Completed by ${completer}.` : ''}` };
       },
       completeCollection: (orderId) => {
         const order = find(orderId);
         if (!order) return { ok: false, message: 'Order not found' };
         if (!PAID_STATUSES.includes(order.payment.status))
           return { ok: false, message: 'Record the payment before handing the order over.' };
-        run(() => storeOrderingService.collect(order.id));
-        return { ok: true, message: `Order ${order.orderRef} handed over and marked as Completed.` };
+        // The handover entry names who handed it over, not just who is signed in.
+        const completer = resolveCompleter(order);
+        run(() =>
+          storeOrderingService.setStatus(
+            order.id,
+            'completed',
+            `Order handed over to the customer — completed by ${completer}.`,
+          ),
+        );
+        return { ok: true, message: `Order ${order.orderRef} handed over and marked as Completed by ${completer}.` };
       },
       // Customer-side checkout is not wired here; demo storefronts keep the local order.
       submitCustomerStoreOrder,
@@ -732,9 +893,13 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
         const order = find(orderId);
         if (!order) return { ok: false, message: 'Order not found' };
         if (!UUID.test(posTransactionId)) return { ok: false, message: 'Complete the sale on VEMTAP POS first.' };
-        run(() => storeOrderingService.completeFromPos(order.id, { tender, posSaleId: posTransactionId, notes }));
+        const completer = resolveCompleter(order);
+        const handoffNotes = [notes, `Completed by ${completer}`].filter(Boolean).join(' — ');
+        run(() =>
+          storeOrderingService.completeFromPos(order.id, { tender, posSaleId: posTransactionId, notes: handoffNotes }),
+        );
         setActivePosHandoffOrderId(null);
-        return { ok: true, message: `Order ${order.orderRef} completed via VEMTAP POS.` };
+        return { ok: true, message: `Order ${order.orderRef} completed via VEMTAP POS by ${completer}.` };
       },
       lastError,
       clearLastError,
@@ -745,7 +910,11 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
     liveQr.data,
     liveSettings.data,
     liveSummary.data,
-    team.data,
+    teamRows,
+    signedIn,
+    staffOptionsFor,
+    staffValueFor,
+    resolveCompleter,
     run,
     submitCustomerStoreOrder,
     activePosHandoffOrderId,
@@ -765,6 +934,8 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
       substituteItem,
       removeItem,
       assignStaff,
+      staffOptionsFor: demoStaffOptionsFor,
+      staffValueFor: demoStaffValueFor,
       recordStorePayment,
       completeCollection,
       submitCustomerStoreOrder,

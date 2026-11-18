@@ -94,6 +94,7 @@ interface CatalogRow {
   hidden?: boolean;
   dimmed?: boolean;
   sku: string;
+  barcode?: string;
   sub: string;
   category: string;
   categoryIcon: string;
@@ -504,6 +505,7 @@ function itemToRow(item: CatalogueItem): CatalogRow {
     draft: !published,
     hidden: item.isSuspended === true,
     sku: item.sku || '—',
+    barcode: item.barcode ?? undefined,
     sub: isService ? item.duration || 'Service' : item.shortDescription || 'Product',
     category: item.category?.name || 'Uncategorised',
     categoryIcon: isService ? 'spa' : 'inventory_2',
@@ -545,6 +547,7 @@ function importedProductToRow(product: ImportedProduct): CatalogRow {
     hidden: product.status === 'draft',
     dimmed: product.needsReview,
     sku: product.sku || '—',
+    barcode: product.barcode || undefined,
     sub: product.unit || 'Imported item',
     category: product.category || 'General',
     categoryIcon: 'storefront',
@@ -1024,13 +1027,14 @@ export function DesktopBusinessCatalogHubScreen({
 
   const handleExportCSV = () => {
     const currentList = activeTab === 'products' ? allProductRows : serviceRows;
-    const headers = ['ID', 'SKU', 'Name', 'Category', 'Price', 'Was Price', 'Branches', 'Stock Status', 'Units', 'Terminal Sync'];
+    const headers = ['ID', 'SKU', 'Barcode', 'Name', 'Category', 'Price', 'Was Price', 'Branches', 'Stock Status', 'Units', 'Terminal Sync'];
     const csvRows = [
       headers.join(','),
       ...currentList.map((row) =>
         [
           JSON.stringify(row.id),
           JSON.stringify(row.sku),
+          JSON.stringify(row.barcode || ''),
           JSON.stringify(row.name),
           JSON.stringify(row.category),
           JSON.stringify(row.price),
@@ -1449,6 +1453,7 @@ export function DesktopBusinessCatalogHubScreen({
       !needle ||
       row.name.toLowerCase().includes(needle) ||
       row.sku.toLowerCase().includes(needle) ||
+      (row.barcode ?? '').toLowerCase().includes(needle) ||
       row.category.toLowerCase().includes(needle);
     return matchesChip && matchesQuery && rowMatchesAdvancedFilters(row, advanced, sync[row.id] === true);
   });
@@ -1941,10 +1946,24 @@ export function DesktopBusinessCatalogHubScreen({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-subtle text-body-sm">
-                    {filteredCategories.length === 0 ? (
+                    {live && liveCategories.isLoading ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-text-secondary">
+                          Loading your categories…
+                        </td>
+                      </tr>
+                    ) : live && liveCategories.isError ? (
+                      <tr>
+                        <td colSpan={7} role="alert" className="py-12 text-center text-error">
+                          {apiErrorMessage(liveCategories.error, 'Could not load your categories.')}
+                        </td>
+                      </tr>
+                    ) : filteredCategories.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="py-12 text-center text-text-tertiary">
-                          No categories found matching your query.
+                          {centralCategories.length === 0
+                            ? 'No categories yet. Create one to organize your products or services.'
+                            : 'No categories found matching your query.'}
                         </td>
                       </tr>
                     ) : (
@@ -2391,7 +2410,9 @@ export function DesktopBusinessCatalogHubScreen({
                                 )}
                               </div>
                               <div className="flex items-center gap-space-xs mt-space-2xs font-caption text-caption text-text-secondary">
-                                <span className="font-mono bg-surface-container px-space-2xs rounded">{row.sku}</span>
+                                <span className="font-mono bg-surface-container px-space-2xs rounded">
+                                  {row.sku}{row.barcode ? ` · ${row.barcode}` : ''}
+                                </span>
                                 <span>•</span>
                                 <span>{row.sub}</span>
                               </div>
@@ -2671,7 +2692,7 @@ export function DesktopBusinessCatalogHubScreen({
                           </h3>
                           <div className="flex items-center gap-space-xs mt-1 font-caption text-caption text-text-secondary">
                             <span className="font-mono bg-surface-container px-1.5 py-0.5 rounded text-[11px] font-semibold">
-                              {row.sku}
+                              {row.sku}{row.barcode ? ` · ${row.barcode}` : ''}
                             </span>
                             <span>•</span>
                             <span className="truncate">{row.sub}</span>

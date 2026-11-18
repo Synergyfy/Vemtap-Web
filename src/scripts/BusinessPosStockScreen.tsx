@@ -48,6 +48,7 @@ const INITIAL_STOCK: StockRow[] = [
 
 export function BusinessPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }: BusinessPosStockScreenProps) {
   const [query, setQuery] = useState('');
+  const queryInputRef = useRef<HTMLInputElement>(null);
   const [category, setCategory] = useState('all');
   const [lowOnly, setLowOnly] = useState(false);
   const [stock, setStock] = useState<StockRow[]>(INITIAL_STOCK);
@@ -86,7 +87,12 @@ export function BusinessPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }
     const q = query.trim().toLowerCase();
     return allStock.filter(({ product, availability }) => {
       const inCategory = category === 'all' || product.category === category;
-      const matches = !q || product.name.toLowerCase().includes(q) || product.id.includes(q) || (product.sku ?? '').toLowerCase().includes(q);
+      const matches =
+        !q ||
+        product.name.toLowerCase().includes(q) ||
+        product.id.includes(q) ||
+        (product.sku ?? '').toLowerCase().includes(q) ||
+        (product.barcode ?? '').toLowerCase().includes(q);
       const matchesLow = !lowOnly || availability !== 'in';
       return inCategory && matches && matchesLow;
     });
@@ -174,9 +180,10 @@ export function BusinessPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search product or SKU…"
+              placeholder="Search name, SKU or barcode…"
               autoComplete="off"
               inputMode="search"
+              ref={queryInputRef}
               className="flex-1 min-w-0 bg-transparent outline-none font-label-sm text-label-sm text-on-surface placeholder:text-text-tertiary"
             />
             {query && (
@@ -188,7 +195,10 @@ export function BusinessPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }
           <button
             type="button"
             aria-label="Scan barcode"
-            onClick={() => showToast(live ? 'Barcode scanning is coming soon — search by SKU instead' : 'Barcode scanned · SKU WRS-400 matched')}
+            onClick={() => {
+              queryInputRef.current?.focus();
+              showToast('Scan a product barcode into the search field.');
+            }}
             className="w-11 h-11 rounded-xl bg-surface-container flex items-center justify-center active:scale-95 transition-transform shrink-0"
           >
             <Icon name="barcode_scanner" className="text-primary text-[19px]" />

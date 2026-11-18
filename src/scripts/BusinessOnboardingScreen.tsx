@@ -63,6 +63,12 @@ export interface BusinessProfileDraft {
   instagram: string;
   whatsapp: string;
   x: string;
+  /**
+   * Extra "Social & Messaging Presences" channels added from the picker
+   * (facebook, tiktok, …), keyed by platform. Core channels stay in their own
+   * fields above; everything here is saved to the business's `socials` record.
+   */
+  socials?: Record<string, string>;
   prefs: { inApp: boolean; whatsapp: boolean };
   /** Primary business location (always free) captured on the location step. */
   primaryLocation?: { street: string; landmark: string };
@@ -89,6 +95,7 @@ const createInitialDraft = (accountEmail: string): BusinessProfileDraft =>
         instagram: '',
         whatsapp: '',
         x: '',
+        socials: {},
         prefs: { inApp: true, whatsapp: true },
       }
     : ({
@@ -102,6 +109,7 @@ const createInitialDraft = (accountEmail: string): BusinessProfileDraft =>
   instagram: '@urbangrill_lagos',
   whatsapp: '0803 555 9821',
   x: '@urbangrillng',
+  socials: {},
   prefs: { inApp: true, whatsapp: true },
 });
 
@@ -294,6 +302,7 @@ export function BusinessOnboardingScreen({
       mainImage: item.mainImage ?? undefined,
       sku: item.sku ?? '',
       skuCode: item.sku ?? '',
+      barcode: item.barcode ?? '',
     }));
   };
   const myBusiness = useMyBusiness();

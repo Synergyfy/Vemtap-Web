@@ -3,9 +3,12 @@ import { Icon } from '../../components/ui/Icon';
 import { Logo } from '../../components/ui/Logo';
 import { BusinessBranchSelect } from '../../components/BusinessBranchSelect';
 import { BusinessSidebarRail } from './BusinessSidebarRail';
+import { BusinessSectionNavRail, isBusinessSecondarySectionKey } from './BusinessSectionNavRail';
+import { resolveSidebarActive } from './businessSidebarConfig';
 import {
   PortalBody,
   PORTAL_CONTENT,
+  BUSINESS_SECONDARY_RAIL_OFFSET,
   RAIL_OFFSET,
   ShellAccountMenu,
   type ShellAccountKey,
@@ -23,9 +26,11 @@ export function EnterpriseShell({ children, activeNav, onNav, onSignOut }: Enter
     if (key === 'sign-out') onSignOut?.();
     else onNav?.(key);
   };
+  const { sectionKey, itemKey } = resolveSidebarActive(activeNav);
+  const nestedSectionKey = isBusinessSecondarySectionKey(sectionKey) ? sectionKey : null;
 
   return (
-    <div className={`w-full min-h-screen bg-surface font-body-md text-body-md text-on-surface antialiased ${RAIL_OFFSET}`}>
+    <div className={`w-full min-h-screen bg-surface font-body-md text-body-md text-on-surface antialiased ${nestedSectionKey ? BUSINESS_SECONDARY_RAIL_OFFSET : RAIL_OFFSET}`}>
       <header className="fixed top-0 left-0 right-0 z-50 bg-surface-canvas/95 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
         <div className="h-16 w-full px-margin flex items-center justify-between gap-space-md">
           <div className="flex items-center shrink-0">
@@ -66,7 +71,14 @@ export function EnterpriseShell({ children, activeNav, onNav, onSignOut }: Enter
         </div>
       </header>
 
-      <BusinessSidebarRail active={activeNav} onSelect={onNav} headerHeight="16" />
+      {nestedSectionKey ? (
+        <>
+          <BusinessSidebarRail collapsed active={activeNav} onSelect={onNav} headerHeight="16" />
+          <BusinessSectionNavRail sectionKey={nestedSectionKey} active={itemKey} onSelect={onNav} headerHeight="16" />
+        </>
+      ) : (
+        <BusinessSidebarRail active={activeNav} onSelect={onNav} headerHeight="16" />
+      )}
 
       <main className="w-full pt-16 bg-surface">
         <PortalBody>{children}</PortalBody>

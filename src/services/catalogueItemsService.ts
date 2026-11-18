@@ -18,6 +18,7 @@ export interface CatalogueItem {
   /** `product` or `service`. */
   itemType: string;
   sku?: string | null;
+  barcode?: string | null;
   stockQuantity?: number | null;
   minStock?: number | null;
   allowBackOrder?: boolean | null;
@@ -71,6 +72,7 @@ export interface CatalogueItemInput {
   galleryImages?: string[];
   categoryId?: string;
   sku?: string;
+  barcode?: string | null;
   itemType?: 'product' | 'service';
   stockQuantity?: number;
   minStock?: number;
@@ -194,6 +196,7 @@ export interface ProductDraftLike {
   costPrice: string;
   skuCode?: string;
   sku?: string;
+  barcode?: string;
   lowStock: string;
   backorder: boolean;
   producer?: string;
@@ -251,6 +254,7 @@ export function productDraftToInput(draft: ProductDraftLike, branchId: string, e
     compareAtPrice: toPrice(draft.comparePrice),
     costPrice: toPrice(draft.costPrice),
     sku: (draft.skuCode || draft.sku || '').trim() || undefined,
+    barcode: draft.barcode?.trim() || null,
     itemType: 'product' as const,
     stockQuantity: stock,
     minStock: toPrice(draft.lowStock),
@@ -397,6 +401,7 @@ export function itemToProductDraft(item: CatalogueItem) {
     costPrice: money(item.costPrice),
     sku: item.sku ?? '',
     skuCode: item.sku ?? '',
+    barcode: item.barcode ?? '',
     lowStock: item.minStock != null ? String(item.minStock) : '',
     backorder: Boolean(item.allowBackOrder),
     variantsEnabled: variants.length > 0,

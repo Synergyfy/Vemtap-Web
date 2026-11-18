@@ -11,6 +11,7 @@ import type { TeamMember } from '../services/teamService';
 import { apiErrorMessage } from '../services/errorMessages';
 import { formatRelativeTime } from '../utils/format';
 import { isOwnerMember, isPendingMember, memberName, memberRoleGroup, memberRoleLabel } from './teamLive';
+import { TeamMemberActionDialog, type TeamMemberAction } from './TeamMemberActionDialog';
 
 interface BusinessStaffScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -137,9 +138,9 @@ const DETAILS: { label: string; value: (member: StaffMember) => string; icon: st
 ];
 
 const ACTIONS: { key: string; label: string; hint: string; icon: string; danger?: boolean }[] = [
-  { key: 'edit', label: 'Edit details', hint: 'Name, contact and job title', icon: 'edit' },
+  { key: 'edit', label: 'Edit details', hint: 'Name and email', icon: 'edit' },
   { key: 'role', label: 'Change role', hint: 'Switch between preset roles', icon: 'swap_horiz' },
-  { key: 'branch', label: 'Assign branch', hint: 'Add or remove branch access', icon: 'add_business' },
+  { key: 'branch', label: 'Assign branch', hint: 'Requires branch reassignment API support', icon: 'add_business' },
   { key: 'permissions', label: 'Permissions', hint: 'Pages and actions they can use', icon: 'lock' },
   { key: 'pin', label: 'Reset PIN', hint: 'Send a new PIN to their email', icon: 'pin' },
 ];
@@ -166,6 +167,8 @@ const ROLE_SCOPE: Record<Exclude<RoleFilterKey, 'all'>, string> = {
   staff: 'Works the pages you allowed below.',
   cashier: 'POS checkout and the pages you allowed below.',
 };
+
+type StaffToast = { message: string; tone: 'success' | 'error' | 'info' };
 
 /** A live team member in the directory's row shape. */
 const liveStaffMember = (member: TeamMember, branchName: (id?: string | null) => string): StaffMember => {
@@ -205,7 +208,8 @@ export function BusinessStaffScreen({ onTab, onInvite }: BusinessStaffScreenProp
   const [filter, setFilter] = useState<RoleFilterKey>('all');
   const [activeMember, setActiveMember] = useState<StaffMember | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<StaffToast | null>(null);
+  const [actionDialog, setActionDialog] = useState<{ member: TeamMember; action: TeamMemberAction } | null>(null);
   const toastTimer = useRef<number | null>(null);
 
   useEffect(
@@ -215,9 +219,9 @@ export function BusinessStaffScreen({ onTab, onInvite }: BusinessStaffScreenProp
     [],
   );
 
-  const showToast = (message: string) => {
+  const showToast = (message: string, tone: StaffToast['tone'] = 'success') => {
     if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
-    setToast(message);
+    setToast({ message, tone });
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
@@ -225,12 +229,12 @@ export function BusinessStaffScreen({ onTab, onInvite }: BusinessStaffScreenProp
   const live = hasApiConfig();
   const team = useTeam();
   const branchList = useBranches();
-  const { remove, resetPin } = useTeamMutations();
+  const { remove, resetPin, update } = useTeamMutations();
   const branchName = (id?: string | null) => branchList.data?.find((branch) => branch.id === id)?.name ?? '—';
   const members = live ? (team.data ?? []).map((member) => liveStaffMember(member, branchName)) : demoMembers;
 
   useEffect(() => {
-    if (live && team.isError) showToast("Couldn't load your team. Try again shortly.");
+    if (live && team.isError) showToast("Couldn't load your team. Try again shortly.", 'error');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live, team.isError]);
 
@@ -246,7 +250,7 @@ export function BusinessStaffScreen({ onTab, onInvite }: BusinessStaffScreenProp
 
   const removeMember = (member: StaffMember) => {
     if (member.member) {
-      if (isOwnerMember(member.member)) return showToast('The owner cannot be removed from the team');
+      if (isOwnerMember(member.member)) return showToast('The owner cannot be removed from the team', 'error');
       const record = member.member;
       remove.mutate(
         { id: record.id, branchId: record.branchId ?? undefined },
@@ -255,7 +259,7 @@ export function BusinessStaffScreen({ onTab, onInvite }: BusinessStaffScreenProp
             closeDetail();
             showToast(`${member.name} removed from the team`);
           },
-          onError: (error) => showToast(apiErrorMessage(error)),
+          onError: (error) => showToast(apiErrorMessage(error), 'error'),
         },
       );
       return;
@@ -266,23 +270,37 @@ export function BusinessStaffScreen({ onTab, onInvite }: BusinessStaffScreenProp
   };
 
   const runAction = (actionKey: string, member: StaffMember) => {
-    const first = member.name.split(' ')[0];
     if (member.member) {
       const record = member.member;
-      if (actionKey !== 'pin') {
-        showToast(`${ACTIONS.find((action) => action.key === actionKey)?.label ?? 'This change'} is coming soon`);
+      if (actionKey === 'pin') {
+        if (isOwnerMember(record)) {
+          showToast('Reset your own PIN with "Forgot PIN" on the sign-in screen', 'info');
+          return;
+        }
+        resetPin.mutate(
+          { id: record.id, branchId: record.branchId ?? undefined },
+          {
+            onSuccess: () => showToast(`New PIN sent to ${member.email}`),
+            onError: (error) => showToast(apiErrorMessage(error), 'error'),
+          },
+        );
         return;
       }
       if (isOwnerMember(record)) {
-        showToast('Reset your own PIN with "Forgot PIN" on the sign-in screen');
+        showToast('The owner account cannot be changed here', 'error');
         return;
       }
-      resetPin.mutate(
-        { id: record.id, branchId: record.branchId ?? undefined },
-        { onSuccess: () => showToast(`New PIN sent to ${member.email}`), onError: (error) => showToast(apiErrorMessage(error)) },
-      );
+      if (actionKey === 'branch') {
+        showToast('Branch reassignment is not available in the current team API', 'info');
+        return;
+      }
+      if (actionKey === 'edit' || actionKey === 'role' || actionKey === 'permissions') {
+        setActiveMember(null);
+        setActionDialog({ member: record, action: actionKey });
+      }
       return;
     }
+    const first = member.name.split(' ')[0];
     switch (actionKey) {
       case 'edit':
         showToast(`Editing ${member.name}`);
@@ -291,10 +309,10 @@ export function BusinessStaffScreen({ onTab, onInvite }: BusinessStaffScreenProp
         showToast(`Role options opened for ${first}`);
         break;
       case 'branch':
-        showToast(`Branch assignment opened for ${first}`);
+        showToast('Branch reassignment is not available in the current team API', 'info');
         break;
       case 'permissions':
-        showToast(`Permissions opened for ${first}`);
+        showToast(`Permissions for ${first} are available in live mode`);
         break;
       default:
         showToast(`New PIN sent to ${member.email}`);
@@ -653,10 +671,35 @@ export function BusinessStaffScreen({ onTab, onInvite }: BusinessStaffScreenProp
       {toast && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-margin z-[70] pointer-events-none">
           <div className="bg-inverse-surface text-inverse-on-surface px-4 py-2 rounded-full font-label-sm text-label-sm shadow-xl flex items-center gap-2">
-            <Icon name="check_circle" className="text-badge-discount-text text-[16px]" />
-            <span className="truncate">{toast}</span>
+            <Icon
+              name={toast.tone === 'error' ? 'error' : toast.tone === 'info' ? 'info' : 'check_circle'}
+              className={`text-[16px] ${toast.tone === 'success' ? 'text-badge-discount-text' : 'text-inverse-on-surface'}`}
+            />
+            <span className="truncate">{toast.message}</span>
           </div>
         </div>
+      )}
+
+      {actionDialog && (
+        <TeamMemberActionDialog
+          key={`${actionDialog.member.id}-${actionDialog.action}`}
+          member={actionDialog.member}
+          action={actionDialog.action}
+          busy={update.isPending}
+          onClose={() => setActionDialog(null)}
+          onSave={(input) =>
+            update.mutate(
+              { id: actionDialog.member.id, branchId: actionDialog.member.branchId ?? undefined, input },
+              {
+                onSuccess: () => {
+                  setActionDialog(null);
+                  showToast('Team member updated');
+                },
+                onError: (error) => showToast(apiErrorMessage(error), 'error'),
+              },
+            )
+          }
+        />
       )}
 
       <BusinessTabBar active="business" onTab={onTab} />

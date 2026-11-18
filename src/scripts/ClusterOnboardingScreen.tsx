@@ -2,6 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import {
+  CLUSTER_RADIUS_SETTINGS,
+  CLUSTER_TYPE_LABELS,
+  formatClusterRadius,
   getClusterState,
   joinCluster,
   createCluster,
@@ -13,8 +16,10 @@ import {
   type ShowcaseEntityType,
 } from './clusterData';
 import { ClusterQrCode } from '../components/ClusterQrCode';
+import { ClusterCreationConfirmDialog } from '../components/ClusterCreationConfirmDialog';
 import { hasApiConfig } from '../services/api/client';
 import { useMyBusiness } from '../hooks/business/useMyBusiness';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { apiErrorMessage } from '../services/errorMessages';
 import { planErrorMessage } from '../services/planErrors';
 import type { ClusterKind } from '../services/clustersService';
@@ -49,12 +54,11 @@ export function ClusterOnboardingScreen({
   // Create form state
   const [createName, setCreateName] = useState('');
   const [createType, setCreateType] = useState<ClusterType>('mall');
-  const [createAddress, setCreateAddress] = useState(hasApiConfig() ? '' : 'Plot 1044 Ahmadu Bello Way, Area 11, Garki, Abuja');
-  const [createCity, setCreateCity] = useState(hasApiConfig() ? '' : 'Abuja');
-  const [createState, setCreateState] = useState('FCT');
-  const [createRadius, setCreateRadius] = useState(500);
+  const [createRadius, setCreateRadius] = useState(1000);
   const [agreedGuidelines, setAgreedGuidelines] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [showCreateConfirmation, setShowCreateConfirmation] = useState(false);
+  const [createdCluster, setCreatedCluster] = useState(false);
 
   // Active cluster after join/create
   const [activeCluster, setActiveCluster] = useState<Cluster | null>(null);
@@ -63,16 +67,37 @@ export function ClusterOnboardingScreen({
   const [selectedShowcaseType, setSelectedShowcaseType] = useState<ShowcaseEntityType>('deal');
   const [localState, setClusterState] = useState(getClusterState());
   const live = hasApiConfig();
-  // Live: start from the business's own address; demo keeps the sample venue.
-  const myBusiness = useMyBusiness().data;
-  const businessAddress = [myBusiness?.address, myBusiness?.city].filter(Boolean).join(', ');
-  const registeredAddress = live ? businessAddress || 'your registered business address' : 'Plot 1044 Ahmadu Bello Way, Area 11, Garki, Abuja';
-  useEffect(() => {
-    if (!live || !myBusiness) return;
-    setCreateAddress((current) => current || myBusiness.address || '');
-    setCreateCity((current) => current || myBusiness.city || '');
-  }, [live, myBusiness]);
+  const myBusinessQuery = useMyBusiness();
+  const myBusiness = myBusinessQuery.data;
   const liveCluster = useLiveCluster();
+  const { activeBranchId } = useBusinessBranch();
+  const profileBranch =
+    myBusiness?.branches?.find((branch) => branch.id === activeBranchId) ??
+    myBusiness?.branches?.find((branch) => branch.isMainBranch) ??
+    myBusiness?.branches?.[0];
+  const activeBranch = liveCluster.activeBranch ?? profileBranch;
+  const createAddress = live
+    ? activeBranch?.address?.trim() || profileBranch?.address?.trim() || myBusiness?.address?.trim() || ''
+    : 'Plot 1044 Ahmadu Bello Way, Area 11, Garki, Abuja';
+  const createCity = live ? activeBranch?.city || profileBranch?.city || myBusiness?.city || '' : 'Abuja';
+  const createState = live ? activeBranch?.state || profileBranch?.state || myBusiness?.state || '' : 'FCT';
+  const businessName = live ? myBusiness?.name?.trim() || 'your business' : 'Urban Grill & Bistro';
+  const businessAddress = [
+    activeBranch?.address?.trim() || profileBranch?.address?.trim() || myBusiness?.address?.trim(),
+    activeBranch?.city || profileBranch?.city || myBusiness?.city,
+    activeBranch?.state || profileBranch?.state || myBusiness?.state,
+  ]
+    .filter(Boolean)
+    .join(', ');
+  const registeredAddress = live
+    ? businessAddress ||
+      (myBusinessQuery.isLoading || liveCluster.locationLoading
+        ? 'Loading your registered business address…'
+        : apiErrorMessage(
+              myBusinessQuery.error ?? liveCluster.locationError,
+              'No registered business address found',
+            ))
+    : 'Plot 1044 Ahmadu Bello Way, Area 11, Garki, Abuja';
   const clusterState = live ? liveCluster.state : localState;
   const [notice, setNotice] = useState<string | null>(null);
   const notify = (message: string) => {
@@ -122,6 +147,12 @@ export function ClusterOnboardingScreen({
     }
   }, [step]);
 
+  useEffect(() => {
+    if (step !== 'success' || !createdCluster) return;
+    const timer = window.setTimeout(onComplete, 5000);
+    return () => window.clearTimeout(timer);
+  }, [step, createdCluster, onComplete]);
+
   const handleJoinDetected = () => {
     if (!detectedCluster) return;
     if (live) {
@@ -153,23 +184,54 @@ export function ClusterOnboardingScreen({
       return;
     }
 
+    if (live && !liveCluster.hasSavedCoordinates) {
+      setCreateError(
+        liveCluster.locationLoading
+          ? 'Your saved business location is still loading. Please try again shortly.'
+          : 'No valid saved location was found for this business. Update its registered location and try again.',
+      );
+      return;
+    }
+    if (!live && !createAddress.trim()) {
+      setCreateError('A business location is required to establish a cluster.');
+      return;
+    }
+
+    const radiusSettings = CLUSTER_RADIUS_SETTINGS[createType];
+    if (!radiusSettings.options.includes(createRadius)) {
+      setCreateError('Choose a valid radius for this cluster type.');
+      return;
+    }
+
+    if (!live) {
+      const dupCheck = checkDuplicateCluster(createName, createAddress);
+      if (dupCheck.isDuplicate) {
+        setCreateError(dupCheck.reason || 'A cluster with this name or location already exists.');
+        return;
+      }
+    }
+
+    setShowCreateConfirmation(true);
+  };
+
+  const confirmCreateCluster = () => {
     if (live) {
       liveCluster.propose.mutate(
-        { name: createName.trim(), address: createAddress, kind: createType as ClusterKind },
+        {
+          name: createName.trim(),
+          kind: createType as ClusterKind,
+          radiusMeters: createRadius,
+        },
         {
           onSuccess: (created) => {
             setActiveCluster(toCluster(created));
-            setStep('choose_feature');
+            setCreatedCluster(true);
+            setShowCreateConfirmation(false);
+            setStep('success');
           },
           onError: (error) => notify(planErrorMessage(error) ?? apiErrorMessage(error, 'Could not propose the cluster.')),
         },
       );
-      return;
-    }
-
-    const dupCheck = checkDuplicateCluster(createName, createAddress);
-    if (dupCheck.isDuplicate) {
-      setCreateError(dupCheck.reason || 'A cluster with this name or location already exists.');
       return;
     }
 
@@ -180,12 +242,13 @@ export function ClusterOnboardingScreen({
       state: createState,
       address: createAddress,
       radiusMeters: createRadius,
-      unitOrSuite,
     });
 
     setActiveCluster(created);
     setClusterState(getClusterState());
-    setStep('choose_feature');
+    setCreatedCluster(true);
+    setShowCreateConfirmation(false);
+    setStep('success');
   };
 
   const handleToggleItem = (itemId: string) => {
@@ -596,14 +659,18 @@ export function ClusterOnboardingScreen({
                   </label>
                   <select
                     value={createType}
-                    onChange={(e) => setCreateType(e.target.value as ClusterType)}
+                    onChange={(e) => {
+                      const nextType = e.target.value as ClusterType;
+                      setCreateType(nextType);
+                      setCreateRadius(CLUSTER_RADIUS_SETTINGS[nextType].defaultRadius);
+                    }}
                     className="w-full px-3 py-2.5 text-sm bg-surface-subtle border border-border-subtle rounded-xl focus:border-primary outline-none"
                   >
                     <option value="mall">Shopping Mall</option>
                     <option value="plaza">Commercial Plaza</option>
                     <option value="market">Open Market / Bazaar</option>
-                    <option value="commercial-axis">Commercial Strip / Axis</option>
-                    <option value="strip">Retail Arcade</option>
+                    <option value="commercial-axis">Shopping Street / Business Area</option>
+                    <option value="strip">Shopping Arcade / Row of Shops</option>
                   </select>
                 </div>
                 <div>
@@ -615,61 +682,27 @@ export function ClusterOnboardingScreen({
                     onChange={(e) => setCreateRadius(Number(e.target.value))}
                     className="w-full px-3 py-2.5 text-sm bg-surface-subtle border border-border-subtle rounded-xl focus:border-primary outline-none"
                   >
-                    <option value={300}>300 meters (Single Mall)</option>
-                    <option value={500}>500 meters (Plaza + Wing)</option>
-                    <option value={1000}>1 kilometer (Commercial Strip)</option>
+                    {CLUSTER_RADIUS_SETTINGS[createType].options.map((radius) => (
+                      <option key={radius} value={radius}>
+                        {formatClusterRadius(radius)}
+                      </option>
+                    ))}
                   </select>
+                  <p className="mt-1 text-[11px] text-text-secondary">
+                    Suggested starting radius for this type: {formatClusterRadius(CLUSTER_RADIUS_SETTINGS[createType].defaultRadius)}.
+                  </p>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-text-primary mb-1">
-                  Physical Street Address *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={createAddress}
-                  onChange={(e) => setCreateAddress(e.target.value)}
-                  placeholder="Plot number and street"
-                  className="w-full px-3 py-2.5 text-sm bg-surface-subtle border border-border-subtle rounded-xl focus:border-primary outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">City</label>
-                  <input
-                    type="text"
-                    value={createCity}
-                    onChange={(e) => setCreateCity(e.target.value)}
-                    className="w-full px-3 py-2.5 text-sm bg-surface-subtle border border-border-subtle rounded-xl focus:border-primary outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-text-primary mb-1">State</label>
-                  <input
-                    type="text"
-                    value={createState}
-                    onChange={(e) => setCreateState(e.target.value)}
-                    className="w-full px-3 py-2.5 text-sm bg-surface-subtle border border-border-subtle rounded-xl focus:border-primary outline-none"
-                  />
+              <div className="flex items-start gap-2.5 rounded-xl border border-border-subtle bg-surface-subtle p-3">
+                <Icon name="location_on" className="mt-0.5 text-[18px] text-primary" />
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-text-primary">Business location</p>
+                  <p className="mt-1 break-words text-xs text-text-secondary">
+                    {registeredAddress}
+                  </p>
                 </div>
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-text-primary mb-1">
-                  Your Unit / Suite Number
-                </label>
-                <input
-                  type="text"
-                  value={unitOrSuite}
-                  onChange={(e) => setUnitOrSuite(e.target.value)}
-                  placeholder="e.g. Suite 204 or Ground Floor Shop 12"
-                  className="w-full px-3 py-2.5 text-sm bg-surface-subtle border border-border-subtle rounded-xl focus:border-primary outline-none"
-                />
-              </div>
-
               {/* Guidelines Checkbox */}
               <label className="flex items-start gap-2.5 pt-1 cursor-pointer">
                 <input
@@ -679,7 +712,7 @@ export function ClusterOnboardingScreen({
                   className="mt-0.5 rounded border-border-subtle text-primary focus:ring-0"
                 />
                 <span className="text-xs text-text-secondary leading-snug">
-                  I confirm that Urban Grill &amp; Bistro is physically located at this address and
+                  I confirm that {businessName} is physically located at this address and
                   agree to the VEMTAP Cluster Fair Rotator Guidelines.
                 </span>
               </label>
@@ -690,7 +723,7 @@ export function ClusterOnboardingScreen({
                 type="submit"
                 className="w-full h-12 bg-primary-container active:scale-[0.98] transition-all rounded-xl flex items-center justify-center gap-2 text-on-primary font-semibold text-sm shadow-md"
               >
-                <span>Continue to Feature Selection</span>
+                <span>Establish Cluster</span>
                 <Icon name="arrow_forward" className="text-[18px]" />
               </button>
               <button
@@ -889,21 +922,39 @@ export function ClusterOnboardingScreen({
 
             <div className="space-y-1">
               <h2 className="text-2xl font-bold text-text-primary">
-                Welcome to {activeCluster.name}!
+                {createdCluster ? 'Congratulations! Your cluster is created' : `Welcome to ${activeCluster.name}!`}
               </h2>
               <p className="text-xs text-text-secondary max-w-sm mx-auto">
-                Your business is now an active member. Your selected items will be featured in the
-                cluster rotator pool.
+                {createdCluster
+                  ? activeCluster.status === 'review'
+                    ? `${activeCluster.name} has been created and submitted for review. Businesses can join once it is approved.`
+                    : `${activeCluster.name} has been established. The cluster system is ready for businesses in its coverage area.`
+                  : 'Your business is now an active member. Your selected items will be featured in the cluster rotator pool.'}
               </p>
             </div>
 
+            {createdCluster && (
+              <div className="w-full rounded-xl border border-border-subtle bg-surface-subtle p-4 text-left">
+                <p className="text-sm font-semibold text-text-primary">{CLUSTER_TYPE_LABELS[activeCluster.type]}</p>
+                <p className="mt-1 text-xs text-text-secondary">
+                  {[activeCluster.address, activeCluster.city, activeCluster.state].filter(Boolean).join(', ')}
+                </p>
+                <p className="mt-2 text-xs font-medium text-text-primary">
+                  Coverage radius: {formatClusterRadius(activeCluster.radiusMeters)}
+                </p>
+                <p className="mt-2 text-xs text-text-secondary">Returning you to your cluster dashboard...</p>
+              </div>
+            )}
+
             {/* QR Pass Preview */}
-            <ClusterQrCode
-              url={activeCluster.qrCode.url}
-              clusterName={activeCluster.name}
-              displayCode={activeCluster.qrCode.displayCode}
-              size={180}
-            />
+            {(!createdCluster || !live) && (
+              <ClusterQrCode
+                url={activeCluster.qrCode.url}
+                clusterName={activeCluster.name}
+                displayCode={activeCluster.qrCode.displayCode}
+                size={180}
+              />
+            )}
 
             {/* Action Buttons */}
             <div className="flex flex-col gap-2.5 w-full pt-1">
@@ -912,13 +963,24 @@ export function ClusterOnboardingScreen({
                 onClick={onComplete}
                 className="w-full h-12 bg-primary-container active:scale-[0.98] transition-all rounded-xl flex items-center justify-center gap-2 text-on-primary font-semibold text-sm shadow-md"
               >
-                <span>Continue to Dashboard</span>
+                <span>Go to Cluster Dashboard</span>
                 <Icon name="arrow_forward" className="text-[18px]" />
               </button>
             </div>
           </div>
         )}
       </main>
+      <ClusterCreationConfirmDialog
+        open={showCreateConfirmation}
+        clusterName={createName.trim()}
+        clusterTypeLabel={CLUSTER_TYPE_LABELS[createType]}
+        businessName={businessName}
+        businessLocation={businessAddress || registeredAddress}
+        radiusLabel={formatClusterRadius(createRadius)}
+        isSubmitting={live && liveCluster.propose.isPending}
+        onCancel={() => setShowCreateConfirmation(false)}
+        onConfirm={confirmCreateCluster}
+      />
       {notice && (
         <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {notice}

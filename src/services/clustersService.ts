@@ -79,9 +79,6 @@ export interface ClusterChatMessage {
 export interface ProposeClusterInput {
   name: string;
   kind: ClusterKind;
-  address?: string;
-  city?: string;
-  state?: string;
   latitude: number;
   longitude: number;
   radiusMeters?: number;

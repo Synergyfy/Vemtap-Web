@@ -6,6 +6,8 @@ export interface ProfileBranch {
   address?: string | null;
   city?: string | null;
   state?: string | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
   isActive?: boolean | null;
   isMainBranch?: boolean | null;
 }
@@ -21,6 +23,8 @@ export interface MyBusiness {
   city?: string | null;
   state?: string | null;
   address?: string | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
   phone?: string | null;
   whatsappNumber?: string | null;
   socials?: Record<string, string> | null;

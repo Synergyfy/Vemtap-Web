@@ -9,6 +9,8 @@ interface DesktopVerificationIdTypeScreenProps {
   onIdTypeChange: (idType: VerificationIdType) => void;
   onContinue: () => void;
   onBrand?: () => void;
+  inDashboard?: boolean;
+  dashboardNav?: (key: string) => void;
 }
 
 const ID_OPTIONS: {
@@ -74,6 +76,8 @@ export function DesktopVerificationIdTypeScreen({
   onIdTypeChange,
   onContinue,
   onBrand,
+  inDashboard = false,
+  dashboardNav,
 }: DesktopVerificationIdTypeScreenProps) {
   const selected = ID_OPTIONS.find((option) => option.key === idType) ?? ID_OPTIONS[0];
   // Live: what each ID really needs, the name it must match and the last attempt;
@@ -89,7 +93,7 @@ export function DesktopVerificationIdTypeScreen({
     : ID_OPTIONS;
 
   return (
-    <BusinessVerificationChrome activeNav="trust" onBrand={onBrand}>
+    <BusinessVerificationChrome activeNav="trust" onBrand={onBrand} inDashboard={inDashboard} dashboardNav={dashboardNav}>
       <div className="w-full max-w-6xl mx-auto px-margin py-space-xl flex flex-col gap-space-2xl">
         <div className="w-full flex flex-col gap-space-xs bg-surface-canvas rounded-xl p-space-lg shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs text-on-surface">
