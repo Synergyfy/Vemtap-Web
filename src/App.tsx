@@ -6326,7 +6326,6 @@ function AppInner() {
           <DesktopBusinessProfilePreviewStudioScreen
             onNav={businessPortalNav}
             onPreviewStorefront={() => setRoute('hub-storefront-preview')}
-            onEditProfile={() => setRoute('business-profile-studio')}
           />
         );
       return <BusinessHubScreen initialStep="profile" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;

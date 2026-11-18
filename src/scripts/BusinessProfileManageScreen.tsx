@@ -133,19 +133,34 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
 
   /** Brand facts shown above — reused by the contextual AI prompts. */
   const aiProfileContext: AiPromptContext = {
-    businessName: live ? profile.form.name : BRAND_NAME,
-    category: live ? profile.category : BRAND_CATEGORY,
-    description: live ? profile.form.description : BRAND_BIO,
+    businessName: live ? (profile.isLoading ? undefined : profile.form.name) : BRAND_NAME,
+    category: live ? profile.category || undefined : BRAND_CATEGORY,
+    description: live ? (profile.isLoading ? undefined : profile.form.description) : BRAND_BIO,
   };
 
   /** Live: Edit Profile / Manage turn the name, bio, contacts and handles into fields; Save writes them. */
   const [editing, setEditing] = useState(false);
+  const hasChanges =
+    !profile.isLoading &&
+    (profile.dirty ||
+      AMENITIES.some((amenity) => amenityState[amenity.key] !== profile.form.amenities.includes(amenity.label)) ||
+      offeringsDraft.hasProducts !== offerings.hasProducts ||
+      offeringsDraft.hasServices !== offerings.hasServices);
+  const cancelEditing = () => {
+    const saved = profile.reset();
+    setAmenityState(
+      Object.fromEntries(AMENITIES.map((amenity) => [amenity.key, saved.amenities.includes(amenity.label)])),
+    );
+    setOfferingsDraft(offerings);
+    setEditing(false);
+  };
   const startEditing = (demoMessage: string) => (live ? setEditing(true) : showToast(demoMessage));
   const inputClass =
     'w-full rounded-lg bg-surface-container-low px-3 py-2 font-body-md text-body-md text-text-primary outline-none focus:ring-2 focus:ring-primary/30';
 
   /** Live: uploads a new logo / cover and saves it to the business right away. */
   const changeImage = (kind: 'logo' | 'cover') => {
+    if (!editing) return;
     if (!live) {
       showToast(kind === 'logo' ? 'Logo upload opened' : 'Cover photo picker opened');
       return;
@@ -160,7 +175,6 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
   const uploadingKind = profile.uploadImage.isPending ? profile.uploadImage.variables : null;
 
   const handleSave = () => {
-    setOfferings(offeringsDraft);
     // Keep amenities this screen doesn't list (e.g. set on desktop) untouched.
     const listed = AMENITIES.map((amenity) => amenity.label);
     const amenities = [
@@ -171,6 +185,7 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
       { ...profile.form, amenities },
       {
         onSuccess: () => {
+          setOfferings(offeringsDraft);
           setEditing(false);
           showToast('Profile & amenities updated successfully!');
         },
@@ -210,21 +225,23 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
         </div>
       </header>
 
-      <div className="flex flex-col w-full flex-1 pb-32">
+      <div className={`flex flex-col w-full flex-1 ${editing && hasChanges ? 'pb-32' : 'pb-space-xl'}`}>
         {/* Live strip */}
         <div className="px-margin pt-space-xs pb-space-sm flex items-center justify-between">
           <div className="flex items-center gap-space-2xs">
             <span className="w-2.5 h-2.5 rounded-full bg-badge-discount-text animate-pulse" />
             <span className="font-label-sm text-label-sm text-text-secondary">Live on VEMTAP Network</span>
           </div>
-          <button
-            className="flex items-center gap-space-2xs px-space-sm py-1.5 rounded-full bg-surface-container-high hover:bg-surface-variant transition-colors text-primary font-label-sm text-label-sm active:scale-95"
-            type="button"
-            onClick={onPreviewStorefront}
-          >
-            <Icon name="visibility" className="text-[16px]" />
-            <span>Public Preview</span>
-          </button>
+          {!editing && (
+            <button
+              className="flex items-center gap-space-2xs px-space-sm py-1.5 rounded-full bg-surface-container-high hover:bg-surface-variant transition-colors text-primary font-label-sm text-label-sm active:scale-95"
+              type="button"
+              onClick={onPreviewStorefront}
+            >
+              <Icon name="visibility" className="text-[16px]" />
+              <span>Public Preview</span>
+            </button>
+          )}
         </div>
 
         {/* Cover & Avatar */}
@@ -236,15 +253,17 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
               <div className="w-full h-full bg-surface-container" />
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-on-background/70 via-on-background/20 to-transparent" />
-            <button
-              className="absolute top-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-inverse-surface/85 backdrop-blur-md text-on-primary font-label-sm text-label-sm active:scale-95 transition-all shadow-md"
-              type="button"
-              onClick={() => changeImage('cover')}
-              disabled={uploadingKind === 'cover'}
-            >
-              <Icon name="photo_camera" className="text-[16px]" />
-              <span>{uploadingKind === 'cover' ? 'Uploading…' : live && !coverImg ? 'Add Cover' : 'Change Cover'}</span>
-            </button>
+            {editing && (!live || !profile.isLoading) && (
+              <button
+                className="absolute top-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-inverse-surface/85 backdrop-blur-md text-on-primary font-label-sm text-label-sm active:scale-95 transition-all shadow-md"
+                type="button"
+                onClick={() => changeImage('cover')}
+                disabled={uploadingKind === 'cover'}
+              >
+                <Icon name="photo_camera" className="text-[16px]" />
+                <span>{uploadingKind === 'cover' ? 'Uploading…' : live && !coverImg ? 'Add Cover' : 'Change Cover'}</span>
+              </button>
+            )}
             {storeCode && (
               <div className="absolute bottom-3 right-3 flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-canvas/90 backdrop-blur-md shadow-sm">
                 <Icon name="storefront" className="text-[14px] text-badge-discount-text" />
@@ -265,15 +284,17 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
                   )}
                 </div>
               </div>
-              <button
-                className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-md active:scale-90 transition-transform"
-                type="button"
-                onClick={() => changeImage('logo')}
-                disabled={uploadingKind === 'logo'}
-                aria-label="Change logo"
-              >
-                <Icon name={uploadingKind === 'logo' ? 'progress_activity' : 'edit'} className={`text-[15px] ${uploadingKind === 'logo' ? 'animate-spin' : ''}`} />
-              </button>
+              {editing && (!live || !profile.isLoading) && (
+                <button
+                  className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-md active:scale-90 transition-transform"
+                  type="button"
+                  onClick={() => changeImage('logo')}
+                  disabled={uploadingKind === 'logo'}
+                  aria-label="Change logo"
+                >
+                  <Icon name={uploadingKind === 'logo' ? 'progress_activity' : 'edit'} className={`text-[15px] ${uploadingKind === 'logo' ? 'animate-spin' : ''}`} />
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-1.5 pb-1">
               <div
@@ -286,10 +307,12 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
               </div>
             </div>
           </div>
-          <div className="mt-space-xs flex flex-wrap items-center gap-x-space-md gap-y-1">
-            <CreateWithAiButton assetType="banner" context={aiProfileContext} aspectRatio="16/9" />
-            <CreateWithAiButton assetType="logo" context={aiProfileContext} aspectRatio="square" />
-          </div>
+          {editing && (!live || !profile.isLoading) && (
+            <div className="mt-space-xs flex flex-wrap items-center gap-x-space-md gap-y-1">
+              <CreateWithAiButton assetType="banner" context={aiProfileContext} aspectRatio="16/9" />
+              <CreateWithAiButton assetType="logo" context={aiProfileContext} aspectRatio="square" />
+            </div>
+          )}
         </div>
 
         {/* Bio */}
@@ -329,22 +352,24 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
             </p>
           )}
           <div className="grid grid-cols-2 gap-space-sm mt-space-sm">
-            <button
-              className="h-11 rounded-xl bg-surface-container-high text-primary hover:bg-surface-variant flex items-center justify-center gap-2 font-button-secondary text-button-secondary transition-all active:scale-[0.98]"
-              type="button"
-              onClick={onPreviewStorefront}
-            >
-              <Icon name="store" className="text-[18px]" />
-              <span>Public Storefront</span>
-              <Icon name="north_east" className="text-[16px]" />
-            </button>
+            {!editing && (
+              <button
+                className="h-11 rounded-xl bg-surface-container-high text-primary hover:bg-surface-variant flex items-center justify-center gap-2 font-button-secondary text-button-secondary transition-all active:scale-[0.98]"
+                type="button"
+                onClick={onPreviewStorefront}
+              >
+                <Icon name="store" className="text-[18px]" />
+                <span>Public Storefront</span>
+                <Icon name="north_east" className="text-[16px]" />
+              </button>
+            )}
             <button
               className="h-11 rounded-xl bg-primary text-on-primary flex items-center justify-center gap-2 font-button-primary text-button-primary shadow-[0_8px_20px_-4px_rgba(6,108,244,0.28)] hover:bg-primary-container active:scale-[0.98] transition-all"
               type="button"
-              onClick={() => (editing ? setEditing(false) : startEditing('Profile editor opening…'))}
+              onClick={() => (editing ? cancelEditing() : startEditing('Profile editor opening…'))}
             >
               <Icon name={editing ? 'close' : 'tune'} className="text-[18px]" />
-              <span>{editing ? 'Done Editing' : 'Edit Profile'}</span>
+              <span>{editing ? 'Cancel' : 'Edit Profile'}</span>
             </button>
           </div>
         </div>
@@ -449,6 +474,7 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
                   role="switch"
                   aria-label="Toggle Products"
                   aria-checked={offeringsDraft.hasProducts}
+                  disabled={!editing}
                   onClick={() => handleToggleOffering('products')}
                   className={`w-8 h-5 rounded-full transition-colors relative shrink-0 p-0.5 inline-flex items-center ${
                     offeringsDraft.hasProducts ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'
@@ -484,6 +510,7 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
                   role="switch"
                   aria-label="Toggle Services"
                   aria-checked={offeringsDraft.hasServices}
+                  disabled={!editing}
                   onClick={() => handleToggleOffering('services')}
                   className={`w-8 h-5 rounded-full transition-colors relative shrink-0 p-0.5 inline-flex items-center ${
                     offeringsDraft.hasServices ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'
@@ -516,9 +543,6 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
         <div className="px-margin mb-space-lg">
           <div className="flex items-center justify-between mb-space-xs">
             <h3 className="font-heading-sm text-heading-sm text-text-primary">Contact & Public Channels</h3>
-            <button className="font-label-sm text-label-sm text-primary hover:underline" type="button" onClick={() => startEditing('Channel manager opening…')}>
-              Manage
-            </button>
           </div>
           <div className="rounded-xl bg-surface-container-lowest p-space-sm shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-space-xs">
             <div className="flex items-center justify-between p-space-xs rounded-lg hover:bg-surface-container-low transition-colors">
@@ -619,7 +643,7 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
                 ))}
               </div>
             )}
-            <div className={`mt-space-xs pt-space-xs items-center justify-between gap-2 px-1 ${editing ? 'hidden' : 'flex'}`}>
+            <div className={`mt-space-xs pt-space-xs items-center gap-2 px-1 ${editing ? 'hidden' : 'flex'}`}>
               <div className="flex items-center gap-2 flex-wrap">
                 {socialChips.length === 0 && (
                   <span className="font-caption text-caption text-text-tertiary">No social handles yet</span>
@@ -635,13 +659,6 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
                   </button>
                 ))}
               </div>
-              <button
-                className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center text-text-secondary hover:text-primary"
-                type="button"
-                onClick={() => startEditing('Add social handle opened')}
-              >
-                <Icon name="add" className="text-[18px]" />
-              </button>
             </div>
           </div>
         </div>
@@ -664,12 +681,13 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
               const active = amenityState[amenity.key];
               return (
                 <button
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full font-label-md text-label-md transition-all active:scale-95 ${
-                    active ? 'bg-surface-tint-blue text-primary shadow-sm' : 'bg-surface-container text-text-secondary'
-                  }`}
                   key={amenity.key}
                   type="button"
+                  disabled={!editing}
                   onClick={() => setAmenityState((current) => ({ ...current, [amenity.key]: !current[amenity.key] }))}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full font-label-md text-label-md transition-all ${
+                    active ? 'bg-surface-tint-blue text-primary shadow-sm' : 'bg-surface-container text-text-secondary'
+                  } ${editing ? 'active:scale-95' : 'cursor-default'}`}
                 >
                   <Icon name={amenity.icon} className="text-[16px]" />
                   <span>{amenity.label}</span>
@@ -682,12 +700,13 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
       </div>
 
       {/* Sticky Save Bar */}
-      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-surface/95 backdrop-blur-md px-margin py-3 shadow-[0_-8px_24px_-4px_rgba(17,24,39,0.06)] flex items-center gap-space-sm">
+      {editing && hasChanges && (
+        <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-surface/95 backdrop-blur-md px-margin py-3 shadow-[0_-8px_24px_-4px_rgba(17,24,39,0.06)] flex items-center gap-space-sm">
         <button
           className="w-12 h-12 rounded-xl bg-surface-container flex items-center justify-center text-text-secondary hover:text-text-primary active:scale-95 transition-all shrink-0"
           title="Discard Changes"
           type="button"
-          onClick={onBack}
+          onClick={cancelEditing}
         >
           <Icon name="restart_alt" className="text-[20px]" />
         </button>
@@ -695,12 +714,13 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
           className="flex-1 h-12 rounded-xl bg-primary text-on-primary flex items-center justify-center gap-2 font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)] hover:bg-primary-container active:scale-[0.98] transition-all"
           type="button"
           onClick={handleSave}
-          disabled={profile.save.isPending || profile.isLoading}
+          disabled={profile.save.isPending || profile.uploadImage.isPending || profile.isLoading}
         >
           <Icon name="check" className="text-[20px]" />
           <span>{profile.save.isPending ? 'Saving…' : 'Save Changes'}</span>
         </button>
-      </div>
+        </div>
+      )}
 
       {/* Confirmation modal when disabling an offering */}
       {confirmDisable && (
