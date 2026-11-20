@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessPortalChrome } from './BusinessPortalChrome';
 import {
@@ -129,8 +129,16 @@ export function DesktopClusterSystemScreen({
     setShowImportModal(true);
   };
 
+  // A cluster error must not re-trigger the refresh loop: the toast's
+  // `refreshState()` re-fetches the same failing request, React Query returns a
+  // fresh error object, this effect runs again — the page then jitters as it
+  // re-renders and its actions stop responding. Show each error once.
+  const errorNotifiedRef = useRef<unknown>(null);
   useEffect(() => {
-    if (liveCluster.error) showNotification(apiErrorMessage(liveCluster.error, 'Could not load your cluster.'));
+    const error = liveCluster.error;
+    if (!error || errorNotifiedRef.current === error) return;
+    errorNotifiedRef.current = error;
+    showNotification(apiErrorMessage(error, 'Could not load your cluster.'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveCluster.error]);
 

@@ -35,6 +35,13 @@ const BUSINESS_ROLES: UserRole[] = ['Owner', 'Manager', 'Staff'];
 
 export const isBusinessRole = (role?: string | null) => Boolean(role && BUSINESS_ROLES.includes(role as UserRole));
 
+/**
+ * The account's business designation makes the business its only operating
+ * shell: these accounts never act as consumers.
+ */
+export const isBusinessDesignated = (user?: SessionUser | null): boolean =>
+  Boolean(user && (user.businessRole || user.hasBusiness || (isBusinessRole(user.role) && user.businessId)));
+
 /** Owners and admins pass every permission check; others need the permission string. */
 export const hasPermission = (user: SessionUser | undefined, permission: string) =>
   Boolean(user && (user.role === 'Owner' || user.role === 'Admin' || user.role === 'SUPER_ADMIN' || user.permissions?.includes(permission)));
