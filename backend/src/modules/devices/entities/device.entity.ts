@@ -1,0 +1,105 @@
+import { Entity, Column, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import { ApiProperty } from '@nestjs/swagger';
+import { AbstractBaseEntity } from '../../../common/entities/base.entity';
+import { Visit } from '../../visitors/entities/visit.entity';
+import { Order } from '../../products/entities/order.entity';
+import { Branch } from '../../branches/entities/branch.entity';
+import { ProductType } from '../../products/entities/product-type.entity';
+
+export enum DeviceStatus {
+  ACTIVE = 'active',
+  INACTIVE = 'inactive',
+}
+
+@Entity('devices')
+export class Device extends AbstractBaseEntity {
+  @ApiProperty({ example: 'Front Entrance Tag', description: 'Device name' })
+  @Column()
+  name: string;
+
+  @ApiProperty({ example: 'LT-8829-X', description: 'Unique Serial Code' })
+  @Column({ unique: true })
+  code: string; // Serial number
+
+  @ApiProperty({
+    enum: DeviceStatus,
+    example: DeviceStatus.ACTIVE,
+    description: 'Current status',
+  })
+  @Column({
+    type: 'simple-enum',
+    enum: DeviceStatus,
+    default: DeviceStatus.ACTIVE,
+  })
+  status: DeviceStatus;
+
+  @ApiProperty({ example: 'Main Lobby', description: 'Physical location' })
+  @Column({ nullable: true })
+  location: string;
+
+  @ApiProperty({ example: 120, description: 'Total number of scans' })
+  @Column({ default: 0 })
+  totalScans: number;
+
+  @ApiProperty({ example: 'Card', description: 'Form factor of the device' })
+  @Column({ default: 'Card' })
+  type: string;
+
+  @ApiProperty({ example: 100, description: 'Battery percentage level' })
+  @Column({ default: 100 })
+  batteryLevel: number;
+
+  @ApiProperty({
+    example: '2023-10-27T10:00:00Z',
+    description: 'Last active timestamp',
+  })
+  @Column({ nullable: true })
+  lastActive: Date;
+
+  @OneToMany(() => Visit, (visit) => visit.device)
+  visits: Visit[];
+
+  @ManyToOne(() => Order, (order) => order.devices, {
+    onDelete: 'SET NULL',
+    nullable: true,
+  })
+  @JoinColumn({ name: 'orderId' })
+  order: Order;
+
+  @ApiProperty({
+    example: 'order-uuid',
+    description: 'Order ID the device was generated from',
+    required: false,
+  })
+  @Column({ nullable: true })
+  orderId: string;
+
+  @ManyToOne(() => Branch, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'branchId' })
+  branch: Branch;
+
+  @ApiProperty({
+    example: 'branch-uuid',
+    description: 'Branch ID the device is assigned to',
+  })
+  @Column({ nullable: true })
+  branchId: string;
+
+  @ApiProperty({
+    example: false,
+    description:
+      'Designates this device as the main/primary device of the branch',
+  })
+  @Column({ default: false })
+  isMain: boolean;
+
+  @ManyToOne(() => ProductType, (productType) => productType.devices, {
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'productTypeId' })
+  productType: ProductType;
+
+  @ApiProperty({ example: 'type-uuid' })
+  @Column({ nullable: true })
+  productTypeId: string;
+}

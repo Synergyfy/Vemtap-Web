@@ -1,0 +1,311 @@
+import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import {
+  IsString,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsArray,
+  IsDateString,
+  IsUUID,
+  Min,
+  Max,
+  IsInt,
+  IsEmail,
+  IsNotEmpty,
+  MaxLength,
+  NotEquals,
+} from 'class-validator';
+import { RewardCategory } from '../entities/reward-template.entity';
+import { RewardAudienceType } from '../entities/reward.entity';
+
+export enum ManualEarnSource {
+  MANUAL_AWARD = 'manual_award',
+  PROMOTION = 'promotion',
+  COMPENSATION = 'compensation',
+}
+
+export class CreateRewardTemplateDto {
+  @ApiProperty()
+  @IsString()
+  name: string;
+
+  @ApiProperty()
+  @IsString()
+  description: string;
+
+  @ApiProperty()
+  @IsNumber()
+  @Min(0)
+  pointsRequired: number;
+
+  @ApiProperty({ enum: RewardCategory })
+  @IsEnum(RewardCategory)
+  category: RewardCategory;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  coverImage?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  galleryImages?: string[];
+}
+
+export class UpdateRewardTemplateDto extends PartialType(
+  CreateRewardTemplateDto,
+) {}
+
+export class CreateRewardDto extends CreateRewardTemplateDto {
+  @ApiProperty()
+  @IsUUID()
+  branchId: string;
+
+  @ApiProperty({
+    description: 'Total quantity available. Use -1 for infinity.',
+  })
+  @IsNumber()
+  @Min(-1)
+  @NotEquals(0)
+  totalQuantity: number;
+
+  @ApiProperty()
+  @IsDateString()
+  expiryDate: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  templateId?: string;
+
+  @ApiPropertyOptional({
+    enum: RewardAudienceType,
+    default: RewardAudienceType.ALL,
+  })
+  @IsOptional()
+  @IsEnum(RewardAudienceType)
+  audienceType?: RewardAudienceType;
+}
+
+export class GivePointsDto {
+  @ApiPropertyOptional({
+    description: 'Customer ID from the authenticated customer profile',
+  })
+  @IsOptional()
+  @IsUUID()
+  customerId?: string;
+
+  // Kept as an input alias for clients that currently call this field userId.
+  @ApiPropertyOptional({ description: 'Customer user ID' })
+  @IsOptional()
+  @IsUUID()
+  userId?: string;
+
+  @ApiPropertyOptional({ description: 'Customer unique code' })
+  @IsOptional()
+  @IsString()
+  customerCode?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Points to award. If omitted and spendingAmount is provided, points are calculated from the active loyalty rule.',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  points?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Spending amount in currency. If provided without points, points are calculated from the active loyalty rule.',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  spendingAmount?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  reason?: string;
+
+  @ApiProperty()
+  @IsUUID()
+  branchId: string;
+}
+
+export class DeductPointsDto {
+  @ApiProperty({ description: 'Customer user ID' })
+  @IsUUID()
+  customerId: string;
+
+  @ApiProperty({ description: 'Branch the correction is made at' })
+  @IsUUID()
+  branchId: string;
+
+  @ApiProperty({
+    description: 'Points to remove (at most the balance at this business)',
+  })
+  @IsInt()
+  @Min(1)
+  points: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
+}
+
+export class RegisterLoyaltyCustomerDto {
+  @ApiProperty({ example: 'Amina' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(80)
+  firstName: string;
+
+  @ApiPropertyOptional({ example: 'Bello' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  lastName?: string;
+
+  @ApiProperty({ example: '+2348034567890' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(20)
+  phone: string;
+
+  @ApiPropertyOptional({ example: 'amina@example.com' })
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiPropertyOptional({
+    description: 'Welcome points given on joining',
+    example: 100,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100000)
+  welcomePoints?: number;
+
+  @ApiProperty({ description: 'Branch the customer joins at' })
+  @IsUUID()
+  branchId: string;
+}
+
+export class GeneratePointCodeDto {
+  @ApiProperty()
+  @IsNumber()
+  @Min(1)
+  points: number;
+
+  @ApiProperty()
+  @IsUUID()
+  businessId: string;
+}
+
+export class UsePointCodeDto {
+  @ApiProperty()
+  @IsString()
+  code: string;
+}
+
+export class GenerateRedemptionCodeDto {
+  @ApiProperty()
+  @IsUUID()
+  rewardId: string;
+
+  @ApiProperty()
+  @IsUUID()
+  branchId: string;
+}
+
+export class RedeemRewardDto {
+  @ApiProperty()
+  @IsString()
+  code: string;
+}
+
+export class RedeemRewardByIdDto {
+  @ApiProperty()
+  @IsUUID()
+  rewardId: string;
+}
+
+export class VerifyRedemptionDto {
+  @ApiProperty()
+  @IsString()
+  code: string;
+}
+
+export class ApplyRewardTemplateDto {
+  @ApiProperty()
+  @IsUUID()
+  branchId: string;
+
+  @ApiProperty({
+    description: 'Total quantity available. Use -1 for infinity.',
+  })
+  @IsNumber()
+  @Min(-1)
+  @NotEquals(0)
+  totalQuantity: number;
+
+  @ApiProperty()
+  @IsDateString()
+  expiryDate: string;
+
+  @ApiPropertyOptional({ enum: RewardAudienceType })
+  @IsOptional()
+  @IsEnum(RewardAudienceType)
+  audienceType?: RewardAudienceType;
+}
+
+export class BranchIdParamDto {
+  @ApiProperty()
+  @IsUUID()
+  branchId: string;
+}
+
+export class ManualEarnPointsDto {
+  @ApiProperty({
+    description: 'Loyalty profile (customer user) to credit',
+  })
+  @IsUUID()
+  userId: string;
+
+  @ApiProperty({ example: 500, description: 'Points to award' })
+  @IsNumber()
+  @Min(1)
+  points: number;
+
+  @ApiPropertyOptional({
+    enum: ManualEarnSource,
+    default: ManualEarnSource.MANUAL_AWARD,
+  })
+  @IsOptional()
+  @IsEnum(ManualEarnSource)
+  source?: ManualEarnSource;
+
+  @ApiPropertyOptional({ description: 'Related reward program ID' })
+  @IsOptional()
+  @IsUUID()
+  rewardId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Staff member performing the award (defaults to the caller)',
+  })
+  @IsOptional()
+  @IsUUID()
+  awardedBy?: string;
+
+  @ApiPropertyOptional({ description: 'Audit trail note' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}

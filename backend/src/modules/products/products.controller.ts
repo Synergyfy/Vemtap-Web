@@ -1,0 +1,565 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Request,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { ProductsService } from './products.service';
+import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
+import { CreateOrderDto } from './dto/create-order.dto';
+import { RequestQuoteDto } from './dto/request-quote.dto';
+import { NegotiateQuoteDto } from './dto/negotiate-quote.dto';
+import { CreateProductTypeDto } from './dto/create-product-type.dto';
+import { UpdateProductTypeDto } from './dto/update-product-type.dto';
+import { AdminProductQueryDto } from './dto/product-query.dto';
+import { PublicProductsQueryDto } from '../catalogue/dto/item.dto';
+import { CatalogueService } from '../catalogue/catalogue.service';
+import {
+  CreateProductReviewDto,
+  ProductReviewsAdminQueryDto,
+  UpdateProductReviewStatusDto,
+} from './dto/product-review.dto';
+import { Product } from './entities/product.entity';
+import {
+  ProductReview,
+  ProductReviewStatus,
+} from './entities/product-review.entity';
+import { ProductType } from './entities/product-type.entity';
+import { Quote } from './entities/quote.entity';
+import { Order, OrderStatus } from './entities/order.entity';
+import { User, UserRole } from '../users/entities/user.entity';
+import { Public } from '../../common/decorators/public.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiResponse,
+} from '@nestjs/swagger';
+
+@ApiTags('products')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Controller('products')
+export class ProductsController {
+  constructor(
+    private readonly productsService: ProductsService,
+    private readonly catalogueService: CatalogueService,
+  ) {}
+
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Post()
+  @ApiOperation({ summary: 'Create a new product (Admin only)' })
+  @ApiResponse({
+    status: 201,
+    description: 'The product has been successfully created.',
+    type: Product,
+  })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  create(@Body() createProductDto: CreateProductDto) {
+    return this.productsService.create(createProductDto);
+  }
+
+  @Public()
+  @Get()
+  @ApiOperation({
+    summary: 'List published products (Public)',
+    description:
+      'Feed of active catalogue items (products and services) across all ' +
+      'branches, backed by the catalogue module. Supports `page`, `limit`, ' +
+      '`search`, `categoryId`, `itemType`, `minPrice`, `maxPrice` and ' +
+      '`sortBy` (newest | oldest | price_asc | price_desc). Returns ' +
+      '`{ data, total, page, limit, totalPages, hasNextPage, hasPrevPage }`.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Paginated published catalogue items.',
+  })
+  findAll(@Query() query: PublicProductsQueryDto) {
+    return this.catalogueService.findPublishedItemsPublic(query);
+  }
+
+  // --- Product Types Endpoints ---
+
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Post('types')
+  @ApiOperation({ summary: 'Create a new product type (Admin only)' })
+  @ApiResponse({ status: 201, type: ProductType })
+  createProductType(@Body() dto: CreateProductTypeDto) {
+    return this.productsService.createProductType(dto);
+  }
+
+  @Public()
+  @Get('types')
+  @ApiOperation({ summary: 'Get all product types (Public)' })
+  @ApiResponse({ status: 200, type: [ProductType] })
+  findAllProductTypes() {
+    return this.productsService.findAllProductTypes();
+  }
+
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Patch('types/:id')
+  @ApiOperation({ summary: 'Update product type (Admin only)' })
+  @ApiResponse({ status: 200, type: ProductType })
+  updateProductType(
+    @Param('id') id: string,
+    @Body() dto: UpdateProductTypeDto,
+  ) {
+    return this.productsService.updateProductType(id, dto);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Delete('types/:id')
+  @ApiOperation({ summary: 'Delete product type (Admin only)' })
+  @ApiResponse({ status: 200 })
+  removeProductType(@Param('id') id: string) {
+    return this.productsService.removeProductType(id);
+  }
+
+  // --- End Product Types Endpoints ---
+
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Get('admin')
+  @ApiOperation({
+    summary: 'Get all products including unpublished (Admin only)',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Return paginated products with search/filter/sort/status support.',
+  })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  findAllAdmin(@Query() query: AdminProductQueryDto) {
+    return this.productsService.findAllAdmin(query);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Get('admin/stats')
+  @ApiOperation({ summary: 'Get product statistics (Admin only)' })
+  getAdminStats() {
+    return this.productsService.getAdminStats();
+  }
+
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Get('admin/count-by-type/:id')
+  @ApiOperation({ summary: 'Count products by type (Admin only)' })
+  countByProductType(@Param('id') id: string) {
+    return this.productsService.countByProductType(id);
+  }
+
+  // --- Product Reviews ---
+
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Get('reviews/pending')
+  @ApiOperation({
+    summary: 'List product reviews by status (Admin only)',
+    description:
+      'Defaults to the pending moderation queue. Pass ?status=approved|rejected|pending to filter.',
+  })
+  findAllReviewsAdmin(@Query() query: ProductReviewsAdminQueryDto) {
+    return this.productsService.findReviewsAdmin(
+      query.status,
+      query.page,
+      query.limit,
+    );
+  }
+
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Patch('reviews/:id/approve')
+  @ApiOperation({ summary: 'Approve a product review (Admin only)' })
+  approveReview(@Param('id') id: string) {
+    return this.productsService.updateReviewStatus(
+      id,
+      ProductReviewStatus.APPROVED,
+    );
+  }
+
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Patch('reviews/:id/reject')
+  @ApiOperation({ summary: 'Reject a product review (Admin only)' })
+  rejectReview(@Param('id') id: string) {
+    return this.productsService.updateReviewStatus(
+      id,
+      ProductReviewStatus.REJECTED,
+    );
+  }
+
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Patch('reviews/:id/status')
+  @ApiOperation({ summary: 'Update product review status (Admin only)' })
+  updateReviewStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateProductReviewStatusDto,
+  ) {
+    return this.productsService.updateReviewStatus(id, dto.status);
+  }
+
+  @Public()
+  @Get(':id/reviews')
+  @ApiOperation({ summary: 'Get approved reviews for a product (Public)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Return paginated approved reviews.',
+    type: [ProductReview],
+  })
+  @ApiResponse({ status: 404, description: 'Product not found.' })
+  findProductReviews(
+    @Param('id') id: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.productsService.findApprovedReviews(id, page, limit);
+  }
+
+  @Public()
+  @Post(':id/reviews')
+  @ApiOperation({ summary: 'Submit a review for a product (Public)' })
+  @ApiResponse({
+    status: 201,
+    description: 'Review submitted and queued for admin approval.',
+    type: ProductReview,
+  })
+  @ApiResponse({ status: 404, description: 'Product not found.' })
+  createProductReview(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() dto: CreateProductReviewDto,
+  ) {
+    const forwarded = req.headers?.['x-forwarded-for'];
+    const ip =
+      req.ip ||
+      (Array.isArray(forwarded) ? forwarded[0] : forwarded) ||
+      undefined;
+    return this.productsService.createReview(req.user, id, dto, ip);
+  }
+
+  @Public()
+  @Get(':id')
+  @ApiOperation({ summary: 'Get product by ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Return the product.',
+    type: Product,
+  })
+  @ApiResponse({ status: 404, description: 'Product not found.' })
+  async findOne(@Param('id') id: string) {
+    return this.productsService.findOne(id);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update product (Admin only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'The product has been successfully updated.',
+    type: Product,
+  })
+  @ApiResponse({ status: 404, description: 'Product not found.' })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  update(@Param('id') id: string, @Body() updateProductDto: UpdateProductDto) {
+    return this.productsService.update(id, updateProductDto);
+  }
+
+  @Roles(UserRole.OWNER)
+  @ApiBearerAuth()
+  @Post('orders')
+  @ApiOperation({ summary: 'Place a direct order (Owner only)' })
+  @ApiResponse({
+    status: 201,
+    description: 'The order has been successfully created.',
+    type: Order,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad Request (e.g. quantity exceeds threshold)',
+  })
+  createDirectOrder(
+    @Request() req: { user: User },
+    @Body() createOrderDto: CreateOrderDto,
+  ) {
+    return this.productsService.createDirectOrder(req.user, createOrderDto);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete product (Admin only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'The product has been successfully deleted.',
+  })
+  @ApiResponse({ status: 404, description: 'Product not found.' })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  remove(@Param('id') id: string) {
+    return this.productsService.remove(id);
+  }
+
+  @Roles(UserRole.CUSTOMER, UserRole.OWNER, UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Post(':id/quote')
+  @ApiOperation({
+    summary: 'Request a quote for a product (Customer, Owner, or Admin)',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'The quote request has been successfully created.',
+    type: Quote,
+  })
+  @ApiResponse({ status: 404, description: 'Product not found.' })
+  @ApiResponse({ status: 403, description: 'Forbidden.' })
+  requestQuote(
+    @Request() req: { user: User },
+    @Param('id') id: string,
+    @Body() requestQuoteDto: RequestQuoteDto,
+  ) {
+    return this.productsService.requestQuote(req.user, id, requestQuoteDto);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Get('quotes/all')
+  @ApiOperation({ summary: 'Get all quote requests (Admin only)' })
+  @ApiResponse({
+    status: 200,
+    type: [Quote],
+    schema: {
+      example: [
+        {
+          id: 'quote-1uuid',
+          quantity: 100,
+          location: 'Lagos, Nigeria',
+          businessName: 'My Company Ltd',
+          notes: 'I need it asap',
+          status: 'Pending',
+          userId: 'user-uuid',
+          productId: 'product-uuid',
+          currentPrice: null,
+          isNegotiable: true,
+          createdAt: '2023-11-01T10:00:00Z',
+        },
+      ],
+    },
+  })
+  getAllQuotesAdmin() {
+    return this.productsService.getAllQuotesAdmin();
+  }
+
+  @Roles(UserRole.CUSTOMER, UserRole.OWNER, UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Get('quotes/my')
+  @ApiOperation({
+    summary: 'Get my quote requests (Customer, Owner, or Admin)',
+  })
+  @ApiResponse({
+    status: 200,
+    type: [Quote],
+    schema: {
+      example: [
+        {
+          id: 'quote-1uuid',
+          quantity: 100,
+          location: 'City Center',
+          businessName: 'Acme Inc',
+          notes: '',
+          status: 'Admin_Offered',
+          currentPrice: 900,
+          isNegotiable: true,
+          negotiations: [
+            {
+              id: 'neg-1',
+              priceOffered: 900,
+              message: 'Can we do 900?',
+              offeredBy: 'Admin',
+            },
+          ],
+        },
+      ],
+    },
+  })
+  getMyQuotes(@Request() req: { user: User }) {
+    return this.productsService.getMyQuotes(req.user.id);
+  }
+
+  @Roles(UserRole.ADMIN, UserRole.OWNER)
+  @ApiBearerAuth()
+  @Post('quotes/:id/negotiate')
+  @ApiOperation({ summary: 'Negotiate a quote (Admin or Owner)' })
+  @ApiResponse({
+    status: 201,
+    type: Quote,
+    schema: {
+      example: {
+        id: 'quote-1uuid',
+        status: 'Owner_Offered',
+        currentPrice: 850,
+        isNegotiable: true,
+      },
+    },
+  })
+  negotiateQuote(
+    @Request() req: { user: User },
+    @Param('id') id: string,
+    @Body() dto: NegotiateQuoteDto,
+  ) {
+    return this.productsService.negotiateQuote(id, req.user, dto);
+  }
+
+  @Roles(UserRole.CUSTOMER, UserRole.OWNER)
+  @ApiBearerAuth()
+  @Post('quotes/:id/accept')
+  @ApiOperation({
+    summary: 'Accept a negotiated quote (Customer or Owner)',
+  })
+  @ApiResponse({
+    status: 201,
+    type: Order,
+    description: 'Generates a new pending order from the quote',
+    schema: {
+      example: {
+        id: 'order-1uuid',
+        quoteId: 'quote-1uuid',
+        agreedPrice: 850,
+        status: 'Pending',
+        userId: 'owner-uuid',
+      },
+    },
+  })
+  acceptQuote(@Request() req: { user: User }, @Param('id') id: string) {
+    return this.productsService.acceptQuote(id, req.user);
+  }
+
+  @Roles(UserRole.CUSTOMER, UserRole.OWNER)
+  @ApiBearerAuth()
+  @Post('quotes/:id/reject')
+  @ApiOperation({
+    summary: 'Reject a negotiated quote (Customer or Owner)',
+  })
+  @ApiResponse({
+    status: 201,
+    type: Quote,
+    description: 'Marks the quote as rejected',
+    schema: { example: { id: 'quote-1uuid', status: 'Rejected' } },
+  })
+  rejectQuote(@Request() req: { user: User }, @Param('id') id: string) {
+    return this.productsService.rejectQuote(id, req.user);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Get('orders/all')
+  @ApiOperation({ summary: 'Get all orders (Admin only)' })
+  @ApiResponse({
+    status: 200,
+    type: [Order],
+    schema: {
+      example: [
+        {
+          id: 'order-1uuid',
+          quoteId: 'quote-uuid',
+          agreedPrice: 850,
+          status: 'Ready',
+          userId: 'owner-uuid',
+          createdAt: '2023-11-01T10:00:00Z',
+          user: { firstName: 'John', lastName: 'Doe' },
+          quote: { quantity: 100 },
+        },
+      ],
+    },
+  })
+  getAllOrdersAdmin() {
+    return this.productsService.getAllOrdersAdmin();
+  }
+
+  @Roles(UserRole.OWNER)
+  @ApiBearerAuth()
+  @Get('orders/my')
+  @ApiOperation({ summary: 'Get my orders (Owner only)' })
+  @ApiResponse({
+    status: 200,
+    type: [Order],
+    schema: {
+      example: [
+        {
+          id: 'order-1uuid',
+          quoteId: 'quote-uuid',
+          agreedPrice: 850,
+          status: 'Ready',
+          userId: 'owner-uuid',
+        },
+      ],
+    },
+  })
+  getMyOrders(@Request() req: { user: User }) {
+    return this.productsService.getMyOrders(req.user.id);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Patch('orders/:id/ready')
+  @ApiOperation({ summary: 'Mark an order as ready (Admin only)' })
+  @ApiResponse({
+    status: 200,
+    type: Order,
+    schema: {
+      example: {
+        id: 'order-1uuid',
+        quoteId: 'quote-uuid',
+        agreedPrice: 850,
+        status: 'Ready',
+        userId: 'owner-uuid',
+      },
+    },
+  })
+  markOrderReady(@Param('id') id: string) {
+    return this.productsService.markOrderReady(id);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Patch('orders/:id/complete')
+  @ApiOperation({ summary: 'Mark an order as completed and paid (Admin only)' })
+  @ApiResponse({
+    status: 200,
+    type: Order,
+    description: 'Order status updated to Completed and PaymentStatus to Paid',
+  })
+  markOrderCompleted(@Param('id') id: string) {
+    return this.productsService.markOrderCompleted(id);
+  }
+
+  @Roles(UserRole.ADMIN)
+  @ApiBearerAuth()
+  @Patch('orders/:id/status')
+  @ApiOperation({ summary: 'Update order status (Admin only)' })
+  @ApiResponse({
+    status: 200,
+    type: Order,
+    description: 'Order status updated successfully',
+  })
+  updateOrderStatus(
+    @Param('id') id: string,
+    @Body('status') status: OrderStatus,
+  ) {
+    return this.productsService.updateOrderStatus(id, status);
+  }
+}

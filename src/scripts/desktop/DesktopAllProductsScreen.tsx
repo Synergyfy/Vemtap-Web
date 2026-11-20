@@ -28,8 +28,8 @@ export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenPr
   const publicBusiness = usePublicBusiness(businessCode);
   const [category, setCategory] = useState(() => new URLSearchParams(window.location.search).get('category') ?? 'all');
   const [query, setQuery] = useState('');
-  const sourceProducts: CatalogueProduct[] = live
-    ? publicBusiness.products.map((item) => ({
+  const sourceProducts: Array<CatalogueProduct & { kind: 'product' | 'service' }> = live
+    ? [...publicBusiness.products, ...publicBusiness.services].map((item) => ({
         id: item.id,
         name: item.name,
         desc: item.description ?? '',
@@ -37,13 +37,14 @@ export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenPr
         price: item.price,
         image: item.image ?? '',
         imageAlt: item.name,
+        kind: item.kind,
       }))
-    : URBAN_PRODUCTS;
+    : URBAN_PRODUCTS.map((item) => ({ ...item, kind: 'product' as const }));
   const categories = live
     ? [
-        { key: 'all', label: 'All Products' },
+        { key: 'all', label: 'All Items' },
         ...[...new Map(
-          publicBusiness.products
+          [...publicBusiness.products, ...publicBusiness.services]
             .filter((item) => item.categoryId || item.category)
             .map((item) => [item.categoryId ?? item.category ?? '', { key: item.categoryId ?? item.category ?? '', label: item.category ?? 'Category' }]),
         ).values()],
@@ -77,7 +78,7 @@ export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenPr
               <span>{live ? publicBusiness.business?.name ?? 'Business' : 'Urban Grill &amp; Bistro'}</span>
             </button>
             <span className="text-outline-variant">/</span>
-            <span className="text-on-surface font-semibold">All Products</span>
+            <span className="text-on-surface font-semibold">{live ? 'Store Catalogue' : 'All Products'}</span>
           </nav>
 
           <div className="flex items-end justify-between gap-4">
@@ -86,7 +87,7 @@ export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenPr
                 {live ? publicBusiness.business?.name ?? 'Business storefront' : 'All Products'}
               </h1>
               <p className="font-body-md text-body-md text-text-secondary">
-                {live ? `Full catalogue — ${products.length} items.` : `Full Urban Grill & Bistro catalogue — ${products.length} items priced in Nigerian Naira (₦).`}
+                {live ? `Products and services — ${products.length} items.` : `Full Urban Grill & Bistro catalogue — ${products.length} items priced in Nigerian Naira (₦).`}
               </p>
             </div>
             <button
@@ -153,7 +154,7 @@ export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenPr
                 <Icon name="search_off" className="text-[24px]" />
               </div>
               <p className="font-label-md text-label-md text-text-secondary">
-                {live && publicBusiness.loading ? 'Loading products…' : 'No products match this category'}
+                {live && publicBusiness.loading ? 'Loading items…' : 'No items match this category'}
               </p>
               {!live && <p className="font-caption text-caption text-text-tertiary">Try another dish, cut or ingredient</p>}
             </div>
@@ -205,7 +206,18 @@ export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenPr
                           <span className="font-caption text-caption text-text-tertiary line-through">{naira(product.was)}</span>
                         )}
                       </div>
-                        {cart.qtyOf(product.id) === 0 ? (
+                        {product.kind === 'service' ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onOpenProduct(product.id, product);
+                            }}
+                            className="h-9 px-4 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold flex items-center gap-1 active:scale-95 transition-all shadow-sm shrink-0"
+                          >
+                            <span>View service</span>
+                          </button>
+                        ) : cart.qtyOf(product.id) === 0 ? (
                           <button
                             type="button"
                             onClick={(event) => {

@@ -1,0 +1,306 @@
+import {
+  Entity,
+  Column,
+  ManyToOne,
+  OneToMany,
+  JoinColumn,
+  BeforeInsert,
+  Index,
+} from 'typeorm';
+import { AbstractBaseEntity } from '../../../common/entities/base.entity';
+import { numericTransformer } from '../../../common/transformers/numeric.transformer';
+import { Business } from '../../businesses/entities/business.entity';
+import { User } from '../../users/entities/user.entity';
+import { Visit } from '../../visitors/entities/visit.entity';
+import { Campaign } from '../../campaigns/entities/campaign.entity';
+import type { MessageCampaign } from '../../messaging/entities/message-campaign.entity';
+import { Cluster } from '../../clusters/entities/cluster.entity';
+
+import { ApiProperty } from '@nestjs/swagger';
+import { generateUniqueCode } from '../../../common/utils/random.util';
+
+@Entity('branches')
+export class Branch extends AbstractBaseEntity {
+  @ApiProperty({
+    example: 'BR123XYZ',
+    description: 'Unique 9-character alphanumeric code for the branch',
+  })
+  @Column({ unique: true })
+  uniqueCode: string;
+
+  @ApiProperty({
+    example: 'main-office',
+    description: 'Unique username for the branch (used in /b/[username] URLs)',
+  })
+  @Column({ unique: true, nullable: true, length: 30 })
+  username?: string;
+
+  @ApiProperty({ example: 'Main Office' })
+  @Column()
+  name: string;
+
+  @Column({ nullable: true })
+  address: string;
+
+  @Column({ nullable: true })
+  state: string;
+
+  @Column({ nullable: true })
+  city: string;
+
+  @Column('decimal', {
+    precision: 10,
+    scale: 7,
+    nullable: true,
+    transformer: numericTransformer,
+  })
+  latitude: number;
+
+  @Column('decimal', {
+    precision: 10,
+    scale: 7,
+    nullable: true,
+    transformer: numericTransformer,
+  })
+  longitude: number;
+
+  @Index('idx_branches_location', { spatial: true })
+  @Column({
+    type: 'geography',
+    spatialFeatureType: 'Point',
+    srid: 4326,
+    nullable: true,
+  })
+  location: any;
+
+  @Column({ nullable: true })
+  phone: string;
+
+  @Column({ default: true })
+  isActive: boolean;
+
+  @Column({ default: false })
+  isMainBranch: boolean;
+
+  @Column({ nullable: true })
+  logoUrl: string;
+
+  @Column({ nullable: true })
+  coverUrl: string;
+
+  @Column({ nullable: true })
+  website: string;
+
+  @Column({ nullable: true })
+  whatsappNumber: string;
+
+  @Column({ nullable: true })
+  officialEmail: string;
+
+  /** Branch manager's contact, collected on the add-branch form. */
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  managerName: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  managerEmail: string | null;
+
+  @Column({ type: 'varchar', length: 40, nullable: true })
+  managerPhone: string | null;
+
+  /** Local area or district, e.g. "Abuja Municipal • Garki District". */
+  @Column({ type: 'varchar', length: 160, nullable: true })
+  district: string | null;
+
+  @Column({ type: 'varchar', nullable: true, length: 255 })
+  mainQrCodeId: string | null;
+
+  @Column({ type: 'varchar', nullable: true, length: 500 })
+  mainQrShortUrl: string | null;
+
+  @ApiProperty({
+    example: null,
+    description: 'Cluster this branch is assigned to (market area)',
+  })
+  @Index('idx_branches_cluster')
+  @Column({ type: 'uuid', nullable: true })
+  clusterId: string | null;
+
+  @ManyToOne(() => Cluster, (cluster) => cluster.branches, {
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'clusterId' })
+  cluster: Cluster;
+
+  /** When the branch joined its current cluster from the business dashboard. */
+  @Column({ type: 'timestamp', nullable: true })
+  clusterJoinedAt: Date | null;
+
+  /** What the branch features in its cluster: all, deals, products, services or profile. */
+  @Column({ type: 'varchar', length: 20, default: 'all' })
+  clusterShowcase: string;
+
+  @ApiProperty({
+    example: '#2563EB',
+    description: 'The primary color for branch forms',
+  })
+  @Column({ default: '#2563EB' })
+  formAppearanceColor: string;
+
+  @ApiProperty({
+    example: 'Quick Link',
+    description: 'Tag for the welcome screen',
+  })
+  @Column({ default: 'Quick Link' })
+  welcomeTag: string;
+
+  @ApiProperty({
+    example: 'Connect with us',
+    description: 'Title for the welcome screen',
+  })
+  @Column({ default: 'Connect with us' })
+  welcomeTitle: string;
+
+  @ApiProperty({
+    example: 'Leave your details to stay in touch and earn rewards.',
+    description: 'Message for the welcome screen',
+  })
+  @Column({
+    type: 'text',
+    default: 'Leave your details to stay in touch and earn rewards.',
+  })
+  welcomeMessage: string;
+
+  @ApiProperty({
+    example: 'Visit recorded successfully!',
+    description: 'Title for the success screen',
+  })
+  @Column({ default: 'Visit recorded successfully!' })
+  successTitle: string;
+
+  @ApiProperty({
+    example: 'Thank you for visiting our store',
+    description: 'Description for the success screen',
+  })
+  @Column({ type: 'text', default: 'Thank you for visiting our store' })
+  successDescription: string;
+
+  @Column({ type: 'text', nullable: true })
+  successMessage: string;
+
+  @Column({ type: 'text', nullable: true })
+  privacyMessage: string;
+
+  @Column({ type: 'text', nullable: true })
+  rewardMessage: string;
+
+  @Column({ type: 'text', nullable: true })
+  about: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  businessHours: Record<string, any>;
+
+  @ApiProperty({
+    example: {
+      instagram: 'https://instagram.com/johndoe',
+      linkedin: 'https://linkedin.com/company/johndoe',
+      reviewUrl: 'https://g.page/r/...',
+    },
+    description: 'User engagement settings (social links, etc.)',
+    nullable: true,
+  })
+  @Column({ type: 'jsonb', nullable: true })
+  engagement?: Record<string, any>;
+
+  @Column({ default: false })
+  rewardEnabled: boolean;
+
+  @Column({ default: 5 })
+  rewardVisitThreshold: number;
+
+  @Column({ nullable: true })
+  linkedinUrl: string;
+
+  @Column({ nullable: true })
+  reviewUrl: string;
+
+  @Column({ default: true })
+  showReview: boolean;
+
+  @Column({ default: true })
+  showSocial: boolean;
+
+  @Column({ default: true })
+  showFeedback: boolean;
+
+  @ApiProperty({
+    example: true,
+    description: 'Whether the branch has joined the Discovery Network',
+  })
+  @Column({ default: true })
+  joinDiscoveryNetwork: boolean;
+
+  @ApiProperty({
+    example: true,
+    description:
+      'Whether the branch allows other businesses to request partnerships',
+  })
+  @Column({ default: true })
+  receivePartnerRequests: boolean;
+
+  @ApiProperty({
+    example: true,
+    description:
+      'Whether the branch shows active promotions on the Discovery Network',
+  })
+  @Column({ default: true })
+  allowPromotions: boolean;
+
+  @ApiProperty({
+    example: true,
+    description: 'Push notification preference for discovery updates',
+  })
+  @Column({ default: true })
+  pushNotifications: boolean;
+
+  @ApiProperty({
+    example: false,
+    description: 'SMS notification preference for discovery updates',
+  })
+  @Column({ default: false })
+  smsAlerts: boolean;
+
+  @ApiProperty({
+    example: true,
+    description: 'Email summary preference for discovery updates',
+  })
+  @Column({ default: true })
+  emailSummary: boolean;
+
+  @ManyToOne(() => Business, (business) => business.branches, {
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn({ name: 'businessId' })
+  business: Business;
+
+  @Column()
+  businessId: string;
+
+  @OneToMany(() => User, (user) => user.branch)
+  staff: User[];
+
+  @OneToMany(() => Visit, (visit) => visit.branch)
+  visits: Visit[];
+
+  @OneToMany(() => Campaign, (campaign) => campaign.branch)
+  campaigns: Campaign[];
+
+  @OneToMany('MessageCampaign', 'branch')
+  messageCampaigns: MessageCampaign[];
+
+  @BeforeInsert()
+  generateUniqueCode() {
+    if (!this.uniqueCode) {
+      this.uniqueCode = generateUniqueCode(9);
+    }
+  }
+}

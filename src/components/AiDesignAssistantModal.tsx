@@ -14,7 +14,7 @@ import {
 interface AiDesignAssistantModalProps {
   open: boolean;
   onClose: () => void;
-  /** Which asset the merchant is creating: logo, banner, product or service. */
+  /** Which asset the merchant is creating: logo, banner, product, service or description. */
   assetType: AiAssetType;
   /** Business/item facts available on the surrounding screen, if any. */
   context?: AiPromptContext;
@@ -24,10 +24,16 @@ interface AiDesignAssistantModalProps {
   fileHint?: string;
 }
 
-const STEPS = [
+const IMAGE_STEPS = [
   'Copy the prepared prompt and open an AI tool below.',
   'Generate and download the image on that provider’s website.',
   'Return to this screen and upload the downloaded image with the existing upload button.',
+] as const;
+
+const DESCRIPTION_STEPS = [
+  'Copy the prepared prompt and open an AI tool below.',
+  'Ask the tool to write the description, then copy its answer.',
+  'Return here and paste the description into the Storefront Description field.',
 ] as const;
 
 type CopyState = 'idle' | 'copied' | 'failed';
@@ -35,10 +41,11 @@ type CopyState = 'idle' | 'copied' | 'failed';
 /**
  * AI Design Assistant — prepares a tailored prompt from frontend business
  * data and points the merchant at an external AI provider. VEMTAP never
- * generates or stores images here: the merchant downloads the result on the
- * provider's site and uploads it through the existing upload flow after this
- * modal closes. Opening/closing only toggles local state, so the surrounding
- * screen and its form state are preserved untouched.
+ * generates the result here: the merchant downloads an image on the provider's
+ * site and uploads it through the existing upload flow, or copies a generated
+ * description into the existing textarea, after this modal closes.
+ * Opening/closing only toggles local state, so the surrounding screen and its
+ * form state are preserved untouched.
  */
 export function AiDesignAssistantModal({
   open,
@@ -48,6 +55,8 @@ export function AiDesignAssistantModal({
   aspectRatio,
   fileHint,
 }: AiDesignAssistantModalProps) {
+  const isDescription = assetType === 'description';
+  const steps = isDescription ? DESCRIPTION_STEPS : IMAGE_STEPS;
   const [copyState, setCopyState] = useState<CopyState>('idle');
   const [copiedTo, setCopiedTo] = useState<string | null>(null);
   const [editedPrompt, setEditedPrompt] = useState<string | null>(null);
@@ -112,7 +121,7 @@ export function AiDesignAssistantModal({
             <div className="flex flex-col min-w-0">
               <h2 className="font-heading-sm text-heading-sm text-text-primary">AI Design Assistant</h2>
               <span className="font-caption text-caption text-text-secondary">
-                Create images with external AI tools
+                {isDescription ? 'Write copy with external AI tools' : 'Create images with external AI tools'}
               </span>
             </div>
           </div>
@@ -132,15 +141,24 @@ export function AiDesignAssistantModal({
         </div>
 
         {/* How it works */}
-        <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-          VEMTAP prepared a prompt below from your business and item details. Review or edit it, then copy
-          it into ChatGPT or Google Gemini, generate and download the image on their website, and come
-          back here to upload it. VEMTAP does not generate images — your own AI provider account and its
-          limits apply.
-        </p>
+        {isDescription ? (
+          <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
+            VEMTAP prepared a prompt below from the business name, category and subcategories you picked.
+            Review or edit it, copy it into ChatGPT or Google Gemini, then copy the description they write
+            and paste it into the Storefront Description field when you return. VEMTAP does not write
+            descriptions — your own AI provider account and its limits apply.
+          </p>
+        ) : (
+          <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
+            VEMTAP prepared a prompt below from your business and item details. Review or edit it, then copy
+            it into ChatGPT or Google Gemini, generate and download the image on their website, and come
+            back here to upload it. VEMTAP does not generate images — your own AI provider account and its
+            limits apply.
+          </p>
+        )}
 
         <ol className="flex flex-col gap-space-xs bg-surface-tint-blue rounded-xl p-space-sm">
-          {STEPS.map((step, index) => (
+          {steps.map((step, index) => (
             <li className="flex items-start gap-space-xs" key={step}>
               <span className="w-6 h-6 rounded-full bg-primary text-on-primary flex items-center justify-center font-label-sm text-label-sm font-bold shrink-0">
                 {index + 1}
@@ -217,27 +235,41 @@ export function AiDesignAssistantModal({
           </p>
         </div>
 
-        {/* Download reminder + image quality note */}
-        <div className="rounded-xl bg-surface-subtle p-space-sm flex flex-col gap-space-xs">
-          <p className="font-caption text-caption text-text-secondary leading-relaxed">
-            <span className="font-semibold text-text-primary">Download the image</span> from the AI
-            tool before uploading it — providers keep generated images in their own account.
-          </p>
-          <p className="font-caption text-caption text-text-secondary leading-relaxed">
-            AI-generated imagery is an approximation and may differ from your real product or
-            storefront. Use accurate real photos whenever appearance matters. Image sizes, downloads
-            and availability are controlled by the provider you choose.
-          </p>
-        </div>
+        {/* Result reminder, tailored to the type of asset being created */}
+        {isDescription ? (
+          <div className="rounded-xl bg-surface-subtle p-space-sm flex flex-col gap-space-xs">
+            <p className="font-caption text-caption text-text-secondary leading-relaxed">
+              <span className="font-semibold text-text-primary">Keep it under 250 characters.</span> The
+              Storefront Description field accepts 250 characters at most — trim the answer before pasting
+              it, or the end will be cut off.
+            </p>
+            <p className="font-caption text-caption text-text-secondary leading-relaxed">
+              Review the text before publishing. AI copy can include details your business does not
+              actually offer. Output length and availability are controlled by the provider you choose.
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-xl bg-surface-subtle p-space-sm flex flex-col gap-space-xs">
+            <p className="font-caption text-caption text-text-secondary leading-relaxed">
+              <span className="font-semibold text-text-primary">Download the image</span> from the AI
+              tool before uploading it — providers keep generated images in their own account.
+            </p>
+            <p className="font-caption text-caption text-text-secondary leading-relaxed">
+              AI-generated imagery is an approximation and may differ from your real product or
+              storefront. Use accurate real photos whenever appearance matters. Image sizes, downloads
+              and availability are controlled by the provider you choose.
+            </p>
+          </div>
+        )}
 
-        {/* Return to the existing upload flow */}
+        {/* Return to the existing upload flow / description field */}
         <button
           className="w-full h-11 rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-space-xs shadow-sm hover:bg-primary transition-colors"
           type="button"
           onClick={onClose}
         >
           <Icon className="text-[18px]" name="arrow_back" />
-          <span>Back to upload</span>
+          <span>{isDescription ? 'Back to description' : 'Back to upload'}</span>
         </button>
       </div>
     </DesktopModal>

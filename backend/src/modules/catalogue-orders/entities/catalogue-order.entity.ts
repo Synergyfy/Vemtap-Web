@@ -1,0 +1,217 @@
+import { Entity, Column, ManyToOne, OneToMany, JoinColumn } from 'typeorm';
+import { AbstractBaseEntity } from '../../../common/entities/base.entity';
+import { Business } from '../../businesses/entities/business.entity';
+import { Branch } from '../../branches/entities/branch.entity';
+import { User } from '../../users/entities/user.entity';
+import { ApiProperty } from '@nestjs/swagger';
+import { CatalogueOrderItem } from './catalogue-order-item.entity';
+import { Device } from '../../devices/entities/device.entity';
+
+export enum CatalogueOrderStatus {
+  NEW = 'new',
+  PROCESSING = 'processing',
+  READY = 'ready',
+  COMPLETED = 'completed',
+  CANCELLED = 'cancelled',
+  REJECTED = 'rejected',
+  REFUNDED = 'refunded',
+  PARTIAL_REFUND = 'partial_refund',
+}
+
+@Entity('catalogue_orders')
+export class CatalogueOrder extends AbstractBaseEntity {
+  @ManyToOne(() => Business, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'businessId' })
+  business: Business;
+
+  @Column({ type: 'uuid' })
+  businessId: string;
+
+  @ManyToOne(() => Branch, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'branchId' })
+  branch: Branch;
+
+  @Column({ type: 'uuid' })
+  branchId: string;
+
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'customerId' })
+  customer: User;
+
+  @Column({ type: 'uuid' })
+  customerId: string;
+
+  @ApiProperty({
+    enum: CatalogueOrderStatus,
+    example: CatalogueOrderStatus.NEW,
+  })
+  @Column({
+    type: 'enum',
+    enum: CatalogueOrderStatus,
+    default: CatalogueOrderStatus.NEW,
+  })
+  status: CatalogueOrderStatus;
+
+  @ApiProperty({ example: 'Please no onions', nullable: true })
+  @Column({ type: 'text', nullable: true })
+  notes: string;
+
+  @ApiProperty({ example: 'Table 5', nullable: true })
+  @Column({ nullable: true })
+  tableNumber: string;
+
+  @ApiProperty({ example: 45.97 })
+  @Column({
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    transformer: {
+      to: (value: number) => value,
+      from: (value: string) => parseFloat(value),
+    },
+  })
+  totalAmount: number;
+
+  @ApiProperty({ example: false })
+  @Column({ default: false })
+  loyaltyAwarded: boolean;
+
+  @ApiProperty({ example: false })
+  @Column({ default: false })
+  stockDeducted: boolean;
+
+  @ApiProperty({ example: 'Customer request', nullable: true })
+  @Column({ type: 'text', nullable: true })
+  refundReason: string | null;
+
+  @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'refundedById' })
+  refundedByUser: User;
+
+  @Column({ type: 'uuid', nullable: true })
+  refundedById: string | null;
+
+  @ApiProperty({
+    description: 'Staff who accepted/processed this order',
+    nullable: true,
+  })
+  @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'attendedById' })
+  attendedByUser: User | null;
+
+  @ApiProperty({
+    description: 'ID of the staff member who accepted/processed this order',
+    nullable: true,
+  })
+  @Column({ type: 'uuid', nullable: true })
+  attendedById: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  refundedAt: Date | null;
+
+  @OneToMany(
+    () => CatalogueOrderItem,
+    (item: CatalogueOrderItem) => item.order,
+    {
+      cascade: true,
+    },
+  )
+  items: CatalogueOrderItem[];
+
+  @ManyToOne(() => Device, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'deviceId' })
+  device: Device;
+
+  @Column({ type: 'uuid', nullable: true })
+  deviceId: string;
+
+  /**
+   * Session token passed from the frontend portal visit.
+   * Used to link this order to the corresponding portal Visit record
+   * so the visit can be upgraded to 'patronage' on order completion.
+   */
+  @ApiProperty({
+    example: 'uuid-v4-session-token',
+    nullable: true,
+    required: false,
+  })
+  @Column({ type: 'uuid', nullable: true })
+  sessionToken: string;
+
+  @ApiProperty({ example: '2024-05-20', nullable: true, required: false })
+  @Column({ type: 'varchar', nullable: true })
+  bookingDate: string;
+
+  @ApiProperty({ example: '10:00 AM', nullable: true, required: false })
+  @Column({ type: 'varchar', nullable: true })
+  bookingTime: string;
+
+  /** ISO time each status was first reached, e.g. { new, processing, ready }. */
+  @ApiProperty({
+    example: {
+      new: '2026-10-16T12:00:00.000Z',
+      ready: '2026-10-16T12:14:00.000Z',
+    },
+    nullable: true,
+  })
+  @Column({ type: 'jsonb', nullable: true })
+  statusTimeline: Partial<Record<CatalogueOrderStatus, string>> | null;
+
+  /**
+   * Handle a guest uses to follow a POS order without logging in. Returned to
+   * whoever placed the order; only ever read back by token.
+   */
+  @ApiProperty({ example: 'q9X2b7KfLp0aZs4Rt8Vw1nYc', nullable: true })
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  trackingToken: string | null;
+
+  /**
+   * Where a store (scan, pick, pay at the counter) order came from:
+   * `storefront`, `store_qr`, `section_qr`, `product_qr`, `placement_qr`, …
+   * Null for orders placed outside store ordering.
+   */
+  @ApiProperty({ example: 'store_qr', nullable: true })
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  source: string | null;
+
+  @ApiProperty({ example: 'uuid-of-store-qr', nullable: true })
+  @Column({ type: 'uuid', nullable: true })
+  storeQrId: string | null;
+
+  /**
+   * The store-ordering stage, finer than `status`: new, accepted, preparing,
+   * partially-fulfilled, ready, awaiting-payment, paid, completed, rejected,
+   * cancelled. `status` always holds the matching catalogue status.
+   */
+  @ApiProperty({ example: 'preparing', nullable: true })
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  storeStatus: string | null;
+
+  /** Store-ordering steps, newest first: `{ status, at, note, staffName }`. */
+  @Column({ type: 'jsonb', nullable: true })
+  storeHistory:
+    { status: string; at: string; note?: string; staffName?: string }[] | null;
+
+  @ApiProperty({
+    example: 'unpaid',
+    enum: ['unpaid', 'partially-paid', 'paid-in-store', 'paid-pos', 'refunded'],
+  })
+  @Column({ type: 'varchar', length: 20, default: 'unpaid' })
+  paymentStatus: string;
+
+  /** The payment taken at the counter: method, amounts, reference, who and when. */
+  @Column({ type: 'jsonb', nullable: true })
+  payment: {
+    method: string;
+    amountDue: number;
+    amountReceived: number;
+    change: number;
+    balance: number;
+    reference: string;
+    notes?: string;
+    posSaleId?: string;
+    recordedById: string;
+    recordedByName: string;
+    recordedAt: string;
+  } | null;
+}
