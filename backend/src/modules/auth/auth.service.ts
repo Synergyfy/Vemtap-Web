@@ -1,0 +1,1783 @@
+import {
+  Injectable,
+  UnauthorizedException,
+  ConflictException,
+  BadRequestException,
+  NotFoundException,
+  ServiceUnavailableException,
+  Inject,
+  forwardRef,
+} from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { UsersService } from '../users/users.service';
+import { BusinessesService } from '../businesses/businesses.service';
+import { DevicesService } from '../devices/devices.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { MailService } from '../mail/mail.service';
+import { AffiliatesService } from '../affiliates/affiliates.service';
+import { ReferralsService } from '../referrals/referrals.service';
+import * as bcrypt from 'bcrypt';
+import {
+  BUSINESS_SHELL_ROLES,
+  User,
+  UserRole,
+  UserStatus,
+} from '../users/entities/user.entity';
+import { Otp } from './entities/otp.entity';
+import { RegisterOwnerDto } from './dto/register-owner.dto';
+import { UpgradeToOwnerDto } from './dto/upgrade-to-owner.dto';
+import { RegisterAdminDto } from './dto/register-admin.dto';
+import { RequestOtpDto } from './dto/request-otp.dto';
+import { PasswordResetOtpDto } from './dto/password-reset-otp.dto';
+import {
+  RequestCustomerSignupOtpDto,
+  ResendCustomerOtpDto,
+  VerifyAndSetCustomerPinDto,
+  RequestCustomerPinResetDto,
+  ResetCustomerPinDto,
+} from './dto/customer-auth.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+import { LoginDto } from './dto/login.dto';
+import { CheckStatusDto, CheckStatusResponseDto } from './dto/check-status.dto';
+import { UpdateEmailDto } from './dto/update-email.dto';
+import { GoogleLoginDto } from './dto/google-login.dto';
+import { OAuth2Client } from 'google-auth-library';
+import { ConfigService } from '@nestjs/config';
+import { AuthProvider } from '../users/entities/user.entity';
+import {
+  PIN_FORMAT_MESSAGE,
+  PIN_ROLES,
+  PIN_SIGN_IN_MESSAGE,
+  isPin,
+  isPinRole,
+} from './pin-policy';
+import { TwoFactorCodeDto } from './dto/two-factor.dto';
+import { VerifyEmailDto } from './dto/verify-email.dto';
+import {
+  randomBytes,
+  createCipheriv,
+  createDecipheriv,
+  createHmac,
+} from 'crypto';
+import * as QRCode from 'qrcode';
+
+const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+// Referral codes are short codes like `VEM-8OGUU4` or a 9-char unique code.
+// Reject values that look like emails/free text so they never get persisted.
+function isValidReferralCode(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const trimmed = value.trim();
+  return (
+    trimmed.length > 0 && trimmed === value && /^[A-Za-z0-9-]+$/.test(trimmed)
+  );
+}
+
+function encodeBase32(value: Buffer): string {
+  let bits = 0;
+  let buffer = 0;
+  let output = '';
+  for (const byte of value) {
+    buffer = (buffer << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      output += BASE32[(buffer >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) output += BASE32[(buffer << (5 - bits)) & 31];
+  return output;
+}
+
+function decodeBase32(value: string): Buffer {
+  let bits = 0;
+  let buffer = 0;
+  const bytes: number[] = [];
+  for (const char of value.replace(/=+$/, '').toUpperCase()) {
+    const index = BASE32.indexOf(char);
+    if (index < 0) throw new BadRequestException('Invalid 2FA secret');
+    buffer = (buffer << 5) | index;
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push((buffer >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+  return Buffer.from(bytes);
+}
+
+function totp(secret: string, timestamp = Date.now()): string {
+  const counter = Math.floor(timestamp / 30000);
+  const counterBuffer = Buffer.alloc(8);
+  counterBuffer.writeUInt32BE(Math.floor(counter / 0x100000000), 0);
+  counterBuffer.writeUInt32BE(counter >>> 0, 4);
+  const digest = createHmac('sha1', decodeBase32(secret))
+    .update(counterBuffer)
+    .digest();
+  const offset = digest[digest.length - 1] & 15;
+  const code =
+    ((digest[offset] & 127) << 24) |
+    (digest[offset + 1] << 16) |
+    (digest[offset + 2] << 8) |
+    digest[offset + 3];
+  return String(code % 1000000).padStart(6, '0');
+}
+
+/** Every PIN-only account can reset its sign-in PIN by email (see pin-policy). */
+const PIN_RESET_ROLES: UserRole[] = PIN_ROLES;
+
+/** Wrong guesses allowed per emailed reset code before it is discarded. */
+const MAX_RESET_OTP_ATTEMPTS = 5;
+
+@Injectable()
+export class AuthService {
+  private googleClient: OAuth2Client;
+
+  constructor(
+    private usersService: UsersService,
+    @Inject(forwardRef(() => BusinessesService))
+    private businessesService: BusinessesService,
+    private devicesService: DevicesService,
+    @Inject(forwardRef(() => SubscriptionsService))
+    private subscriptionsService: SubscriptionsService,
+    private mailService: MailService,
+    private jwtService: JwtService,
+    private configService: ConfigService,
+    @InjectRepository(Otp)
+    private otpRepository: Repository<Otp>,
+    private affiliatesService: AffiliatesService,
+    @Inject(forwardRef(() => ReferralsService))
+    private referralsService: ReferralsService,
+  ) {
+    this.googleClient = new OAuth2Client(
+      this.configService.get<string>('GOOGLE_CLIENT_ID'),
+    );
+  }
+
+  async requestOwnerOtp(dto: RequestOtpDto) {
+    const email = dto.email.toLowerCase();
+    const existingUserByEmail = await this.usersService.findByEmail(email);
+    if (
+      existingUserByEmail &&
+      existingUserByEmail.status !== UserStatus.PENDING
+    ) {
+      throw new ConflictException('User with this email already exists');
+    }
+
+    if (dto.phone) {
+      const existingUserByPhone = await this.usersService.findByPhone(
+        dto.phone,
+      );
+      if (
+        existingUserByPhone &&
+        existingUserByPhone.status !== UserStatus.PENDING
+      ) {
+        throw new ConflictException(
+          'User with this phone number already exists',
+        );
+      }
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 10); // 10 min expiry
+
+    // Save OTP with metadata
+    const otp = this.otpRepository.create({
+      email,
+      code,
+      expiresAt,
+      metadata: { ...dto, email },
+    });
+    await this.otpRepository.save(otp);
+
+    // Send Email
+    await this.mailService.sendOtp(email, code);
+
+    return { message: 'OTP sent successfully' };
+  }
+
+  async sendOtp(dto: any) {
+    const email = (typeof dto === 'string' ? dto : dto.email).toLowerCase();
+    const existingUser = await this.usersService.findByEmail(email);
+    if (existingUser && existingUser.status !== UserStatus.PENDING) {
+      throw new ConflictException('User with this email already exists');
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 10); // 10 min expiry
+
+    // Save OTP with optional metadata
+    const otp = this.otpRepository.create({
+      email,
+      code,
+      expiresAt,
+      metadata: typeof dto === 'object' ? { ...dto, email } : undefined,
+    });
+    await this.otpRepository.save(otp);
+
+    // Send Email
+    await this.mailService.sendOtp(email, code);
+
+    return { message: 'OTP sent successfully' };
+  }
+
+  async verifyOtp(email: string, code: string) {
+    const otpRecord = await this.otpRepository.findOne({
+      where: { email },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!otpRecord) {
+      throw new BadRequestException('OTP not found');
+    }
+
+    if (otpRecord.code !== code) {
+      throw new BadRequestException('Invalid OTP');
+    }
+
+    if (new Date() > otpRecord.expiresAt) {
+      throw new BadRequestException('OTP expired');
+    }
+
+    // OTP Valid
+    otpRecord.isVerified = true;
+    await this.otpRepository.save(otpRecord);
+
+    return { message: 'OTP verified successfully' };
+  }
+
+  async validateUser(
+    identifier: string,
+    pass: string,
+  ): Promise<Partial<User> | null> {
+    const user = await this.usersService.findByIdentifier(identifier);
+    if (user && (await bcrypt.compare(pass, user.password))) {
+      const { password: _password, ...result } = user;
+      return result;
+    }
+    return null;
+  }
+
+  async buildAuthResponse(user: Partial<User>, isNewUser = false) {
+    return this.generateAuthResponse(user, isNewUser);
+  }
+
+  private async generateAuthResponse(
+    user: Partial<User>,
+    isNewUser = false,
+    device?: { userAgent?: string | null; ip?: string | null },
+  ) {
+    let businessId: string | undefined;
+    let branchId: string | undefined = user.branchId;
+
+    if (user.role === UserRole.OWNER) {
+      const business = await this.businessesService.findByOwner(
+        user.id as string,
+      );
+      if (business) {
+        businessId = business.id;
+
+        // If user doesn't have a branchId assigned yet, find the main branch for this business
+        if (!branchId) {
+          const mainBranch = await this.businessesService.findMainBranch(
+            business.id,
+          );
+          if (mainBranch) {
+            branchId = mainBranch.id;
+          }
+        }
+      }
+    }
+
+    let referralCode: string | undefined;
+
+    if (user.role === UserRole.AGENT) {
+      try {
+        const affiliate = await this.affiliatesService.getStats(
+          user.id as string,
+        );
+        referralCode = affiliate.referralCode;
+      } catch (error) {
+        // Safe to ignore if profile doesn't exist yet (referralCode remains undefined)
+      }
+    }
+
+    const effectiveBusinessId = businessId || (user as any).businessId;
+
+    // Auto-subscribe to free plan before returning auth response if no active plan exists
+    if (
+      effectiveBusinessId &&
+      (user.role === UserRole.OWNER || user.role === UserRole.MANAGER)
+    ) {
+      try {
+        const activeSub =
+          await this.subscriptionsService.activeSubscription(
+            effectiveBusinessId,
+          );
+        if (!activeSub) {
+          await this.subscriptionsService.subscribeToFreePlan(
+            effectiveBusinessId,
+            true,
+          );
+        }
+      } catch (err) {
+        console.error(
+          `Failed to auto-subscribe business ${effectiveBusinessId} to free plan on login:`,
+          err,
+        );
+      }
+    }
+
+    const session = await this.usersService.createSession(
+      user.id as string,
+      device
+        ? { userAgent: device.userAgent ?? null, ipAddress: device.ip ?? null }
+        : undefined,
+    );
+    const payload = {
+      email: user.email,
+      sub: user.id,
+      role: user.role,
+      branchId: branchId,
+      businessId: effectiveBusinessId,
+      referralCode,
+      sid: session.id,
+    };
+    delete user.password;
+    // Background sync subscription to QR-Thrive
+    if (
+      effectiveBusinessId &&
+      (user.role === UserRole.OWNER || user.role === UserRole.MANAGER)
+    ) {
+      this.subscriptionsService
+        .syncUserSubscriptionToQrThrive(effectiveBusinessId)
+        .catch((err) => {
+          console.error('Background QR-Thrive sync failed on login:', err);
+        });
+    }
+
+    return {
+      access_token: this.jwtService.sign(payload),
+      sessionId: session.id,
+      user: {
+        ...user,
+        businessId: effectiveBusinessId,
+        branchId: branchId,
+        referralCode,
+        isOwnerAccount: user.role === UserRole.OWNER,
+        hasBusiness: Boolean(effectiveBusinessId),
+        businessRole: BUSINESS_SHELL_ROLES.includes(user.role as UserRole)
+          ? user.role
+          : null,
+      },
+      isNewUser,
+    };
+  }
+
+  async login(
+    dto: LoginDto,
+    device?: { userAgent?: string | null; ip?: string | null },
+  ): Promise<any> {
+    const user = await this.usersService.findByIdentifier(dto.identifier);
+    if (!user) {
+      throw new UnauthorizedException('Invalid email/phone or password');
+    }
+
+    if (!user.password && user.authProvider === AuthProvider.GOOGLE) {
+      throw new UnauthorizedException('Please log in using Google');
+    }
+
+    // Check for unverified or unset PIN customer
+    if (
+      user.role === UserRole.CUSTOMER &&
+      (user.emailVerified === false ||
+        user.status === UserStatus.PENDING ||
+        !user.password)
+    ) {
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = new Date();
+      expiresAt.setMinutes(expiresAt.getMinutes() + 10);
+
+      const otp = this.otpRepository.create({
+        email: user.email,
+        code,
+        expiresAt,
+        metadata: {
+          purpose: 'customer-registration',
+          userId: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          phone: user.phone,
+          branchId: user.branchId,
+        },
+      });
+      await this.otpRepository.save(otp);
+      await this.mailService.sendOtp(user.email, code);
+
+      return {
+        requiresPinSetup: true,
+        email: user.email,
+        message:
+          'Your account is not verified. An OTP has been sent to your email to set your 6-digit PIN.',
+      };
+    }
+
+    // Customer and business accounts sign in with their 6-digit PIN only.
+    if (isPinRole(user.role) && !isPin(dto.password)) {
+      throw new UnauthorizedException(PIN_SIGN_IN_MESSAGE);
+    }
+
+    if (
+      !user.password ||
+      !(await bcrypt.compare(dto.password, user.password))
+    ) {
+      throw new UnauthorizedException('Invalid email/phone or password');
+    }
+
+    const twoFactor = await this.usersService.getTwoFactorState(user.id);
+    if (twoFactor?.twoFactorEnabled) {
+      if (!dto.twoFactorCode) {
+        return { requiresTwoFactor: true };
+      }
+      if (
+        !this.verifyTwoFactorCode(twoFactor.twoFactorSecret, dto.twoFactorCode)
+      ) {
+        throw new UnauthorizedException('Invalid two-factor code');
+      }
+    }
+
+    const { password: _password, ...result } = user;
+    return this.generateAuthResponse(result, false, device);
+  }
+
+  async sendVerificationEmail(userId: string) {
+    const user = await this.usersService.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+    if (user.emailVerified)
+      return { verified: true, message: 'Email is already verified' };
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit code
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    await this.otpRepository.save(
+      this.otpRepository.create({
+        email: user.email.toLowerCase(),
+        code,
+        expiresAt,
+        metadata: { purpose: 'email-verification', userId },
+      }),
+    );
+    const sent = await this.mailService.sendVerificationEmail(user.email, code);
+    if (!sent)
+      throw new BadRequestException('Unable to send verification email');
+    return { verified: false, message: 'Verification email sent' };
+  }
+
+  async verifyEmail(dto: VerifyEmailDto) {
+    const email = dto.email.toLowerCase();
+    const records = await this.otpRepository.find({
+      where: { email },
+      order: { createdAt: 'DESC' },
+    });
+    const otp = records.find(
+      (record) => record.metadata?.purpose === 'email-verification',
+    );
+    if (!otp) throw new BadRequestException('Verification code not found');
+    if (otp.isVerified)
+      throw new BadRequestException('Verification code already used');
+    if (otp.code !== dto.code)
+      throw new BadRequestException('Invalid verification code');
+    if (new Date() > otp.expiresAt)
+      throw new BadRequestException('Verification code expired');
+
+    const user = await this.usersService.findByEmail(email);
+    if (!user || user.id !== otp.metadata?.userId)
+      throw new BadRequestException('Verification code is invalid');
+    otp.isVerified = true;
+    await this.otpRepository.save(otp);
+    await this.usersService.update(user.id, { emailVerified: true });
+    return { verified: true };
+  }
+
+  async setupTwoFactor(userId: string) {
+    const user = await this.usersService.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+    // Re-running setup would replace the secret and switch 2FA off without a
+    // code, so an enabled account must turn it off (with a code) first.
+    if (user.twoFactorEnabled) {
+      throw new ConflictException(
+        'Two-factor authentication is already on; turn it off first',
+      );
+    }
+    const secret = encodeBase32(randomBytes(20));
+    await this.usersService.update(userId, {
+      twoFactorEnabled: false,
+      twoFactorSecret: this.encryptTwoFactorSecret(secret),
+    });
+    const otpauthUrl = `otpauth://totp/VemTap:${encodeURIComponent(user.email)}?secret=${secret}&issuer=VemTap`;
+    return {
+      secret,
+      otpauthUrl,
+      /** Scannable QR of `otpauthUrl` for authenticator apps. */
+      qrSvg: await QRCode.toString(otpauthUrl, {
+        type: 'svg',
+        errorCorrectionLevel: 'M',
+        margin: 1,
+      }),
+    };
+  }
+
+  async confirmTwoFactor(userId: string, dto: TwoFactorCodeDto) {
+    const state = await this.usersService.getTwoFactorState(userId);
+    if (!state?.twoFactorSecret)
+      throw new BadRequestException('2FA setup has not been started');
+    if (!this.verifyTwoFactorCode(state.twoFactorSecret, dto.code))
+      throw new BadRequestException('Invalid two-factor code');
+    await this.usersService.update(userId, { twoFactorEnabled: true });
+    return { enabled: true };
+  }
+
+  async disableTwoFactor(userId: string, dto: TwoFactorCodeDto) {
+    const state = await this.usersService.getTwoFactorState(userId);
+    if (!state?.twoFactorEnabled || !state.twoFactorSecret)
+      return { enabled: false };
+    if (!this.verifyTwoFactorCode(state.twoFactorSecret, dto.code))
+      throw new UnauthorizedException('Invalid two-factor code');
+    await this.usersService.update(userId, {
+      twoFactorEnabled: false,
+      twoFactorSecret: null,
+    });
+    return { enabled: false };
+  }
+
+  private verifyTwoFactorCode(encryptedSecret: string | null, code: string) {
+    if (!encryptedSecret) return false;
+    const secret = this.decryptTwoFactorSecret(encryptedSecret);
+    const now = Date.now();
+    return [
+      totp(secret, now - 30000),
+      totp(secret, now),
+      totp(secret, now + 30000),
+    ].includes(code);
+  }
+
+  private encryptionKey() {
+    return createHmac(
+      'sha256',
+      this.configService.get<string>('JWT_SECRET') || 'development-secret',
+    )
+      .update('vemtap-2fa')
+      .digest();
+  }
+
+  private encryptTwoFactorSecret(secret: string) {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', this.encryptionKey(), iv);
+    const encrypted = Buffer.concat([
+      cipher.update(secret, 'utf8'),
+      cipher.final(),
+    ]);
+    return `${iv.toString('base64')}.${cipher.getAuthTag().toString('base64')}.${encrypted.toString('base64')}`;
+  }
+
+  private decryptTwoFactorSecret(value: string) {
+    const [iv, tag, encrypted] = value
+      .split('.')
+      .map((part) => Buffer.from(part, 'base64'));
+    const decipher = createDecipheriv('aes-256-gcm', this.encryptionKey(), iv);
+    decipher.setAuthTag(tag);
+    return Buffer.concat([
+      decipher.update(encrypted),
+      decipher.final(),
+    ]).toString('utf8');
+  }
+
+  async googleLogin(dto: GoogleLoginDto) {
+    // Without a client ID, verifyIdToken skips the audience check and would
+    // accept an ID token Google issued to any other app.
+    const audience = this.configService.get<string>('GOOGLE_CLIENT_ID')?.trim();
+    if (!audience) {
+      throw new ServiceUnavailableException(
+        'Google sign-in is not configured on this server.',
+      );
+    }
+    try {
+      const ticket = await this.googleClient.verifyIdToken({
+        idToken: dto.token,
+        audience,
+      });
+
+      const payload = ticket.getPayload();
+      if (!payload) {
+        throw new UnauthorizedException('Invalid Google token');
+      }
+
+      const {
+        email,
+        sub: googleId,
+        name,
+        picture,
+        given_name,
+        family_name,
+      } = payload;
+      if (!email) {
+        throw new UnauthorizedException(
+          'Google account must have an associated email',
+        );
+      }
+
+      // 1. Try finding by Google ID first (stable identifier)
+      let user = await this.usersService.findByGoogleId(googleId);
+
+      // 2. If not found, try finding by email (for account linking)
+      if (!user) {
+        user = await this.usersService.findByEmail(email);
+        if (user) {
+          // Link Google ID if not already linked
+          if (!user.googleId) {
+            user.googleId = googleId;
+            user.authProvider = AuthProvider.GOOGLE;
+          }
+        }
+      }
+
+      if (user) {
+        // Ensure status is ACTIVE since Google serves as verification
+        user.status = UserStatus.ACTIVE;
+        user.isPasswordChanged = true;
+
+        // Update avatar only if not already set
+        if (!user.avatar && picture) {
+          user.avatar = picture;
+        }
+
+        user = await this.usersService.create(user);
+        const twoFactor = await this.usersService.getTwoFactorState(user.id);
+        if (twoFactor?.twoFactorEnabled) {
+          if (!dto.twoFactorCode) return { requiresTwoFactor: true };
+          if (
+            !this.verifyTwoFactorCode(
+              twoFactor.twoFactorSecret,
+              dto.twoFactorCode,
+            )
+          ) {
+            throw new UnauthorizedException('Invalid two-factor code');
+          }
+        }
+        return this.generateAuthResponse(user, false);
+      } else {
+        // 3. Create new user
+        user = await this.usersService.create({
+          email,
+          firstName: given_name || name || 'Google',
+          lastName: family_name || 'User',
+          googleId,
+          avatar: picture,
+          authProvider: AuthProvider.GOOGLE,
+          // Self sign-up only ever makes a customer or an owner.
+          role:
+            dto.role === UserRole.OWNER ? UserRole.OWNER : UserRole.CUSTOMER,
+          status: UserStatus.ACTIVE,
+          isPasswordChanged: true,
+        });
+        return this.generateAuthResponse(user, true);
+      }
+    } catch (error) {
+      console.error('Google Auth Error:', error);
+      throw new UnauthorizedException('Google authentication failed');
+    }
+  }
+
+  // --- Original Generic Register (Kept for compatibility) ---
+  async register(registrationData: any) {
+    // 0. Verify OTP first (Mandatory for Customers now)
+    const otpRecord = await this.otpRepository.findOne({
+      where: { email: registrationData.email },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!otpRecord) {
+      throw new BadRequestException('Verification session not found');
+    }
+
+    if (!otpRecord.isVerified) {
+      throw new BadRequestException(
+        'OTP must be verified before completing registration',
+      );
+    }
+
+    const metadata = otpRecord.metadata || {};
+
+    const nameParts = (registrationData.name || '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!registrationData.firstName && nameParts[0]) {
+      registrationData.firstName = nameParts[0];
+    }
+    if (!registrationData.lastName && nameParts.length > 1) {
+      registrationData.lastName = nameParts.slice(1).join(' ');
+    }
+
+    const existingUser = await this.usersService.findByEmail(
+      registrationData.email,
+    );
+
+    // Determine Role (Default to OWNER if businessName is provided, else CUSTOMER)
+    let role = registrationData.role || UserRole.CUSTOMER;
+
+    // Security: Prevent unauthorized ADMIN registration
+    if (role === UserRole.ADMIN) {
+      throw new UnauthorizedException('Cannot register as Admin publicly');
+    }
+
+    if (registrationData.businessName && !registrationData.role) {
+      role = UserRole.OWNER;
+    }
+
+    if (
+      registrationData.password &&
+      isPinRole(role) &&
+      !isPin(registrationData.password)
+    ) {
+      throw new BadRequestException(PIN_FORMAT_MESSAGE);
+    }
+
+    // 1. Create or Update User
+    const hashedPassword = registrationData.password
+      ? await bcrypt.hash(registrationData.password, 10)
+      : undefined;
+    let user: User;
+    const isNewUser = !existingUser;
+
+    if (existingUser && existingUser.status === UserStatus.INVITED) {
+      // Complete registration for invited user
+      existingUser.firstName =
+        registrationData.firstName ||
+        metadata.firstName ||
+        existingUser.firstName;
+      existingUser.lastName =
+        registrationData.lastName || metadata.lastName || existingUser.lastName;
+      existingUser.password = hashedPassword;
+      existingUser.role =
+        (registrationData.role as UserRole) || existingUser.role;
+      existingUser.status = UserStatus.ACTIVE;
+      existingUser.emailVerified = true;
+      existingUser.phone =
+        registrationData.phone || metadata.phone || existingUser.phone;
+      user = await this.usersService.create(existingUser);
+    } else if (existingUser && existingUser.status === UserStatus.PENDING) {
+      // Resume registration for pending user
+      existingUser.firstName =
+        registrationData.firstName ||
+        metadata.firstName ||
+        existingUser.firstName;
+      existingUser.lastName =
+        registrationData.lastName || metadata.lastName || existingUser.lastName;
+      existingUser.password = hashedPassword;
+      existingUser.role =
+        (registrationData.role as UserRole) || existingUser.role;
+      existingUser.status = UserStatus.ACTIVE;
+      existingUser.emailVerified = true;
+      existingUser.phone =
+        registrationData.phone || metadata.phone || existingUser.phone;
+      existingUser.referralCode =
+        registrationData.referralCode || existingUser.referralCode;
+      user = await this.usersService.create(existingUser);
+    } else {
+      if (existingUser) {
+        throw new ConflictException('Email already exists');
+      }
+
+      user = await this.usersService.create({
+        firstName: registrationData.firstName || metadata.firstName,
+        lastName: registrationData.lastName || metadata.lastName,
+        email: registrationData.email,
+        password: hashedPassword,
+        role: role as UserRole,
+        status: UserStatus.ACTIVE,
+        emailVerified: true,
+        phone: registrationData.phone || metadata.phone,
+        branchId: registrationData.branchId, // Use branchId instead of businessId
+        referralCode: registrationData.referralCode || metadata.referralCode,
+        isPasswordChanged: false,
+      });
+    }
+
+    // 2. Create Business (only for Owners)
+    if (
+      user.role === UserRole.OWNER &&
+      registrationData.businessName &&
+      !user.branchId
+    ) {
+      // BusinessesService.create handles main branch creation and linking owner
+      const business = await this.businessesService.create({
+        name: registrationData.businessName,
+        categoryId: registrationData.categoryId,
+        subcategoryId: registrationData.subcategoryId,
+        otherSubcategoryName: registrationData.otherSubcategoryName,
+        monthlyVisitors: registrationData.monthlyVisitors,
+        goal: registrationData.goal,
+        ownerId: user.id,
+      });
+
+      // Auto-Subscribe to Free Plan if available
+      try {
+        await this.subscriptionsService.subscribeToFreePlan(business.id);
+      } catch (error) {
+        console.error('Failed to auto-subscribe to free plan:', error);
+      }
+
+      // Fetch fresh user with branchId
+      const refreshed = await this.usersService.findOne(user.id);
+      if (refreshed) user = refreshed;
+    }
+
+    // 3. Post-Registration Affiliate Logic
+    if (user.role === UserRole.AGENT) {
+      await this.affiliatesService.createProfile(user.id);
+    }
+
+    if (registrationData.referralCode) {
+      await this.referralsService.resolveAndApplyReferral(
+        registrationData.referralCode,
+        user.id,
+      );
+    }
+
+    // Consume OTP session
+    await this.otpRepository.remove(otpRecord);
+
+    const { password: _password, ...result } = user;
+    return this.generateAuthResponse(result, isNewUser);
+  }
+
+  // --- New Dedicated Owner Registration ---
+  async registerOwner(dto: RegisterOwnerDto) {
+    // 1. Resolve verification (OTP or Social Auth)
+    const existingUser = await this.usersService.findByEmail(dto.email);
+    const isGoogleUser = existingUser?.authProvider === AuthProvider.GOOGLE;
+
+    // Only persist a referral code that looks like a real code (never an email).
+    const referralCode = isValidReferralCode(dto.referralCode)
+      ? dto.referralCode
+      : undefined;
+
+    let registrationData: Partial<RequestOtpDto> = {};
+
+    if (!isGoogleUser) {
+      const otpRecord = await this.otpRepository.findOne({
+        where: { email: dto.email },
+        order: { createdAt: 'DESC' },
+      });
+
+      if (!otpRecord) {
+        throw new BadRequestException('Verification session not found');
+      }
+
+      if (!otpRecord.isVerified) {
+        throw new BadRequestException(
+          'OTP must be verified before completing registration',
+        );
+      }
+
+      if (new Date() > otpRecord.expiresAt) {
+        throw new BadRequestException('Registration session expired');
+      }
+
+      registrationData = (otpRecord.metadata as RequestOtpDto) || {};
+    } else {
+      // For Google users, if they exist, use their data
+      registrationData = {
+        firstName: existingUser?.firstName,
+        lastName: existingUser?.lastName,
+        phone: existingUser?.phone || dto.businessNumber,
+      };
+    }
+
+    if (
+      existingUser &&
+      !isGoogleUser &&
+      existingUser.status !== UserStatus.PENDING
+    ) {
+      throw new ConflictException('Email already exists');
+    }
+
+    // 2. Create or Update User (Owner)
+    let user: User;
+    const isNewUser = !existingUser;
+    const hashedPassword = dto.password
+      ? await bcrypt.hash(dto.password, 10)
+      : undefined;
+
+    const firstName = dto.firstName || registrationData.firstName || '';
+    const lastName = dto.lastName || registrationData.lastName || '';
+    const phone = registrationData.phone || dto.businessNumber || undefined;
+
+    if (existingUser) {
+      // Update existing user (could be PENDING manual or ACTIVE google)
+      if (firstName) existingUser.firstName = firstName;
+      if (lastName) existingUser.lastName = lastName;
+      if (phone) existingUser.phone = phone;
+      if (hashedPassword) existingUser.password = hashedPassword;
+      if (referralCode) existingUser.referralCode = referralCode;
+
+      existingUser.role = UserRole.OWNER;
+      // If manual signup finishes, make them active
+      if (!isGoogleUser && existingUser.status === UserStatus.PENDING) {
+        existingUser.status = UserStatus.ACTIVE;
+      }
+      user = await this.usersService.create(existingUser);
+    } else {
+      // This path is for people who verify OTP then register (Manual)
+      // If business name is provided, they'll be made ACTIVE via business creation.
+      // Without business name, they stay PENDING for resumption flow.
+      user = await this.usersService.create({
+        firstName,
+        lastName,
+        email: dto.email,
+        password: hashedPassword,
+        role: UserRole.OWNER,
+        status: isGoogleUser
+          ? UserStatus.ACTIVE
+          : dto.businessName
+            ? UserStatus.ACTIVE
+            : UserStatus.PENDING,
+        phone,
+        referralCode,
+        authProvider: isGoogleUser ? AuthProvider.GOOGLE : AuthProvider.LOCAL,
+      });
+    }
+
+    // 3. Create Business with detailed info (Optional - user can finish later)
+    if (dto.businessName) {
+      const goalString = Array.isArray(dto.goals)
+        ? dto.goals.join(', ')
+        : dto.goals;
+
+      // Check if business already exists for this owner
+      let business = await this.businessesService.findByOwner(user.id);
+
+      if (!business) {
+        business = await this.businessesService.create({
+          name: dto.businessName,
+          categoryId: dto.categoryId,
+          subcategoryId: dto.subcategoryId,
+          otherSubcategoryName: dto.otherSubcategoryName,
+          monthlyVisitors: dto.visitors,
+          goal: goalString,
+          logoUrl: dto.businessLogo,
+          ownerId: user.id,
+          address: dto.businessAddress,
+          website: dto.businessWebsite,
+          state: dto.state,
+          city: dto.city,
+          whatsappNumber: dto.whatsappNumber,
+          officialEmail: dto.officialEmail,
+          phone: dto.businessNumber,
+          isRegistered: dto.isRegistered,
+          engagement: dto.engagement,
+        });
+      } else {
+        // Update existing business if needed
+        await this.businessesService.update(business.id, {
+          name: dto.businessName,
+          categoryId: dto.categoryId,
+          subcategoryId: dto.subcategoryId,
+          otherSubcategoryName: dto.otherSubcategoryName,
+          monthlyVisitors: dto.visitors,
+          goal: goalString,
+          logoUrl: dto.businessLogo,
+          address: dto.businessAddress,
+          website: dto.businessWebsite,
+          state: dto.state,
+          city: dto.city,
+          whatsappNumber: dto.whatsappNumber,
+          officialEmail: dto.officialEmail,
+          phone: dto.businessNumber,
+          isRegistered: dto.isRegistered,
+          engagement: dto.engagement,
+        } as any);
+      }
+
+      // 4. User Status is finalized to ACTIVE inside businessesService.create
+
+      // 5. Auto-Subscribe to Free Plan if available
+      try {
+        await this.subscriptionsService.subscribeToFreePlan(business.id);
+      } catch (error) {
+        // We don't want to fail the whole registration if auto-subscription fails
+        console.error('Failed to auto-subscribe to free plan:', error);
+      }
+    }
+
+    // Fetch fresh user with branchId (linked during business creation)
+    const updatedUser = await this.usersService.findOne(user.id);
+    if (!updatedUser) {
+      throw new NotFoundException('User not found after registration');
+    }
+
+    // Consume OTP if we used one (Manual Signup)
+    if (!isGoogleUser && registrationData) {
+      const otpRecord = await this.otpRepository.findOne({
+        where: { email: dto.email },
+        order: { createdAt: 'DESC' },
+      });
+      if (otpRecord) {
+        await this.otpRepository.remove(otpRecord);
+      }
+    }
+
+    // --- Post-Registration Affiliate/Business Referral Logic (for Owners) ---
+    if (referralCode) {
+      await this.referralsService.resolveAndApplyReferral(
+        referralCode,
+        updatedUser.id,
+      );
+    }
+
+    return this.generateAuthResponse(updatedUser, isNewUser);
+  }
+
+  /**
+   * Upgrade an already-authenticated CUSTOMER to a business owner without
+   * creating a second account. The user keeps their customer history (visits,
+   * loyalty, claims are keyed by userId) and can later flip between the two
+   * modes via `switchRole`.
+   *
+   * Local-auth accounts must confirm their password; Google-only accounts
+   * (no password hash) upgrade on the strength of their session alone.
+   *
+   * `businessName` is optional, as in `registerOwner`: without it only the
+   * account is upgraded, and the business is created later by
+   * `PATCH /businesses/my-business` once the setup wizard has its details.
+   */
+  async upgradeToOwner(userRef: Partial<User>, dto: UpgradeToOwnerDto) {
+    const dbUser = await this.usersService.findOne(userRef.id as string);
+    if (!dbUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (dbUser.role === UserRole.OWNER) {
+      throw new ConflictException(
+        'This account is already a business owner. Switch to business mode instead.',
+      );
+    }
+    if (dbUser.role !== UserRole.CUSTOMER) {
+      throw new BadRequestException(
+        'Only customer accounts can be upgraded to a business owner.',
+      );
+    }
+
+    if (dbUser.password) {
+      if (!dto.password) {
+        throw new UnauthorizedException(
+          'Password confirmation is required to add a business to this account.',
+        );
+      }
+      const passwordMatches = await bcrypt.compare(
+        dto.password,
+        dbUser.password,
+      );
+      if (!passwordMatches) {
+        throw new UnauthorizedException('Incorrect password');
+      }
+    }
+
+    const existingBusiness = await this.businessesService.findByOwner(
+      dbUser.id,
+    );
+    if (existingBusiness) {
+      throw new ConflictException('Owner already has a business');
+    }
+
+    const referralCode = isValidReferralCode(dto.referralCode)
+      ? dto.referralCode
+      : undefined;
+    const goalString = Array.isArray(dto.goals)
+      ? dto.goals.join(', ')
+      : dto.goals;
+
+    const businessName = dto.businessName?.trim();
+    const business = businessName
+      ? await this.businessesService.create({
+          name: businessName,
+          categoryId: dto.categoryId,
+          subcategoryId: dto.subcategoryId,
+          otherSubcategoryName: dto.otherSubcategoryName,
+          monthlyVisitors: dto.visitors,
+          goal: goalString,
+          logoUrl: dto.businessLogo,
+          ownerId: dbUser.id,
+          address: dto.businessAddress,
+          website: dto.businessWebsite,
+          state: dto.state,
+          city: dto.city,
+          latitude: dto.latitude,
+          longitude: dto.longitude,
+          whatsappNumber: dto.whatsappNumber,
+          officialEmail: dto.officialEmail,
+          phone: dto.businessNumber,
+          isRegistered: dto.isRegistered,
+          engagement: dto.engagement,
+        })
+      : null;
+
+    // Flip the account to owner; customer-side data is untouched.
+    dbUser.role = UserRole.OWNER;
+    if (referralCode && !dbUser.referralCode) {
+      dbUser.referralCode = referralCode;
+    }
+    const upgradedUser = await this.usersService.create(dbUser);
+
+    // Match registration behaviour: land the business on the free plan until
+    // the owner picks a paid plan.
+    // An account-only upgrade has no business yet; the plan is assigned when
+    // the business exists (login auto-subscribes a business with no plan).
+    if (business) {
+      try {
+        await this.subscriptionsService.subscribeToFreePlan(business.id);
+      } catch (error) {
+        console.error(
+          'Failed to auto-subscribe upgraded business to free plan:',
+          error,
+        );
+      }
+    }
+
+    if (referralCode) {
+      await this.referralsService.resolveAndApplyReferral(
+        referralCode,
+        upgradedUser.id,
+        // An account-only upgrade records nothing yet — the code stays on
+        // the user for when their business is created.
+        { affiliateRequiresBusiness: true },
+      );
+    }
+
+    const freshUser = await this.usersService.findOne(upgradedUser.id);
+    if (!freshUser) {
+      throw new NotFoundException('User not found after upgrade');
+    }
+
+    return this.generateAuthResponse(freshUser, false);
+  }
+
+  // --- Dedicated Customer Registration & PIN Management ---
+
+  async requestCustomerRegistrationOtp(dto: RequestCustomerSignupOtpDto) {
+    const email = dto.email.toLowerCase();
+    const existingUserByEmail = await this.usersService.findByEmail(email);
+    if (
+      existingUserByEmail &&
+      existingUserByEmail.status !== UserStatus.PENDING
+    ) {
+      throw new ConflictException('User with this email already exists');
+    }
+
+    if (dto.phone) {
+      const existingUserByPhone = await this.usersService.findByPhone(
+        dto.phone,
+      );
+      if (
+        existingUserByPhone &&
+        existingUserByPhone.status !== UserStatus.PENDING
+      ) {
+        throw new ConflictException(
+          'User with this phone number already exists',
+        );
+      }
+    }
+
+    const firstName = (dto.firstName || '').trim() || 'Customer';
+    const lastName = (dto.lastName || '').trim();
+    const fullName = `${firstName} ${lastName}`.trim();
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 10); // 10 min expiry
+
+    const otp = this.otpRepository.create({
+      email,
+      code,
+      expiresAt,
+      metadata: {
+        purpose: 'customer-registration',
+        name: fullName,
+        firstName,
+        lastName,
+        phone: dto.phone,
+        branchId: dto.branchId,
+        role: UserRole.CUSTOMER,
+      },
+    });
+    await this.otpRepository.save(otp);
+
+    await this.mailService.sendOtp(email, code);
+
+    return {
+      message: 'OTP sent successfully to your email',
+      expiresInMinutes: 10,
+    };
+  }
+
+  async resendCustomerOtp(dto: ResendCustomerOtpDto) {
+    const email = dto.email.toLowerCase();
+    const latestOtp = await this.otpRepository.findOne({
+      where: { email },
+      order: { createdAt: 'DESC' },
+    });
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString(); // fresh 6-digit OTP
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 10); // 10 min expiry
+
+    const metadata = latestOtp?.metadata || {
+      purpose: dto.purpose || 'customer-registration',
+    };
+
+    const newOtp = this.otpRepository.create({
+      email,
+      code,
+      expiresAt,
+      metadata,
+    });
+    await this.otpRepository.save(newOtp);
+
+    await this.mailService.sendOtp(email, code);
+
+    return { message: 'A new OTP has been sent to your email' };
+  }
+
+  async verifyOtpAndSetCustomerPin(dto: VerifyAndSetCustomerPinDto) {
+    const email = dto.email.toLowerCase();
+    const otpRecord = await this.otpRepository.findOne({
+      where: { email },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!otpRecord) {
+      throw new BadRequestException('Verification session not found');
+    }
+
+    if (otpRecord.code !== dto.code) {
+      throw new BadRequestException('Invalid OTP code');
+    }
+
+    if (new Date() > otpRecord.expiresAt) {
+      throw new BadRequestException(
+        'OTP has expired. Please request a new code.',
+      );
+    }
+
+    const metadata = otpRecord.metadata || {};
+    const existingUser = await this.usersService.findByEmail(email);
+
+    if (existingUser && existingUser.status !== UserStatus.PENDING) {
+      if (existingUser.role !== UserRole.CUSTOMER) {
+        throw new BadRequestException('Action only allowed for customers');
+      }
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.pin, 10);
+    const branchId = dto.branchId || metadata.branchId;
+
+    let user: User;
+    const isNewUser = !existingUser;
+
+    if (existingUser) {
+      existingUser.password = hashedPassword;
+      existingUser.emailVerified = true;
+      existingUser.status = UserStatus.ACTIVE;
+      existingUser.isPasswordChanged = true;
+      const firstName = dto.firstName || metadata.firstName;
+      const lastName = dto.lastName || metadata.lastName;
+      const phone = dto.phone || metadata.phone;
+      if (
+        firstName &&
+        (!existingUser.firstName || existingUser.firstName === 'Customer')
+      ) {
+        existingUser.firstName = firstName;
+      }
+      if (lastName && !existingUser.lastName) {
+        existingUser.lastName = lastName;
+      }
+      if (phone && !existingUser.phone) {
+        existingUser.phone = phone;
+      }
+      if (branchId && !existingUser.branchId) {
+        existingUser.branchId = branchId;
+      }
+      user = await this.usersService.create(existingUser);
+    } else {
+      user = await this.usersService.create({
+        email,
+        firstName: dto.firstName || metadata.firstName || 'Customer',
+        lastName: dto.lastName || metadata.lastName || '',
+        phone: dto.phone || metadata.phone,
+        password: hashedPassword,
+        role: UserRole.CUSTOMER,
+        status: UserStatus.ACTIVE,
+        emailVerified: true,
+        isPasswordChanged: true,
+        branchId,
+        uniqueCode: `CUST-${Math.floor(100000 + Math.random() * 900000)}`,
+      });
+    }
+
+    // Apply the referral code the customer signed up with, if any (invalid
+    // values are ignored so they never block sign-up).
+    const referralCode = isValidReferralCode(dto.referralCode)
+      ? dto.referralCode
+      : undefined;
+    if (referralCode) {
+      await this.referralsService.resolveAndApplyReferral(
+        referralCode,
+        user.id,
+      );
+    }
+
+    // Consume OTP session
+    await this.otpRepository.remove(otpRecord);
+
+    const { password: _password, ...result } = user;
+    return this.generateAuthResponse(result, isNewUser);
+  }
+
+  async requestCustomerPinReset(dto: RequestCustomerPinResetDto) {
+    const email = dto.email.toLowerCase();
+    const user = await this.usersService.findByEmail(email);
+
+    const genericResponse = {
+      message:
+        'If an account exists with this email, a reset OTP has been sent.',
+    };
+
+    if (!user || !PIN_RESET_ROLES.includes(user.role)) {
+      return genericResponse;
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 10);
+
+    const otp = this.otpRepository.create({
+      email,
+      code,
+      expiresAt,
+      metadata: { purpose: 'customer-pin-reset', userId: user.id },
+    });
+    await this.otpRepository.save(otp);
+
+    await this.mailService.sendOtp(email, code);
+
+    return genericResponse;
+  }
+
+  /**
+   * Finds the newest reset code sent for this flow (codes issued for other
+   * purposes never count) and checks it. Wrong guesses are counted in the
+   * record's metadata; after MAX_RESET_OTP_ATTEMPTS the code is discarded.
+   */
+  private async consumeResetOtp(
+    email: string,
+    code: string,
+    matchesPurpose: (record: Otp) => boolean,
+    messages: { invalid: string; expired: string },
+  ): Promise<Otp> {
+    const records = await this.otpRepository.find({
+      where: { email },
+      order: { createdAt: 'DESC' },
+    });
+    const otpRecord = records.find(matchesPurpose);
+
+    if (!otpRecord) {
+      throw new BadRequestException('Reset session not found');
+    }
+
+    const failedAttempts = Number(otpRecord.metadata?.failedAttempts ?? 0);
+    if (failedAttempts >= MAX_RESET_OTP_ATTEMPTS) {
+      await this.otpRepository.remove(otpRecord);
+      throw new BadRequestException(
+        'Too many incorrect attempts. Request a new code.',
+      );
+    }
+
+    if (otpRecord.code !== code) {
+      const attempts = failedAttempts + 1;
+      if (attempts >= MAX_RESET_OTP_ATTEMPTS) {
+        await this.otpRepository.remove(otpRecord);
+        throw new BadRequestException(
+          'Too many incorrect attempts. Request a new code.',
+        );
+      }
+      otpRecord.metadata = {
+        ...(otpRecord.metadata ?? {}),
+        failedAttempts: attempts,
+      };
+      await this.otpRepository.save(otpRecord);
+      throw new BadRequestException(messages.invalid);
+    }
+
+    if (new Date() > otpRecord.expiresAt) {
+      throw new BadRequestException(messages.expired);
+    }
+
+    return otpRecord;
+  }
+
+  async resetCustomerPin(
+    dto: ResetCustomerPinDto,
+    meta?: { ip?: string; userAgent?: string },
+  ) {
+    const email = dto.email.toLowerCase();
+    const otpRecord = await this.consumeResetOtp(
+      email,
+      dto.otp,
+      (record) => record.metadata?.purpose === 'customer-pin-reset',
+      {
+        invalid: 'Invalid reset OTP',
+        expired: 'Reset OTP has expired. Please request a new code.',
+      },
+    );
+
+    const user = await this.usersService.findByEmail(email);
+    if (!user || !PIN_RESET_ROLES.includes(user.role)) {
+      throw new NotFoundException('Account not found');
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.newPin, 10);
+    await this.usersService.updatePassword(user.id, hashedPassword, {
+      ipAddress: meta?.ip,
+      userAgent: meta?.userAgent,
+    });
+
+    user.password = hashedPassword;
+    user.emailVerified = true;
+    user.status = UserStatus.ACTIVE;
+    user.isPasswordChanged = true;
+    await this.usersService.create(user);
+
+    await this.otpRepository.remove(otpRecord);
+
+    return {
+      message: 'PIN reset successfully. You can now log in with your new PIN.',
+    };
+  }
+
+  // --- New Dedicated Admin Registration ---
+  async registerAdmin(dto: RegisterAdminDto) {
+    const envCode = process.env.ADMIN_ACCOUNT_CODE;
+
+    // Safety check just in case env code is not set, don't allow open registration
+    if (!envCode) {
+      throw new BadRequestException(
+        'Admin registration is not correctly configured on the server',
+      );
+    }
+
+    if (dto.adminAccountCode !== envCode) {
+      throw new UnauthorizedException('Invalid admin account code');
+    }
+
+    const existingUser = await this.usersService.findByEmail(dto.email);
+    if (existingUser) {
+      throw new ConflictException('Email already exists');
+    }
+
+    const nameParts = (dto.name || '').trim().split(/\s+/).filter(Boolean);
+    const firstName =
+      dto.firstName || (nameParts[0] ? nameParts[0] : dto.email.split('@')[0]);
+    const lastName =
+      dto.lastName ||
+      (nameParts.length > 1 ? nameParts.slice(1).join(' ') : '');
+
+    // Create User (Super Admin)
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+    const user = await this.usersService.create({
+      firstName,
+      lastName,
+      email: dto.email,
+      password: hashedPassword,
+      role: UserRole.SUPER_ADMIN, // Platform operator role
+      status: UserStatus.ACTIVE,
+      phone: dto.phone || undefined,
+    });
+
+    return this.generateAuthResponse(user);
+  }
+
+  async requestPasswordReset(dto: PasswordResetOtpDto) {
+    const user = await this.usersService.findByEmail(dto.email);
+    if (!user) {
+      return {
+        message:
+          'If an account exists with this email, a reset code has been sent.',
+      };
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit code
+    const expiresAt = new Date();
+    expiresAt.setMinutes(expiresAt.getMinutes() + 10);
+
+    const otp = this.otpRepository.create({
+      email: dto.email,
+      code,
+      expiresAt,
+      metadata: { type: 'password_reset' },
+    });
+    await this.otpRepository.save(otp);
+
+    await this.mailService.sendPasswordResetOtp(dto.email, code);
+
+    return {
+      message:
+        'If an account exists with this email, a reset code has been sent.',
+    };
+  }
+
+  async resetPassword(
+    dto: ResetPasswordDto,
+    meta?: { ip: string; userAgent: string },
+  ) {
+    const otpRecord = await this.consumeResetOtp(
+      dto.email,
+      dto.otp,
+      (record) => record.metadata?.type === 'password_reset',
+      { invalid: 'Invalid reset code', expired: 'Reset code expired' },
+    );
+
+    const user = await this.usersService.findByEmail(dto.email);
+    if (!user) throw new NotFoundException('User no longer exists');
+    if (isPinRole(user.role) && !isPin(dto.newPassword)) {
+      throw new BadRequestException(PIN_FORMAT_MESSAGE);
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
+    await this.usersService.updatePassword(user.id, hashedPassword, {
+      ipAddress: meta?.ip,
+      userAgent: meta?.userAgent,
+    });
+
+    await this.otpRepository.remove(otpRecord);
+
+    return { message: 'Password reset successfully' };
+  }
+
+  /**
+   * Ends the session the token was signed for, so the token (and any copy of
+   * it) stops authenticating. Tokens without a session id predate linked
+   * devices and simply expire.
+   */
+  async logout(user: User & { sessionId?: string }) {
+    if (user.sessionId) {
+      await this.usersService.revokeSession(user.id, user.sessionId);
+    }
+    return { message: 'Signed out' };
+  }
+
+  async switchRole(user: User & { sessionId?: string }, targetRole: UserRole) {
+    // Customer, or the account's own business role. Admin roles are assigned
+    // and never self-selected.
+    if (
+      targetRole !== UserRole.CUSTOMER &&
+      !BUSINESS_SHELL_ROLES.includes(targetRole)
+    ) {
+      throw new BadRequestException(
+        'Only Owner, Manager, Staff and Customer roles can be switched',
+      );
+    }
+
+    const dbUser = await this.usersService.findOne(user.id);
+    if (!dbUser) throw new NotFoundException('User not found');
+
+    if (targetRole === UserRole.OWNER && dbUser.role !== UserRole.OWNER) {
+      throw new BadRequestException('You are not an owner');
+    }
+    if (targetRole !== UserRole.CUSTOMER && targetRole !== dbUser.role) {
+      throw new BadRequestException('You do not have that role');
+    }
+
+    const businessShell = targetRole !== UserRole.CUSTOMER;
+    const business =
+      targetRole === UserRole.OWNER
+        ? await this.businessesService.findByOwner(dbUser.id)
+        : null;
+
+    // Explicit nulls matter: JwtStrategy treats an explicit null claim as
+    // "no business context" (customer mode) and only falls back to the DB
+    // businessId when the claim is absent (legacy tokens). An owner still in
+    // setup has no business yet, so that claim stays absent and the business
+    // setup creates is picked up from the DB.
+    const payload = {
+      email: dbUser.email,
+      sub: dbUser.id,
+      role: targetRole,
+      branchId: businessShell ? (dbUser.branchId ?? undefined) : null,
+      businessId: !businessShell
+        ? null
+        : targetRole === UserRole.OWNER
+          ? business?.id
+          : (dbUser.businessId ?? undefined),
+      // Same sign-in, same device: keeps the switched token revocable from
+      // "Your devices" instead of outliving its session.
+      ...(user.sessionId ? { sid: user.sessionId } : {}),
+    };
+
+    const isOwnerAccount = dbUser.role === UserRole.OWNER;
+    const businessRole = BUSINESS_SHELL_ROLES.includes(dbUser.role)
+      ? dbUser.role
+      : null;
+    const lastActiveShell: User['lastActiveShell'] = businessRole
+      ? businessShell
+        ? 'business'
+        : 'customer'
+      : dbUser.lastActiveShell;
+    if (businessRole) {
+      await this.usersService.update(dbUser.id, { lastActiveShell });
+    }
+
+    delete (dbUser as Partial<User>).password;
+    return {
+      access_token: this.jwtService.sign(payload),
+      user: {
+        ...dbUser,
+        role: targetRole,
+        businessId: payload.businessId,
+        branchId: payload.branchId,
+        isOwnerAccount,
+        businessRole,
+        hasBusiness: Boolean(business?.id ?? dbUser.businessId),
+        lastActiveShell,
+      },
+    };
+  }
+
+  async changePassword(
+    user: User,
+    dto: ChangePasswordDto,
+    meta?: { ip: string; userAgent: string },
+  ) {
+    const dbUser = await this.usersService.findOne(user.id);
+    if (!dbUser) throw new NotFoundException('User not found');
+
+    const pinAccount = isPinRole(dbUser.role);
+    const isMatch = await bcrypt.compare(dto.currentPassword, dbUser.password);
+    if (!isMatch) {
+      throw new BadRequestException(
+        pinAccount
+          ? 'Current PIN is incorrect'
+          : 'Current password is incorrect',
+      );
+    }
+    if (pinAccount && !isPin(dto.newPassword)) {
+      throw new BadRequestException(PIN_FORMAT_MESSAGE);
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
+    await this.usersService.updatePassword(dbUser.id, hashedPassword, {
+      ipAddress: meta?.ip,
+      userAgent: meta?.userAgent,
+    });
+
+    return { message: 'Password changed successfully' };
+  }
+
+  async checkUserStatus(dto: CheckStatusDto): Promise<CheckStatusResponseDto> {
+    const user = await this.usersService.findByIdentifier(dto.identifier);
+
+    if (!user) {
+      return { exists: false };
+    }
+
+    const hasRealEmail = !!(
+      user.email && !user.email.endsWith('@vemtap.dummy')
+    );
+
+    return {
+      exists: true,
+      role: user.role,
+      isPasswordChanged: user.isPasswordChanged,
+      hasRealEmail,
+      email: hasRealEmail ? user.email : undefined,
+    };
+  }
+
+  async completeCustomerSetup(dto: UpdateEmailDto) {
+    const user = await this.usersService.findByIdentifier(dto.identifier);
+    if (!user) throw new NotFoundException('User not found');
+
+    if (user.role !== UserRole.CUSTOMER) {
+      throw new BadRequestException('Action only allowed for customers');
+    }
+
+    // Check if email is already taken
+    const existingEmail = await this.usersService.findByEmail(dto.email);
+    if (existingEmail && existingEmail.id !== user.id) {
+      throw new ConflictException('Email already exists');
+    }
+
+    // Update email
+    user.email = dto.email.toLowerCase();
+    user.emailVerified = true;
+
+    // Customers completing setup may never have chosen a password (e.g. Google
+    // signups). Issue a fresh random password so the emailed credentials are
+    // always usable — never a shared constant.
+    const setupPassword = randomBytes(9).toString('base64url').slice(0, 12);
+    let emailedPassword: string | undefined;
+    if (!user.password) {
+      user.password = await bcrypt.hash(setupPassword, 10);
+      emailedPassword = setupPassword;
+    }
+    await this.usersService.create(user);
+
+    // Send welcome email with the temporary password (if one was issued)
+    await this.mailService
+      .sendWelcomeEmail(
+        user.email,
+        `${user.firstName} ${user.lastName}`,
+        emailedPassword,
+      )
+      .catch((err) => console.error('Failed to send welcome email:', err));
+
+    return { message: 'Setup completed and welcome email sent' };
+  }
+
+  async resendDefaultPassword(identifier: string) {
+    const user = await this.usersService.findByIdentifier(identifier);
+    if (!user) throw new NotFoundException('User not found');
+
+    if (user.isPasswordChanged) {
+      throw new BadRequestException(
+        'Password has already been changed. Please use the reset password feature.',
+      );
+    }
+
+    if (!user.email || user.email.endsWith('@vemtap.dummy')) {
+      throw new BadRequestException(
+        'No real email associated with this account. Please complete setup first.',
+      );
+    }
+
+    // Rotate to a fresh random temporary password instead of re-issuing the
+    // legacy shared constant.
+    const tempPassword = isPinRole(user.role)
+      ? Math.floor(100000 + Math.random() * 900000).toString()
+      : randomBytes(9).toString('base64url').slice(0, 12);
+    user.password = await bcrypt.hash(tempPassword, 10);
+    await this.usersService.create(user);
+
+    await this.mailService.sendWelcomeEmail(
+      user.email,
+      `${user.firstName} ${user.lastName}`,
+      tempPassword,
+    );
+
+    return { message: 'Temporary password sent successfully' };
+  }
+}

@@ -14,6 +14,8 @@ import {
   SEED_DESCRIPTION,
 } from './businessOnboardingSeed';
 import { UserAvatar } from '../components/ui/UserAvatar';
+import { CreateWithAiButton } from '../components/CreateWithAiButton';
+import type { AiPromptContext } from './aiDesignAssistant';
 
 interface BusinessProfileBasicScreenProps {
   draft: BusinessProfileDraft;
@@ -51,6 +53,19 @@ export function BusinessProfileBasicScreen({
 
   const subcategories = availableSubcategories(draft.categories);
   const subcategoryOptions = subcategories.map((subcategory) => ({ value: subcategory, label: subcategory }));
+
+  // Built from the in-flight draft, so the prompt reflects what the merchant
+  // just typed/picked even before this step is saved to the API.
+  const descriptionContext: AiPromptContext = {
+    businessName: draft.name,
+    category: draft.categories
+      .map(
+        (value) =>
+          categoryData.options.find((option) => option.value === value || option.label === value)?.label ?? value,
+      )
+      .join(', '),
+    subcategory: draft.tags.join(', '),
+  };
 
   const handleCategoryChange = (categories: string[]) => {
     const validSubcategories = availableSubcategories(categories);
@@ -235,11 +250,18 @@ export function BusinessProfileBasicScreen({
             </div>
 
             <div className="space-y-space-2xs">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-space-xs">
                 <label className="block font-label-md text-label-md text-text-primary" htmlFor="storefront-desc">
                   Storefront Description
                 </label>
-                <span className="font-caption text-caption text-text-secondary">{descriptionCount} / 250</span>
+                <div className="flex items-center gap-space-sm">
+                  <span className="font-caption text-caption text-text-secondary">{descriptionCount} / 250</span>
+                  <CreateWithAiButton
+                    assetType="description"
+                    context={descriptionContext}
+                    label="Write your description AI"
+                  />
+                </div>
               </div>
               <div className="bg-surface-container-lowest rounded-xl shadow-sm p-3 focus-within:bg-surface-subtle transition-all">
                 <textarea

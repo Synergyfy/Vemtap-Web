@@ -1,12 +1,13 @@
 /**
  * VEMTAP AI Design Assistant — frontend-only prompt preparation.
  *
- * VEMTAP does not generate images and never calls a paid AI API. This module
- * simply assembles a tailored text prompt from business data the frontend
- * already holds (the in-flight onboarding draft via `businessSetup`, plus any
- * form state a screen passes in). The merchant copies the prompt into an
- * external provider (ChatGPT, Google Gemini), downloads the generated image
- * there, and uploads it through VEMTAP's existing upload flow.
+ * VEMTAP does not generate images or copy and never calls a paid AI API. This
+ * module simply assembles a tailored text prompt from business data the
+ * frontend already holds (the in-flight onboarding draft via `businessSetup`,
+ * plus any form state a screen passes in). The merchant copies the prompt into
+ * an external provider (ChatGPT, Google Gemini), then either downloads the
+ * generated image and uploads it through VEMTAP's existing upload flow, or
+ * copies the generated storefront description into its existing text field.
  *
  * Rules honoured by every template:
  *  - Only include facts actually present in the frontend — never invent data.
@@ -14,12 +15,14 @@
  *    asking the merchant to re-enter anything.
  *  - Target dimensions follow the existing upload components' aspect ratios
  *    and the specs already displayed on those screens.
+ *  - Description prompts are capped at the Storefront Description field's
+ *    250-character limit.
  */
 import { BUSINESS_CATEGORIES } from './businessOnboardingSeed';
 import { getBusinessSetupSnapshot } from './businessSetup';
 
 /** Asset the merchant is creating. Drives the label, template and aspect. */
-export type AiAssetType = 'logo' | 'banner' | 'product' | 'service';
+export type AiAssetType = 'logo' | 'banner' | 'product' | 'service' | 'description';
 
 /** Mirrors the existing upload components' aspect-ratio options. */
 export type AiImageAspect = '4/3' | '16/9' | 'square';
@@ -68,9 +71,10 @@ export const AI_ASSET_LABELS: Record<AiAssetType, string> = {
   banner: 'Storefront Banner',
   product: 'Product Image',
   service: 'Service Image',
+  description: 'Storefront Description',
 };
 
-/** Contextual trigger copy shown next to the existing upload controls. */
+/** Contextual trigger copy shown next to the existing upload/text controls. */
 export function aiTriggerLabel(assetType: AiAssetType): string {
   switch (assetType) {
     case 'logo':
@@ -81,6 +85,8 @@ export function aiTriggerLabel(assetType: AiAssetType): string {
       return 'Need a product image? Create one with AI.';
     case 'service':
       return 'Need a service image? Create one with AI.';
+    case 'description':
+      return 'Write your description AI';
   }
 }
 
@@ -89,7 +95,12 @@ const DEFAULT_ASPECTS: Record<AiAssetType, AiImageAspect> = {
   banner: '16/9',
   product: 'square',
   service: '4/3',
+  // Descriptions are text: an aspect ratio is never used for this template.
+  description: 'square',
 };
+
+/** Matches the Storefront Description textarea's `maxLength` in both views. */
+export const DESCRIPTION_MAX_CHARS = 250;
 
 /**
  * Output sizes written into the prompts. The banner size matches the spec
@@ -273,6 +284,33 @@ function buildItemPrompt(
 }
 
 /**
+ * Storefront description template. The merchant pastes the provider's answer
+ * into the existing description textarea, so the prompt asks for plain text
+ * only and repeats the field's character limit as a hard constraint.
+ */
+function buildDescriptionPrompt(context: AiPromptContext): string {
+  const facts: string[] = [];
+  if (context.businessName) facts.push(`Business name: ${context.businessName}`);
+  if (context.category) facts.push(`Business category: ${context.category}`);
+  if (context.subcategory) facts.push(`Subcategories / specialties: ${context.subcategory}`);
+
+  return [
+    'Write a short storefront description for a local business, using only the details below.',
+    facts.length > 0
+      ? facts.join('\n')
+      : 'Business details are not available yet — write a short, generic welcome message without naming anything unverified.',
+    '',
+    'Description requirements:',
+    `- Keep the answer under ${DESCRIPTION_MAX_CHARS} characters including spaces — the storefront field accepts ${DESCRIPTION_MAX_CHARS} characters at most.`,
+    '- Use friendly, plain language that helps nearby shoppers understand what the business offers.',
+    '- Weave the business name, category and selected specialties into 1–2 natural sentences instead of listing them.',
+    '- Return only the finished description: no heading, no quotation marks, no explanations and no character count.',
+    '- Do not invent products, services, prices, addresses, opening hours, ratings, awards or certifications.',
+    NO_GUESSING,
+  ].join('\n');
+}
+
+/**
  * Builds the tailored prompt for the selected asset type from whatever
  * business data is actually available (screen context + setup snapshot).
  * Never throws on missing fields.
@@ -295,6 +333,8 @@ export function buildAiPrompt(
       return buildItemPrompt('product', resolved, dimensions);
     case 'service':
       return buildItemPrompt('service', resolved, dimensions);
+    case 'description':
+      return buildDescriptionPrompt(resolved);
   }
 }
 

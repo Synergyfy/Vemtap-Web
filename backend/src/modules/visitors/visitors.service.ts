@@ -1,0 +1,1694 @@
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, DataSource, In, MoreThan } from 'typeorm';
+import { v4 as uuidv4 } from 'uuid';
+import { User, UserRole, UserStatus } from '../users/entities/user.entity';
+import { Visit } from './entities/visit.entity';
+import { Device } from '../devices/entities/device.entity';
+import { Branch } from '../branches/entities/branch.entity';
+import { Contact } from '../contacts/entities/contact.entity';
+import { VisitorQueryDto } from './dto/visitor-query.dto';
+import { paginateWithCursor } from '../../common/utils/cursor-pagination.util';
+import { CatalogueOffer } from '../catalogue/entities/catalogue-offer.entity';
+import {
+  VisitorResponseDto,
+  PaginatedVisitorResponseDto,
+  NewVisitorResponseDto,
+  ReturningVisitorResponseDto,
+} from './dto/visitor-response.dto';
+import { VisitorStatsResponseDto } from './dto/visitor-stats.dto';
+import { VisitorGrowthResponseDto } from './dto/visitor-growth.dto';
+import { CreateVisitorDto } from './dto/create-visitor.dto';
+import { VisitorSignupDto } from './dto/visitor-signup.dto';
+import { MessagingEngineService } from '../messaging/services/messaging-engine.service';
+import { AutomationService } from '../messaging/services/automation.service';
+import { TriggerType } from '../messaging/enums/automation.enum';
+import { Channel } from '../messaging/enums/channel.enum';
+import { CampaignsService } from '../campaigns/campaigns.service';
+import * as bcrypt from 'bcrypt';
+import { MailService } from '../mail/mail.service';
+import { MessageLog } from '../messaging/entities/message-log.entity';
+import { BranchesService } from '../branches/branches.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
+import { AuthService } from '../auth/auth.service';
+import { PointTransaction } from '../loyalty/entities/point-transaction.entity';
+import { RedemptionCode } from '../loyalty/entities/redemption-code.entity';
+
+export class SendCampaignBody {
+  channel: Channel;
+  message: string;
+}
+
+import { VisitedBranchesQueryDto } from './dto/visited-branches-query.dto';
+import { PaginatedVisitedBranchResponseDto } from './dto/visited-branch-response.dto';
+import { AdminVisitorActivitiesQueryDto } from './dto/admin-visitor-activities-query.dto';
+import { PaginatedVisitResponseDto } from './dto/visit-response.dto';
+import {
+  ActivityFeedItemDto,
+  PaginatedActivityFeedResponseDto,
+} from './dto/activity-feed-response.dto';
+
+@Injectable()
+export class VisitorsService {
+  constructor(
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
+    @InjectRepository(Visit)
+    private visitRepository: Repository<Visit>,
+    @InjectRepository(Device)
+    private deviceRepository: Repository<Device>,
+    @InjectRepository(Branch)
+    private branchRepository: Repository<Branch>,
+    @InjectRepository(Contact)
+    private contactRepository: Repository<Contact>,
+    private dataSource: DataSource,
+    private messagingService: MessagingEngineService,
+    private campaignsService: CampaignsService,
+    private automationService: AutomationService,
+    private mailService: MailService,
+    private branchesService: BranchesService,
+    private loyaltyService: LoyaltyService,
+    private authService: AuthService,
+  ) {}
+
+  async getVisitedBranches(
+    customerId: string,
+    query: VisitedBranchesQueryDto,
+  ): Promise<PaginatedVisitedBranchResponseDto> {
+    const { page = 1, limit = 10, search } = query;
+    const skip = (page - 1) * limit;
+
+    const qb = this.visitRepository
+      .createQueryBuilder('visit')
+      .innerJoinAndSelect('visit.branch', 'branch')
+      .where('visit.customerId = :customerId', { customerId });
+
+    if (search) {
+      qb.andWhere('branch.name ILIKE :search', { search: `%${search}%` });
+    }
+
+    qb.select([
+      'branch.id as id',
+      'branch.name as name',
+      'branch.address as address',
+      'branch.city as city',
+      'branch.logoUrl as "logoUrl"',
+      'branch.businessId as "businessId"',
+      'MAX(visit.createdAt) as "lastVisitedAt"',
+      'COUNT(visit.id) as "visitCount"',
+    ]);
+
+    qb.groupBy('branch.id')
+      .orderBy('"lastVisitedAt"', 'DESC')
+      .offset(skip)
+      .limit(limit);
+
+    const rawData = await qb.getRawMany();
+
+    // For total count, we need another query to count grouped branches
+    const countQb = this.visitRepository
+      .createQueryBuilder('visit')
+      .innerJoin('visit.branch', 'branch')
+      .where('visit.customerId = :customerId', { customerId });
+
+    if (search) {
+      countQb.andWhere('branch.name ILIKE :search', { search: `%${search}%` });
+    }
+
+    const total = await countQb
+      .select('COUNT(DISTINCT visit.branchId)', 'count')
+      .getRawOne();
+
+    return {
+      data: rawData.map((row) => ({
+        id: row.id,
+        name: row.name,
+        address: row.address,
+        city: row.city,
+        logoUrl: row.logoUrl,
+        businessId: row.businessId,
+        lastVisitedAt: new Date(row.lastVisitedAt),
+        visitCount: parseInt(row.visitCount, 10),
+      })),
+      total: parseInt(total.count, 10),
+      page,
+      limit,
+    };
+  }
+
+  async checkBranchAccess(user: User, branchId: string): Promise<boolean> {
+    return this.branchesService.checkBranchAccess(user, branchId);
+  }
+
+  // --- Main/All Visitors ---
+
+  async findAll(
+    query: VisitorQueryDto,
+    branchId?: string,
+    businessId?: string,
+  ): Promise<PaginatedVisitorResponseDto> {
+    const { page = 1, limit = 10, search, status } = query;
+    const skip = (page - 1) * limit;
+
+    const baseQb = this.userRepository
+      .createQueryBuilder('user')
+      .innerJoin('user.visits', 'visit');
+
+    if (branchId) {
+      baseQb.andWhere('visit.branchId = :branchId', { branchId });
+    } else if (businessId) {
+      baseQb.andWhere('visit.businessId = :businessId', { businessId });
+    }
+
+    if (search) {
+      baseQb.andWhere(
+        '(user.firstName ILIKE :search OR user.lastName ILIKE :search OR user.email ILIKE :search OR user.phone ILIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    // Get unique IDs for pagination
+    const idQb = baseQb
+      .clone()
+      .select('user.id')
+      .groupBy('user.id')
+      .orderBy('MAX(visit.createdAt)', 'DESC')
+      .offset(skip)
+      .limit(limit);
+
+    const idResults = await idQb.getRawMany();
+    const userIds = idResults.map((r) => r.user_id);
+
+    if (userIds.length === 0) {
+      return { data: [], total: 0, page, limit };
+    }
+
+    // Fetch full data for these users
+    const users = await this.userRepository.find({
+      where: { id: In(userIds) },
+      relations: ['visits'],
+    });
+
+    // Re-sort because find with In() doesn't guarantee order
+    // And also we want to order visits within each user
+    users.forEach((u) => {
+      if (u.visits) {
+        u.visits.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      }
+    });
+
+    // Sort users to match the original order (by last visit)
+    const sortedUsers = userIds.map((id) => users.find((u) => u.id === id)!);
+
+    // Reliable count
+    const countQb = baseQb.clone().select('user.id').groupBy('user.id');
+
+    const totalRaw = await this.dataSource
+      .createQueryBuilder()
+      .select('COUNT(*)', 'count')
+      .from(`(${countQb.getQuery()})`, 'subquery')
+      .setParameters(countQb.getParameters())
+      .getRawOne();
+
+    const total = parseInt(totalRaw?.count || '0', 10);
+
+    const data: VisitorResponseDto[] = sortedUsers.map((user) =>
+      this.mapToVisitorDto(user, branchId, businessId),
+    );
+
+    let filteredData = data;
+    if (status && status !== 'all') {
+      filteredData = data.filter(
+        (v) => v.status.toLowerCase() === status.toLowerCase(),
+      );
+    }
+
+    return {
+      data: filteredData,
+      total,
+      page,
+      limit,
+    };
+  }
+
+  async getStats(
+    branchId?: string,
+    businessId?: string,
+  ): Promise<VisitorStatsResponseDto> {
+    const contextWhere: any = {};
+    if (branchId) contextWhere.branchId = branchId;
+    else if (businessId) contextWhere.businessId = businessId;
+
+    // Total unique visitors in this context
+    const totalVisitorsRaw = await this.visitRepository
+      .createQueryBuilder('visit')
+      .where(contextWhere)
+      .select('COUNT(DISTINCT visit.customerId)', 'count')
+      .getRawOne();
+    const totalVisitors = parseInt(totalVisitorsRaw?.count || '0', 10);
+
+    // Total visits in this context (all visit types — any tap counts)
+    const totalVisitsCount = await this.visitRepository.count({
+      where: contextWhere,
+    });
+
+    // New Visitors in this context: Customers whose FIRST visit in this branch/business was this month
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
+    const newVisitorsRaw = await this.visitRepository
+      .createQueryBuilder('visit')
+      .select('visit.customerId')
+      .where(contextWhere)
+      .groupBy('visit.customerId')
+      .having('MIN(visit.createdAt) >= :startOfMonth', { startOfMonth })
+      .getRawMany();
+    const newVisitorsCount = newVisitorsRaw.length;
+
+    // Returning Visitors: Customers with more than 1 visit (any type) in this context.
+    // The 4-hour cooldown in recordPortalVisit prevents the same tap from generating
+    // multiple rows, so COUNT > 1 reliably means the customer came back on a separate occasion.
+    const returningVisitorsRaw = await this.visitRepository
+      .createQueryBuilder('visit')
+      .select('visit.customerId')
+      .where(contextWhere)
+      .groupBy('visit.customerId')
+      .having('COUNT(visit.id) > 1')
+      .getRawMany();
+    const returningCount = returningVisitorsRaw.length;
+
+    const avgFrequency =
+      totalVisitors > 0 ? (totalVisitsCount / totalVisitors).toFixed(1) : '0';
+
+    return {
+      stats: [
+        {
+          label: 'Total Visitors',
+          value: totalVisitors.toLocaleString(),
+          icon: 'users',
+          color: 'blue',
+          trend: { value: '+0%', isUp: true },
+        },
+        {
+          label: 'New This Month',
+          value: newVisitorsCount.toLocaleString(),
+          icon: 'user-plus',
+          color: 'green',
+          trend: { value: '+0%', isUp: true },
+        },
+        {
+          label: 'Avg. Frequency',
+          value: avgFrequency,
+          icon: 'repeat',
+          color: 'purple',
+          trend: { value: '0', isUp: true },
+        },
+        {
+          label: 'Returning Visitors',
+          value: returningCount.toLocaleString(),
+          icon: 'refresh-cw',
+          color: 'orange',
+          trend: { value: '0', isUp: true },
+        },
+      ],
+    };
+  }
+
+  async getGrowthChartData(
+    range: string = '7D',
+    branchId?: string,
+    businessId?: string,
+  ): Promise<VisitorGrowthResponseDto> {
+    const validRanges = ['7D', '30D', '90D', '12M'];
+    const activeRange = validRanges.includes(range) ? range : '7D';
+
+    try {
+      const now = new Date();
+      const startDate = new Date();
+      let buckets: { name: string; customers: number }[] = [];
+
+      if (activeRange === '7D') {
+        startDate.setDate(now.getDate() - 6);
+        startDate.setHours(0, 0, 0, 0);
+
+        const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const countsMap = new Map<string, number>();
+
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(startDate);
+          d.setDate(startDate.getDate() + i);
+          const dayName = daysOfWeek[d.getDay()];
+          countsMap.set(dayName, 0);
+        }
+
+        const qb = this.visitRepository
+          .createQueryBuilder('visit')
+          .select('DATE(visit.createdAt)', 'date')
+          .addSelect('COUNT(DISTINCT visit.customerId)', 'count')
+          .where('visit.createdAt >= :startDate', { startDate });
+
+        if (branchId) {
+          qb.andWhere('visit.branchId = :branchId', { branchId });
+        } else if (businessId) {
+          qb.andWhere('visit.businessId = :businessId', { businessId });
+        }
+
+        const rawResults = await qb
+          .groupBy('DATE(visit.createdAt)')
+          .getRawMany();
+
+        rawResults.forEach((row) => {
+          if (!row.date) return;
+          const dateStr =
+            typeof row.date === 'string' ? row.date : row.date.toISOString();
+          const d = new Date(dateStr);
+          // Use UTC day to avoid timezone offset shifts on YYYY-MM-DD strings
+          const dayName = daysOfWeek[isNaN(d.getTime()) ? 0 : d.getUTCDay()];
+          if (countsMap.has(dayName)) {
+            countsMap.set(dayName, parseInt(row.count || '0', 10));
+          }
+        });
+
+        buckets = Array.from(countsMap.entries()).map(([name, customers]) => ({
+          name,
+          customers,
+        }));
+      } else if (activeRange === '30D') {
+        startDate.setDate(now.getDate() - 30);
+        const countsMap = new Map<string, number>([
+          ['Week 1', 0],
+          ['Week 2', 0],
+          ['Week 3', 0],
+          ['Week 4', 0],
+        ]);
+
+        const qb = this.visitRepository
+          .createQueryBuilder('visit')
+          .select('visit.createdAt', 'createdAt')
+          .where('visit.createdAt >= :startDate', { startDate });
+
+        if (branchId) {
+          qb.andWhere('visit.branchId = :branchId', { branchId });
+        } else if (businessId) {
+          qb.andWhere('visit.businessId = :businessId', { businessId });
+        }
+
+        const visits = await qb.getRawMany();
+        visits.forEach((v) => {
+          if (!v.createdAt) return;
+          const visitDate = new Date(v.createdAt);
+          if (isNaN(visitDate.getTime())) return;
+
+          const diffDays = Math.floor(
+            (now.getTime() - visitDate.getTime()) / (1000 * 60 * 60 * 24),
+          );
+          let weekKey = 'Week 4';
+          if (diffDays >= 22) weekKey = 'Week 1';
+          else if (diffDays >= 15) weekKey = 'Week 2';
+          else if (diffDays >= 8) weekKey = 'Week 3';
+
+          countsMap.set(weekKey, (countsMap.get(weekKey) || 0) + 1);
+        });
+
+        buckets = Array.from(countsMap.entries()).map(([name, customers]) => ({
+          name,
+          customers,
+        }));
+      } else if (activeRange === '90D') {
+        const monthNames = [
+          'Jan',
+          'Feb',
+          'Mar',
+          'Apr',
+          'May',
+          'Jun',
+          'Jul',
+          'Aug',
+          'Sep',
+          'Oct',
+          'Nov',
+          'Dec',
+        ];
+        startDate.setMonth(now.getMonth() - 2);
+        startDate.setDate(1);
+
+        const countsMap = new Map<string, number>();
+        for (let i = 0; i < 3; i++) {
+          const m = new Date(startDate);
+          m.setMonth(startDate.getMonth() + i);
+          countsMap.set(monthNames[m.getMonth()], 0);
+        }
+
+        const qb = this.visitRepository
+          .createQueryBuilder('visit')
+          .select('visit.createdAt', 'createdAt')
+          .where('visit.createdAt >= :startDate', { startDate });
+
+        if (branchId) {
+          qb.andWhere('visit.branchId = :branchId', { branchId });
+        } else if (businessId) {
+          qb.andWhere('visit.businessId = :businessId', { businessId });
+        }
+
+        const visits = await qb.getRawMany();
+        visits.forEach((v) => {
+          if (!v.createdAt) return;
+          const visitDate = new Date(v.createdAt);
+          if (isNaN(visitDate.getTime())) return;
+
+          const mName = monthNames[visitDate.getMonth()];
+          if (countsMap.has(mName)) {
+            countsMap.set(mName, (countsMap.get(mName) || 0) + 1);
+          }
+        });
+
+        buckets = Array.from(countsMap.entries()).map(([name, customers]) => ({
+          name,
+          customers,
+        }));
+      } else if (activeRange === '12M') {
+        const countsMap = new Map<string, number>([
+          ['Q1', 0],
+          ['Q2', 0],
+          ['Q3', 0],
+          ['Q4', 0],
+        ]);
+
+        const qb = this.visitRepository
+          .createQueryBuilder('visit')
+          .select('visit.createdAt', 'createdAt')
+          .where('visit.createdAt >= :startDate', {
+            startDate: new Date(now.getFullYear(), 0, 1),
+          });
+
+        if (branchId) {
+          qb.andWhere('visit.branchId = :branchId', { branchId });
+        } else if (businessId) {
+          qb.andWhere('visit.businessId = :businessId', { businessId });
+        }
+
+        const visits = await qb.getRawMany();
+        visits.forEach((v) => {
+          if (!v.createdAt) return;
+          const visitDate = new Date(v.createdAt);
+          if (isNaN(visitDate.getTime())) return;
+
+          const qIndex = Math.floor(visitDate.getMonth() / 3);
+          const qKey = `Q${qIndex + 1}`;
+          if (countsMap.has(qKey)) {
+            countsMap.set(qKey, (countsMap.get(qKey) || 0) + 1);
+          }
+        });
+
+        buckets = Array.from(countsMap.entries()).map(([name, customers]) => ({
+          name,
+          customers,
+        }));
+      }
+
+      return {
+        range: activeRange,
+        data: buckets,
+      };
+    } catch (error) {
+      console.error(
+        '[VisitorsService] Error generating growth chart data:',
+        error,
+      );
+      throw new BadRequestException('Failed to generate growth chart data');
+    }
+  }
+
+  async create(
+    createVisitorDto: CreateVisitorDto | VisitorSignupDto,
+    branchId?: string,
+  ): Promise<
+    VisitorResponseDto & {
+      access_token?: string;
+      sessionId?: string;
+      user?: Partial<User>;
+      isNewUser?: boolean;
+    }
+  > {
+    const dto = createVisitorDto as CreateVisitorDto & {
+      deviceId?: string;
+    };
+
+    // Check by email
+    let user = await this.userRepository.findOne({
+      where: { email: dto.email },
+    });
+
+    // Check by phone if provided and user not found by email
+    if (!user && dto.phone) {
+      user = await this.userRepository.findOne({
+        where: { phone: dto.phone },
+      });
+      if (user && user.email !== dto.email) {
+        throw new BadRequestException(
+          'A user with this phone number already exists with a different email',
+        );
+      }
+    }
+
+    const providedPin = (dto as any).pin;
+    let isNewCustomer = false;
+
+    if (!user) {
+      isNewCustomer = true;
+      const hashedPassword = providedPin
+        ? await bcrypt.hash(providedPin, 10)
+        : undefined;
+
+      user = this.userRepository.create({
+        email: dto.email,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        phone: dto.phone,
+        password: hashedPassword,
+        role: UserRole.CUSTOMER,
+        status: providedPin ? UserStatus.ACTIVE : UserStatus.PENDING,
+        emailVerified: !!providedPin,
+        isPasswordChanged: !!providedPin,
+        uniqueCode: `CUST-${Math.floor(100000 + Math.random() * 900000)}`,
+      });
+      await this.userRepository.save(user);
+
+      await this.mailService.sendWelcomeEmail(
+        user.email,
+        `${user.firstName} ${user.lastName}`.trim() || 'Visitor',
+      );
+    } else if (user.role === UserRole.CUSTOMER) {
+      // Update existing customer details if they are provided and currently empty
+      // This is especially important for Google signups completing their profile
+      let modified = false;
+      if (dto.firstName && (!user.firstName || user.firstName === 'Google')) {
+        user.firstName = dto.firstName;
+        modified = true;
+      }
+      if (dto.lastName && (!user.lastName || user.lastName === 'User')) {
+        user.lastName = dto.lastName;
+        modified = true;
+      }
+      if (dto.phone && (!user.phone || user.phone !== dto.phone)) {
+        user.phone = dto.phone;
+        modified = true;
+      }
+
+      if (modified) {
+        await this.userRepository.save(user);
+      }
+    }
+
+    // If branchId is provided, record visit and contact
+    if (branchId && user.role !== UserRole.ADMIN) {
+      const branch = await this.branchRepository.findOne({
+        where: { id: branchId },
+      });
+      if (!branch) {
+        throw new NotFoundException(`Branch with ID ${branchId} not found`);
+      }
+
+      const visit = this.visitRepository.create({
+        customer: user,
+        branchId,
+        businessId: branch.businessId,
+        deviceId: dto.deviceId,
+        status: 'new',
+      } as any) as unknown as Visit;
+      await this.visitRepository.save(visit);
+
+      let contact = await this.contactRepository.findOne({
+        where: [
+          { branchId, email: user.email },
+          { branchId, phone: user.phone },
+        ],
+      });
+
+      if (!contact) {
+        contact = this.contactRepository.create({
+          branchId,
+          businessId: branch.businessId,
+          email: user.email,
+          phone: user.phone,
+          name: `${user.firstName} ${user.lastName}`,
+          optInChannels: [Channel.SMS, Channel.EMAIL, Channel.WHATSAPP],
+        } as any) as unknown as Contact;
+        await this.contactRepository.save(contact);
+      }
+
+      await this.automationService.trigger(TriggerType.WELCOME_MESSAGE, {
+        branchId,
+        customerId: user.id,
+      });
+    }
+
+    const updatedUser = await this.userRepository.findOne({
+      where: { id: user.id },
+      relations: ['visits'],
+      order: {
+        visits: {
+          createdAt: 'DESC',
+        },
+      },
+    });
+
+    const visitorDto = this.mapToVisitorDto(updatedUser!, branchId);
+
+    // Public visitor signups auto-login: return a JWT alongside the visitor
+    // payload so clients no longer need to rely on a shared default password.
+    if (isNewCustomer) {
+      try {
+        const authResponse = await this.authService.buildAuthResponse(
+          updatedUser!,
+          true,
+        );
+        return {
+          ...visitorDto,
+          access_token: authResponse.access_token,
+          sessionId: authResponse.sessionId,
+          user: authResponse.user,
+          isNewUser: true,
+        };
+      } catch (err) {
+        // Token issuance is non-blocking for the signup — fall back to the
+        // legacy response shape if anything fails.
+        console.error(
+          '[VisitorsService] Failed to issue auth token on signup:',
+          err,
+        );
+      }
+    }
+
+    return visitorDto;
+  }
+
+  async findOne(
+    id: string,
+    branchId?: string,
+    businessId?: string,
+  ): Promise<VisitorResponseDto> {
+    const qb = this.userRepository
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.visits', 'visit')
+      .where('user.id = :id', { id });
+
+    if (branchId) {
+      qb.andWhere('visit.branchId = :branchId', { branchId });
+    } else if (businessId) {
+      qb.andWhere('visit.businessId = :businessId', { businessId });
+    }
+
+    const user = await qb.orderBy('visit.createdAt', 'DESC').getOne();
+
+    if (!user) {
+      // If user exists but has no visits in this context, we still return the user if they exist globally
+      const baseUser = await this.userRepository.findOne({ where: { id } });
+      if (!baseUser) throw new NotFoundException('Visitor not found');
+      return this.mapToVisitorDto(baseUser, branchId, businessId);
+    }
+
+    return this.mapToVisitorDto(user, branchId, businessId);
+  }
+
+  async update(
+    id: string,
+    updateData: Partial<CreateVisitorDto>,
+  ): Promise<VisitorResponseDto> {
+    const user = await this.userRepository.findOne({ where: { id } });
+    if (!user) throw new NotFoundException('Visitor not found');
+
+    if (updateData.firstName) user.firstName = updateData.firstName;
+    if (updateData.lastName) user.lastName = updateData.lastName;
+    if (updateData.email) user.email = updateData.email;
+    if (updateData.phone) user.phone = updateData.phone;
+
+    await this.userRepository.save(user);
+    // Note: We return findOne without context here as update is generally global,
+    // but the controller will call findOne with context if needed next time.
+    return this.findOne(id);
+  }
+
+  async remove(id: string): Promise<void> {
+    await this.userRepository.softDelete(id);
+  }
+
+  // --- New Visitors ---
+
+  async findNew(
+    query: VisitorQueryDto,
+    branchId?: string,
+    businessId?: string,
+  ): Promise<{ data: NewVisitorResponseDto[]; total: number }> {
+    const { page = 1, limit = 10, search } = query;
+    const skip = (page - 1) * limit;
+
+    const startOfWeek = new Date();
+    startOfWeek.setDate(startOfWeek.getDate() - 7);
+
+    const baseQb = this.userRepository
+      .createQueryBuilder('user')
+      .innerJoin('user.visits', 'visit');
+
+    if (branchId) {
+      baseQb.andWhere('visit.branchId = :branchId', { branchId });
+    } else if (businessId) {
+      baseQb.andWhere('visit.businessId = :businessId', { businessId });
+    }
+
+    if (search) {
+      baseQb.andWhere(
+        '(user.firstName ILIKE :search OR user.lastName ILIKE :search OR user.email ILIKE :search OR user.phone ILIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    const usersMatchQb = baseQb
+      .clone()
+      .select('user.id')
+      .groupBy('user.id')
+      .having('MIN(visit.createdAt) >= :startOfWeek', { startOfWeek })
+      .orderBy('MIN(visit.createdAt)', 'DESC')
+      .offset(skip)
+      .limit(limit);
+
+    const usersMatches = await usersMatchQb.getRawMany();
+    const userIds = usersMatches.map((m) => m.user_id);
+
+    if (userIds.length === 0) {
+      return { data: [], total: 0 };
+    }
+
+    const users = await this.userRepository.find({
+      where: { id: In(userIds) },
+      relations: ['visits'],
+    });
+
+    // Reliable count for grouped queries with HAVING
+    const countQb = baseQb
+      .clone()
+      .select('user.id')
+      .groupBy('user.id')
+      .having('MIN(visit.createdAt) >= :startOfWeek', { startOfWeek });
+
+    const totalRaw = await this.dataSource
+      .createQueryBuilder()
+      .select('COUNT(*)', 'count')
+      .from(`(${countQb.getQuery()})`, 'subquery')
+      .setParameters(countQb.getParameters())
+      .getRawOne();
+
+    const total = parseInt(totalRaw?.count || '0', 10);
+
+    // Sort to match dataQb order
+    const sortedUsers = userIds.map((id) => users.find((u) => u.id === id)!);
+
+    const dtos = sortedUsers.map((u) => ({
+      id: u.id,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      name: `${u.firstName} ${u.lastName}`.trim() || u.email || 'Visitor',
+      email: u.email,
+      phone: u.phone,
+      joined: u.createdAt,
+      source: 'Direct/NFC',
+      status: 'New',
+    }));
+
+    return { data: dtos, total };
+  }
+
+  async getNewStats(
+    branchId?: string,
+    businessId?: string,
+  ): Promise<VisitorStatsResponseDto> {
+    const contextWhere: any = {};
+    if (branchId) contextWhere.branchId = branchId;
+    else if (businessId) contextWhere.businessId = businessId;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const newTodayRaw = await this.visitRepository
+      .createQueryBuilder('visit')
+      .select('visit.customerId')
+      .where(contextWhere)
+      .groupBy('visit.customerId')
+      .having('MIN(visit.createdAt) >= :today', { today })
+      .getRawMany();
+    const newToday = newTodayRaw.length;
+
+    const startOfWeek = new Date();
+    startOfWeek.setDate(today.getDate() - today.getDay()); // Start of Sunday/current week
+    startOfWeek.setHours(0, 0, 0, 0);
+
+    const newWeeklyRaw = await this.visitRepository
+      .createQueryBuilder('visit')
+      .select('visit.customerId')
+      .where(contextWhere)
+      .groupBy('visit.customerId')
+      .having('MIN(visit.createdAt) >= :startOfWeek', { startOfWeek })
+      .getRawMany();
+    const newWeekly = newWeeklyRaw.length;
+
+    return {
+      stats: [
+        {
+          label: 'New Today',
+          value: newToday.toLocaleString(),
+          icon: 'user-plus',
+          color: 'green',
+          trend: { value: '0%', isUp: true },
+        },
+        {
+          label: 'New This Week',
+          value: newWeekly.toLocaleString(),
+          icon: 'calendar',
+          color: 'blue',
+          trend: { value: '0%', isUp: true },
+        },
+        {
+          label: 'Conversion Rate',
+          value: '100%',
+          icon: 'trending-up',
+          color: 'purple',
+          trend: { value: '0%', isUp: true },
+        },
+        {
+          label: 'Top Source',
+          value: 'NFC Tag',
+          icon: 'tag',
+          color: 'yellow',
+          trend: { value: 'N/A', isUp: true },
+        },
+      ],
+    };
+  }
+
+  // --- Returning Visitors ---
+
+  async findReturning(
+    query: VisitorQueryDto,
+    branchId?: string,
+    businessId?: string,
+  ): Promise<{ data: ReturningVisitorResponseDto[]; total: number }> {
+    const { page = 1, limit = 10, search } = query;
+    const skip = (page - 1) * limit;
+
+    const baseQb = this.userRepository
+      .createQueryBuilder('user')
+      .innerJoin('user.visits', 'visit');
+
+    if (branchId) {
+      baseQb.andWhere('visit.branchId = :branchId', { branchId });
+    } else if (businessId) {
+      baseQb.andWhere('visit.businessId = :businessId', { businessId });
+    }
+
+    if (search) {
+      baseQb.andWhere(
+        '(user.firstName ILIKE :search OR user.lastName ILIKE :search OR user.email ILIKE :search OR user.phone ILIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    // Any visit type counts — customers with > 1 visit are returning.
+    const dataQb = baseQb
+      .clone()
+      .select([
+        'user.id as id',
+        'user.firstName as "firstName"',
+        'user.lastName as "lastName"',
+        'user.email as email',
+        'user.phone as phone',
+        'COUNT(visit.id) as "totalVisits"',
+        'MAX(visit.createdAt) as "lastVisit"',
+      ])
+      .groupBy('user.id')
+      .having('COUNT(visit.id) > 1')
+      .orderBy('MAX(visit.createdAt)', 'DESC')
+      .offset(skip)
+      .limit(limit);
+
+    const rawData = await dataQb.getRawMany();
+
+    // Reliable count for grouped queries with HAVING
+    const countQb = baseQb
+      .clone()
+      .select('user.id')
+      .groupBy('user.id')
+      .having('COUNT(visit.id) > 1');
+
+    const totalRaw = await this.dataSource
+      .createQueryBuilder()
+      .select('COUNT(*)', 'count')
+      .from(`(${countQb.getQuery()})`, 'subquery')
+      .setParameters(countQb.getParameters())
+      .getRawOne();
+
+    const total = parseInt(totalRaw?.count || '0', 10);
+
+    const dtos = rawData.map((r) => ({
+      id: r.id,
+      firstName: r.firstName,
+      lastName: r.lastName,
+      name: `${r.firstName} ${r.lastName}`.trim() || r.email || 'Visitor',
+      email: r.email,
+      phone: r.phone,
+      totalVisits: parseInt(r.totalVisits, 10),
+      frequency: parseInt(r.totalVisits, 10) > 5 ? 'Monthly' : 'Weekly',
+      lastVisit: new Date(r.lastVisit),
+      status: 'Returning',
+    }));
+
+    return { data: dtos, total };
+  }
+
+  async getReturningStats(
+    branchId?: string,
+    businessId?: string,
+  ): Promise<VisitorStatsResponseDto> {
+    const totalVisitorsQb = this.userRepository
+      .createQueryBuilder('user')
+      .innerJoin('user.visits', 'visit');
+
+    if (branchId) {
+      totalVisitorsQb.andWhere('visit.branchId = :branchId', { branchId });
+    } else if (businessId) {
+      totalVisitorsQb.andWhere('visit.businessId = :businessId', {
+        businessId,
+      });
+    }
+
+    // Use COUNT(DISTINCT user.id) instead of getCount() — getCount() on a join
+    // returns matching rows not unique users, inflating the denominator.
+    const totalVisitorsRaw = await totalVisitorsQb
+      .select('COUNT(DISTINCT user.id)', 'count')
+      .getRawOne();
+    const totalVisitors = parseInt(totalVisitorsRaw?.count || '0', 10);
+
+    const returningCountQb = this.userRepository
+      .createQueryBuilder('user')
+      .innerJoin('user.visits', 'visit')
+      .andWhere('user.role = :role', { role: UserRole.CUSTOMER });
+
+    if (branchId) {
+      returningCountQb.andWhere('visit.branchId = :branchId', { branchId });
+    } else if (businessId) {
+      returningCountQb.andWhere('visit.businessId = :businessId', {
+        businessId,
+      });
+    }
+
+    const returningCountRaw = await this.dataSource
+      .createQueryBuilder()
+      .select('COUNT(*)', 'count')
+      .from(
+        `(${returningCountQb
+          .select('user.id')
+          .groupBy('user.id')
+          .having('COUNT(visit.id) > 1')
+          .getQuery()})`,
+        'subquery',
+      )
+      .setParameters(returningCountQb.getParameters())
+      .getRawOne();
+
+    const returningCount = parseInt(returningCountRaw?.count || '0', 10);
+
+    const rate =
+      totalVisitors > 0
+        ? ((returningCount / totalVisitors) * 100).toFixed(1)
+        : '0';
+
+    const vipCountQb = this.userRepository
+      .createQueryBuilder('user')
+      .innerJoin('user.visits', 'visit')
+      .andWhere('user.role = :role', { role: UserRole.CUSTOMER });
+
+    if (branchId) {
+      vipCountQb.andWhere('visit.branchId = :branchId', { branchId });
+    } else if (businessId) {
+      vipCountQb.andWhere('visit.businessId = :businessId', { businessId });
+    }
+
+    const vipCountRaw = await this.dataSource
+      .createQueryBuilder()
+      .select('COUNT(*)', 'count')
+      .from(
+        `(${vipCountQb
+          .select('user.id')
+          .groupBy('user.id')
+          .having('COUNT(visit.id) > 10')
+          .getQuery()})`,
+        'subquery',
+      )
+      .setParameters(vipCountQb.getParameters())
+      .getRawOne();
+
+    const vipCount = parseInt(vipCountRaw?.count || '0', 10);
+
+    return {
+      stats: [
+        {
+          label: 'Returning Rate',
+          value: `${rate}%`,
+          icon: 'repeat',
+          color: 'blue',
+          trend: { value: '0%', isUp: true },
+        },
+        {
+          label: 'Total Returning',
+          value: returningCount.toLocaleString(),
+          icon: 'users',
+          color: 'green',
+          trend: { value: '0%', isUp: true },
+        },
+        {
+          label: 'VIP Members',
+          value: vipCount.toLocaleString(),
+          icon: 'star',
+          color: 'yellow',
+          trend: { value: '0%', isUp: true },
+        },
+        {
+          label: 'Repeat Factor',
+          value: 'High',
+          icon: 'trending-up',
+          color: 'purple',
+          trend: { value: 'N/A', isUp: true },
+        },
+      ],
+    };
+  }
+
+  // --- Actions ---
+
+  async export(branchId: string) {
+    const visitors = await this.findAll({ page: 1, limit: 1000 }, branchId);
+    let csv = 'First Name,Last Name,Email,Phone,Visits,Last Visit,Status\n';
+    visitors.data.forEach((v) => {
+      csv += `"${v.firstName}","${v.lastName}","${v.email}","${v.phone}",${v.visits},"${v.lastVisit.toISOString()}",${v.status}\n`;
+    });
+    return {
+      message: 'Export successful',
+      data: csv,
+      filename: `visitors_${branchId}_${new Date().toISOString().split('T')[0]}.csv`,
+    };
+  }
+
+  async sendCampaign(branchId: string, body: SendCampaignBody) {
+    const visitors = await this.findAll({ page: 1, limit: 1000 }, branchId);
+    const contactIds = visitors.data.map((v) => v.id);
+
+    const channel = body.channel || Channel.SMS;
+    const content = body.message;
+
+    return this.messagingService.sendMessage({
+      branchId,
+      channel,
+      customerIds: contactIds,
+      content,
+    });
+  }
+
+  async sendWelcomeCampaign(branchId: string) {
+    const newVisitors = await this.findNew({ page: 1, limit: 1000 }, branchId);
+    const contactIds = newVisitors.data.map((v) => v.id);
+
+    return this.messagingService.sendMessage({
+      branchId,
+      channel: Channel.SMS,
+      customerIds: contactIds,
+      content: 'Welcome to our business! We are glad to have you.',
+    });
+  }
+
+  async sendMessage(
+    visitorId: string,
+    message: string,
+    channel: Channel,
+    branchId: string,
+  ) {
+    return this.messagingService.sendMessage({
+      branchId,
+      channel: channel || Channel.SMS,
+      customerIds: [visitorId],
+      content: message,
+    });
+  }
+
+  async sendWelcome(visitorId: string, branchId: string) {
+    return this.sendMessage(
+      visitorId,
+      'Welcome! Thank you for visiting us.',
+      Channel.SMS,
+      branchId,
+    );
+  }
+
+  async sendReward(visitorId: string, rewardId: string, branchId: string) {
+    const rewards = await this.loyaltyService.getBranchRewards(branchId);
+    const reward = rewards.find((r) => r.id === rewardId);
+
+    if (!reward) throw new NotFoundException('Reward not found');
+
+    return this.sendMessage(
+      visitorId,
+      `You've received a reward: ${reward.name}! Use code REWARD123 to redeem.`,
+      Channel.SMS,
+      branchId,
+    );
+  }
+
+  async resetBusinessData(branchId: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      await manager.delete(Visit, { branchId });
+      await manager.delete(MessageLog, { branchId });
+      await manager.delete(Contact, { branchId });
+      await manager.delete(PointTransaction, { branchId });
+      await manager.delete(RedemptionCode, { branchId });
+      // Rewards are not deleted usually, but if needed:
+      // await manager.delete(Reward, { branchId });
+    });
+  }
+
+  private mapToVisitorDto(
+    user: User,
+    branchId?: string,
+    businessId?: string,
+  ): VisitorResponseDto {
+    let visits = user.visits || [];
+
+    // Filter visits based on context if provided
+    if (branchId) {
+      visits = visits.filter((v) => v.branchId === branchId);
+    } else if (businessId) {
+      visits = visits.filter((v) => v.businessId === businessId);
+    }
+
+    // Assuming visits are ordered DESC (latest first) from query or we sort here
+    const lastVisit = visits.length > 0 ? visits[0].createdAt : user.createdAt;
+
+    // Any visit type counts — a customer with > 1 visit is returning.
+    const visitCount = visits.length;
+
+    let status = 'New';
+    if (visitCount > 10) status = 'VIP';
+    else if (visitCount > 1) status = 'Returning';
+    else if (visitCount === 1) status = 'New';
+    else status = 'Inactive';
+
+    return {
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      name:
+        `${user.firstName} ${user.lastName}`.trim() || user.email || 'Visitor',
+      email: user.email,
+      phone: user.phone,
+      visits: visitCount,
+      lastVisit: lastVisit,
+      status: status,
+      totalSpent: '₦0',
+    };
+  }
+
+  async findAdminVisitorActivities(
+    query: AdminVisitorActivitiesQueryDto,
+  ): Promise<PaginatedVisitResponseDto> {
+    const { page = 1, limit = 10, search, branchId, businessId } = query;
+    const skip = (page - 1) * limit;
+
+    const qb = this.visitRepository
+      .createQueryBuilder('visit')
+      .leftJoinAndSelect('visit.customer', 'customer')
+      .leftJoinAndSelect('visit.branch', 'branch')
+      .leftJoinAndSelect('branch.business', 'business');
+
+    if (branchId) {
+      qb.andWhere('visit.branchId = :branchId', { branchId });
+    }
+
+    if (businessId) {
+      qb.andWhere('visit.businessId = :businessId', { businessId });
+    }
+
+    if (search) {
+      qb.andWhere(
+        '(customer.firstName ILIKE :search OR customer.lastName ILIKE :search OR customer.email ILIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    const [visits, total] = await qb
+      .orderBy('visit.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      data: visits.map((visit) => ({
+        id: visit.id,
+        createdAt: visit.createdAt,
+        status: visit.status,
+        customer: {
+          id: visit.customer?.id,
+          firstName: visit.customer?.firstName,
+          lastName: visit.customer?.lastName,
+          email: visit.customer?.email,
+          phone: visit.customer?.phone,
+        },
+        branch: {
+          id: visit.branch?.id,
+          name: visit.branch?.name,
+        },
+        business: {
+          id: visit.branch?.business?.id,
+          name: visit.branch?.business?.name,
+        },
+      })),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  async getActivityFeed(
+    context: { branchId?: string; businessId?: string },
+    page: number = 1,
+    limit: number = 20,
+    cursor?: string,
+  ): Promise<PaginatedActivityFeedResponseDto> {
+    const qb = this.visitRepository
+      .createQueryBuilder('visit')
+      .leftJoinAndSelect('visit.customer', 'customer')
+      .leftJoinAndSelect('visit.branch', 'branch')
+      .leftJoinAndSelect('visit.order', 'order')
+      .where('visit.deletedAt IS NULL');
+
+    if (context.branchId) {
+      qb.andWhere('visit.branchId = :branchId', {
+        branchId: context.branchId,
+      });
+    } else if (context.businessId) {
+      qb.andWhere('visit.businessId = :businessId', {
+        businessId: context.businessId,
+      });
+    }
+
+    const result = await paginateWithCursor({
+      queryBuilder: qb,
+      cursor,
+      page,
+      limit,
+      sortField: 'createdAt',
+      sortOrder: 'DESC',
+      entityAlias: 'visit',
+    });
+
+    const visits = result.data;
+    const total = result.total;
+
+    const data: ActivityFeedItemDto[] = visits.map((visit) => {
+      const customerName = visit.customer
+        ? `${visit.customer.firstName || ''} ${(visit.customer.lastName || '')[0] || ''}`.trim() ||
+          'Unknown'
+        : 'Unknown';
+
+      const shortName = customerName
+        .split(' ')
+        .map((p, i) => (i === 0 ? p : `${p[0]}.`))
+        .join(' ');
+
+      if (visit.orderId) {
+        return {
+          id: visit.id,
+          type: 'order',
+          userName: shortName,
+          description: `Placed an order`,
+          timestamp: visit.createdAt,
+          branchId: visit.branchId,
+          metadata: { orderId: visit.orderId },
+        };
+      }
+
+      if (visit.status === 'new') {
+        return {
+          id: visit.id,
+          type: 'registration',
+          userName: shortName,
+          description: visit.deviceId
+            ? `Registered via device`
+            : `Registered via portal`,
+          timestamp: visit.createdAt,
+          branchId: visit.branchId,
+          metadata: { deviceId: visit.deviceId },
+        };
+      }
+
+      return {
+        id: visit.id,
+        type: 'visit',
+        userName: shortName,
+        description: visit.deviceId ? `Visited via device` : `Returning visit`,
+        timestamp: visit.createdAt,
+        branchId: visit.branchId,
+        metadata: { deviceId: visit.deviceId, status: visit.status },
+      };
+    });
+
+    return {
+      data,
+      total,
+      page,
+      limit,
+      cursor: result.cursor,
+      nextCursor: result.nextCursor,
+      prevCursor: result.prevCursor,
+      hasNextPage: result.hasNextPage,
+    } as any;
+  }
+
+  // ─── Smart Visit Recording ────────────────────────────────────────────────
+
+  /**
+   * Records a portal visit when an authenticated customer lands on the tap page.
+   *
+   * Fraud controls:
+   *  1. Session idempotency  — same `sessionToken` always returns the same visit.
+   *  2. 4-hour cooldown      — at most 1 new visit per customer per branch per 4 hours.
+   *  3. IP rate limiting     — rejects if >20 portal-visit calls from one IP in 10 minutes.
+   */
+  async recordPortalVisit(params: {
+    customerId: string;
+    deviceCode: string;
+    sessionToken: string;
+    ipAddress?: string;
+    userAgent?: string;
+    referredByBranchId?: string;
+    catalogueOfferId?: string;
+  }): Promise<{ visitId: string; sessionToken: string; isNewVisit: boolean }> {
+    const {
+      customerId,
+      deviceCode,
+      sessionToken,
+      ipAddress,
+      userAgent,
+      referredByBranchId,
+      catalogueOfferId,
+    } = params;
+
+    // --- Prevent Admins from being recorded as visitors ---
+    const user = await this.userRepository.findOne({
+      where: { id: customerId },
+    });
+    if (user?.role === UserRole.ADMIN) {
+      return { visitId: 'admin-skip', sessionToken, isNewVisit: false };
+    }
+
+    // ── 1. Idempotency: same token → return existing visit immediately ──
+    const existing = await this.visitRepository.findOne({
+      where: { sessionToken },
+    });
+    if (existing) {
+      return { visitId: existing.id, sessionToken, isNewVisit: false };
+    }
+
+    // ── 2. Resolve device → branch ──
+    const device = await this.deviceRepository.findOne({
+      where: { code: deviceCode },
+      relations: ['branch'],
+    });
+    if (!device || !device.branchId) {
+      throw new NotFoundException('Device not found or not linked to a branch');
+    }
+
+    const branchId = device.branchId;
+    const businessId = device.branch?.businessId;
+
+    // ── 3. IP rate limiting (>20 calls from same IP in 10 minutes) ──
+    if (ipAddress) {
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+      const recentIpCount = await this.visitRepository.count({
+        where: {
+          ipAddress,
+          createdAt: MoreThan(tenMinutesAgo),
+        },
+      });
+      if (recentIpCount >= 20) {
+        throw new HttpException(
+          'Too many visit requests from this location. Please try again later.',
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+    }
+
+    // ── 4. Cooldown: 1 new portal/patronage visit per customer+branch per 4 hours ──
+    const cooldownWindow = new Date(Date.now() - 4 * 60 * 60 * 1000);
+    const recentVisit = await this.visitRepository.findOne({
+      where: {
+        customerId,
+        branchId,
+        createdAt: MoreThan(cooldownWindow),
+      },
+      order: { createdAt: 'DESC' },
+    });
+    if (recentVisit) {
+      // Return the recent visit — don't create a duplicate.
+      return {
+        visitId: recentVisit.id,
+        sessionToken: recentVisit.sessionToken ?? sessionToken,
+        isNewVisit: false,
+      };
+    }
+
+    // ── 5. Determine new/returning status ──
+    // Any prior visit (portal or patronage) makes this customer returning.
+    const previousVisitCount = await this.visitRepository.count({
+      where: { customerId, branchId },
+    });
+
+    const visit = this.visitRepository.create({
+      customerId,
+      branchId,
+      businessId,
+      deviceId: device.id,
+      status: previousVisitCount > 0 ? 'returning' : 'new',
+      visitType: 'portal',
+      sessionToken,
+      ipAddress: ipAddress ?? null,
+      userAgent: userAgent ?? null,
+      referredByBranchId: referredByBranchId ?? null,
+      catalogueOfferId: catalogueOfferId ?? null,
+    } as any) as unknown as Visit;
+
+    const saved = await this.visitRepository.save(visit);
+
+    // Increment views on CatalogueOffer if associated
+    if (catalogueOfferId) {
+      const offerRepo = this.dataSource.getRepository(CatalogueOffer);
+      await offerRepo.increment({ id: catalogueOfferId }, 'views', 1);
+    }
+
+    return { visitId: saved.id, sessionToken, isNewVisit: true };
+  }
+
+  /**
+   * Upgrades a portal visit to a patronage visit when an order is completed.
+   * Safe to call multiple times — idempotent on already-upgraded visits.
+   *
+   * Fallback: if no visit with sessionToken exists (e.g. hard refresh before portal
+   * visit was recorded), creates a fresh patronage visit directly.
+   */
+  async upgradeVisitToPatronage(params: {
+    sessionToken: string | null | undefined;
+    orderId: string;
+    customerId: string;
+    branchId: string;
+    businessId: string;
+    deviceId?: string;
+    referredByBranchId?: string;
+    catalogueOfferId?: string;
+  }): Promise<void> {
+    const {
+      sessionToken,
+      orderId,
+      customerId,
+      branchId,
+      businessId,
+      deviceId,
+      referredByBranchId,
+      catalogueOfferId,
+    } = params;
+
+    if (sessionToken) {
+      const visit = await this.visitRepository.findOne({
+        where: { sessionToken },
+      });
+
+      if (visit) {
+        // Already upgraded — no-op (idempotent)
+        if (visit.visitType === 'patronage' && visit.upgradedAt) return;
+
+        // Upgrade portal → patronage
+        visit.visitType = 'patronage';
+        visit.orderId = orderId;
+        visit.upgradedAt = new Date();
+        await this.visitRepository.save(visit);
+
+        // Discovery attribution update — atomic increments to avoid race conditions
+        if (visit.catalogueOfferId) {
+          const offerRepo = this.dataSource.getRepository(CatalogueOffer);
+          await offerRepo.increment(
+            { id: visit.catalogueOfferId },
+            'visits',
+            1,
+          );
+          if (orderId) {
+            const orderRepo = this.dataSource.getRepository('CatalogueOrder');
+            const order = (await orderRepo.findOne({
+              where: { id: orderId },
+            })) as any;
+            if (order?.totalAmount) {
+              await offerRepo.increment(
+                { id: visit.catalogueOfferId },
+                'revenue',
+                Number(order.totalAmount),
+              );
+            }
+          }
+        }
+        return;
+      }
+    }
+
+    // ── Fallback: no matching session visit — create a fresh patronage visit ──
+    // Any prior visit makes this customer returning.
+    const previousVisitCount = await this.visitRepository.count({
+      where: { customerId, branchId },
+    });
+
+    const newSessionToken = uuidv4();
+    const fallbackVisit = this.visitRepository.create({
+      customerId,
+      branchId,
+      businessId,
+      deviceId: deviceId ?? null,
+      orderId,
+      status: previousVisitCount > 0 ? 'returning' : 'new',
+      visitType: 'patronage',
+      sessionToken: newSessionToken,
+      upgradedAt: new Date(),
+      referredByBranchId: referredByBranchId ?? null,
+      catalogueOfferId: catalogueOfferId ?? null,
+    } as any) as unknown as Visit;
+
+    await this.visitRepository.save(fallbackVisit);
+
+    // Increment metrics on CatalogueOffer atomically — avoids race conditions
+    if (catalogueOfferId) {
+      const offerRepo = this.dataSource.getRepository(CatalogueOffer);
+      await offerRepo.increment({ id: catalogueOfferId }, 'visits', 1);
+      if (orderId) {
+        const orderRepo = this.dataSource.getRepository('CatalogueOrder');
+        const order = (await orderRepo.findOne({
+          where: { id: orderId },
+        })) as any;
+        if (order?.totalAmount) {
+          await offerRepo.increment(
+            { id: catalogueOfferId },
+            'revenue',
+            Number(order.totalAmount),
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * Records a visit directly (e.g. from a manual order) for an already resolved user.
+   * Handles visit cooldown, contact creation, and automation triggers.
+   */
+  async recordDirectVisit(params: {
+    user: User;
+    branchId: string;
+    businessId: string;
+    deviceId?: string;
+    sessionToken?: string;
+  }): Promise<void> {
+    const { user, branchId, businessId, deviceId, sessionToken } = params;
+
+    // --- Prevent Admins from being recorded as visitors ---
+    if (user.role === UserRole.ADMIN) {
+      return;
+    }
+
+    // 1. Cooldown check (4 hours)
+    const cooldownWindow = new Date(Date.now() - 4 * 60 * 60 * 1000);
+    const recentVisit = await this.visitRepository.findOne({
+      where: {
+        customerId: user.id,
+        branchId,
+        createdAt: MoreThan(cooldownWindow),
+      },
+    });
+
+    if (!recentVisit) {
+      // 2. Create Visit
+      const previousVisitCount = await this.visitRepository.count({
+        where: { customerId: user.id, branchId },
+      });
+
+      const visit = this.visitRepository.create({
+        customerId: user.id,
+        branchId,
+        businessId,
+        deviceId: deviceId ?? null,
+        status: previousVisitCount > 0 ? 'returning' : 'new',
+        visitType: 'portal', // Initial visit is portal, upgraded to patronage on complete
+        sessionToken: sessionToken ?? uuidv4(),
+      } as any) as unknown as Visit;
+      await this.visitRepository.save(visit);
+
+      // 3. Automation triggers
+      await this.automationService.trigger(TriggerType.WELCOME_MESSAGE, {
+        branchId,
+        customerId: user.id,
+      });
+    }
+
+    // 4. Create/Update Contact
+    const contactConditions: any[] = [];
+    if (user.email) contactConditions.push({ branchId, email: user.email });
+    if (user.phone && user.phone !== 'N/A') {
+      contactConditions.push({ branchId, phone: user.phone });
+    }
+
+    let contact =
+      contactConditions.length > 0
+        ? await this.contactRepository.findOne({
+            where: contactConditions,
+          })
+        : null;
+
+    if (!contact) {
+      contact = this.contactRepository.create({
+        branchId,
+        businessId,
+        email: user.email,
+        phone: user.phone,
+        name: `${user.firstName} ${user.lastName}`.trim(),
+        optInChannels: [Channel.SMS, Channel.EMAIL, Channel.WHATSAPP],
+      } as any) as unknown as Contact;
+      await this.contactRepository.save(contact);
+    }
+  }
+}

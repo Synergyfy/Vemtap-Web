@@ -3,12 +3,25 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "workspaces": [
+    "backend"
+  ],
+  "overrides": {
+    "rxjs": "7.8.2"
+  },
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -n web,api -c cyan,magenta \"npm:dev:web\" \"npm:dev:api\"",
+    "dev:web": "vite",
+    "dev:api": "npm run dev -w @vemtap/backend",
     "dev:lan": "vite --mode lan",
     "build": "tsc && vite build",
+    "build:api": "npm run build -w @vemtap/backend",
     "typecheck": "tsc",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "migration:run": "npm run migration:run -w @vemtap/backend",
+    "db:setup": "npm run db:setup -w @vemtap/backend",
+    "seed": "npm run seed -w @vemtap/backend",
+    "test:api": "npm run test -w @vemtap/backend"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.5",
@@ -27,6 +40,7 @@
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^6.2.1",
     "autoprefixer": "^10.4.20",
+    "concurrently": "^9.2.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "~5.6.3",

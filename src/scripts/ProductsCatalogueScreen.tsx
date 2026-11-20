@@ -20,6 +20,7 @@ interface ProductsCatalogueScreenProps {
 interface ProductCardModel {
   id: string;
   cartId: string;
+  kind: 'product' | 'service';
   category: string;
   name: string;
   price: string;
@@ -201,9 +202,10 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
   const live = hasApiConfig();
   const publicBusiness = usePublicBusiness(businessCode);
   const products: ProductCardModel[] = live
-    ? publicBusiness.products.map((item) => ({
+    ? [...publicBusiness.products, ...publicBusiness.services].map((item) => ({
         id: item.id,
-        cartId: item.id,
+        cartId: item.kind === 'product' ? item.id : '',
+        kind: item.kind,
         category: item.categoryId ?? item.category ?? '',
         name: item.name,
         price: naira(item.price),
@@ -226,15 +228,16 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
           ...product,
           id,
           cartId: id,
+          kind: 'product' as const,
           priceValue: nairaToNumber(product.price),
           display: {},
         };
       });
   const categories = live
     ? [
-        { label: 'All Products', slug: 'all' },
+        { label: 'All Items', slug: 'all' },
         ...[...new Map(
-          publicBusiness.products
+          [...publicBusiness.products, ...publicBusiness.services]
             .filter((item) => item.categoryId || item.category)
             .map((item) => [item.categoryId ?? item.category ?? '', { label: item.category ?? 'Category', slug: item.categoryId ?? item.category ?? '' }]),
         ).values()],
@@ -496,7 +499,18 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
                         <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{product.price}</span>
                         {product.was && <span className="font-caption text-caption text-text-tertiary line-through">{product.was}</span>}
                       </div>
-                      {isAdded(product.cartId) ? (
+                      {product.kind === 'service' ? (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onOpenProduct(product.id, product.display);
+                          }}
+                          className="w-full h-9 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold flex items-center justify-center"
+                        >
+                          View service
+                        </button>
+                      ) : isAdded(product.cartId) ? (
                         <div className="w-full h-9 rounded-xl bg-badge-discount-bg text-badge-discount-text flex items-center justify-between px-1.5 active:scale-95 transition-all shadow-sm">
                           <button
                             aria-label={`Remove one ${product.name}`}
@@ -549,7 +563,7 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
               <Icon name="restaurant_menu" className="text-[22px]" />
             </div>
             <p className="font-label-sm text-label-sm font-semibold text-text-secondary">
-              {live && publicBusiness.loading ? 'Loading products…' : filteredProducts.length ? "You've reached the end of this category" : 'No products in this category'}
+              {live && publicBusiness.loading ? 'Loading items…' : filteredProducts.length ? "You've reached the end of this category" : 'No items in this category'}
             </p>
             {!live && <p className="font-caption text-caption text-text-tertiary">Fresh cuts and special marinades are prepared on order</p>}
           </div>

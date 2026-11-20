@@ -1,0 +1,171 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { PaymentsService } from './payments.service';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { Payment, PaymentPurpose } from './entities/payment.entity';
+import { HttpService } from '@nestjs/axios';
+import { of } from 'rxjs';
+import { ConflictException } from '@nestjs/common';
+
+describe('PaymentsService', () => {
+  let service: PaymentsService;
+
+  const mockPaymentRepo = {
+    create: jest.fn(),
+    save: jest.fn(),
+    findOneBy: jest.fn(),
+  };
+
+  const mockHttpService = {
+    get: jest.fn(),
+  };
+
+  beforeEach(async () => {
+    process.env.PAYSTACK_SECRET_KEY = 'sk_test_mock';
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        PaymentsService,
+        { provide: getRepositoryToken(Payment), useValue: mockPaymentRepo },
+        { provide: HttpService, useValue: mockHttpService },
+      ],
+    }).compile();
+
+    service = module.get<PaymentsService>(PaymentsService);
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe('paymentMode', () => {
+    it('reads test, live or unconfigured from the secret key prefix', () => {
+      expect(service.paymentMode()).toBe('test');
+      process.env.PAYSTACK_SECRET_KEY = 'sk_live_abc';
+      expect(service.paymentMode()).toBe('live');
+      process.env.PAYSTACK_SECRET_KEY = '';
+      expect(service.paymentMode()).toBe('unconfigured');
+    });
+  });
+
+  describe('verifyTransaction', () => {
+    it('should return success status if paystack status is success', async () => {
+      mockHttpService.get.mockReturnValue(
+        of({
+          data: {
+            status: true,
+            data: {
+              status: 'success',
+              amount: 5000,
+              currency: 'NGN',
+              channel: 'card',
+            },
+          },
+        }),
+      );
+
+      const result = await service.verifyTransaction('ref_123');
+      expect(result).toBeTruthy();
+      expect(result?.status).toBe('success');
+      expect(result?.amount).toBe(5000);
+    });
+
+    it('should return failed status if paystack status is not success', async () => {
+      mockHttpService.get.mockReturnValue(
+        of({
+          data: { status: true, data: { status: 'failed' } },
+        }),
+      );
+
+      const result = await service.verifyTransaction('ref_123');
+      expect(result).toBeTruthy();
+      expect(result?.status).toBe('failed');
+    });
+
+    it('should return pending status for async channels', async () => {
+      mockHttpService.get.mockReturnValue(
+        of({
+          data: { status: true, data: { status: 'ongoing' } },
+        }),
+      );
+
+      const result = await service.verifyTransaction('ref_123');
+      expect(result?.status).toBe('pending');
+    });
+
+    it('should return null on error', async () => {
+      mockHttpService.get.mockImplementation(() => {
+        throw new Error('Network error');
+      });
+      const result = await service.verifyTransaction('ref_123');
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('recordPayment', () => {
+    it('should create and save payment', async () => {
+      const dto = {
+        reference: 'ref_123',
+        amount: 5000,
+        purpose: PaymentPurpose.ORDER,
+        status: undefined as any,
+      };
+      mockPaymentRepo.findOneBy.mockResolvedValue(null);
+      mockPaymentRepo.create.mockReturnValue(dto);
+      mockPaymentRepo.save.mockResolvedValue({ id: 'pay_1', ...dto });
+
+      const result = await service.recordPayment(dto);
+      expect(result.id).toBe('pay_1');
+      expect(mockPaymentRepo.save).toHaveBeenCalled();
+    });
+
+    it('should handle idempotency (return existing if identical)', async () => {
+      const dto = {
+        reference: 'ref_123',
+        amount: 5000,
+        purpose: PaymentPurpose.ORDER,
+      };
+      mockPaymentRepo.findOneBy.mockResolvedValue({ ...dto, id: 'pay_1' });
+
+      const result = await service.recordPayment(dto as any);
+      expect(result.id).toBe('pay_1');
+      expect(mockPaymentRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('should throw conflict if reference exists with different details', async () => {
+      const dto = {
+        reference: 'ref_123',
+        amount: 5000,
+        purpose: PaymentPurpose.ORDER,
+      };
+      mockPaymentRepo.findOneBy.mockResolvedValue({ ...dto, amount: 9000 }); // Different amount
+
+      await expect(service.recordPayment(dto as any)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+  });
+
+  describe('purpose handlers', () => {
+    const payment = (purpose: PaymentPurpose) =>
+      ({ reference: 'REF-1', purpose }) as any;
+
+    it('reports no handler for purposes nobody registered', async () => {
+      expect(
+        await service.dispatchSuccessfulPayment(payment(PaymentPurpose.ORDER)),
+      ).toBe(false);
+    });
+
+    it('runs the handler registered for the payment purpose', async () => {
+      const handler = jest.fn().mockResolvedValue(undefined);
+      service.registerPurposeHandler(PaymentPurpose.AD_WALLET_TOPUP, handler);
+
+      const handled = await service.dispatchSuccessfulPayment(
+        payment(PaymentPurpose.AD_WALLET_TOPUP),
+      );
+
+      expect(handled).toBe(true);
+      expect(handler).toHaveBeenCalledWith(
+        expect.objectContaining({ reference: 'REF-1' }),
+      );
+    });
+  });
+});
