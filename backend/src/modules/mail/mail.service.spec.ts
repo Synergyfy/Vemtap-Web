@@ -1,0 +1,352 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
+import { MailService } from './mail.service';
+
+describe('MailService', () => {
+  let service: MailService;
+  let configService: jest.Mocked<ConfigService>;
+
+  beforeEach(async () => {
+    const mockConfigService = {
+      get: jest.fn((key: string) => {
+        if (key === 'RESEND_API_KEY') return 'test-resend-key';
+        return null;
+      }),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        MailService,
+        { provide: ConfigService, useValue: mockConfigService },
+      ],
+    }).compile();
+
+    service = module.get<MailService>(MailService);
+    configService = module.get(ConfigService);
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+  });
+
+  it('boots without RESEND_API_KEY and reports sends as not delivered', async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [MailService, { provide: ConfigService, useValue: { get: jest.fn(() => undefined) } }],
+    }).compile();
+    const unconfigured = module.get<MailService>(MailService);
+
+    await expect(unconfigured.sendOtp('someone@example.com', '123456')).resolves.toBe(false);
+  });
+
+  describe('generateOrderNotificationHtml', () => {
+    const mockOrder = {
+      id: 'order-12345678',
+      createdAt: new Date(),
+      totalAmount: 5000,
+      customer: { firstName: 'John' },
+      items: [
+        {
+          quantity: 1,
+          priceAtOrder: 5000,
+          item: { name: 'Burger', shortDescription: 'Tasty' },
+        },
+      ],
+    };
+
+    const mockBusiness = {
+      name: 'Test Biz',
+      address: '123 Street',
+      phone: '123456',
+    };
+
+    it('should generate HTML with correct status for "placed"', () => {
+      const { subject, html } = service.generateOrderNotificationHtml(
+        mockOrder,
+        'placed',
+        mockBusiness,
+      );
+
+      expect(subject).toContain('Order Confirmation');
+      expect(html).toContain('Order Placed');
+      expect(html).toContain('John');
+      expect(html).toContain('Burger');
+      expect(html).toContain('₦5,000');
+    });
+
+    it('should generate HTML with correct status for "completed"', () => {
+      const { subject, html } = service.generateOrderNotificationHtml(
+        mockOrder,
+        'completed',
+        mockBusiness,
+      );
+
+      expect(subject).toContain('Order Delivered');
+      expect(html).toContain('Completed');
+      expect(html).toContain('ready and waiting');
+    });
+
+    it('should handle missing customer name gracefully', () => {
+      const orderNoCustomer = { ...mockOrder, customer: null };
+      const { html } = service.generateOrderNotificationHtml(
+        orderNoCustomer,
+        'placed',
+        mockBusiness,
+      );
+
+      expect(html).toContain('Valued Customer');
+    });
+  });
+
+  describe('sendWelcomeEmail', () => {
+    it('should send welcome email with business and branch names when provided', async () => {
+      const sendSpy = jest
+        .spyOn((service as any).resend.emails, 'send')
+        .mockResolvedValue({ data: { id: 'email-1' }, error: null });
+
+      await service.sendWelcomeEmail(
+        'staff@example.com',
+        'Alex',
+        '123456',
+        'Azure Bistro',
+        'Lekki Branch',
+      );
+
+      expect(sendSpy).toHaveBeenCalledWith({
+        from: 'Azure Bistro via VemTap <hello@vemtap.com>',
+        to: 'staff@example.com',
+        subject: 'Welcome to Azure Bistro, Lekki Branch!',
+        html: expect.stringContaining(
+          'Welcome to Azure Bistro, Lekki Branch, Alex!',
+        ),
+      });
+    });
+
+    it('should fallback to VemTap when business and branch names are absent', async () => {
+      const sendSpy = jest
+        .spyOn((service as any).resend.emails, 'send')
+        .mockResolvedValue({ data: { id: 'email-2' }, error: null });
+
+      await service.sendWelcomeEmail('user@example.com', 'Sam', '654321');
+
+      expect(sendSpy).toHaveBeenCalledWith({
+        from: 'VemTap <hello@vemtap.com>',
+        to: 'user@example.com',
+        subject: 'Welcome to VemTap!',
+        html: expect.stringContaining('Welcome to VemTap, Sam!'),
+      });
+    });
+  });
+
+  describe('generatePlanChangeEmailHtml & sendPlanChangeEmail', () => {
+    const mockParams = {
+      email: 'owner@example.com',
+      customerName: 'Alice Smith',
+      businessName: 'Apex Retail',
+      planName: 'Enterprise Growth',
+      billingPeriod: 'yearly',
+      startDate: new Date('2026-08-01'),
+      endDate: new Date('2027-08-01'),
+      isTrial: false,
+      isAdminOverride: true,
+      previousPlanName: 'Starter Free',
+      features: ['Unlimited Staff', 'AI Assistant'],
+      credits: {
+        sms: 500,
+        email: 2000,
+        whatsapp: 100,
+      },
+      limits: {
+        branches: 5,
+      },
+    };
+
+    it('should generate plan change email HTML with correct details', () => {
+      const { subject, html } = service.generatePlanChangeEmailHtml(mockParams);
+
+      expect(subject).toContain(
+        'Your Plan has been Updated to Enterprise Growth',
+      );
+      expect(html).toContain('Alice Smith');
+      expect(html).toContain('Apex Retail');
+      expect(html).toContain('Enterprise Growth');
+      expect(html).toContain('Plan Updated by Admin');
+      expect(html).toContain('Starter Free');
+      expect(html).toContain('500 SMS');
+      expect(html).toContain('2,000 Email');
+      expect(html).toContain('5 locations');
+      expect(html).toContain('Unlimited Staff');
+    });
+
+    it('should generate expired plan downgrade email HTML with appropriate notice and renewal CTA', () => {
+      const { subject, html } = service.generatePlanChangeEmailHtml({
+        ...mockParams,
+        planName: 'Free Plan',
+        previousPlanName: 'Enterprise Growth',
+        isAdminOverride: false,
+        isExpiredDowngrade: true,
+      });
+
+      expect(subject).toContain(
+        'Enterprise Growth Plan Expired — Free Plan Activated',
+      );
+      expect(html).toContain('Subscription Expired');
+      expect(html).toContain('Subscription Expired • Free Plan Active');
+      expect(html).toContain('Free Plan');
+      expect(html).toContain('Renew / Upgrade Plan');
+    });
+
+    it('should send plan change email via resend', async () => {
+      const sendSpy = jest
+        .spyOn((service as any).resend.emails, 'send')
+        .mockResolvedValue({ data: { id: 'email-plan-change' }, error: null });
+
+      await service.sendPlanChangeEmail(mockParams);
+
+      expect(sendSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'owner@example.com',
+          subject: expect.stringContaining('Enterprise Growth'),
+          html: expect.stringContaining('Enterprise Growth'),
+        }),
+      );
+    });
+  });
+
+  describe('sendSubscriptionRenewalReminder', () => {
+    const reminderParams = {
+      email: 'merchant@example.com',
+      customerName: 'Aisha',
+      businessName: 'Ikeja Bakery',
+      planName: 'Pro Discovery',
+      daysLeft: 3,
+      isLapsed: false,
+      clusterName: 'Ikeja',
+      clusterStats: { people: 450, businesses: 28 },
+      renewalUrl: 'https://vemtap.vercel.app/dashboard/settings/subscription',
+    };
+
+    it('should generate urgent reminder HTML for 3 days left', () => {
+      const { subject, html } =
+        service.generateSubscriptionRenewalReminderHtml(reminderParams);
+
+      expect(subject).toContain(
+        'Urgent: Your Pro Discovery plan in Ikeja expires in 3 days',
+      );
+      expect(html).toContain('Expires in 3 days');
+      expect(html).toContain('450');
+      expect(html).toContain('28');
+      expect(html).toContain('Renew Subscription');
+    });
+
+    it('should generate lapsed reminder HTML when isLapsed is true', () => {
+      const { subject, html } = service.generateSubscriptionRenewalReminderHtml(
+        {
+          ...reminderParams,
+          daysLeft: 0,
+          isLapsed: true,
+        },
+      );
+
+      expect(subject).toContain(
+        'Your offers left the Ikeja deals feed - Renew now',
+      );
+      expect(html).toContain('Offers Removed from Deals Feed');
+      expect(html).toContain('Reactivate Subscription');
+    });
+
+    it('should send renewal reminder email via resend', async () => {
+      const sendSpy = jest
+        .spyOn((service as any).resend.emails, 'send')
+        .mockResolvedValue({
+          data: { id: 'email-renewal-reminder' },
+          error: null,
+        });
+
+      const result =
+        await service.sendSubscriptionRenewalReminder(reminderParams);
+
+      expect(result).toBe(true);
+      expect(sendSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'merchant@example.com',
+          subject: expect.stringContaining('Pro Discovery'),
+        }),
+      );
+    });
+  });
+
+  describe('resolveFrontendBaseUrl & sendDealGiftEmail', () => {
+    it('should use candidate localhost URL preserving custom serving port', () => {
+      const url = service.resolveFrontendBaseUrl('http://localhost:3002');
+      expect(url).toBe('http://localhost:3002');
+    });
+
+    it('should use candidate 127.0.0.1 URL preserving port and stripping trailing slashes', () => {
+      const url = service.resolveFrontendBaseUrl('http://127.0.0.1:5173/');
+      expect(url).toBe('http://127.0.0.1:5173');
+    });
+
+    it('should fallback to staging URL when NODE_ENV is staging', () => {
+      configService.get.mockImplementation((key: string) => {
+        if (key === 'NODE_ENV') return 'staging';
+        return null;
+      });
+      const url = service.resolveFrontendBaseUrl();
+      expect(url).toBe('https://vemtap.vercel.app');
+    });
+
+    it('should fallback to production URL when NODE_ENV is production or prod', () => {
+      configService.get.mockImplementation((key: string) => {
+        if (key === 'NODE_ENV') return 'production';
+        return null;
+      });
+      const url = service.resolveFrontendBaseUrl();
+      expect(url).toBe('https://vemtap.com');
+    });
+
+    it('should fallback to http://localhost:3000 in development by default', () => {
+      configService.get.mockImplementation((key: string) => {
+        if (key === 'NODE_ENV') return 'development';
+        return null;
+      });
+      const url = service.resolveFrontendBaseUrl();
+      expect(url).toBe('http://localhost:3000');
+    });
+
+    it('should send deal gift email with dynamic environment URL in claim link', async () => {
+      const sendSpy = jest
+        .spyOn((service as any).resend.emails, 'send')
+        .mockResolvedValue({
+          data: { id: 'email-deal-gift-123' },
+          error: null,
+        });
+
+      const result = await service.sendDealGiftEmail({
+        recipientEmail: 'friend@example.com',
+        senderName: 'Tobi Ade',
+        frontendBaseUrl: 'http://localhost:3002',
+        offer: {
+          id: 'offer-abc-123',
+          name: '50% off Mega Burger',
+          calculatedPrice: 2500,
+        },
+        business: {
+          name: 'Burger Palace',
+          slug: 'burger-palace',
+        },
+      });
+
+      expect(result).toBe(true);
+      expect(sendSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'friend@example.com',
+          subject:
+            'Tobi Ade sent you a deal: 50% off Mega Burger at Burger Palace!',
+          html: expect.stringContaining(
+            'http://localhost:3002/deals/burger-palace/offer-abc-123?ref=gift&email=friend%40example.com&sender=Tobi%20Ade',
+          ),
+        }),
+      );
+    });
+  });
+});

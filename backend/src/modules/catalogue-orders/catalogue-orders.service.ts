@@ -1,0 +1,887 @@
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  Optional,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, Not, IsNull } from 'typeorm';
+import { randomBytes } from 'crypto';
+import {
+  CatalogueOrder,
+  CatalogueOrderStatus,
+} from './entities/catalogue-order.entity';
+import { CatalogueOrderItem } from './entities/catalogue-order-item.entity';
+import {
+  CatalogueItem,
+  CatalogueItemStatus,
+} from '../catalogue/entities/catalogue-item.entity';
+import {
+  CatalogueOffer,
+  CatalogueOfferStatus,
+} from '../catalogue/entities/catalogue-offer.entity';
+import { User, UserRole } from '../users/entities/user.entity';
+import { Branch } from '../branches/entities/branch.entity';
+import { Visit } from '../visitors/entities/visit.entity';
+import { Device } from '../devices/entities/device.entity';
+import { LoyaltyService } from '../loyalty/loyalty.service';
+import { PushNotificationService } from '../notifications/push-notification.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import {
+  CreateCatalogueOrderDto,
+  CatalogueOrderQueryDto,
+  BulkCheckoutDto,
+  UpdateCatalogueOrderStatusDto,
+} from './dto/catalogue-order.dto';
+import * as bcrypt from 'bcrypt';
+import { VisitorsService } from '../visitors/visitors.service';
+import { MailService } from '../mail/mail.service';
+import { CatalogueService } from '../catalogue/catalogue.service';
+import { CatalogueBranchPricingService } from '../catalogue/catalogue-branch-pricing.service';
+import { effectiveUnitPrice } from '../catalogue/utils/catalogue-item.utils';
+import { CatalogueOfferService } from '../catalogue/catalogue-offer.service';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { v4 as uuidv4 } from 'uuid';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ORDER_EVENTS, OrderLifecycleEvent, stampStatus } from './order-events';
+
+/** Roles that may create catalogue items while entering a manual order. */
+const STAFF_ROLES: readonly UserRole[] = [
+  UserRole.OWNER,
+  UserRole.MANAGER,
+  UserRole.STAFF,
+];
+
+@Injectable()
+export class CatalogueOrderService {
+  constructor(
+    @InjectRepository(CatalogueOrder)
+    private readonly orderRepository: Repository<CatalogueOrder>,
+    @InjectRepository(CatalogueOrderItem)
+    private readonly orderItemRepository: Repository<CatalogueOrderItem>,
+    @InjectRepository(CatalogueItem)
+    private readonly itemRepository: Repository<CatalogueItem>,
+    @InjectRepository(CatalogueOffer)
+    private readonly offerRepository: Repository<CatalogueOffer>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+    @InjectRepository(Branch)
+    private readonly branchRepository: Repository<Branch>,
+    @InjectRepository(Visit)
+    private readonly visitRepository: Repository<Visit>,
+    @InjectRepository(Device)
+    private readonly deviceRepository: Repository<Device>,
+    private readonly loyaltyService: LoyaltyService,
+    private readonly pushNotificationService: PushNotificationService,
+    private readonly notificationsService: NotificationsService,
+    private readonly visitorsService: VisitorsService,
+    private readonly mailService: MailService,
+    private readonly catalogueService: CatalogueService,
+    private readonly pricingService: CatalogueBranchPricingService,
+    @InjectQueue('order-notifications')
+    private readonly orderNotificationQueue: Queue,
+    @Optional()
+    private readonly catalogueOfferService?: CatalogueOfferService,
+    @Optional()
+    private readonly eventEmitter?: EventEmitter2,
+  ) {}
+
+  private emitOrderEvent(
+    event: (typeof ORDER_EVENTS)[keyof typeof ORDER_EVENTS],
+    order: CatalogueOrder,
+  ) {
+    const payload: OrderLifecycleEvent = {
+      orderId: order.id,
+      businessId: order.businessId,
+      branchId: order.branchId,
+      status: order.status,
+      trackingToken: order.trackingToken ?? null,
+      tableNumber: order.tableNumber ?? null,
+      at: new Date().toISOString(),
+    };
+    this.eventEmitter?.emit(event, payload);
+  }
+
+  async bulkCheckout(dto: BulkCheckoutDto, user?: User) {
+    const results: CatalogueOrder[] = [];
+    const customerInfo = {
+      firstName: user?.firstName || dto.firstName,
+      lastName: user?.lastName || dto.lastName,
+      phone: user?.phone || dto.phone,
+      email: user?.email || dto.email,
+    };
+
+    if (!customerInfo.firstName || !customerInfo.phone) {
+      throw new BadRequestException(
+        'Customer information (name and phone) is required',
+      );
+    }
+
+    // Process each branch order
+    for (const orderDto of dto.orders) {
+      const order = await this.createOrder(
+        {
+          ...customerInfo,
+          branchId: orderDto.branchId,
+          items: orderDto.items,
+          notes: orderDto.notes,
+          tableNumber: orderDto.tableNumber,
+          deviceId: dto.deviceId,
+        } as CreateCatalogueOrderDto,
+        user,
+      );
+      results.push(order);
+    }
+
+    return {
+      success: true,
+      message: `${results.length} orders placed successfully`,
+      orders: results,
+    };
+  }
+
+  async createOrder(dto: CreateCatalogueOrderDto, existingUser?: User) {
+    // 1. Resolve branch
+    const branch = await this.branchRepository.findOne({
+      where: { id: dto.branchId },
+    });
+    if (!branch) throw new NotFoundException('Branch not found');
+
+    // 1.1 `newItem` creates a catalogue item for this business, so only the
+    // business's own staff may send it. Checked before any side effect (guest
+    // account, visit) so a refused request leaves nothing behind.
+    if (dto.items.some((item) => item.newItem)) {
+      const isOwnStaff =
+        !!existingUser &&
+        STAFF_ROLES.includes(existingUser.role) &&
+        existingUser.businessId === branch.businessId;
+      if (!isOwnStaff) {
+        throw new ForbiddenException(
+          'Only staff of this business can add new items to an order',
+        );
+      }
+    }
+
+    // 2. Resolve or Create customer (User)
+    let customer: User | null = existingUser || null;
+
+    if (!customer) {
+      if (dto.phone && dto.phone !== 'N/A') {
+        customer = await this.userRepository.findOne({
+          where: { phone: dto.phone },
+        });
+      }
+
+      if (!customer && dto.email) {
+        customer = await this.userRepository.findOne({
+          where: { email: dto.email },
+        });
+      }
+    }
+
+    if (!customer) {
+      const defaultPassword = randomBytes(9).toString('base64url').slice(0, 12);
+      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+
+      // Use provided email or generate a dummy one
+      const phoneClean =
+        dto.phone && dto.phone !== 'N/A'
+          ? dto.phone.replace(/\+/g, '')
+          : uuidv4().slice(0, 8);
+      const dummyEmail = `guest_${phoneClean}@vemtap.dummy`;
+      const finalEmail = dto.email || dummyEmail;
+      const isDummy = !dto.email;
+
+      customer = this.userRepository.create({
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        phone: dto.phone && dto.phone !== 'N/A' ? dto.phone : undefined,
+        email: finalEmail,
+        role: UserRole.CUSTOMER,
+        password: hashedPassword,
+        uniqueCode: `CUST-${Math.floor(100000 + Math.random() * 900000)}`,
+      });
+      await this.userRepository.save(customer);
+
+      // Send welcome email ONLY if it's not a dummy email
+      if (!isDummy) {
+        this.mailService
+          .sendWelcomeEmail(
+            customer.email,
+            `${customer.firstName} ${customer.lastName}`,
+            defaultPassword,
+          )
+          .catch((err) => console.error('Failed to send welcome email:', err));
+      }
+    }
+
+    // 2.1 Record Visit for Manual Order
+    const effectiveSessionToken = dto.sessionToken || uuidv4();
+    await this.visitorsService.recordDirectVisit({
+      user: customer,
+      branchId: branch.id,
+      businessId: branch.businessId,
+      deviceId: dto.deviceId,
+      sessionToken: effectiveSessionToken,
+    });
+
+    // 3. Process items/offers and calculate total
+    let totalAmount = 0;
+    const orderItems: CatalogueOrderItem[] = [];
+
+    for (const itemDto of dto.items) {
+      if (!itemDto.itemId && !itemDto.offerId && !itemDto.newItem) {
+        throw new BadRequestException(
+          'Each order item must have either itemId, offerId or newItem',
+        );
+      }
+
+      if (itemDto.newItem) {
+        // Create the new item on the fly
+        const newItem = await this.catalogueService.createItem(
+          {
+            name: itemDto.newItem.name,
+            price: itemDto.newItem.price,
+            categoryId: itemDto.newItem.categoryId,
+            branchId: dto.branchId,
+            shortDescription: 'Quick added item from manual order',
+            description:
+              'This item was created automatically during manual order entry.',
+            mainImage:
+              'https://res.cloudinary.com/dqr68m9p6/image/upload/v1711545600/vemtap/placeholder-item.png', // Default placeholder
+          },
+          branch.businessId,
+        );
+
+        const orderItem = this.orderItemRepository.create({
+          itemId: newItem.id,
+          quantity: itemDto.quantity,
+          priceAtOrder: newItem.price,
+          loyaltyPointsAtOrder: newItem.loyaltyPoints,
+        });
+        orderItems.push(orderItem);
+        totalAmount += Number(newItem.price) * itemDto.quantity;
+      } else if (itemDto.itemId) {
+        const item = await this.itemRepository.findOne({
+          where: { id: itemDto.itemId },
+          relations: ['branches'],
+        });
+
+        if (!item || !item.branches.some((b) => b.id === dto.branchId)) {
+          throw new BadRequestException(
+            `Item ${itemDto.itemId} not available in this branch`,
+          );
+        }
+
+        if (item.status === CatalogueItemStatus.SUSPENDED || item.isSuspended) {
+          throw new BadRequestException(
+            `Item ${item.name} is currently suspended`,
+          );
+        }
+
+        if (
+          item.status === CatalogueItemStatus.OUT_OF_STOCK &&
+          !item.allowBackOrder
+        ) {
+          throw new BadRequestException(`Item ${item.name} is out of stock`);
+        }
+
+        // Stock check
+        if (item.stockQuantity !== null && !item.allowBackOrder) {
+          if (item.stockQuantity < itemDto.quantity) {
+            throw new BadRequestException(
+              `Insufficient stock for ${item.name}`,
+            );
+          }
+        }
+
+        // Charge what the customer was shown: the branch's own price when the
+        // item is priced per branch, less the item's discount.
+        const [priced] = await this.pricingService.applyBranchPrices(
+          [item],
+          branch.id,
+        );
+        const unitPrice = effectiveUnitPrice(priced);
+        const orderItem = this.orderItemRepository.create({
+          itemId: item.id,
+          quantity: itemDto.quantity,
+          priceAtOrder: unitPrice,
+          loyaltyPointsAtOrder: item.loyaltyPoints,
+        });
+        orderItems.push(orderItem);
+        totalAmount += unitPrice * itemDto.quantity;
+      } else if (itemDto.offerId) {
+        const offer = await this.offerRepository.findOne({
+          where: { id: itemDto.offerId, branchId: dto.branchId },
+          relations: ['items'],
+        });
+
+        if (!offer) {
+          throw new BadRequestException(
+            `Offer ${itemDto.offerId} not available in this branch`,
+          );
+        }
+
+        // Offer stock check
+        if (offer.quantity !== null && offer.quantity < itemDto.quantity) {
+          throw new BadRequestException(
+            `Insufficient stock for offer ${offer.name}`,
+          );
+        }
+
+        // Per-customer claim limit check
+        if (
+          offer.maxClaimsPerCustomer !== null &&
+          offer.maxClaimsPerCustomer !== undefined
+        ) {
+          const previousClaimsCount = await this.orderItemRepository
+            .createQueryBuilder('item')
+            .innerJoin('item.order', 'order')
+            .where('item.offerId = :offerId', { offerId: offer.id })
+            .andWhere('order.customerId = :customerId', {
+              customerId: customer.id,
+            })
+            .andWhere('order.status != :cancelled', {
+              cancelled: CatalogueOrderStatus.CANCELLED,
+            })
+            .getCount();
+
+          if (
+            previousClaimsCount + itemDto.quantity >
+            offer.maxClaimsPerCustomer
+          ) {
+            throw new BadRequestException(
+              `You have reached the maximum number of claims (${offer.maxClaimsPerCustomer}) for this deal.`,
+            );
+          }
+        }
+
+        // Check stock for ALL items in offer
+        for (const offerItem of offer.items) {
+          if (offerItem.stockQuantity !== null && !offerItem.allowBackOrder) {
+            if (offerItem.stockQuantity < itemDto.quantity) {
+              throw new BadRequestException(
+                `Insufficient stock for item ${offerItem.name} in offer ${offer.name}`,
+              );
+            }
+          }
+        }
+
+        const orderItem = this.orderItemRepository.create({
+          offerId: offer.id,
+          quantity: itemDto.quantity,
+          priceAtOrder: offer.calculatedPrice,
+          loyaltyPointsAtOrder: offer.loyaltyPoints,
+        });
+        orderItems.push(orderItem);
+        totalAmount += Number(offer.calculatedPrice) * itemDto.quantity;
+      }
+    }
+
+    // Store ordering: tag the order with its source and the QR it came from
+    // (a QR of another business, or a paused one, is ignored).
+    let storeQrId: string | null = null;
+    if (dto.source && dto.storeQrCode) {
+      const [qr] = await this.orderRepository.manager.query<{ id: string }[]>(
+        `SELECT "id" FROM "store_qr_codes"
+         WHERE "code" = $1 AND "businessId" = $2 AND "isActive" = true AND "deletedAt" IS NULL`,
+        [dto.storeQrCode, branch.businessId],
+      );
+      storeQrId = qr?.id ?? null;
+    }
+    const storeFields = dto.source
+      ? {
+          source: dto.source,
+          storeQrId,
+          storeStatus: 'new',
+          storeHistory: [
+            {
+              status: 'new',
+              at: new Date().toISOString(),
+              note: `Order placed via ${dto.source.replace(/_/g, ' ')}`,
+            },
+          ],
+        }
+      : {};
+
+    // 4. Create Order
+    const order = this.orderRepository.create({
+      ...storeFields,
+      businessId: branch.businessId,
+      branchId: branch.id,
+      customerId: customer.id,
+      notes: dto.notes,
+      tableNumber: dto.tableNumber,
+      totalAmount,
+      items: orderItems,
+      stockDeducted: true,
+      deviceId: dto.deviceId,
+      sessionToken: effectiveSessionToken,
+      bookingDate: dto.bookingDate,
+      bookingTime: dto.bookingTime,
+      statusTimeline: stampStatus(null, CatalogueOrderStatus.NEW),
+    });
+
+    const savedOrder = await this.orderRepository.save(order);
+    this.emitOrderEvent(ORDER_EVENTS.CREATED, savedOrder);
+
+    // Trigger notification to branch staff
+    // Shared with the in-app row below so the push tap and the bell entry for
+    // the same order resolve to the same destination.
+    const orderUrl = `/orders/${savedOrder.id}`;
+    this.pushNotificationService
+      .sendToBranchStaff(
+        branch.id,
+        'New Order Received',
+        `A new order (#${savedOrder.id.slice(0, 8)}) has been placed by ${dto.firstName} ${dto.lastName}.`,
+        {
+          orderId: savedOrder.id,
+          url: orderUrl,
+          type: 'NEW_ORDER',
+          category: 'orderUpdates',
+        },
+      )
+      .catch((err) => console.error('Failed to send staff notification:', err));
+
+    // Staff also get an in-app row, not just a push: a push is missed
+    // whenever the device has no token or is offline, and the order would
+    // then leave no trace at all.
+    this.notificationsService
+      .createForBranchStaff(
+        branch.id,
+        branch.businessId,
+        'New Order Received',
+        `A new order (#${savedOrder.id.slice(0, 8)}) has been placed by ${dto.firstName} ${dto.lastName}.`,
+        'new_order',
+        orderUrl,
+        null,
+        'new_order',
+      )
+      .catch((err) =>
+        console.error('Failed to create staff notification row:', err),
+      );
+
+    // 5. Deduct stock IMMEDIATELY (locking the spot)
+    for (const orderItem of order.items) {
+      if (orderItem.itemId) {
+        const item = await this.itemRepository.findOne({
+          where: { id: orderItem.itemId },
+        });
+        if (item) await this.deductStock(item, orderItem.quantity);
+      } else if (orderItem.offerId) {
+        const offer = await this.offerRepository.findOne({
+          where: { id: orderItem.offerId },
+          relations: ['items'],
+        });
+        if (offer) {
+          await this.deductOfferStock(offer, orderItem.quantity);
+          for (const offerItem of offer.items) {
+            await this.deductStock(offerItem, orderItem.quantity);
+          }
+        }
+      }
+    }
+
+    // Queue "Order Placed" email
+    this.orderNotificationQueue
+      .add('send-order-email', {
+        orderId: savedOrder.id,
+        status: 'placed',
+      })
+      .catch((err) =>
+        console.error('Failed to queue order placed email:', err),
+      );
+
+    // If this order was claimed from a deal gift, mark the gift accepted
+    if (dto.giftToken && this.catalogueOfferService) {
+      await this.catalogueOfferService
+        .acceptDealGift(dto.giftToken)
+        .catch((err) =>
+          console.warn(
+            'Failed to mark deal gift as accepted:',
+            err?.message || err,
+          ),
+        );
+    }
+
+    return savedOrder;
+  }
+
+  async updateStatus(
+    orderId: string,
+    dto: UpdateCatalogueOrderStatusDto,
+    businessId: string,
+    staff: User,
+  ) {
+    const { status, reason, refundItems } = dto;
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId, businessId },
+      relations: ['items', 'items.item', 'items.offer', 'items.offer.items'],
+    });
+    if (!order) throw new NotFoundException('Order not found');
+
+    // Record who handled the order. Forward steps of the fulfilment flow always
+    // attribute the order, and any transition *into* completed attributes the
+    // staff member who closed it (staff may complete without marking ready).
+    if (
+      (order.status === CatalogueOrderStatus.NEW &&
+        status === CatalogueOrderStatus.PROCESSING) ||
+      (order.status === CatalogueOrderStatus.PROCESSING &&
+        status === CatalogueOrderStatus.READY) ||
+      (order.status === CatalogueOrderStatus.READY &&
+        status === CatalogueOrderStatus.COMPLETED) ||
+      (status === CatalogueOrderStatus.COMPLETED &&
+        order.status !== CatalogueOrderStatus.COMPLETED)
+    ) {
+      order.attendedById = staff.id;
+    }
+
+    // If order is cancelled/rejected and stock was deducted, return it
+    if (
+      (status === CatalogueOrderStatus.CANCELLED ||
+        status === CatalogueOrderStatus.REJECTED) &&
+      order.stockDeducted
+    ) {
+      for (const orderItem of order.items) {
+        if (orderItem.itemId && orderItem.item) {
+          await this.restoreStock(orderItem.item, orderItem.quantity);
+        } else if (orderItem.offerId && orderItem.offer) {
+          await this.restoreOfferStock(orderItem.offer, orderItem.quantity);
+          for (const offerItem of orderItem.offer.items) {
+            await this.restoreStock(offerItem, orderItem.quantity);
+          }
+        }
+      }
+      order.stockDeducted = false;
+    }
+
+    // Handle refunds
+    if (status === CatalogueOrderStatus.REFUNDED) {
+      if (order.stockDeducted) {
+        for (const orderItem of order.items) {
+          const remainingQty =
+            orderItem.quantity - (orderItem.refundedQuantity || 0);
+          if (remainingQty > 0) {
+            if (orderItem.itemId && orderItem.item) {
+              await this.restoreStock(orderItem.item, remainingQty);
+            } else if (orderItem.offerId && orderItem.offer) {
+              await this.restoreOfferStock(orderItem.offer, remainingQty);
+              for (const offerItem of orderItem.offer.items) {
+                await this.restoreStock(offerItem, remainingQty);
+              }
+            }
+            orderItem.refundedQuantity = orderItem.quantity;
+            await this.orderItemRepository.save(orderItem);
+          }
+        }
+      }
+      order.refundReason = reason || null;
+      order.refundedById = staff.id;
+      order.refundedAt = new Date();
+      order.status = CatalogueOrderStatus.REFUNDED;
+    } else if (status === CatalogueOrderStatus.PARTIAL_REFUND) {
+      if (!refundItems || refundItems.length === 0) {
+        throw new BadRequestException(
+          'Partial refund requires specifying items to refund',
+        );
+      }
+      if (order.stockDeducted) {
+        for (const refundItemDto of refundItems) {
+          const orderItem = order.items.find(
+            (i) =>
+              (refundItemDto.itemId && i.itemId === refundItemDto.itemId) ||
+              (refundItemDto.offerId && i.offerId === refundItemDto.offerId),
+          );
+          if (!orderItem) {
+            throw new NotFoundException(`Item not found on this order`);
+          }
+          const remainingQty =
+            orderItem.quantity - (orderItem.refundedQuantity || 0);
+          if (refundItemDto.quantity > remainingQty) {
+            throw new BadRequestException(
+              `Cannot refund ${refundItemDto.quantity} of ${orderItem.item?.name || 'Offer'}. Only ${remainingQty} remaining.`,
+            );
+          }
+
+          if (orderItem.itemId && orderItem.item) {
+            await this.restoreStock(orderItem.item, refundItemDto.quantity);
+          } else if (orderItem.offerId && orderItem.offer) {
+            await this.restoreOfferStock(
+              orderItem.offer,
+              refundItemDto.quantity,
+            );
+            for (const offerItem of orderItem.offer.items) {
+              await this.restoreStock(offerItem, refundItemDto.quantity);
+            }
+          }
+          orderItem.refundedQuantity =
+            (orderItem.refundedQuantity || 0) + refundItemDto.quantity;
+          await this.orderItemRepository.save(orderItem);
+        }
+      }
+      const allFullyRefunded = order.items.every(
+        (i) => i.quantity === i.refundedQuantity,
+      );
+      order.refundReason = reason || order.refundReason || null;
+      order.refundedById = staff.id;
+      order.refundedAt = new Date();
+      order.status = allFullyRefunded
+        ? CatalogueOrderStatus.REFUNDED
+        : CatalogueOrderStatus.PARTIAL_REFUND;
+    } else {
+      order.status = status;
+    }
+
+    // Award loyalty points and rewards if moving to COMPLETED
+    if (status === CatalogueOrderStatus.COMPLETED && !order.loyaltyAwarded) {
+      let totalPoints = 0;
+      for (const orderItem of order.items) {
+        if (orderItem.loyaltyPointsAtOrder) {
+          totalPoints += orderItem.loyaltyPointsAtOrder * orderItem.quantity;
+        }
+
+        if (orderItem.offerId && orderItem.offer && orderItem.offer.rewardId) {
+          for (let i = 0; i < orderItem.quantity; i++) {
+            await this.loyaltyService.generateRedemptionCode(staff, {
+              rewardId: orderItem.offer.rewardId,
+              branchId: order.branchId,
+            });
+          }
+        }
+      }
+
+      if (totalPoints > 0) {
+        await this.loyaltyService.awardPoints(
+          order.customerId,
+          totalPoints,
+          order.businessId,
+          order.branchId,
+          `Points earned from order #${order.id.slice(0, 8)}`,
+          staff.id,
+        );
+      }
+
+      // --- UPGRADE PORTAL VISIT TO PATRONAGE ---
+      await this.visitorsService.upgradeVisitToPatronage({
+        sessionToken: order.sessionToken,
+        orderId: order.id,
+        customerId: order.customerId,
+        branchId: order.branchId,
+        businessId: order.businessId,
+        deviceId: order.deviceId,
+      });
+
+      order.loyaltyAwarded = true;
+    }
+
+    order.statusTimeline = stampStatus(order.statusTimeline, order.status);
+    const updatedOrder = await this.orderRepository.save(order);
+    this.emitOrderEvent(ORDER_EVENTS.STATUS_CHANGED, updatedOrder);
+
+    // The queued 'send-order-email' job owns the customer's side of a status
+    // change: it writes the in-app row, sends the push and sends the email,
+    // in that one place. Sending a push here as well would deliver the same
+    // message twice.
+    const statusCopy = this.describeStatus(updatedOrder, status);
+    if (statusCopy) {
+      this.orderNotificationQueue
+        .add('send-order-email', {
+          orderId: order.id,
+          status,
+          title: statusCopy.title,
+          body: statusCopy.body,
+        })
+        .catch((err) =>
+          console.error(`Failed to queue ${status} notification:`, err),
+        );
+    }
+
+    return updatedOrder;
+  }
+
+  /**
+   * Customer-facing copy for a status change, or null when there is nothing
+   * worth sending.
+   *
+   * Kept here so the queue is told what to say rather than deriving it again:
+   * the job writes the in-app row, the push and the email from this one copy,
+   * so the wording exists once instead of being rebuilt per channel.
+   */
+  private describeStatus(
+    order: CatalogueOrder,
+    status: CatalogueOrderStatus,
+  ): { title: string; body: string } | null {
+    const short = order.id.slice(0, 8);
+    switch (status) {
+      case CatalogueOrderStatus.PROCESSING:
+        return {
+          title: 'Order Processing',
+          body: `Your order (#${short}) is now being prepared.`,
+        };
+      case CatalogueOrderStatus.COMPLETED:
+        return {
+          title: 'Order Completed',
+          body: `Your order (#${short}) has been completed. Thank you!`,
+        };
+      case CatalogueOrderStatus.CANCELLED:
+        return {
+          title: 'Order Cancelled',
+          body: `Your order (#${short}) has been cancelled.`,
+        };
+      case CatalogueOrderStatus.REJECTED:
+        return {
+          title: 'Order Rejected',
+          body: `Your order (#${short}) has been rejected.`,
+        };
+      default:
+        return null;
+    }
+  }
+
+  private async deductStock(item: CatalogueItem, quantity: number) {
+    if (item.stockQuantity !== null) {
+      item.stockQuantity -= quantity;
+      if (item.stockQuantity <= 0) {
+        item.stockQuantity = 0;
+        item.status = CatalogueItemStatus.OUT_OF_STOCK;
+      } else if (
+        item.minStock !== null &&
+        item.stockQuantity <= item.minStock
+      ) {
+        item.status = CatalogueItemStatus.LOW_STOCK;
+      }
+      await this.itemRepository.save(item);
+    }
+  }
+
+  private async restoreStock(item: CatalogueItem, quantity: number) {
+    if (item.stockQuantity !== null) {
+      item.stockQuantity += quantity;
+      if (item.stockQuantity <= 0) {
+        item.status = CatalogueItemStatus.OUT_OF_STOCK;
+      } else if (
+        item.minStock !== null &&
+        item.stockQuantity <= item.minStock
+      ) {
+        item.status = CatalogueItemStatus.LOW_STOCK;
+      } else if (
+        item.stockQuantity > 0 &&
+        (item.status === CatalogueItemStatus.OUT_OF_STOCK ||
+          item.status === CatalogueItemStatus.LOW_STOCK)
+      ) {
+        item.status = CatalogueItemStatus.ACTIVE;
+      }
+      await this.itemRepository.save(item);
+    }
+  }
+
+  private async deductOfferStock(offer: CatalogueOffer, quantity: number) {
+    if (offer.quantity !== null) {
+      offer.quantity -= quantity;
+      if (offer.quantity <= 0) {
+        offer.quantity = 0;
+        offer.status = CatalogueOfferStatus.INACTIVE;
+      }
+      await this.offerRepository.save(offer);
+    }
+  }
+
+  private async restoreOfferStock(offer: CatalogueOffer, quantity: number) {
+    if (offer.quantity !== null) {
+      offer.quantity += quantity;
+      if (
+        offer.quantity > 0 &&
+        offer.status === CatalogueOfferStatus.INACTIVE
+      ) {
+        offer.status = CatalogueOfferStatus.ACTIVE;
+      }
+      await this.offerRepository.save(offer);
+    }
+  }
+
+  async findAllOrders(businessId: string, query: CatalogueOrderQueryDto) {
+    const { page = 1, limit = 10, status, branchId, type } = query;
+    const skip = (page - 1) * limit;
+
+    const where: any = { businessId };
+    if (status) where.status = status;
+    if (branchId) where.branchId = branchId;
+
+    if (type === 'booking') {
+      where.bookingDate = Not(IsNull());
+    } else if (type === 'order') {
+      where.bookingDate = IsNull();
+    }
+
+    const [data, total] = await this.orderRepository.findAndCount({
+      where,
+      relations: [
+        'items',
+        'items.item',
+        'items.offer',
+        'customer',
+        'branch',
+        'attendedByUser',
+      ],
+      order: { createdAt: 'DESC' },
+      skip,
+      take: limit,
+    });
+
+    return { data, total, page, limit };
+  }
+
+  async findAllByCustomer(
+    customerId: string,
+    query: { page?: number; limit?: number } = {},
+  ) {
+    const relations = [
+      'items',
+      'items.item',
+      'items.offer',
+      'branch',
+      'branch.business',
+      'attendedByUser',
+    ];
+    const order = { createdAt: 'DESC' } as const;
+
+    // Opt-in pagination: legacy callers (and the app's order-detail lookup)
+    // get the full bare array; page/limit callers get an envelope.
+    if (query.page === undefined && query.limit === undefined) {
+      return this.orderRepository.find({
+        where: { customerId },
+        relations,
+        order,
+      });
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 10;
+    const [data, total] = await this.orderRepository.findAndCount({
+      where: { customerId },
+      relations,
+      order,
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+
+    return { data, total, page, limit };
+  }
+
+  async findOneOrder(orderId: string, businessId: string) {
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId, businessId },
+      relations: [
+        'items',
+        'items.item',
+        'items.offer',
+        'customer',
+        'attendedByUser',
+      ],
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    return order;
+  }
+}

@@ -9,7 +9,7 @@ import {
 } from '../scripts/aiDesignAssistant';
 
 interface CreateWithAiButtonProps {
-  /** Which asset the merchant is creating: logo, banner, product or service. */
+  /** Which asset the merchant is creating: logo, banner, product, service or description. */
   assetType: AiAssetType;
   /** Business/item facts available on the surrounding screen, if any. */
   context?: AiPromptContext;
@@ -27,9 +27,10 @@ const DEFAULT_CLASS =
 
 /**
  * Contextual "Create with AI" entry point placed next to an existing upload
- * control. It owns the AI Design Assistant modal's open state, so opening or
- * closing the modal never unmounts or resets the surrounding screen or form.
- * The existing Upload Image action stays untouched and always available.
+ * control or text field. It owns the AI Design Assistant modal's open state,
+ * so opening or closing the modal never unmounts or resets the surrounding
+ * screen or form. The existing upload action / text field stay untouched and
+ * always available.
  */
 export function CreateWithAiButton({
   assetType,

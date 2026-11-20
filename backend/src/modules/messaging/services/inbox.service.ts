@@ -1,0 +1,906 @@
+import {
+  Injectable,
+  NotFoundException,
+  InternalServerErrorException,
+  ForbiddenException,
+  BadRequestException,
+  forwardRef,
+  Inject,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { FindOptionsWhere, Repository } from 'typeorm';
+import {
+  ConversationThread,
+  ThreadStatus,
+  ThreadSubjectType,
+} from '../entities/conversation-thread.entity';
+import { Message } from '../entities/message.entity';
+import { Channel } from '../enums/channel.enum';
+import { MessagingEngineService } from './messaging-engine.service';
+import { MessageDirection, MessageStatus } from '../enums/message.enum';
+import { User } from '../../users/entities/user.entity';
+import { MessagingGateway } from '../messaging.gateway';
+import { PushNotificationService } from '../../notifications/push-notification.service';
+import { NotificationsService } from '../../notifications/notifications.service';
+import { Visit } from '../../visitors/entities/visit.entity';
+import { Branch } from '../../branches/entities/branch.entity';
+import { AutomationService } from './automation.service';
+import { TriggerType } from '../enums/automation.enum';
+import { CatalogueOrder } from '../../catalogue-orders/entities/catalogue-order.entity';
+import { CatalogueOfferClaim } from '../../catalogue/entities/catalogue-offer-claim.entity';
+
+/** What a chat is about, for the inbox's order / booking / deal context cards. */
+export interface ThreadContext {
+  threadId: string;
+  subjectType: ThreadSubjectType | null;
+  order: {
+    id: string;
+    reference: string;
+    kind: 'order' | 'booking';
+    status: string;
+    totalAmount: number;
+    paymentStatus: string | null;
+    bookingDate: string | null;
+    bookingTime: string | null;
+    tableNumber: string | null;
+    createdAt: Date;
+    items: { name: string; quantity: number; unitPrice: number }[];
+  } | null;
+  claim: {
+    id: string;
+    claimCode: string;
+    status: string;
+    claimedAt: Date;
+    expiresAt: Date | null;
+    redeemedAt: Date | null;
+    offer: {
+      id: string;
+      name: string;
+      price: number | null;
+      mainImage: string | null;
+    } | null;
+  } | null;
+}
+
+/** Optional conversation context supplied when a chat is opened. */
+export interface ThreadSubjectInput {
+  subjectType?: ThreadSubjectType;
+  claimId?: string;
+  orderId?: string;
+}
+
+/**
+ * Reply fallback for legacy threads without a stored subject. Mirrors the
+ * keyword rules the app used client-side before this column existed.
+ */
+const DEAL_CATEGORY_RE =
+  /\b(deal|deals|offer|offers|voucher|vouchers|discount|discounts|promo|coupon|coupons|claim|claims|redeem|savings|% off)\b/i;
+const BOOKING_CATEGORY_RE =
+  /\b(book|books|booked|booking|bookings|reserve|reserved|reservation|reservations|table|appointment|appointments|schedule|scheduled|slot|slots|order|orders|ordered)\b/i;
+
+@Injectable()
+export class InboxService {
+  constructor(
+    @InjectRepository(ConversationThread)
+    private readonly threadRepo: Repository<ConversationThread>,
+    @InjectRepository(Message)
+    private readonly messageRepo: Repository<Message>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
+    @InjectRepository(Visit)
+    private readonly visitRepo: Repository<Visit>,
+    @InjectRepository(Branch)
+    private readonly branchRepo: Repository<Branch>,
+    @Inject(forwardRef(() => MessagingEngineService))
+    private readonly messagingEngine: MessagingEngineService,
+    private readonly messagingGateway: MessagingGateway,
+    private readonly pushNotificationService: PushNotificationService,
+    private readonly notificationsService: NotificationsService,
+    private readonly automationService: AutomationService,
+  ) {}
+
+  async getThreads(
+    branchId: string,
+    channel: Channel,
+    segmentId?: string,
+  ): Promise<ConversationThread[]> {
+    const query = this.threadRepo
+      .createQueryBuilder('thread')
+      .leftJoinAndSelect('thread.customer', 'customer')
+      .where('thread.branchId = :branchId', { branchId })
+      .andWhere('thread.channel = :channel', { channel });
+
+    if (segmentId) {
+      query.innerJoin(
+        'segment_users',
+        'su',
+        'su.userId = customer.id AND su.segmentId = :segmentId',
+        { segmentId },
+      );
+    }
+
+    return query.orderBy('thread.lastActivityAt', 'DESC').getMany();
+  }
+
+  /**
+   * Unread conversation counts for each branch (zeros included), so the
+   * inbox can show which other branches have customers waiting.
+   */
+  async getUnreadSummary(
+    branchIds: string[],
+    channel: Channel,
+  ): Promise<{ branchId: string; unread: number; threads: number }[]> {
+    if (!branchIds.length) return [];
+    const rows = await this.threadRepo
+      .createQueryBuilder('thread')
+      .select('thread.branchId', 'branchId')
+      .addSelect('COALESCE(SUM(thread.branchUnreadCount), 0)', 'unread')
+      .addSelect(
+        'COUNT(*) FILTER (WHERE thread.branchUnreadCount > 0)',
+        'threads',
+      )
+      .where('thread.branchId IN (:...branchIds)', { branchIds })
+      .andWhere('thread.channel = :channel', { channel })
+      .groupBy('thread.branchId')
+      .getRawMany<{ branchId: string; unread: string; threads: string }>();
+    const byBranch = new Map(rows.map((row) => [row.branchId, row]));
+    return branchIds.map((branchId) => ({
+      branchId,
+      unread: Number(byBranch.get(branchId)?.unread ?? 0),
+      threads: Number(byBranch.get(branchId)?.threads ?? 0),
+    }));
+  }
+
+  /** The order, booking or deal claim a thread was opened about. */
+  async getThreadContext(
+    threadId: string,
+    branchId: string,
+  ): Promise<ThreadContext> {
+    const thread = await this.threadRepo.findOne({
+      where: { id: threadId, branchId },
+    });
+    if (!thread) throw new NotFoundException('Thread not found');
+
+    const manager = this.threadRepo.manager;
+    const order = thread.orderId
+      ? await manager.getRepository(CatalogueOrder).findOne({
+          where: { id: thread.orderId, branchId },
+          relations: ['items', 'items.item', 'items.offer'],
+        })
+      : null;
+    const claim = thread.claimId
+      ? await manager.getRepository(CatalogueOfferClaim).findOne({
+          where: { id: thread.claimId },
+          relations: ['offer'],
+        })
+      : null;
+    // A claim is only shown when its deal belongs to this thread's business.
+    const claimInScope =
+      claim &&
+      (!claim.offer ||
+        !thread.businessId ||
+        claim.offer.businessId === thread.businessId)
+        ? claim
+        : null;
+
+    return {
+      threadId: thread.id,
+      subjectType: thread.subjectType ?? null,
+      order: order
+        ? {
+            id: order.id,
+            reference: `#${order.id.slice(0, 8).toUpperCase()}`,
+            kind: order.bookingDate ? 'booking' : 'order',
+            status: order.status,
+            totalAmount: Number(order.totalAmount),
+            paymentStatus: order.paymentStatus ?? null,
+            bookingDate: order.bookingDate ?? null,
+            bookingTime: order.bookingTime ?? null,
+            tableNumber: order.tableNumber ?? null,
+            createdAt: order.createdAt,
+            items: (order.items ?? [])
+              .filter((line) => !line.removed)
+              .map((line) => ({
+                name: line.item?.name ?? line.offer?.name ?? 'Item',
+                quantity: line.quantity,
+                unitPrice: Number(line.priceAtOrder),
+              })),
+          }
+        : null,
+      claim: claimInScope
+        ? {
+            id: claimInScope.id,
+            claimCode: claimInScope.claimCode,
+            status: claimInScope.status,
+            claimedAt: claimInScope.createdAt,
+            expiresAt: claimInScope.expiresAt ?? null,
+            redeemedAt: claimInScope.redeemedAt ?? null,
+            offer: claimInScope.offer
+              ? {
+                  id: claimInScope.offer.id,
+                  name: claimInScope.offer.name,
+                  price:
+                    claimInScope.offer.calculatedPrice != null
+                      ? Number(claimInScope.offer.calculatedPrice)
+                      : null,
+                  mainImage: claimInScope.offer.mainImage ?? null,
+                }
+              : null,
+          }
+        : null,
+    };
+  }
+
+  async getThreadMessages(
+    threadId: string,
+    branchId: string,
+  ): Promise<Message[]> {
+    const thread = await this.threadRepo.findOne({
+      where: { id: threadId, branchId },
+    });
+    if (!thread) {
+      throw new NotFoundException('Thread not found');
+    }
+
+    // Mark as read for branch when staff views thread
+    if (thread.branchUnreadCount > 0) {
+      thread.branchUnreadCount = 0;
+      await this.threadRepo.save(thread);
+    }
+
+    return this.messageRepo.find({
+      where: { threadId },
+      relations: ['replyTo'],
+      order: { timestamp: 'ASC' }, // Oldest to newest for chat history
+    });
+  }
+
+  async markAsRead(
+    threadId: string,
+    branchId?: string,
+    customerId?: string,
+  ): Promise<void> {
+    const where: any = { id: threadId };
+    if (branchId) where.branchId = branchId;
+    if (customerId) where.customerId = customerId;
+
+    const thread = await this.threadRepo.findOne({ where });
+    if (!thread) throw new NotFoundException('Thread not found');
+
+    if (branchId) {
+      thread.branchUnreadCount = 0;
+    } else if (customerId) {
+      thread.customerUnreadCount = 0;
+    }
+
+    await this.threadRepo.save(thread);
+
+    // Opening the chat is the read receipt too: staff read what the customer
+    // wrote (INBOUND), the customer reads the business's replies (OUTBOUND).
+    if (branchId || customerId) {
+      await this.messagingGateway.markThreadRead(
+        thread,
+        branchId ? MessageDirection.INBOUND : MessageDirection.OUTBOUND,
+      );
+    }
+  }
+
+  async sendReply(
+    threadId: string,
+    content: string,
+    branchId: string,
+    replyToId?: string,
+    metadata?: any,
+    media?: { url?: string; mimeType?: string },
+  ): Promise<Message | null> {
+    const thread = await this.threadRepo.findOne({
+      where: { id: threadId, branchId },
+      relations: ['customer'],
+    });
+
+    if (!thread) {
+      throw new NotFoundException('Thread not found');
+    }
+
+    const messageId = await this.messagingEngine.sendReply(
+      thread,
+      content,
+      replyToId,
+      metadata,
+      media,
+    );
+    if (!messageId) {
+      throw new InternalServerErrorException('Failed to send reply');
+    }
+
+    const savedMessage = await this.messageRepo.findOne({
+      where: { id: messageId },
+      relations: ['replyTo'],
+    });
+
+    if (savedMessage && replyToId) {
+      savedMessage.replyToId = replyToId;
+      await this.messageRepo.save(savedMessage);
+    }
+
+    // Update thread metadata
+    await this.threadRepo.update(thread.id, {
+      lastActivityAt: new Date(),
+      lastMessageContent: content,
+      status: ThreadStatus.OPEN,
+    });
+    // Atomic increment to prevent race conditions
+    await this.threadRepo.increment(
+      { id: thread.id },
+      'customerUnreadCount',
+      1,
+    );
+
+    // Broadcast via socket
+    this.messagingGateway.emitMessage(
+      thread.id,
+      thread.branchId,
+      thread.customerId,
+      savedMessage,
+    );
+
+    // Send push notification to visitor
+    this.pushNotificationService
+      .sendNotification(
+        thread.customerId,
+        'New Message from Business',
+        content,
+        { threadId: thread.id, channel: thread.channel, category: 'support' },
+        true, // Is User (Customer is a User now)
+      )
+      .catch((e) => console.error('Push error:', e.message));
+
+    // The in-app row is what keeps the message in the bell after the push
+    // is dismissed, and it links straight back to the thread.
+    this.notificationsService
+      .create(
+        thread.customerId,
+        'New Message from Business',
+        content,
+        'new_message',
+        `/messages/${thread.id}`,
+        null,
+        'new_message',
+      )
+      .catch((e) => console.error('Notification row error:', e.message));
+
+    return savedMessage;
+  }
+
+  /** The branch's in-app thread with a customer, if one exists. */
+  findBranchConversation(
+    branchId: string,
+    customerId: string,
+  ): Promise<ConversationThread | null> {
+    return this.threadRepo.findOne({
+      where: { branchId, customerId, channel: Channel.IN_HOUSE },
+      relations: ['customer'],
+    });
+  }
+
+  async initBranchConversation(
+    branchId: string,
+    customerId: string,
+  ): Promise<ConversationThread> {
+    let thread = await this.threadRepo.findOne({
+      where: { branchId, customerId, channel: Channel.IN_HOUSE },
+      relations: ['customer'],
+    });
+
+    if (!thread) {
+      const branch = await this.branchRepo.findOne({ where: { id: branchId } });
+      if (!branch) throw new NotFoundException('Branch not found');
+
+      const customer = await this.userRepo.findOne({
+        where: { id: customerId },
+      });
+      if (!customer) throw new NotFoundException('Customer not found');
+
+      thread = this.threadRepo.create({
+        branchId,
+        businessId: branch.businessId,
+        customerId,
+        channel: Channel.IN_HOUSE,
+        status: ThreadStatus.OPEN,
+        lastActivityAt: new Date(),
+        branchUnreadCount: 0,
+        customerUnreadCount: 0,
+      });
+      thread = await this.threadRepo.save(thread);
+      thread.customer = customer;
+    }
+
+    return thread;
+  }
+
+  async editMessage(
+    messageId: string,
+    content: string,
+    userId: string, // Initiator (User UUID)
+    branchId?: string, // If calling from branch context
+  ): Promise<Message> {
+    const message = await this.messageRepo.findOne({
+      where: { id: messageId },
+      relations: ['thread'],
+    });
+
+    if (!message) throw new NotFoundException('Message not found');
+
+    // Simple permission check: must be sender
+    // Note: if branchId is provided, we check if it matches the message branchId (staff context)
+    // but we should still ideally check if it was OUTBOUND (staff) or INBOUND (customer)
+    if (branchId) {
+      if (
+        message.direction !== MessageDirection.OUTBOUND ||
+        message.branchId !== branchId
+      ) {
+        throw new ForbiddenException('Cannot edit this message');
+      }
+    } else {
+      if (
+        message.direction !== MessageDirection.INBOUND ||
+        message.customerId !== userId
+      ) {
+        throw new ForbiddenException('Cannot edit this message');
+      }
+    }
+
+    if (message.isDeleted) {
+      throw new BadRequestException('Cannot edit a deleted message');
+    }
+
+    message.content = content;
+    message.isEdited = true;
+    const saved = await this.messageRepo.save(message);
+
+    // Broadcast update
+    this.messagingGateway.emitMessageUpdate(
+      message.threadId,
+      message.branchId,
+      message.customerId,
+      {
+        id: message.id,
+        content: message.content,
+        isEdited: true,
+        type: 'EDIT',
+      },
+    );
+
+    return saved;
+  }
+
+  async deleteMessage(
+    messageId: string,
+    userId: string,
+    branchId?: string,
+  ): Promise<void> {
+    const message = await this.messageRepo.findOne({
+      where: { id: messageId },
+      relations: ['thread'],
+    });
+
+    if (!message) throw new NotFoundException('Message not found');
+
+    if (branchId) {
+      if (
+        message.direction !== MessageDirection.OUTBOUND ||
+        message.branchId !== branchId
+      ) {
+        throw new ForbiddenException('Cannot delete this message');
+      }
+    } else {
+      if (
+        message.direction !== MessageDirection.INBOUND ||
+        message.customerId !== userId
+      ) {
+        throw new ForbiddenException('Cannot delete this message');
+      }
+    }
+
+    message.isDeleted = true;
+    message.content = 'Message deleted'; // Clear content for privacy, but keep entity
+    await this.messageRepo.save(message);
+
+    // Broadcast update
+    this.messagingGateway.emitMessageUpdate(
+      message.threadId,
+      message.branchId,
+      message.customerId,
+      {
+        id: message.id,
+        isDeleted: true,
+        type: 'DELETE',
+      },
+    );
+  }
+
+  async deleteThread(
+    threadId: string,
+    context: { branchId?: string; customerId?: string } = {},
+  ): Promise<void> {
+    const where: FindOptionsWhere<ConversationThread> = { id: threadId };
+    if (context.branchId) where.branchId = context.branchId;
+    if (context.customerId) where.customerId = context.customerId;
+
+    const thread = await this.threadRepo.findOne({ where });
+    if (!thread) {
+      throw new NotFoundException('Thread not found');
+    }
+
+    // Remove the messages first so no orphaned rows remain, then the thread.
+    await this.messageRepo.delete({ threadId: thread.id });
+    await this.threadRepo.remove(thread);
+
+    this.messagingGateway.emitThreadDeleted(
+      thread.id,
+      thread.branchId,
+      thread.customerId,
+    );
+  }
+
+  // --- Customer Facing Methods ---
+
+  async getCustomerThreads(customerId: string): Promise<ConversationThread[]> {
+    const threads = await this.threadRepo.find({
+      where: { customerId, channel: Channel.IN_HOUSE },
+      relations: ['branch', 'branch.business'],
+      order: { lastActivityAt: 'DESC' },
+    });
+
+    // Additive mapping: every entity field is preserved, plus `categories`
+    // derived from the stored subject (falling back to keyword classification
+    // for legacy threads). The app filters its chips on `categories`.
+    return threads.map((thread) => {
+      const categories: string[] = [];
+      if ((thread.customerUnreadCount ?? 0) > 0) categories.push('unread');
+      if (
+        thread.subjectType === ThreadSubjectType.DEAL ||
+        thread.subjectType === ThreadSubjectType.CLAIM
+      ) {
+        categories.push('deals');
+      } else if (
+        thread.subjectType === ThreadSubjectType.BOOKING ||
+        thread.subjectType === ThreadSubjectType.ORDER
+      ) {
+        categories.push('bookings');
+      } else {
+        const text = thread.lastMessageContent ?? '';
+        if (DEAL_CATEGORY_RE.test(text)) categories.push('deals');
+        if (BOOKING_CATEGORY_RE.test(text)) categories.push('bookings');
+      }
+
+      return Object.assign(thread, { categories });
+    });
+  }
+
+  async findOrCreateCustomerThread(
+    customerId: string,
+    branchId: string,
+    subject: ThreadSubjectInput = {},
+  ): Promise<ConversationThread> {
+    let thread = await this.threadRepo.findOne({
+      where: { customerId, branchId, channel: Channel.IN_HOUSE },
+      relations: ['branch', 'branch.business', 'customer'],
+    });
+
+    if (!thread) {
+      const branch = await this.branchRepo.findOne({
+        where: { id: branchId },
+        relations: ['business'],
+      });
+      if (!branch) throw new NotFoundException('Branch not found');
+
+      const customer = await this.userRepo.findOne({
+        where: { id: customerId },
+      });
+      if (!customer) throw new NotFoundException('Customer not found');
+
+      thread = this.threadRepo.create({
+        branchId,
+        businessId: branch.businessId,
+        customerId,
+        channel: Channel.IN_HOUSE,
+        status: ThreadStatus.OPEN,
+        lastActivityAt: new Date(),
+        branchUnreadCount: 0,
+        customerUnreadCount: 0,
+        subjectType: subject.subjectType ?? ThreadSubjectType.GENERAL,
+        claimId: subject.claimId ?? null,
+        orderId: subject.orderId ?? null,
+      });
+      thread = await this.threadRepo.save(thread);
+      thread.branch = branch;
+      thread.customer = customer;
+    } else if (subject.subjectType || subject.claimId || subject.orderId) {
+      // Latest-context wins: one thread per branch+customer+channel.
+      thread.subjectType = subject.subjectType ?? thread.subjectType;
+      thread.claimId = subject.claimId ?? thread.claimId;
+      thread.orderId = subject.orderId ?? thread.orderId;
+      await this.threadRepo.save(thread);
+    }
+
+    return thread;
+  }
+
+  async getCustomerThreadMessages(
+    threadId: string,
+    customerId: string,
+  ): Promise<Message[]> {
+    const thread = await this.threadRepo.findOne({
+      where: { id: threadId, customerId },
+    });
+    if (!thread) {
+      throw new NotFoundException('Thread not found');
+    }
+
+    // Mark as read for customer when visitor views thread
+    if (thread.customerUnreadCount > 0) {
+      thread.customerUnreadCount = 0;
+      await this.threadRepo.save(thread);
+    }
+
+    return this.messageRepo.find({
+      where: { threadId },
+      relations: ['replyTo'],
+      order: { timestamp: 'ASC' }, // Oldest to newest
+    });
+  }
+
+  async sendCustomerReply(
+    threadId: string,
+    content: string,
+    customerId: string,
+    replyToId?: string,
+    metadata?: any,
+    media?: { url?: string; mimeType?: string },
+  ): Promise<Message> {
+    const thread = await this.threadRepo.findOne({
+      where: { id: threadId, customerId },
+      relations: ['customer'],
+    });
+
+    if (!thread) {
+      throw new NotFoundException('Thread not found');
+    }
+
+    if (thread.channel !== Channel.IN_HOUSE) {
+      throw new ForbiddenException('Can only reply to In-House messages');
+    }
+
+    const message = this.messageRepo.create({
+      branchId: thread.branchId,
+      customerId: thread.customerId,
+      threadId: thread.id,
+      content,
+      channel: Channel.IN_HOUSE,
+      direction: MessageDirection.INBOUND,
+      status: MessageStatus.SENT,
+      from: thread.customer.phone || thread.customer.email || 'Customer',
+      to: thread.branchId,
+      replyToId,
+      metadata: metadata || {},
+      mediaUrl: media?.url ?? null,
+      mediaMimeType: media?.mimeType ?? null,
+      timestamp: new Date(),
+    } as any) as unknown as Message;
+
+    const savedMessage = await this.messageRepo.save(message);
+
+    // Update thread metadata
+    await this.threadRepo.update(thread.id, {
+      lastActivityAt: new Date(),
+      lastMessageContent: content,
+      status: ThreadStatus.OPEN,
+    });
+    // Atomic increment to prevent race conditions
+    await this.threadRepo.increment({ id: thread.id }, 'branchUnreadCount', 1);
+
+    // Broadcast via socket
+    this.messagingGateway.emitMessage(
+      thread.id,
+      thread.branchId,
+      thread.customerId,
+      savedMessage,
+    );
+
+    // --- Automation Triggers ---
+    // 1. Check if first message for Welcome Message
+    const msgCount = await this.messageRepo.count({
+      where: { threadId: thread.id },
+    });
+    if (msgCount === 1) {
+      await this.automationService.trigger(TriggerType.WELCOME_MESSAGE, {
+        branchId: thread.branchId,
+        customerId: thread.customerId,
+        content,
+      });
+    }
+
+    // 2. Inbound Message (FAQ)
+    await this.automationService.trigger(TriggerType.INBOUND_MESSAGE, {
+      branchId: thread.branchId,
+      customerId: thread.customerId,
+      content,
+    });
+
+    // 3. Off Hours Check
+    await this.automationService.trigger(TriggerType.OFF_HOURS, {
+      branchId: thread.branchId,
+      customerId: thread.customerId,
+      content,
+    });
+
+    return savedMessage;
+  }
+
+  async startCustomerConversation(
+    customerId: string,
+    branchId: string,
+    content: string,
+    subject: ThreadSubjectInput = {},
+  ): Promise<Message> {
+    // 1. Ensure branch exists and load it (needed for businessId + customer lookup)
+    const branch = await this.branchRepo.findOne({ where: { id: branchId } });
+    if (!branch) {
+      throw new NotFoundException('Branch not found');
+    }
+
+    const customer = await this.userRepo.findOne({ where: { id: customerId } });
+    if (!customer) {
+      throw new NotFoundException('Customer not found');
+    }
+
+    // 2. Auto-upsert a visit record so the customer appears in the branch's visitor list.
+    //    If they already have any visit (portal/patronage/chat) we leave it untouched.
+    //    If they have none, we create a lightweight 'chat' visit so the branch can still
+    //    track them as a contact — no NFC tap required.
+    const existingVisit = await this.visitRepo.findOne({
+      where: { customerId, branchId },
+    });
+
+    if (!existingVisit) {
+      const chatVisit = this.visitRepo.create({
+        customerId,
+        branchId,
+        businessId: branch.businessId,
+        visitType: 'chat',
+        status: 'new',
+      });
+      await this.visitRepo.save(chatVisit);
+    }
+
+    // 3. Find or create the In-House conversation thread
+    let thread = await this.threadRepo.findOne({
+      where: { customerId, branchId, channel: Channel.IN_HOUSE },
+      relations: ['customer'],
+    });
+
+    if (!thread) {
+      thread = this.threadRepo.create({
+        branchId,
+        businessId: branch.businessId,
+        customerId,
+        channel: Channel.IN_HOUSE,
+        status: ThreadStatus.OPEN,
+        lastActivityAt: new Date(),
+        lastMessageContent: content,
+        branchUnreadCount: 1,
+        customerUnreadCount: 0,
+        subjectType: subject.subjectType ?? ThreadSubjectType.GENERAL,
+        claimId: subject.claimId ?? null,
+        orderId: subject.orderId ?? null,
+      });
+      thread = await this.threadRepo.save(thread);
+      thread.customer = customer;
+    } else {
+      // Thread already exists — update activity, subject context and increment
+      // the unread counter.
+      await this.threadRepo.update(thread.id, {
+        lastActivityAt: new Date(),
+        lastMessageContent: content,
+        status: ThreadStatus.OPEN,
+        ...(subject.subjectType ? { subjectType: subject.subjectType } : {}),
+        ...(subject.claimId ? { claimId: subject.claimId } : {}),
+        ...(subject.orderId ? { orderId: subject.orderId } : {}),
+      });
+      await this.threadRepo.increment(
+        { id: thread.id },
+        'branchUnreadCount',
+        1,
+      );
+      // Ensure customer relation is populated for notification below
+      if (!thread.customer) {
+        thread.customer = customer;
+      }
+    }
+
+    // 4. Create and persist the first message
+    const message = this.messageRepo.create({
+      branchId,
+      customerId,
+      threadId: thread.id,
+      content,
+      channel: Channel.IN_HOUSE,
+      direction: MessageDirection.INBOUND,
+      status: MessageStatus.SENT,
+      from: thread.customer.phone || thread.customer.email || 'Customer',
+      to: branchId,
+      timestamp: new Date(),
+    } as any) as unknown as Message;
+
+    const savedMessage = await this.messageRepo.save(message);
+
+    // 5. Broadcast via Socket.io
+    this.messagingGateway.emitMessage(
+      thread.id,
+      thread.branchId,
+      thread.customerId,
+      savedMessage,
+    );
+
+    // 6. Push notification to branch staff
+    this.pushNotificationService
+      .sendToBranchStaff(
+        thread.branchId,
+        `New Message from ${thread.customer.firstName || 'Visitor'}`,
+        content,
+        { threadId: thread.id, channel: thread.channel, category: 'support' },
+      )
+      .catch((e) => console.error('Push error:', e.message));
+
+    // 6b. In-app row for the same alert, so it survives a missed push.
+    this.notificationsService
+      .createForBranchStaff(
+        thread.branchId,
+        undefined,
+        `New Message from ${thread.customer.firstName || 'Visitor'}`,
+        content,
+        'new_message',
+        `/messages/${thread.id}`,
+        null,
+        'new_message',
+      )
+      .catch((e) => console.error('Notification row error:', e.message));
+
+    // 7. Automation triggers — always fires since this creates the first message
+    await this.automationService.trigger(TriggerType.WELCOME_MESSAGE, {
+      branchId,
+      customerId,
+      content,
+    });
+
+    await this.automationService.trigger(TriggerType.INBOUND_MESSAGE, {
+      branchId,
+      customerId,
+      content,
+    });
+
+    await this.automationService.trigger(TriggerType.OFF_HOURS, {
+      branchId,
+      customerId,
+      content,
+    });
+
+    return savedMessage;
+  }
+
+  async closeInactiveThreads(days: number): Promise<void> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+
+    await this.threadRepo
+      .createQueryBuilder()
+      .update(ConversationThread)
+      .set({ status: ThreadStatus.CLOSED })
+      .where('lastActivityAt < :cutoffDate AND status != :closedStatus', {
+        cutoffDate,
+        closedStatus: ThreadStatus.CLOSED,
+      })
+      .execute();
+  }
+}

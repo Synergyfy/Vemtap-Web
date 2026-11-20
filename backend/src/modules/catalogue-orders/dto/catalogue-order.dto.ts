@@ -1,0 +1,310 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsNotEmpty,
+  IsString,
+  IsOptional,
+  IsUUID,
+  IsNumber,
+  IsArray,
+  ValidateNested,
+  Min,
+  Max,
+  IsEmail,
+  IsEnum,
+  IsInt,
+  IsIn,
+  MaxLength,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+import { CatalogueOrderStatus } from '../entities/catalogue-order.entity';
+
+/** Where a store-ordering order came from (`CatalogueOrder.source`). */
+export const STORE_ORDER_SOURCES = [
+  'storefront',
+  'store_qr',
+  'category_qr',
+  'product_qr',
+  'section_qr',
+  'placement_qr',
+  'deal',
+  'pos',
+] as const;
+export type StoreOrderSource = (typeof STORE_ORDER_SOURCES)[number];
+
+/**
+ * Customer order list. Pagination is opt-in: without `page`/`limit` the
+ * endpoint keeps returning the legacy bare array; supplying either returns
+ * `{ data, total, page, limit }`.
+ */
+export class MyOrdersQueryDto {
+  @ApiPropertyOptional({ example: 1, minimum: 1 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ example: 10, minimum: 1, maximum: 50 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit?: number;
+}
+
+export class CreateQuickItemDto {
+  @ApiProperty({ example: 'New Item' })
+  @IsNotEmpty()
+  @IsString()
+  name: string;
+
+  @ApiProperty({ example: 1000 })
+  @IsNotEmpty()
+  @IsNumber()
+  @Min(0)
+  price: number;
+
+  @ApiPropertyOptional({ example: 'uuid-of-category' })
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string;
+}
+
+export class OrderItemDto {
+  @ApiPropertyOptional({ example: 'uuid-of-item' })
+  @IsOptional()
+  @IsUUID()
+  itemId?: string;
+
+  @ApiPropertyOptional({ example: 'uuid-of-offer' })
+  @IsOptional()
+  @IsUUID()
+  offerId?: string;
+
+  @ApiPropertyOptional({ type: CreateQuickItemDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CreateQuickItemDto)
+  newItem?: CreateQuickItemDto;
+
+  @ApiProperty({ example: 2 })
+  @IsNotEmpty()
+  @IsNumber()
+  @Min(1)
+  quantity: number;
+}
+
+export class CreateCatalogueOrderDto {
+  @ApiProperty({ example: 'John' })
+  @IsNotEmpty()
+  @IsString()
+  firstName: string;
+
+  @ApiProperty({ example: 'Doe' })
+  @IsNotEmpty()
+  @IsString()
+  lastName: string;
+
+  @ApiProperty({ example: '+2348012345678' })
+  @IsNotEmpty()
+  @IsString()
+  phone: string;
+
+  @ApiPropertyOptional({ example: 'john@example.com' })
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiPropertyOptional({ example: 'No spicy' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @ApiPropertyOptional({ example: 'Table 5' })
+  @IsOptional()
+  @IsString()
+  tableNumber?: string;
+
+  @ApiPropertyOptional({
+    example: 'store_qr',
+    enum: STORE_ORDER_SOURCES,
+    description:
+      'Marks a store-ordering (scan, pick, pay at the counter) order and where it came from',
+  })
+  @IsOptional()
+  @IsIn(STORE_ORDER_SOURCES)
+  source?: StoreOrderSource;
+
+  @ApiPropertyOptional({
+    example: 'SQ7KX2P9',
+    description: 'Code of the store QR the order was placed from',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  storeQrCode?: string;
+
+  @ApiProperty({ type: [OrderItemDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OrderItemDto)
+  items: OrderItemDto[];
+
+  @ApiProperty({ example: 'uuid-of-branch' })
+  @IsNotEmpty()
+  @IsUUID()
+  branchId: string;
+
+  @ApiPropertyOptional({ example: 'uuid-of-device' })
+  @IsOptional()
+  @IsUUID()
+  deviceId?: string;
+
+  @ApiPropertyOptional({
+    example: 'uuid-v4-session-token',
+    description:
+      'Session token from the portal visit. Used to upgrade the visit to patronage on order completion.',
+  })
+  @IsOptional()
+  @IsUUID()
+  sessionToken?: string;
+
+  @ApiPropertyOptional({ example: '2024-05-20' })
+  @IsOptional()
+  @IsString()
+  bookingDate?: string;
+
+  @ApiPropertyOptional({ example: '10:00 AM' })
+  @IsOptional()
+  @IsString()
+  bookingTime?: string;
+
+  @ApiPropertyOptional({ example: 'c67ab160-5895-46aa-b2b5-e6f778a87b28' })
+  @IsOptional()
+  @IsString()
+  giftToken?: string;
+}
+
+export class BulkOrderDto {
+  @ApiProperty({ example: 'uuid-of-branch' })
+  @IsNotEmpty()
+  @IsUUID()
+  branchId: string;
+
+  @ApiProperty({ type: [OrderItemDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OrderItemDto)
+  items: OrderItemDto[];
+
+  @ApiPropertyOptional({ example: 'No spicy' })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @ApiPropertyOptional({ example: 'Table 5' })
+  @IsOptional()
+  @IsString()
+  tableNumber?: string;
+
+  @ApiPropertyOptional({ example: '2024-05-20' })
+  @IsOptional()
+  @IsString()
+  bookingDate?: string;
+
+  @ApiPropertyOptional({ example: '10:00 AM' })
+  @IsOptional()
+  @IsString()
+  bookingTime?: string;
+}
+
+export class BulkCheckoutDto {
+  @ApiPropertyOptional({ example: 'John' })
+  @IsOptional()
+  @IsString()
+  firstName?: string;
+
+  @ApiPropertyOptional({ example: 'Doe' })
+  @IsOptional()
+  @IsString()
+  lastName?: string;
+
+  @ApiPropertyOptional({ example: '+2348012345678' })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional({ example: 'john@example.com' })
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiProperty({ type: [BulkOrderDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BulkOrderDto)
+  orders: BulkOrderDto[];
+
+  @ApiPropertyOptional({ example: 'uuid-of-device' })
+  @IsOptional()
+  @IsUUID()
+  deviceId?: string;
+}
+
+export class UpdateCatalogueOrderStatusDto {
+  @ApiProperty({ enum: CatalogueOrderStatus })
+  @IsNotEmpty()
+  @IsEnum(CatalogueOrderStatus)
+  status: CatalogueOrderStatus;
+
+  @ApiPropertyOptional({ example: 'Customer requested cancellation' })
+  @IsOptional()
+  @IsString()
+  reason?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Items to refund (for partial refunds). If omitted, a full refund is processed.',
+    type: [OrderItemDto], // Or we can define a simpler one, or just reuse OrderItemDto where itemId is passed
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OrderItemDto)
+  refundItems?: OrderItemDto[];
+}
+
+export class CatalogueOrderQueryDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  page?: number = 1;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  limit?: number = 10;
+
+  @ApiPropertyOptional({ enum: CatalogueOrderStatus })
+  @IsOptional()
+  @IsEnum(CatalogueOrderStatus)
+  status?: CatalogueOrderStatus;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
+
+  @ApiPropertyOptional({
+    example: 'booking',
+    description: 'Filter by type: order or booking',
+  })
+  @IsOptional()
+  @IsString()
+  type?: string;
+}

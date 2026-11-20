@@ -1,0 +1,55 @@
+import { Injectable, Logger } from '@nestjs/common';
+import {
+  MessagingProvider,
+  SendMessagePayload,
+  ProviderResponse,
+  InboundMessage,
+  DeliveryReport,
+} from '../interfaces/messaging-provider.interface';
+import { MailService } from '../../mail/mail.service';
+
+@Injectable()
+export class EmailProvider implements MessagingProvider {
+  private readonly logger = new Logger(EmailProvider.name);
+
+  constructor(private readonly mailService: MailService) {}
+
+  async sendMessage(payload: SendMessagePayload): Promise<ProviderResponse> {
+    const success = await this.mailService.sendGenericEmail(
+      Array.isArray(payload.to) ? payload.to[0] : payload.to,
+      (payload.metadata?.subject as string | undefined) ||
+        payload.from ||
+        'VemTap',
+      payload.content,
+      {
+        name: payload.metadata?.senderName as string | undefined,
+        replyTo: payload.metadata?.replyTo as string | undefined,
+      },
+    );
+
+    if (success) {
+      return {
+        messageId: `email-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        status: 'sent',
+      };
+    }
+
+    return {
+      messageId: null,
+      status: 'failed',
+    };
+  }
+
+  parseWebhook(_payload: any): Promise<{
+    type: 'inbound' | 'delivery';
+    data: InboundMessage | DeliveryReport;
+  } | null> {
+    // Resend webhook parsing can be added here for delivery status tracking
+    // See: https://resend.com/docs/dashboard/webhooks/introduction
+    return Promise.resolve(null);
+  }
+
+  estimateCost(_payload: SendMessagePayload): number {
+    return 0.01; // Low cost for email
+  }
+}

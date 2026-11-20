@@ -1,0 +1,316 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Body,
+  UseGuards,
+  Req,
+  Param,
+  ParseUUIDPipe,
+  Query,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiOkResponse,
+} from '@nestjs/swagger';
+import { AffiliatesService } from './affiliates.service';
+import { VemtapAffiliateAgentsService } from './vemtap-affiliate-agents.service';
+import { FosAgentCommissionService } from './fos-agent-commission.service';
+import { ListAgentsQueryDto } from './dto/list-agents-query.dto';
+import { CreateAgentDto } from './dto/create-agent.dto';
+import { UpdateAgentDto } from './dto/update-agent.dto';
+import { WithdrawRequestDto } from './dto/withdraw-request.dto';
+import { UpdateAffiliateProfileDto } from './dto/update-profile.dto';
+import { AffiliateStatsDto } from './dto/affiliate-stats.dto';
+import { AffiliateActivityDto } from './dto/affiliate-activity.dto';
+import { AffiliatePerformanceDto } from './dto/affiliate-performance.dto';
+import { LeaderboardEntryDto } from './dto/leaderboard-entry.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { BusinessVerifiedGuard } from '../../common/guards/business-verified.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { Public } from '../../common/decorators/public.decorator';
+import { UserRole } from '../users/entities/user.entity';
+import {
+  KycStatus,
+  AffiliateProfile,
+} from './entities/affiliate-profile.entity';
+import { AffiliateWithdrawalRequest } from './entities/withdrawal-request.entity';
+
+@ApiTags('Affiliates')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard, BusinessVerifiedGuard)
+@Controller('affiliates')
+export class AffiliatesController {
+  constructor(
+    private readonly affiliatesService: AffiliatesService,
+    private readonly agentsService: VemtapAffiliateAgentsService,
+    private readonly commissionService: FosAgentCommissionService,
+  ) {}
+
+  @Get('stats')
+  @Roles(UserRole.AGENT, UserRole.OWNER, UserRole.MANAGER)
+  @ApiOperation({ summary: 'Get current affiliate stats' })
+  @ApiOkResponse({ type: AffiliateStatsDto })
+  async getStats(@Req() req): Promise<AffiliateStatsDto> {
+    return this.affiliatesService.getStats(req.user.id);
+  }
+
+  @Get('activity')
+  @Roles(UserRole.AGENT, UserRole.OWNER, UserRole.MANAGER)
+  @ApiOperation({ summary: 'Get recent affiliate activity' })
+  @ApiOkResponse({ type: [AffiliateActivityDto] })
+  async getActivity(@Req() req): Promise<AffiliateActivityDto[]> {
+    return this.affiliatesService.getActivity(req.user.id);
+  }
+
+  @Get('performance')
+  @Roles(UserRole.AGENT, UserRole.OWNER, UserRole.MANAGER)
+  @ApiOperation({ summary: 'Get earnings performance data' })
+  @ApiOkResponse({ type: [AffiliatePerformanceDto] })
+  async getPerformance(@Req() req): Promise<AffiliatePerformanceDto[]> {
+    return this.affiliatesService.getPerformance(req.user.id);
+  }
+
+  @Get('leaderboard')
+  @Roles(UserRole.AGENT, UserRole.OWNER, UserRole.MANAGER)
+  @ApiOperation({ summary: 'Get global leaderboard' })
+  @ApiOkResponse({ type: [LeaderboardEntryDto] })
+  async getLeaderboard(@Req() req): Promise<LeaderboardEntryDto[]> {
+    return this.affiliatesService.getLeaderboard(req.user.role);
+  }
+
+  @Get('referrals')
+  @Roles(UserRole.AGENT, UserRole.OWNER, UserRole.MANAGER)
+  @ApiOperation({ summary: 'Get all referrals for current affiliate' })
+  @ApiOkResponse({ description: 'List of referrals' })
+  async getReferrals(@Req() req): Promise<any[]> {
+    return this.affiliatesService.getReferrals(req.user.id);
+  }
+
+  @Get('profile')
+  @Roles(UserRole.AGENT, UserRole.OWNER, UserRole.MANAGER)
+  @ApiOperation({ summary: 'Get full affiliate profile details (KYC, etc.)' })
+  @ApiOkResponse({ description: 'Affiliate profile details' })
+  async getProfile(@Req() req): Promise<any> {
+    return this.affiliatesService.getProfile(req.user.id);
+  }
+
+  @Post('profile')
+  @Roles(UserRole.AGENT, UserRole.OWNER, UserRole.MANAGER)
+  @ApiOperation({ summary: 'Initialize affiliate profile' })
+  @ApiOkResponse({ type: AffiliateProfile })
+  async createProfile(@Req() req): Promise<AffiliateProfile> {
+    return this.affiliatesService.createProfile(req.user.id);
+  }
+
+  @Post('profile/update')
+  @Roles(UserRole.AGENT, UserRole.OWNER, UserRole.MANAGER)
+  @ApiOperation({ summary: 'Update affiliate profile (KYC & Bank)' })
+  @ApiOkResponse({ type: AffiliateProfile })
+  async updateProfile(
+    @Req() req,
+    @Body() data: UpdateAffiliateProfileDto,
+  ): Promise<AffiliateProfile> {
+    return this.affiliatesService.updateProfile(req.user.id, data);
+  }
+
+  @Post('withdraw')
+  @Roles(UserRole.AGENT, UserRole.OWNER, UserRole.MANAGER)
+  @ApiOperation({ summary: 'Request a withdrawal' })
+  @ApiOkResponse({ type: AffiliateWithdrawalRequest })
+  async requestWithdrawal(
+    @Req() req,
+    @Body() body: WithdrawRequestDto,
+  ): Promise<AffiliateWithdrawalRequest> {
+    return this.affiliatesService.requestWithdrawal(req.user.id, body.amount);
+  }
+
+  @Public()
+  @Post('track-visit')
+  @ApiOperation({ summary: 'Track a referral visit (Public)' })
+  async trackVisit(@Body('referralCode') referralCode: string) {
+    return this.affiliatesService.trackVisit(referralCode);
+  }
+
+  @Public()
+  @Get('referrer-info')
+  @ApiOperation({ summary: 'Get referrer info by referral code (Public)' })
+  async getReferrerInfo(@Query('code') code: string) {
+    return this.affiliatesService.getReferrerInfo(code);
+  }
+
+  // --- Admin Specific Endpoints ---
+
+  @Get('admin/stats')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Admin: Get global affiliate stats' })
+  async getAdminStats() {
+    return this.affiliatesService.getGlobalAdminStats();
+  }
+
+  @Get('admin/withdrawals')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Admin: List withdrawal requests' })
+  async getWithdrawals(@Req() _req) {
+    return this.affiliatesService.getAllWithdrawals();
+  }
+
+  @Post('admin/withdrawals/:id/process')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Admin: Process a withdrawal request' })
+  async processWithdrawal(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req,
+    @Body('status') status: any,
+    @Body('note') note?: string,
+  ) {
+    return this.affiliatesService.processWithdrawal(
+      id,
+      req.user.id,
+      status,
+      note,
+    );
+  }
+
+  @Get('admin/profiles')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Admin: List all affiliate profiles' })
+  async getAllProfiles() {
+    return this.affiliatesService.getAllProfilesAdmin();
+  }
+
+  @Get('admin/referrals')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Admin: List all referrals globally' })
+  async getAllReferrals() {
+    return this.affiliatesService.getAllReferralsAdmin();
+  }
+
+  @Get('admin/commissions')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Admin: List all commissions globally' })
+  async getAllCommissions() {
+    return this.affiliatesService.getAllCommissionsAdmin();
+  }
+
+  @Get('admin/fraud')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Admin: List flagged/fraudulent profiles' })
+  async getFraudAlerts() {
+    return this.affiliatesService.getFraudAlerts();
+  }
+
+  @Patch('admin/settings')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Admin: Update global commission rules' })
+  async updateSettings(
+    @Body() data: { directRate: number; indirectRate?: number },
+  ) {
+    return this.affiliatesService.updateCommissionSettings(
+      data.directRate,
+      data.indirectRate,
+    );
+  }
+
+  @Post('admin/profiles/:id/verify-kyc')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Admin: Verify/Reject an affiliate KYC' })
+  async verifyAffiliateKyc(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('status') status: KycStatus,
+  ) {
+    return this.affiliatesService.updateKycStatus(id, status);
+  }
+
+  @Post('admin/profiles/:id/flag')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Admin: Flag/Unflag an affiliate' })
+  async flagAffiliate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('isFlagged') isFlagged: boolean,
+    @Body('reason') reason?: string,
+  ) {
+    return this.affiliatesService.toggleAffiliateFlag(id, isFlagged, reason);
+  }
+
+  // --- Affiliate Agent Proxy Endpoints (Compensation Dashboard) ---
+
+  @Get('agents')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'List agents from affiliate backend' })
+  async listAgents(@Query() query: ListAgentsQueryDto) {
+    const data: unknown = await this.agentsService.listAgents(query);
+    return this.commissionService.enrichAgentsPayload(data);
+  }
+
+  @Get('commission/summary')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Get commission summary across all agents' })
+  async getCommissionSummary() {
+    return this.commissionService.getSummary();
+  }
+
+  @Get('agents/:id')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Get agent detail from affiliate backend' })
+  async getAgentDetail(@Param('id', ParseUUIDPipe) id: string) {
+    return this.agentsService.getAgentDetail(id);
+  }
+
+  @Get('agents/:id/revenue')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Get agent monthly revenue trend' })
+  async getAgentRevenue(@Param('id', ParseUUIDPipe) id: string) {
+    return this.agentsService.getAgentRevenue(id);
+  }
+
+  @Get('agents/:id/commission')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Get an agent commission status and totals' })
+  async getAgentCommission(@Param('id', ParseUUIDPipe) id: string) {
+    return this.commissionService.getCommission(id);
+  }
+
+  @Post('agents/:id/commission/approve')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Approve an agent commission' })
+  async approveAgentCommission(@Param('id', ParseUUIDPipe) id: string) {
+    return this.commissionService.approve(id);
+  }
+
+  @Post('agents/:id/commission/mark-paid')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Mark an agent commission as paid' })
+  async markAgentCommissionPaid(@Param('id', ParseUUIDPipe) id: string) {
+    return this.commissionService.markPaid(id);
+  }
+
+  @Post('agents')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Create a new agent in affiliate backend' })
+  async createAgent(@Body() dto: CreateAgentDto) {
+    return this.agentsService.createAgent(dto);
+  }
+
+  @Patch('agents/:id')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Update an agent in affiliate backend' })
+  async updateAgent(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateAgentDto,
+  ) {
+    return this.agentsService.updateAgent(id, dto);
+  }
+
+  @Delete('agents/:id')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Deactivate an agent in affiliate backend' })
+  async deleteAgent(@Param('id', ParseUUIDPipe) id: string) {
+    return this.agentsService.deleteAgent(id);
+  }
+}

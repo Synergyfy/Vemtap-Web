@@ -1,0 +1,121 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Put,
+  Param,
+  Delete,
+  UseGuards,
+  Query,
+} from '@nestjs/common';
+import { PlansService } from './plans.service';
+import { CreatePlanDto } from './dto/create-plan.dto';
+import { UpdatePlanDto } from './dto/update-plan.dto';
+import { SavePlanPermissionsDto } from './dto/save-plan-permissions.dto';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { UserRole } from '../users/entities/user.entity';
+import { Plan } from './entities/plan.entity';
+import { Public } from '../../common/decorators/public.decorator';
+
+import { ParseUUIDPipe } from '@nestjs/common';
+import { FindPlansQueryDto } from './dto/find-plans-query.dto';
+
+@ApiTags('Plans (Admin Pricing Page)')
+@Controller('plans')
+export class PlansController {
+  constructor(private readonly plansService: PlansService) {}
+
+  @Post('admin')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Create a new pricing plan (Admin only)' })
+  @ApiResponse({
+    status: 201,
+    description: 'Plan successfully created',
+    type: Plan,
+  })
+  create(@Body() createPlanDto: CreatePlanDto) {
+    return this.plansService.create(createPlanDto);
+  }
+
+  @Get()
+  @Public()
+  @ApiOperation({ summary: 'Get all pricing plans' })
+  @ApiResponse({ status: 200, description: 'Return all plans', type: [Plan] })
+  findAll(@Query() query: FindPlansQueryDto) {
+    const isOnlyActive = query.onlyActive ?? false;
+    return this.plansService.findAll(isOnlyActive);
+  }
+
+  @Get(':id')
+  @Public()
+  @ApiOperation({ summary: 'Get a pricing plan by ID' })
+  @ApiResponse({ status: 200, description: 'Return plan details', type: Plan })
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
+    return this.plansService.findOne(id);
+  }
+
+  @Patch('admin/:id')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Update an existing pricing plan (Admin only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Plan successfully updated',
+    type: Plan,
+  })
+  update(@Param('id') id: string, @Body() updatePlanDto: UpdatePlanDto) {
+    return this.plansService.update(id, updatePlanDto);
+  }
+
+  @Get('admin/:id/permissions')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Get plan feature permissions (Admin only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Plan permissions retrieved',
+  })
+  getPermissions(@Param('id') id: string) {
+    return this.plansService.getPermissions(id);
+  }
+
+  @Put('admin/:id/permissions')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Save plan feature permissions (Admin only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Permissions saved successfully',
+  })
+  updatePermissions(
+    @Param('id') id: string,
+    @Body() dto: SavePlanPermissionsDto,
+  ) {
+    return this.plansService.updatePermissions(id, dto);
+  }
+
+  @Delete('admin/:id')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Delete a pricing plan (Admin only)' })
+  @ApiResponse({ status: 200, description: 'Plan successfully deleted' })
+  remove(@Param('id') id: string) {
+    return this.plansService.remove(id);
+  }
+}
