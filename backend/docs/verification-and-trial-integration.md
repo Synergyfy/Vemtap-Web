@@ -83,16 +83,13 @@ Response: `{ sessionId, status: "pending" | "passed" | "failed" | "expired", usa
 {
   "idType": "nin",
   "idNumber": "12345678901",
-  "firstName": "Adaeze",
-  "lastName": "Okafor",
-  "dob": "1990-01-15",
   "livenessSessionId": "liv_…",
   "documentUrl": "https://res.cloudinary.com/…"
 }
 ```
 - `idNumber` is required except for passports.
 - `documentUrl` is **required for passports**. Upload the data-page photo first with `POST /uploads` (`folderOverride: vemtap/verification/<businessId>`); other hosts are rejected.
-- Names are those on the ID. The backend compares the registry's names with the **account** name (first and last, any order, middle names ignored).
+- `firstName` / `lastName` are optional. The backend uses the submitted name, falling back to the account name, for the registry comparison (first and last, any order, middle names ignored). Date of birth is not collected or sent.
 
 Response: the check (same shape as `identity` above). Errors: `400` validation · `400 The selfie check has expired or was already used. Please take it again.` · `429` too many attempts · `503` registry down, or bytID not configured / temporarily unavailable.
 
@@ -124,7 +121,7 @@ Body: `{ "checkId": "…", "note": "My NIN has my maiden name" }`. `checkId` def
 
 Without `BYTID_API_KEY`, identity and CAC checks return 503 `Identity verification is not configured`.
 
-**Sandbox numbers** (last two digits pick the result): `…00` not found, `…99` registry outage, `…98` face mismatch (→ review), anything else verified as "ADAEZE TEST OKAFOR". To pass the name match in sandbox, the test account must be named **Adaeze Okafor**. bytID can mark a sandbox selfie passed without a camera: `POST /liveness/sessions/{id}/simulate` with `{ "outcome": "passed" }`, called with the sandbox key.
+**Sandbox numbers** (last two digits pick the result): `…00` not found, `…99` registry outage, `…98` face mismatch (→ review), anything else verified as "ADAEZE TEST OKAFOR". With a `uvk_test_…` key the backend supplies that fixed test record's name for bytID's field comparison, so the account holder's real name is not compared against synthetic sandbox data. Results are labelled `environment: "test"` and must never be presented as live verification. bytID can mark a sandbox selfie passed without a camera: `POST /liveness/sessions/{id}/simulate` with `{ "outcome": "passed" }`, called with the sandbox key.
 
 The old Dojah endpoints `POST /verification/nin` and `/verification/cac` are removed.
 

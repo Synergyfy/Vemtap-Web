@@ -26,6 +26,22 @@ export function useSponsoredCampaigns() {
   });
 }
 
+/**
+ * Boosts only. Cluster screens need the live boost count and which items are
+ * already boosted; fetching promotions there doubled the requests on a page
+ * that is already sensitive to API throttling.
+ */
+export function useBoostList() {
+  return useQuery({
+    queryKey: [...sponsoredKeys.all, 'boosts'],
+    queryFn: async (): Promise<KindedCampaign[]> => {
+      const rows = await sponsoredCampaignsService.list('boost');
+      return rows.map((row) => ({ ...row, kind: 'boost' as const }));
+    },
+    enabled: hasApiConfig(),
+  });
+}
+
 /** Boost and promotion summaries added together. */
 export function useSponsoredSummary() {
   return useQuery({

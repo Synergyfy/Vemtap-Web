@@ -2,14 +2,15 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { DealSourceContext } from '../hooks/business/useDealStudioLive';
 import { hasApiConfig } from '../services/api/client';
 import { useLiveDealPublish } from '../hooks/business/useLiveDealPublish';
+import { firstUsableItemImage } from './catalogueLive';
 import { toPrice, type CatalogueItem } from '../services/catalogueItemsService';
 import { INITIAL_DEAL_STUDIO_DRAFT, LIVE_DEAL_STUDIO_DRAFT, type DealStudioDraft } from './dealStudio';
 import { INITIAL_PRODUCT_DRAFT, type ProductDraft } from './productDraft';
-import { DealPriceChoiceModal } from './deals/DealPriceChoiceModal';
-import { dealPriceChoiceFor, withDealPriceChoice, type DealPriceChoice } from './deals/dealStudioShared';
+import { withSelectedProducts, type DealPriceChoice } from './deals/dealStudioShared';
 import { BusinessDealStudioStep1Screen } from './BusinessDealStudioStep1Screen';
 import { BusinessDealStudioStep2Screen } from './BusinessDealStudioStep2Screen';
 import { BusinessDealStudioStep3Screen } from './BusinessDealStudioStep3Screen';
+import { BusinessDealGalleryScreen } from './BusinessDealGalleryScreen';
 import { BusinessDealStudioStep4Screen } from './BusinessDealStudioStep4Screen';
 
 interface BusinessDealStudioFlowProps {
@@ -17,31 +18,26 @@ interface BusinessDealStudioFlowProps {
   initialDraft?: ProductDraft;
   /** Seed studio configuration (defaults to a fresh draft). */
   initialStudio?: DealStudioDraft;
-  /** Live: the real catalogue item this deal is for (from the item's "Make deal"). */
+  /** Live: the real catalogue item preselected by "Make a Deal". */
   sourceItem?: CatalogueItem | null;
-  /** Set when the caller already showed the price-choice dialog after publishing. */
+  /** Kept for callers restoring an older deal; the wizard always starts type-first. */
   priceChoice?: DealPriceChoice;
   onExit: () => void;
   onComplete: () => void;
 }
 
 /**
- * Self-contained mobile Deal Studio (steps 1–4).
- *
- * Used by the business dashboard's "Create Deal" so the dashboard runs the
- * exact same flow as the onboarding wizard: deal type → per-type config →
- * limits & claim restrictions → branches & schedule → review & publish.
+ * Self-contained mobile Deal Studio (steps 1–5): deal structure and live
+ * products → offer setup → deal information → deal gallery → preview/publish.
  * Mirrors `DesktopDealStudioFlow`; do not fork a second implementation.
  */
 export function BusinessDealStudioFlow({
   initialDraft,
   initialStudio,
   sourceItem = null,
-  priceChoice,
   onExit,
   onComplete,
 }: BusinessDealStudioFlowProps) {
-  // Live: the deal is built on the chosen catalogue item and published to the API.
   const liveDeal = useLiveDealPublish(onComplete, sourceItem, (patch) => setStudio((previous) => ({ ...previous, ...patch })));
   const [draft] = useState<ProductDraft>(() =>
     sourceItem
@@ -51,10 +47,8 @@ export function BusinessDealStudioFlow({
           description: sourceItem.description ?? '',
           basePrice: String(toPrice(sourceItem.price ?? undefined) ?? ''),
           comparePrice: String(toPrice(sourceItem.compareAtPrice ?? undefined) ?? ''),
-          // The sample product's variants and photo don't belong to this item.
           variantsEnabled: false,
           variants: [],
-          mainImage: sourceItem.mainImage ?? undefined,
           sku: sourceItem.sku ?? '',
           skuCode: sourceItem.sku ?? '',
         }
@@ -65,40 +59,26 @@ export function BusinessDealStudioFlow({
     const timer = window.setTimeout(liveDeal.clearError, 4000);
     return () => window.clearTimeout(timer);
   }, [liveDeal.error]);
-  const [studio, setStudio] = useState<DealStudioDraft>(() =>
-    priceChoice
-      ? withDealPriceChoice(
-          initialStudio ?? (hasApiConfig() ? LIVE_DEAL_STUDIO_DRAFT : INITIAL_DEAL_STUDIO_DRAFT),
-          priceChoice,
-        )
-      : initialStudio ?? (hasApiConfig() ? LIVE_DEAL_STUDIO_DRAFT : INITIAL_DEAL_STUDIO_DRAFT),
-  );
-  const [choice, setChoice] = useState<DealPriceChoice | null>(() => priceChoice ?? dealPriceChoiceFor(studio));
-  const [step, setStep] = useState(() =>
-    hasApiConfig() && sourceItem && !priceChoice && studio.strategy !== 'current' ? 0 : 1,
-  );
-  // The steps read the deal's item (branches it's sold at, bundle partners) from here.
-  const wrap = (node: ReactNode) => <DealSourceContext.Provider value={liveDeal.source}>{node}</DealSourceContext.Provider>;
 
-  const handleStudioChange = (patch: Partial<DealStudioDraft>) =>
-    setStudio((previous) => ({ ...previous, ...patch }));
-
-  const handleChoosePrice = (next: DealPriceChoice) => {
-    setChoice(next);
-    setStudio((previous) => withDealPriceChoice(previous, next));
-    setStep(next === 'current' ? 2 : 1);
-  };
-
-  if (step === 0)
-    return wrap(
-      <DealPriceChoiceModal
-        open
-        itemName={draft.title}
-        priceLabel={draft.basePrice ? draft.basePrice.replace(/[^0-9]/g, '') : undefined}
-        onClose={onExit}
-        onChoose={handleChoosePrice}
-      />,
+  const [studio, setStudio] = useState<DealStudioDraft>(() => {
+    const base = initialStudio ?? (hasApiConfig() ? LIVE_DEAL_STUDIO_DRAFT : INITIAL_DEAL_STUDIO_DRAFT);
+    if (!sourceItem) return base;
+    return withSelectedProducts(
+      { ...base, title: sourceItem.name },
+      [sourceItem.id],
+      [
+        {
+          id: sourceItem.id,
+          name: sourceItem.name,
+          price: toPrice(sourceItem.price ?? undefined) ?? 0,
+          image: firstUsableItemImage(sourceItem),
+        },
+      ],
     );
+  });
+  const [step, setStep] = useState(1);
+  const wrap = (node: ReactNode) => <DealSourceContext.Provider value={liveDeal.source}>{node}</DealSourceContext.Provider>;
+  const handleStudioChange = (patch: Partial<DealStudioDraft>) => setStudio((previous) => ({ ...previous, ...patch }));
 
   if (step === 1)
     return wrap(
@@ -109,7 +89,7 @@ export function BusinessDealStudioFlow({
         onBack={onExit}
         onNext={() => setStep(2)}
         onSaveDraft={onExit}
-      />
+      />,
     );
 
   if (step === 2)
@@ -118,10 +98,10 @@ export function BusinessDealStudioFlow({
         draft={draft}
         studio={studio}
         onStudioChange={handleStudioChange}
-        onBack={() => setStep(choice === 'current' ? 0 : 1)}
+        onBack={() => setStep(1)}
         onNext={() => setStep(3)}
         onSaveDraft={onExit}
-      />
+      />,
     );
 
   if (step === 3)
@@ -133,7 +113,19 @@ export function BusinessDealStudioFlow({
         onBack={() => setStep(2)}
         onNext={() => setStep(4)}
         onSaveDraft={onExit}
-      />
+      />,
+    );
+
+  if (step === 4)
+    return wrap(
+      <BusinessDealGalleryScreen
+        draft={draft}
+        studio={studio}
+        onStudioChange={handleStudioChange}
+        onBack={() => setStep(3)}
+        onNext={() => setStep(5)}
+        onSaveDraft={onExit}
+      />,
     );
 
   return wrap(
@@ -141,19 +133,20 @@ export function BusinessDealStudioFlow({
       <BusinessDealStudioStep4Screen
         draft={draft}
         studio={studio}
-        onBack={() => setStep(3)}
-        onEditOffer={() => setStep(choice === 'current' ? 0 : 1)}
-        onEditRules={() => setStep(2)}
+        onBack={() => setStep(4)}
+        onEditOffer={() => setStep(2)}
+        onEditRules={() => setStep(3)}
+        onEditGallery={() => setStep(4)}
         onEditLocations={() => setStep(3)}
         onPublish={onComplete}
         livePublish={liveDeal.live ? () => liveDeal.publishAsync(studio) : undefined}
         onSaveDraft={onExit}
       />
       {liveDeal.error && (
-        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface px-4 py-2.5 text-label-md font-medium text-inverse-on-surface shadow-lg">
           {liveDeal.error}
         </div>
       )}
-    </>
+    </>,
   );
 }

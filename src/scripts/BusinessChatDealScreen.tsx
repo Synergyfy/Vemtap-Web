@@ -9,6 +9,7 @@ import {
 import { BusinessChatHeader } from './BusinessChatHeader';
 import { statusLabel, useChatCustomer, useLiveChat } from './messagesLive';
 import { NO_IMAGE } from './posLive';
+import { safeDealImageUrl } from '../utils/dealImages';
 import { DEFAULT_CHAT_CONTACTS, contactFirstName, type BusinessChatContact } from './messagesContact';
 
 interface BusinessChatDealScreenProps {
@@ -175,7 +176,7 @@ export function BusinessChatDealScreen({ onBack, contact }: BusinessChatDealScre
                 <img
                   alt={live ? (claim?.offer?.name ?? 'Deal') : DEAL_ALT}
                   className="w-full h-full object-cover"
-                  src={live ? (claim?.offer?.mainImage || NO_IMAGE) : DEAL_IMG}
+                  src={live ? (safeDealImageUrl(claim?.offer?.mainImage) ?? NO_IMAGE) : DEAL_IMG}
                 />
               </div>
               <div className="flex flex-col min-w-0 flex-1">

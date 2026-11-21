@@ -64,6 +64,36 @@ describe('BytidClient', () => {
     });
   });
 
+  it('uses the record-only BVN endpoint with no selfie', async () => {
+    http.post.mockResolvedValue({
+      data: { success: true, data: { id: 'chk_bvn', status: 'verified' } },
+    });
+    const client = new BytidClient(config());
+    await client.verifyIdentity('bvn', {
+      reference: 'ver_bvn',
+      id_number: '22212345678',
+      first_name: 'Adaeze',
+      last_name: 'Okafor',
+    });
+    expect(http.post).toHaveBeenCalledWith('/identity/bvn', {
+      reference: 'ver_bvn',
+      id_number: '22212345678',
+      first_name: 'Adaeze',
+      last_name: 'Okafor',
+    });
+  });
+
+  it('fetches a full check by provider id', async () => {
+    http.get.mockResolvedValue({
+      data: { success: true, data: { id: 'chk_1', status: 'verified' } },
+    });
+    const client = new BytidClient(config());
+    await expect(client.getVerification('chk 1')).resolves.toMatchObject({
+      id: 'chk_1',
+    });
+    expect(http.get).toHaveBeenCalledWith('/verifications/chk%201');
+  });
+
   it('retries a 500 with the same reference', async () => {
     http.post
       .mockRejectedValueOnce(bytidError(500, 'internal_error'))
@@ -111,6 +141,11 @@ describe('BytidClient', () => {
     await expect(
       client.lookupCac({ reference: 'r', id_number: 'RC1' }),
     ).rejects.toThrow(/selfie check has expired/);
+  });
+
+  it('recognises the sandbox key so the service can use sandbox test data', () => {
+    expect(new BytidClient(config()).sandbox).toBe(true);
+    expect(new BytidClient(config('uvk_live_123')).sandbox).toBe(false);
   });
 
   it('refuses to call bytID without a key', async () => {

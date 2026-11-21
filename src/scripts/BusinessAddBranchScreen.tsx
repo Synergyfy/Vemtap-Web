@@ -15,6 +15,8 @@ import { UserAvatar } from '../components/ui/UserAvatar';
 
 import { formatNaira, getLocationPricing } from './locationPricing';
 import { useBusinessOfferings, type OfferingsState } from '../context/BusinessOfferingsContext';
+import { useLocationAccess } from '../hooks/business/useSubscription';
+import { purchaseTermLabel } from './locationAccessUi';
 import { STAFF_PAGE_DEFAULTS, toApiPermissions } from './teamLive';
 
 interface BusinessAddBranchScreenProps {
@@ -74,6 +76,8 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
   const [status, setStatus] = useState<SaveStatus>('idle');
   // Live: the form creates a real branch (and invites its lead when access is granted).
   const live = hasApiConfig();
+  const accessQuery = useLocationAccess();
+  const access = live ? accessQuery.data ?? null : null;
   const sample = (value: string) => (live ? '' : value);
   const { create, update } = useBranchMutations();
   const { invite } = useTeamMutations();
@@ -639,7 +643,13 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
               )}
             </button>
             <p className="font-caption text-caption text-text-secondary text-center leading-relaxed px-space-md">
-              Each additional location costs {formatNaira(getLocationPricing().pricePerAdditionalLocation)} under our pricing model (one-time fee). Enabling services later does not incur another location fee.
+              {live
+                ? access
+                  ? access.purchaseOption.available
+                    ? purchaseTermLabel(access.purchaseOption)
+                    : `This location uses your plan allowance (${access.usage.total} of ${access.allowance.total} used).`
+                  : 'Location allowance is loading from your plan configuration.'
+                : `Each additional location costs ${formatNaira(getLocationPricing().pricePerAdditionalLocation)} under our pricing model (one-time fee). Enabling services later does not incur another location fee.`}
             </p>
             <button
               className="w-full h-[44px] flex items-center justify-center text-text-secondary hover:text-text-primary font-button-secondary text-button-secondary active:opacity-75 transition-opacity"

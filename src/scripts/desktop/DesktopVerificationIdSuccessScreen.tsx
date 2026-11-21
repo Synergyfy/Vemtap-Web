@@ -1,4 +1,5 @@
 import { Icon } from '../../components/ui/Icon';
+import type { VerificationCheck } from '../../services/verificationService';
 import { BusinessVerificationChrome } from './BusinessVerificationChrome';
 import { printKvTable, printReport } from '../../utils/printReport';
 
@@ -8,6 +9,7 @@ interface DesktopVerificationIdSuccessScreenProps {
   legalName: string;
   documentLabel: string;
   reference: string;
+  check?: VerificationCheck;
   onBrand?: () => void;
 }
 
@@ -17,11 +19,13 @@ export function DesktopVerificationIdSuccessScreen({
   legalName,
   documentLabel,
   reference,
+  check,
   onBrand,
 }: DesktopVerificationIdSuccessScreenProps) {
-  const now = new Date();
-  const verifiedDate = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  const verifiedTime = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const sandbox = check?.environment === 'test';
+  const checkedAt = check?.createdAt ? new Date(check.createdAt) : new Date();
+  const verifiedDate = checkedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const verifiedTime = checkedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   const initials = legalName
     .split(' ')
     .map((part) => part[0])
@@ -38,12 +42,12 @@ export function DesktopVerificationIdSuccessScreen({
               <Icon name="check" className="text-[14px]" />
             </span>
             <span className="font-label-md text-label-md text-badge-discount-text font-semibold tracking-wide">
-              Identity Verification Complete • Step 1 Passed
+              {sandbox ? 'Sandbox Identity Check Complete' : 'Identity Verification Complete • Step 1 Passed'}
             </span>
           </div>
           <div className="flex items-center gap-space-xs text-text-secondary font-caption text-caption">
             <Icon name="lock" className="text-[15px] text-badge-discount-text" />
-            <span>256-Bit Vault Enclave • NIMC Validated</span>
+            <span>Encrypted verification request</span>
           </div>
         </div>
       </div>
@@ -60,17 +64,20 @@ export function DesktopVerificationIdSuccessScreen({
             <div className="flex flex-col gap-space-2xs">
               <div className="flex items-center gap-space-xs flex-wrap">
                 <span className="font-caption text-caption uppercase tracking-wider text-primary font-semibold">
-                  Stage 1 of 3 Verified
+                  Stage 1 of 3 {sandbox ? 'Checked' : 'Verified'}
                 </span>
                 <span className="text-outline-variant">•</span>
                 <span className="font-caption text-caption text-badge-discount-text font-medium flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text inline-block" /> Level 2 Clearance
+                  <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text inline-block" /> {sandbox ? 'Sandbox result' : 'Verified result'}
                 </span>
               </div>
-              <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">Identity verified</h1>
+              <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
+                {sandbox ? 'Sandbox identity check complete' : 'Identity verified'}
+              </h1>
               <p className="font-body-md text-body-md text-text-secondary max-w-2xl">
-                Your personal identity has been successfully validated against national identity registries. You are
-                ready to configure merchant ownership and linked store locations.
+                {sandbox
+                  ? 'This check ran in the sandbox. It is not live verification and must not be used as proof of a verified customer.'
+                  : `Your ${documentLabel.toLowerCase()} check passed. You can continue with your business registration.`}
               </p>
             </div>
           </div>
@@ -92,10 +99,12 @@ export function DesktopVerificationIdSuccessScreen({
               <div className="flex items-center justify-between pb-space-xs">
                 <div className="flex items-center gap-space-xs">
                   <Icon name="badge" className="text-primary text-[22px]" />
-                  <h2 className="font-heading-sm text-heading-sm text-text-primary">Verified Identity Dossier</h2>
+                  <h2 className="font-heading-sm text-heading-sm text-text-primary">
+                    {sandbox ? 'Sandbox Identity Check' : 'Identity Dossier'}
+                  </h2>
                 </div>
                 <span className="inline-flex items-center gap-1 px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-caption font-semibold">
-                  <Icon name="check_circle" className="text-[13px]" /> Verified
+                  <Icon name="check_circle" className="text-[13px]" /> {sandbox ? 'Sandbox' : 'Verified'}
                 </span>
               </div>
               <div className="flex items-center gap-space-md p-space-md rounded-lg bg-surface-subtle">
@@ -103,10 +112,10 @@ export function DesktopVerificationIdSuccessScreen({
                   {initials}
                 </div>
                 <div className="flex flex-col min-w-0">
-                  <span className="font-caption text-caption text-text-secondary">Verified Person</span>
+                  <span className="font-caption text-caption text-text-secondary">Account Holder</span>
                   <span className="font-heading-sm text-heading-sm text-text-primary truncate">{legalName}</span>
                   <span className="font-caption text-caption text-text-tertiary">
-                    Natural Person ID Entity • Resident Profile
+                    {sandbox ? 'Sandbox check result' : 'Verification check result'}
                   </span>
                 </div>
               </div>
@@ -116,7 +125,7 @@ export function DesktopVerificationIdSuccessScreen({
                   <span className="font-label-md text-label-md text-text-primary font-semibold mt-0.5">
                     {documentLabel}
                   </span>
-                  <span className="font-caption text-caption text-text-tertiary mt-1">Federal Republic of Nigeria</span>
+                  <span className="font-caption text-caption text-text-tertiary mt-1">As supplied by you</span>
                 </div>
                 <div className="flex flex-col p-space-md rounded-lg bg-surface-container-low">
                   <span className="font-caption text-caption text-text-secondary">Document Reference</span>
@@ -124,22 +133,21 @@ export function DesktopVerificationIdSuccessScreen({
                     <span className="font-label-md text-label-md text-text-primary font-semibold tracking-widest">
                       {reference}
                     </span>
-                    <Icon name="verified" className="text-[16px] text-badge-discount-text" />
                   </div>
-                  <span className="font-caption text-caption text-text-tertiary mt-1">Masked for NDPR safety</span>
+                  <span className="font-caption text-caption text-text-tertiary mt-1">Masked credential reference</span>
                 </div>
                 <div className="flex flex-col p-space-md rounded-lg bg-surface-container-low">
                   <span className="font-caption text-caption text-text-secondary">Timestamp</span>
                   <span className="font-label-sm text-label-sm text-text-primary font-medium mt-0.5">{verifiedDate}</span>
-                  <span className="font-caption text-caption text-text-tertiary mt-0.5">{verifiedTime} WAT (UTC+1)</span>
+                  <span className="font-caption text-caption text-text-tertiary mt-0.5">{verifiedTime}</span>
                 </div>
                 <div className="flex flex-col p-space-md rounded-lg bg-surface-container-low">
-                  <span className="font-caption text-caption text-text-secondary">Validation Engine</span>
+                  <span className="font-caption text-caption text-text-secondary">Check Environment</span>
                   <span className="font-label-sm text-label-sm text-text-primary font-medium mt-0.5">
-                    NIMC Direct Link
+                    {sandbox ? 'Sandbox' : check?.environment === 'live' ? 'Live' : 'Demo'}
                   </span>
-                  <span className="font-caption text-caption text-badge-discount-text font-medium mt-0.5">
-                    Response Code: 200 OK
+                  <span className="font-caption text-caption text-text-tertiary mt-0.5">
+                    {sandbox ? 'Not a live verification' : 'Stored with audit reference'}
                   </span>
                 </div>
               </div>
@@ -147,25 +155,26 @@ export function DesktopVerificationIdSuccessScreen({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-space-xs">
                     <Icon name="key" className="text-primary-fixed-dim text-[18px]" />
-                    <span className="font-caption text-caption font-semibold tracking-wider text-surface-variant uppercase">
-                      Cryptographic Signature
+                    <span className="font-caption text-caption font-semibold tracking-wider text-inverse-on-surface uppercase">
+                      Audit Reference
                     </span>
                   </div>
-                  <span className="font-caption text-caption text-surface-tint-blue font-mono bg-on-primary-fixed px-space-xs py-space-2xs rounded">
-                    NDPR-SIG
+                  <span className="font-caption text-caption text-primary-fixed font-mono bg-surface-container-high px-space-xs py-space-2xs rounded">
+                    {sandbox ? 'SANDBOX' : 'CHECK'}
                   </span>
                 </div>
                 <div className="font-mono text-label-sm text-inverse-on-surface break-all select-all bg-inverse-surface p-space-xs rounded">
-                  VT-NIN-984210-OK-8fa93c2004d41e7be84a0c8121f00cb76d8
+                  {check?.id ?? reference}
                 </div>
-                <span className="text-surface-dim font-caption text-caption">SHA-256 Hash Authenticated</span>
+                <span className="text-inverse-on-surface font-caption text-caption">
+                  Keep this reference if you need support.
+                </span>
               </div>
             </div>
             <div className="flex items-center gap-space-md p-space-md rounded-xl bg-surface-tint-blue text-primary">
               <Icon name="shield_lock" className="text-[24px] text-primary shrink-0" />
               <p className="font-label-sm text-label-sm text-on-secondary-container">
-                Your biometric records are purged upon verification validation. Only the zero-knowledge verification
-                hash remains retained to secure your business account.
+                Results are stored with a masked identifier. VEMTAP does not keep your unmasked ID number in the app.
               </p>
             </div>
           </div>
@@ -194,21 +203,21 @@ export function DesktopVerificationIdSuccessScreen({
               </p>
               <div className="flex flex-col gap-space-sm">
                 <span className="font-label-sm text-label-sm text-text-primary font-semibold">
-                  Unlocked Merchant Privileges:
+                  What verification enables:
                 </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-sm">
                   {[
                     {
                       icon: 'verified_user',
                       iconClass: 'text-badge-discount-text',
-                      title: 'Verified Operator Badge',
-                      body: 'Surfaces trust badges across user search feeds.',
+                      title: 'Operator Record',
+                      body: 'Your identity check is recorded against your account.',
                     },
                     {
                       icon: 'pin_drop',
                       iconClass: 'text-primary',
-                      title: 'Abuja Outlets Enabled',
-                      body: 'Link up to 5 branch storefronts immediately.',
+                      title: 'Business Locations',
+                      body: 'Add branch storefronts from your dashboard.',
                     },
                     {
                       icon: 'bolt',
@@ -219,8 +228,8 @@ export function DesktopVerificationIdSuccessScreen({
                     {
                       icon: 'account_balance_wallet',
                       iconClass: 'text-badge-discount-text',
-                      title: 'Direct NGN Settlement',
-                      body: 'Automated same-day deposits into your linked bank.',
+                      title: 'Payments',
+                      body: 'Accept payments through your own payment account.',
                     },
                   ].map((perk) => (
                     <div
@@ -259,10 +268,10 @@ export function DesktopVerificationIdSuccessScreen({
                 <Icon name="policy" className="text-on-surface-variant text-[20px] shrink-0" />
                 <div className="flex flex-col min-w-0">
                   <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                    NDPR Security Guarantee
+                    Data protection
                   </span>
                   <span className="font-caption text-caption text-text-secondary">
-                    Compliant with Nigeria Data Protection Regulation 2023.
+                    Your details are handled in line with applicable data protection rules.
                   </span>
                 </div>
               </div>
@@ -279,9 +288,9 @@ export function DesktopVerificationIdSuccessScreen({
               <Icon name="download_done" className="text-[20px]" />
             </div>
             <div className="flex flex-col">
-              <span className="font-label-md text-label-md text-text-primary font-semibold">Stage 1 Receipt Ready</span>
+              <span className="font-label-md text-label-md text-text-primary font-semibold">Check receipt ready</span>
               <span className="font-caption text-caption text-text-secondary">
-                Official verification certificate signed with cryptographic timestamp.
+                A receipt of this check with its masked reference and recorded timestamp.
               </span>
             </div>
           </div>
@@ -291,15 +300,15 @@ export function DesktopVerificationIdSuccessScreen({
               type="button"
               onClick={() =>
                 printReport(
-                  'VEMTAP Identity Verification Receipt',
-                  `${printKvTable('Verified business', [
+                  `${sandbox ? 'VEMTAP Sandbox Identity Check Receipt' : 'VEMTAP Identity Check Receipt'}`,
+                  `${printKvTable('Verification check', [
                     ['Legal name', legalName],
                     ['Document', documentLabel],
                     ['Reference', reference],
-                    ['Verified', `${verifiedDate} at ${verifiedTime}`],
-                    ['Validation', 'NIMC Validated • 256-Bit Vault Enclave'],
+                    [sandbox ? 'Checked' : 'Verified', `${verifiedDate} at ${verifiedTime}`],
+                    ['Result', sandbox ? 'Sandbox check — not live verification' : 'Verification check result'],
                   ])}
-                   <p class="foot">This receipt confirms identity verification only. It is not a tax or incorporation document.</p>`,
+                   <p class="foot">This receipt confirms a verification check only. It is not a tax or incorporation document.</p>`,
                 )
               }
             >

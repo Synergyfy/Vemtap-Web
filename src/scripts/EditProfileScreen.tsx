@@ -174,7 +174,7 @@ export function EditProfileScreen({ onBack }: EditProfileScreenProps) {
               <div className="flex flex-col min-w-0">
                 <div className="flex items-center gap-space-2xs truncate">
                   <span className="font-heading-sm text-label-md text-text-primary truncate">
-                    {account.emailVerified ? 'Verified Consumer' : 'Consumer'}
+                    {account.emailVerified ? 'Verified Customer' : 'Customer'}
                   </span>
                   {account.emailVerified && (
                     <Icon name="check_circle" className="text-[16px] text-badge-discount-text shrink-0" filled />

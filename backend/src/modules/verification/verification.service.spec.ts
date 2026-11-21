@@ -95,6 +95,7 @@ describe('VerificationService', () => {
     };
     userRepo = { findOne: jest.fn(async () => owner) };
     bytid = {
+      sandbox: false,
       createLivenessSession: jest.fn(async (reference: string) => ({
         id: 'sess-1',
         reference,
@@ -106,7 +107,9 @@ describe('VerificationService', () => {
       verifyDocument: jest.fn(),
       lookupCac: jest.fn(async () => cacResult()),
       getDocumentCheck: jest.fn(),
-      findByReference: jest.fn(),
+      // Null by default: confirm falls back to the reference-based lookup.
+      getVerification: jest.fn(async () => null),
+      findByReference: jest.fn(async () => cacResult()),
     };
     notifications = { create: jest.fn(), sendNotification: jest.fn() };
     config = {};
@@ -293,8 +296,150 @@ describe('VerificationService', () => {
     });
   });
 
+  describe('sandbox outcomes', () => {
+    it('looks up a BVN without a selfie, date of birth or labelled mismatch', async () => {
+      bytid.sandbox = true;
+      bytid.verifyIdentity.mockResolvedValueOnce(
+        ninResult({
+          environment: 'test',
+          service: 'bvn',
+          face_match: null,
+          field_matches: {
+            first_name: true,
+            last_name: true,
+            date_of_birth: false,
+          },
+        }),
+      );
+      const result = await service.verifyIdentity('b1', 'owner-1', {
+        idType: 'bvn',
+        idNumber: '22212345678',
+      });
+      expect(result).toMatchObject({
+        status: 'verified',
+        environment: 'test',
+        reasons: [],
+      });
+      expect(bytid.verifyIdentity).toHaveBeenCalledWith(
+        'bvn',
+        expect.objectContaining({
+          id_number: '22212345678',
+          first_name: 'Adaeze',
+          last_name: 'Okafor',
+        }),
+      );
+      expect(bytid.verifyIdentity.mock.calls[0][1]).not.toHaveProperty('dob');
+      expect(bytid.verifyIdentity.mock.calls[0][1]).not.toHaveProperty(
+        'liveness_session_id',
+      );
+    });
+
+    it('uses the sandbox test record when the account name is different', async () => {
+      bytid.sandbox = true;
+      userRepo.findOne.mockResolvedValueOnce({
+        id: 'owner-1',
+        firstName: 'Tunde',
+        lastName: 'Bello',
+      });
+      const result = await service.verifyIdentity('b1', 'owner-1', nin);
+      expect(result).toMatchObject({
+        status: 'verified',
+        reasons: [],
+      });
+      expect(bytid.verifyIdentity).toHaveBeenCalledWith(
+        'nin',
+        expect.objectContaining({
+          first_name: 'Adaeze',
+          last_name: 'Okafor',
+        }),
+      );
+    });
+
+    it('uses the account name in live mode and sends a different registry name to review', async () => {
+      bytid.sandbox = false;
+      userRepo.findOne.mockResolvedValueOnce({
+        id: 'owner-1',
+        firstName: 'Tunde',
+        lastName: 'Bello',
+      });
+      bytid.verifyIdentity.mockResolvedValueOnce(
+        ninResult({ environment: 'live' }),
+      );
+      const result = await service.verifyIdentity('b1', 'owner-1', nin);
+      expect(result).toMatchObject({
+        status: 'needs_review',
+        reasons: ['name_mismatch'],
+        environment: 'live',
+      });
+      expect(bytid.verifyIdentity).toHaveBeenCalledWith(
+        'nin',
+        expect.objectContaining({
+          first_name: 'Tunde',
+          last_name: 'Bello',
+        }),
+      );
+    });
+
+    it('sends a not-found lookup and mismatched supplied fields to the right outcome', async () => {
+      bytid.verifyIdentity.mockResolvedValueOnce(
+        ninResult({ status: 'not_found', data: null, environment: 'test' }),
+      );
+      await expect(
+        service.verifyIdentity('b1', 'owner-1', nin),
+      ).resolves.toMatchObject({
+        status: 'failed',
+        reasons: ['id_not_found'],
+        environment: 'test',
+      });
+
+      bytid.verifyIdentity.mockResolvedValueOnce(
+        ninResult({
+          field_matches: {
+            first_name: true,
+            last_name: false,
+            date_of_birth: null,
+          },
+          environment: 'test',
+        }),
+      );
+      await expect(
+        service.verifyIdentity('b1', 'owner-1', nin),
+      ).resolves.toMatchObject({
+        status: 'needs_review',
+        reasons: ['details_mismatch'],
+      });
+    });
+
+    it('sends a failed CAC lookup and a failed face match to the right outcome', async () => {
+      bytid.lookupCac.mockResolvedValueOnce(
+        cacResult({ status: 'not_found', data: null, environment: 'test' }),
+      );
+      await expect(
+        service.verifyBusiness('b1', 'owner-1', {
+          registrationNumber: 'RC00000000',
+        }),
+      ).resolves.toMatchObject({
+        status: 'failed',
+        reasons: ['cac_not_found'],
+      });
+
+      bytid.verifyIdentity.mockResolvedValueOnce(
+        ninResult({
+          face_match: { status: 'not_matched', score: 12, liveness: 'passed' },
+          environment: 'test',
+        }),
+      );
+      await expect(
+        service.verifyIdentity('b1', 'owner-1', nin),
+      ).resolves.toMatchObject({
+        status: 'needs_review',
+        reasons: ['face_not_matched'],
+      });
+    });
+  });
+
   describe('business', () => {
-    it('verifies a matching CAC record and, with identity passed, the whole business', async () => {
+    it('verifies the whole business only after identity, CAC and ownership pass', async () => {
       await service.verifyIdentity('b1', 'owner-1', nin);
       const result = await service.verifyBusiness('b1', 'owner-1', {
         registrationNumber: 'rc 123-4567',
@@ -304,6 +449,15 @@ describe('VerificationService', () => {
         expect.objectContaining({ id_number: 'RC1234567' }),
       );
       expect(result.status).toBe('verified');
+      expect(business).toMatchObject({
+        verificationStatus: BusinessVerificationStatus.IN_PROGRESS,
+      });
+      const representative = await service.verifyRepresentative(
+        'b1',
+        'owner-1',
+        { representativeName: 'Adaeze Okafor' },
+      );
+      expect(representative).toMatchObject({ status: 'verified' });
       expect(business).toMatchObject({
         verificationStatus: BusinessVerificationStatus.VERIFIED,
         isVerified: true,
@@ -319,7 +473,7 @@ describe('VerificationService', () => {
       );
     });
 
-    it('sends a different business, an unlisted owner or an inactive company to review', async () => {
+    it('sends a different business or an inactive company to review', async () => {
       bytid.lookupCac.mockResolvedValueOnce(
         cacResult({
           data: {
@@ -333,15 +487,11 @@ describe('VerificationService', () => {
         service.verifyBusiness('b1', 'owner-1', { registrationNumber: 'RC1' }),
       ).resolves.toMatchObject({
         status: 'needs_review',
-        reasons: [
-          'business_name_mismatch',
-          'owner_not_listed',
-          'company_not_active',
-        ],
+        reasons: ['business_name_mismatch', 'company_not_active'],
       });
     });
 
-    it('accepts a business-name record with no directors on the name alone', async () => {
+    it('does not prove ownership from a BN record with no published directors', async () => {
       bytid.lookupCac.mockResolvedValueOnce(
         cacResult({
           data: {
@@ -351,9 +501,61 @@ describe('VerificationService', () => {
           },
         }),
       );
+      const preview = await service.previewBusiness('b1', 'owner-1', {
+        registrationNumber: 'BN99',
+      });
+      expect(preview.status).toBe('pending');
+      expect(preview.preview).toMatchObject({
+        legalName: 'MAMA PUT ENTERPRISES',
+        representativeCount: 0,
+        ownersPublished: false,
+      });
+      expect(business.verificationStatus).toBe(
+        BusinessVerificationStatus.IN_PROGRESS,
+      );
       await expect(
-        service.verifyBusiness('b1', 'owner-1', { registrationNumber: 'BN99' }),
+        service.verifyBusiness('b1', 'owner-1', {
+          registrationNumber: 'BN99',
+          previewId: preview.id,
+          confirmed: true,
+        }),
       ).resolves.toMatchObject({ status: 'verified' });
+      bytid.findByReference.mockResolvedValueOnce(
+        cacResult({
+          data: {
+            legal_name: 'MAMA PUT ENTERPRISES',
+            directors: [],
+            beneficial_owners: [],
+          },
+        }),
+      );
+      await expect(
+        service.verifyRepresentative('b1', 'owner-1', {
+          representativeName: 'Adaeze Okafor',
+          previewId: preview.id,
+        }),
+      ).resolves.toMatchObject({
+        status: 'needs_review',
+        reasons: ['representative_not_listed'],
+      });
+      expect(business.verificationStatus).toBe(
+        BusinessVerificationStatus.NEEDS_REVIEW,
+      );
+    });
+
+    it('requires explicit confirmation before using autofilled registry data', async () => {
+      const preview = await service.previewBusiness('b1', 'owner-1', {
+        registrationNumber: 'RC1234567',
+      });
+      await expect(
+        service.verifyBusiness('b1', 'owner-1', {
+          registrationNumber: 'RC1234567',
+          previewId: preview.id,
+        }),
+      ).rejects.toThrow(/Confirm the registry details/);
+      expect(
+        checks.filter((c) => c.kind === 'business').length,
+      ).toBe(1);
     });
 
     it('puts an unregistered business in review', async () => {

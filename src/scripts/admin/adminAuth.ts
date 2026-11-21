@@ -2,6 +2,8 @@
  * Admin Authentication State & Session Management
  */
 
+import type { SessionUser } from '../../services/sessionService';
+
 export interface AdminUser {
   id: string;
   name: string;
@@ -20,6 +22,37 @@ export const SUPER_ADMIN_USER: AdminUser = {
   role: 'Super Admin',
   permissions: ['all', 'manage_businesses', 'manage_customers', 'manage_finances', 'system_config'],
 };
+
+const ADMIN_PERMISSIONS = [
+  'all',
+  'manage_businesses',
+  'manage_customers',
+  'manage_finances',
+  'system_config',
+];
+
+/** Build the admin console session from the authenticated backend user only. */
+export function adminSessionFromUser(user?: SessionUser | null): AdminUser | null {
+  if (!user?.id || !user.email) return null;
+
+  const fullName =
+    `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() ||
+    user.name?.trim() ||
+    user.email;
+  const initials =
+    `${user.firstName?.[0] ?? user.name?.[0] ?? user.email[0] ?? 'A'}${
+      user.lastName?.[0] ?? ''
+    }`.toUpperCase();
+
+  return {
+    id: user.id,
+    name: fullName,
+    email: user.email,
+    initials: initials || 'AD',
+    role: 'Super Admin',
+    permissions: [...ADMIN_PERMISSIONS],
+  };
+}
 
 const ADMIN_SESSION_KEY = 'vemtap_admin_session';
 

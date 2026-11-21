@@ -1,32 +1,24 @@
 /**
- * Shared Deal Studio configurator UI — deal-type selector and the dedicated
- * per-type configuration panels (percentage, fixed, combo/bundle, flash).
- *
- * Rendered by both the mobile and desktop deal wizard steps so deal creation
- * behaves identically in onboarding and in the business dashboard.
+ * Shared Deal Studio configurator — the offer setup screen used by both the
+ * mobile and desktop wizards after the merchant has chosen a structure and
+ * live catalogue products.
  */
 import { Icon } from '../../components/ui/Icon';
 import {
   DEFAULT_BUNDLE_CATALOG,
   DEAL_TYPE_OPTIONS,
-  FLASH_DAY_RANGES,
-  FLASH_WINDOWS,
-  clampNumber,
   describeComboRules,
+  describeQuantityTiers,
   formatDealAmount,
-  formatFlashValidity,
   parseDealAmount,
-  resolveBundleCatalog,
   resolveComboPricing,
-  validateComboDeal,
-  validateFixedDeal,
-  validateFlashDeal,
-  validatePercentageDeal,
-  type ComboBenefit,
-  type ComboMode,
+  resolvePriceSlashPricing,
+  resolveQuantityPricing,
+  selectedRegularTotal,
+  validateDealConfiguration,
   type ComboProduct,
+  type DealStructure,
   type DealStudioDraft,
-  type DealStrategy,
 } from './dealStudioShared';
 
 /* ------------------------------------------------------------------ */
@@ -88,7 +80,7 @@ function AmountField({
         {prefix && <span className="font-heading-sm text-heading-sm font-bold text-primary">{prefix}</span>}
         <input
           aria-label={label}
-          className="w-16 font-heading-sm text-heading-sm font-bold text-primary text-right bg-transparent outline-none p-0"
+          className="w-20 font-heading-sm text-heading-sm font-bold text-primary text-right bg-transparent outline-none p-0"
           max={max}
           min={min}
           type="number"
@@ -137,18 +129,6 @@ function QtyStepper({
       >
         <Icon name="add" className="text-[16px]" />
       </button>
-    </div>
-  );
-}
-
-function TakeHomeRow({ price }: { price: number }) {
-  return (
-    <div className="p-2 rounded-lg bg-surface-canvas shadow-xs flex items-center justify-between">
-      <div className="flex flex-col">
-        <span className="font-label-sm text-label-sm font-bold text-text-primary">Merchant Net Take-Home</span>
-        <span className="font-caption text-caption text-text-secondary">0% VEMTAP Take Rate • Direct Payout</span>
-      </div>
-      <span className="font-heading-sm text-heading-sm font-bold text-text-primary">₦{formatDealAmount(price)}</span>
     </div>
   );
 }
@@ -212,7 +192,7 @@ export function DealConfigErrors({ errors }: { errors: string[] }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Deal type selector                                                  */
+/* Structure selector                                                  */
 /* ------------------------------------------------------------------ */
 
 export function DealTypeSelector({
@@ -220,8 +200,8 @@ export function DealTypeSelector({
   onSelect,
   variant = 'mobile',
 }: {
-  selected: DealStrategy | null;
-  onSelect: (id: DealStrategy) => void;
+  selected: DealStructure | null;
+  onSelect: (id: DealStructure) => void;
   variant?: 'mobile' | 'desktop';
 }) {
   if (variant === 'desktop') {
@@ -262,6 +242,9 @@ export function DealTypeSelector({
                   <p className="font-caption text-caption text-on-surface-variant mt-0.5 text-left">
                     {item.description}
                   </p>
+                  {item.requires && (
+                    <p className="font-caption text-caption text-primary mt-0.5 text-left">{item.requires}</p>
+                  )}
                 </div>
               </div>
               <div
@@ -283,11 +266,12 @@ export function DealTypeSelector({
       {DEAL_TYPE_OPTIONS.map((item) => {
         const isSelected = selected === item.id;
         return (
-          <div
+          <button
             key={item.id}
-            className={`rounded-xl overflow-hidden transition-all duration-200 bg-surface-container-lowest px-space-sm py-space-xs flex items-center gap-space-xs cursor-pointer select-none ${
+            className={`rounded-xl overflow-hidden transition-all duration-200 bg-surface-container-lowest px-space-sm py-space-xs text-left flex items-center gap-space-xs cursor-pointer select-none ${
               isSelected ? 'shadow-sm ring-1 ring-primary' : 'shadow-xs ring-1 ring-border-subtle'
             }`}
+            type="button"
             onClick={() => onSelect(item.id)}
           >
             <div
@@ -300,15 +284,11 @@ export function DealTypeSelector({
             <div className="flex-1 min-w-0">
               <h4 className="font-heading-sm text-heading-sm text-text-primary leading-snug">{item.title}</h4>
               <p className="font-caption text-caption text-text-secondary leading-snug">{item.description}</p>
-              <span
-                className={`mt-1 inline-flex px-1.5 py-px rounded-full font-caption ${
-                  item.badgeActive
-                    ? 'bg-badge-discount-bg text-badge-discount-text font-bold'
-                    : 'bg-surface-container text-text-secondary font-semibold'
-                }`}
-              >
-                {item.badge}
-              </span>
+              {item.requires && (
+                <span className="mt-1 inline-flex font-caption text-caption text-primary font-semibold">
+                  {item.requires}
+                </span>
+              )}
             </div>
             <div
               className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
@@ -317,7 +297,7 @@ export function DealTypeSelector({
             >
               <Icon name="check" className="text-[14px]" />
             </div>
-          </div>
+          </button>
         );
       })}
     </div>
@@ -325,466 +305,90 @@ export function DealTypeSelector({
 }
 
 /* ------------------------------------------------------------------ */
-/* Per-type configuration panels                                       */
+/* Offer panels                                                        */
 /* ------------------------------------------------------------------ */
 
-const PERCENT_PRESETS = [15, 20, 25, 30, 40];
-const FIXED_PRESETS = [1500, 2500, 4000, 6000];
-const FLASH_PRESETS = [30, 35, 40, 50];
+const PERCENT_PRESETS = [10, 15, 20, 25, 30, 40];
 
-const COMBO_BENEFITS: Array<{ id: ComboBenefit; label: string; description: string }> = [
-  { id: 'free-units', label: 'Get free units (Buy N, Get M Free)', description: 'Customer pays for the qualifying units and receives extras free.' },
-  { id: 'percent-off', label: 'Percentage off the multi-unit total', description: 'A percentage discount applies once the qualifying quantity is met.' },
-  { id: 'bundle-price', label: 'Set a promotional price for the bundle', description: 'Customer pays one fixed price for a multi-unit set.' },
-];
-
-const COMBO_MODES: Array<{ id: ComboMode; icon: string; title: string; description: string }> = [
-  {
-    id: 'quantity',
-    icon: 'add_shopping_cart',
-    title: 'Option A — Quantity promotion',
-    description: 'Buy N of one product and get a benefit, e.g. Buy 3 Get 1 Free or 5 for a special price.',
-  },
-  {
-    id: 'bundle',
-    icon: 'widgets',
-    title: 'Option B — Multi-product bundle',
-    description: 'Combine several products (with quantities) and sell them together at one bundle price or discount.',
-  },
-];
-
-function PercentagePanel({
+function BundlePanel({
   studio,
   onStudioChange,
-  basePrice,
-}: {
-  studio: DealStudioDraft;
-  onStudioChange: (patch: Partial<DealStudioDraft>) => void;
-  basePrice: number;
-}) {
-  const pct = studio.discountPct;
-  const savings = Math.round((basePrice * pct) / 100);
-  const dealPrice = basePrice - savings;
-
-  return (
-    <div className="flex flex-col gap-space-xs">
-      <ChipRow
-        active={pct}
-        options={PERCENT_PRESETS}
-        onSelect={(value: number) => onStudioChange({ discountPct: clampNumber(value, 1, 90) })}
-        format={(value: number) => `${value}%`}
-      />
-      <div className="bg-surface-subtle rounded-lg px-space-sm py-space-2xs flex items-center justify-between">
-        <span className="font-label-sm text-label-sm text-text-primary font-medium">Custom rate</span>
-        <div className="flex items-center gap-1 bg-surface-canvas px-2 py-0.5 rounded-lg shadow-xs">
-          <input
-            aria-label="Custom discount rate"
-            className="w-9 font-heading-sm text-heading-sm font-bold text-primary text-right bg-transparent outline-none p-0"
-            max={90}
-            min={1}
-            type="number"
-            value={pct}
-            onChange={(event) => onStudioChange({ discountPct: clampNumber(Number(event.target.value), 1, 90) })}
-          />
-          <span className="font-heading-sm text-heading-sm font-bold text-primary">%</span>
-        </div>
-      </div>
-      <input
-        aria-label="Discount slider"
-        className="w-full h-1.5 bg-surface-container-highest rounded-lg appearance-none cursor-pointer accent-primary"
-        max={60}
-        min={5}
-        step={5}
-        type="range"
-        value={Math.min(60, Math.max(5, pct))}
-        onChange={(event) => onStudioChange({ discountPct: Number(event.target.value) })}
-      />
-      <div className="flex justify-between font-caption text-caption text-text-tertiary">
-        <span>5% Light</span>
-        <span>25% Sweet Spot</span>
-        <span>60% Clearance</span>
-      </div>
-      <DealMathRows
-        rows={[
-          { label: 'Regular Catalog Price', value: `₦${formatDealAmount(basePrice)}`, tone: 'strike' },
-          {
-            label: 'Deal Member Price',
-            value: `₦${formatDealAmount(dealPrice)}`,
-            tone: 'primary',
-            hint: 'Diners pay this on VEMTAP',
-          },
-          {
-            label: 'Customer Net Savings',
-            value: `₦${formatDealAmount(savings)} (${pct}% OFF)`,
-            tone: 'savings',
-          },
-        ]}
-      />
-      <DealConfigErrors errors={validatePercentageDeal(pct)} />
-      <TakeHomeRow price={dealPrice} />
-    </div>
-  );
-}
-
-function FixedPanel({
-  studio,
-  onStudioChange,
-  basePrice,
-}: {
-  studio: DealStudioDraft;
-  onStudioChange: (patch: Partial<DealStudioDraft>) => void;
-  basePrice: number;
-}) {
-  const { amountOff, minSpend } = studio.fixed;
-  const savings = Math.min(Math.max(amountOff, 0), basePrice);
-  const dealPrice = Math.max(basePrice - amountOff, 0);
-
-  return (
-    <div className="flex flex-col gap-space-xs">
-      <AmountField
-        label="Amount off"
-        prefix="₦"
-        value={amountOff}
-        onChange={(value) => onStudioChange({ fixed: { ...studio.fixed, amountOff: value } })}
-      />
-      <ChipRow
-        active={amountOff}
-        options={FIXED_PRESETS}
-        onSelect={(value: number) => onStudioChange({ fixed: { ...studio.fixed, amountOff: value } })}
-        format={(value: number) => `₦${formatDealAmount(value)} off`}
-      />
-      <AmountField
-        label="Minimum table bill"
-        prefix="₦"
-        value={minSpend}
-        onChange={(value) => onStudioChange({ fixed: { ...studio.fixed, minSpend: value } })}
-      />
-      <p className="font-caption text-caption text-text-tertiary">
-        Deal activates when the total bill meets the minimum spend of ₦{formatDealAmount(minSpend)}.
-      </p>
-      <DealMathRows
-        rows={[
-          { label: 'Regular Catalog Price', value: `₦${formatDealAmount(basePrice)}`, tone: 'strike' },
-          {
-            label: 'Deal Member Price',
-            value: `₦${formatDealAmount(dealPrice)}`,
-            tone: 'primary',
-            hint: 'Diners pay this on VEMTAP',
-          },
-          { label: 'Customer Net Savings', value: `₦${formatDealAmount(savings)} flat off`, tone: 'savings' },
-        ]}
-      />
-      <DealConfigErrors errors={validateFixedDeal(studio.fixed, basePrice)} />
-      <TakeHomeRow price={dealPrice} />
-    </div>
-  );
-}
-
-function ComboBundlePanel({
-  studio,
-  onStudioChange,
-  basePrice,
   catalog,
 }: {
   studio: DealStudioDraft;
   onStudioChange: (patch: Partial<DealStudioDraft>) => void;
-  basePrice: number;
   catalog: ComboProduct[];
 }) {
   const combo = studio.combo;
   const setCombo = (patch: Partial<typeof combo>) => onStudioChange({ combo: { ...combo, ...patch } });
-  const products = resolveBundleCatalog(basePrice, catalog);
-  const pricing = resolveComboPricing(combo, basePrice, catalog);
-  const rules = describeComboRules(combo, basePrice, catalog);
-  const errors = validateComboDeal(combo, basePrice, catalog);
-  const usedIds = new Set(combo.items.map((item) => item.productId));
-  const nextProduct = products.find((product) => !usedIds.has(product.id));
+  const priceById = new Map(catalog.map((product) => [product.id, product.price]));
+  const nameById = new Map(catalog.map((product) => [product.id, product.name]));
+  const selectedProducts = studio.productIds
+    .map((id) => catalog.find((product) => product.id === id))
+    .filter((product): product is ComboProduct => Boolean(product));
+  const pricing = resolveComboPricing(combo, selectedRegularTotal(studio, catalog), catalog);
+  const rules = describeComboRules(combo, selectedRegularTotal(studio, catalog), catalog);
+
+  const setLineQty = (productId: string, qty: number) =>
+    setCombo({
+      items: combo.items.map((line) => (line.productId === productId ? { ...line, qty } : line)),
+    });
 
   return (
-    <div className="flex flex-col gap-space-xs">
+    <div className="flex flex-col gap-space-sm">
       <div className="flex flex-col gap-space-2xs">
-        {COMBO_MODES.map((mode) => {
-          const isActive = combo.mode === mode.id;
+        <span className="font-label-md text-label-md text-text-primary font-semibold">Products in this bundle</span>
+        {selectedProducts.map((product) => {
+          const line = combo.items.find((item) => item.productId === product.id);
           return (
             <div
-              key={mode.id}
-              className={`rounded-xl px-space-sm py-space-2xs flex items-center gap-space-xs cursor-pointer select-none transition-all ${
-                isActive
-                  ? 'bg-surface-container-lowest ring-1 ring-primary shadow-sm'
-                  : 'bg-surface-container-lowest ring-1 ring-border-subtle shadow-xs'
-              }`}
-              onClick={() => setCombo({ mode: mode.id })}
+              key={product.id}
+              className="flex items-center justify-between gap-space-xs bg-surface-container-lowest rounded-lg px-space-sm py-space-2xs ring-1 ring-border-subtle"
             >
-              <div
-                className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${
-                  isActive ? 'bg-primary text-on-primary' : 'bg-surface-container-highest text-transparent'
-                }`}
-              >
-                <Icon name="check" className="text-[14px]" />
+              <div className="flex flex-col min-w-0">
+                <span className="font-label-sm text-label-sm text-text-primary font-semibold truncate">
+                  {nameById.get(product.id) ?? product.name}
+                </span>
+                <span className="font-caption text-caption text-text-secondary">
+                  ₦{formatDealAmount(priceById.get(product.id) ?? product.price)} each
+                </span>
               </div>
-              <div className="flex-1 min-w-0">
-                <span className="font-label-md text-label-md text-text-primary font-semibold">{mode.title}</span>
-                <p className="font-caption text-caption text-text-secondary leading-snug">{mode.description}</p>
-              </div>
-              <Icon name={mode.icon} className={`text-[18px] shrink-0 ${isActive ? 'text-primary' : 'text-text-tertiary'}`} />
+              <QtyStepper
+                decreaseLabel={`Decrease quantity for ${product.name}`}
+                increaseLabel={`Increase quantity for ${product.name}`}
+                value={line?.qty ?? 1}
+                onChange={(value) => setLineQty(product.id, value)}
+              />
             </div>
           );
         })}
       </div>
 
-      {combo.mode === 'quantity' ? (
-        <>
-          <div className="flex items-center justify-between bg-surface-subtle rounded-lg px-space-sm py-space-2xs">
-            <div className="flex flex-col">
-              <span className="font-label-sm text-label-sm text-text-primary font-medium">Qualifying quantity (buy)</span>
-              <span className="font-caption text-caption text-text-tertiary">Units a customer must purchase</span>
-            </div>
-            <QtyStepper
-              decreaseLabel="Decrease qualifying quantity"
-              increaseLabel="Increase qualifying quantity"
-              max={20}
-              value={combo.buyQty}
-              onChange={(value) => setCombo({ buyQty: value })}
-            />
-          </div>
-          <div className="flex flex-col gap-space-2xs">
-            {COMBO_BENEFITS.map((benefit) => {
-              const isActive = combo.benefit === benefit.id;
-              return (
-                <div key={benefit.id} className="flex flex-col">
-                  <label
-                    className={`rounded-lg px-space-sm py-space-2xs flex items-center gap-space-xs cursor-pointer transition-colors ${
-                      isActive ? 'bg-surface-tint-blue' : 'bg-surface-subtle'
-                    }`}
-                    onClick={() => setCombo({ benefit: benefit.id })}
-                  >
-                    <input
-                      aria-label={benefit.label}
-                      checked={isActive}
-                      className="w-4 h-4 text-primary-container focus:ring-0"
-                      name="combo_benefit"
-                      readOnly
-                      type="radio"
-                    />
-                    <div className="flex flex-col min-w-0">
-                      <span className="font-label-sm text-label-sm text-text-primary font-semibold">{benefit.label}</span>
-                      <span className="font-caption text-caption text-text-secondary leading-snug">
-                        {benefit.description}
-                      </span>
-                    </div>
-                  </label>
-                  {isActive && benefit.id === 'free-units' && (
-                    <div className="flex items-center justify-between bg-surface-container-lowest rounded-lg px-space-sm py-space-2xs mt-space-2xs ring-1 ring-border-subtle">
-                      <span className="font-label-sm text-label-sm text-text-primary font-medium">Free units (get)</span>
-                      <QtyStepper
-                        decreaseLabel="Decrease free units"
-                        increaseLabel="Increase free units"
-                        max={20}
-                        value={combo.freeQty}
-                        onChange={(value) => setCombo({ freeQty: value })}
-                      />
-                    </div>
-                  )}
-                  {isActive && benefit.id === 'percent-off' && (
-                    <div className="mt-space-2xs">
-                      <AmountField
-                        label="Discount on multi-unit total"
-                        suffix="%"
-                        value={combo.benefitPct}
-                        onChange={(value) => setCombo({ benefitPct: value })}
-                      />
-                    </div>
-                  )}
-                  {isActive && benefit.id === 'bundle-price' && (
-                    <div className="flex flex-col gap-space-2xs mt-space-2xs">
-                      <div className="flex items-center justify-between bg-surface-container-lowest rounded-lg px-space-sm py-space-2xs ring-1 ring-border-subtle">
-                        <span className="font-label-sm text-label-sm text-text-primary font-medium">Units in bundle</span>
-                        <QtyStepper
-                          decreaseLabel="Decrease bundle units"
-                          increaseLabel="Increase bundle units"
-                          max={20}
-                          min={2}
-                          value={combo.bundleQty}
-                          onChange={(value) => setCombo({ bundleQty: value })}
-                        />
-                      </div>
-                      <AmountField
-                        label="Promotional bundle price (total)"
-                        prefix="₦"
-                        value={combo.bundlePrice}
-                        onChange={(value) => setCombo({ bundlePrice: value })}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="flex flex-col gap-space-2xs">
-            {combo.items.map((item, index) => (
-              <div
-                key={`${item.productId}-${index}`}
-                className="flex items-center gap-space-xs bg-surface-container-lowest rounded-lg px-space-sm py-space-2xs ring-1 ring-border-subtle"
-              >
-                <select
-                  aria-label={`Bundle product ${index + 1}`}
-                  className="flex-1 min-w-0 bg-surface-subtle rounded-lg px-space-xs py-1 font-label-sm text-label-sm text-text-primary outline-none"
-                  value={item.productId}
-                  onChange={(event) => {
-                    const items = combo.items.map((entry, entryIndex) =>
-                      entryIndex === index ? { ...entry, productId: event.target.value } : entry,
-                    );
-                    setCombo({ items });
-                  }}
-                >
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.name} — ₦{formatDealAmount(product.price)}
-                    </option>
-                  ))}
-                </select>
-                <QtyStepper
-                  decreaseLabel={`Decrease quantity for product ${index + 1}`}
-                  increaseLabel={`Increase quantity for product ${index + 1}`}
-                  max={20}
-                  value={item.qty}
-                  onChange={(value) => {
-                    const items = combo.items.map((entry, entryIndex) =>
-                      entryIndex === index ? { ...entry, qty: value } : entry,
-                    );
-                    setCombo({ items });
-                  }}
-                />
-                <button
-                  aria-label={`Remove product ${index + 1}`}
-                  className="w-7 h-7 flex items-center justify-center text-text-tertiary hover:text-error active:scale-95 transition-transform rounded-md shrink-0"
-                  type="button"
-                  onClick={() => setCombo({ items: combo.items.filter((_, entryIndex) => entryIndex !== index) })}
-                >
-                  <Icon name="delete" className="text-[16px]" />
-                </button>
-              </div>
-            ))}
-            {nextProduct && (
-              <button
-                className="self-start flex items-center gap-1 px-space-xs py-1 rounded-lg font-label-sm text-label-sm text-primary hover:bg-surface-tint-blue transition-colors"
-                type="button"
-                onClick={() => setCombo({ items: [...combo.items, { productId: nextProduct.id, qty: 1 }] })}
-              >
-                <Icon name="add" className="text-[14px]" />
-                <span>Add product to bundle</span>
-              </button>
-            )}
-          </div>
-          <div className="flex flex-col gap-space-2xs">
-            {(
-              [
-                { id: 'price', label: 'Set one bundle price', description: 'Customer pays a single promotional total.' },
-                {
-                  id: 'percent',
-                  label: 'Percentage discount on the combined price',
-                  description: 'A percentage comes off the normal combined price.',
-                },
-              ] as Array<{ id: 'price' | 'percent'; label: string; description: string }>
-            ).map((mode) => {
-              const isActive = combo.pricingMode === mode.id;
-              return (
-                <div key={mode.id} className="flex flex-col">
-                  <label
-                    className={`rounded-lg px-space-sm py-space-2xs flex items-center gap-space-xs cursor-pointer transition-colors ${
-                      isActive ? 'bg-surface-tint-blue' : 'bg-surface-subtle'
-                    }`}
-                    onClick={() => setCombo({ pricingMode: mode.id })}
-                  >
-                    <input
-                      aria-label={mode.label}
-                      checked={isActive}
-                      className="w-4 h-4 text-primary-container focus:ring-0"
-                      name="combo_pricing"
-                      readOnly
-                      type="radio"
-                    />
-                    <div className="flex flex-col min-w-0">
-                      <span className="font-label-sm text-label-sm text-text-primary font-semibold">{mode.label}</span>
-                      <span className="font-caption text-caption text-text-secondary leading-snug">
-                        {mode.description}
-                      </span>
-                    </div>
-                  </label>
-                  {isActive && mode.id === 'price' && (
-                    <div className="mt-space-2xs">
-                      <AmountField
-                        label="Bundle price (total)"
-                        prefix="₦"
-                        value={combo.bundlePromoPrice}
-                        onChange={(value) => setCombo({ bundlePromoPrice: value })}
-                      />
-                    </div>
-                  )}
-                  {isActive && mode.id === 'percent' && (
-                    <div className="mt-space-2xs">
-                      <AmountField
-                        label="Bundle discount"
-                        suffix="%"
-                        value={combo.bundleDiscountPct}
-                        onChange={(value) => setCombo({ bundleDiscountPct: value })}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
-
-      <div className="flex items-center justify-between bg-surface-subtle rounded-lg px-space-sm py-space-2xs">
-        <div className="flex flex-col">
-          <span className="font-label-sm text-label-sm text-text-primary font-medium">Max purchase limit per order</span>
-          <span className="font-caption text-caption text-text-tertiary">
-            {combo.maxPurchaseLimit === 0 ? 'No cap — customers can redeem multiple bundles per order' : `Up to ${combo.maxPurchaseLimit} bundles per order`}
-          </span>
-        </div>
-        <QtyStepper
-          decreaseLabel="Decrease purchase limit"
-          increaseLabel="Increase purchase limit"
-          max={50}
-          value={combo.maxPurchaseLimit}
-          onChange={(value) => setCombo({ maxPurchaseLimit: value })}
-        />
+      <div className="flex flex-col gap-space-2xs">
+        <span className="font-label-md text-label-md text-text-primary font-semibold">
+          One combined deal price
+        </span>
+        <p className="font-caption text-caption text-text-secondary leading-snug">
+          The customer pays one total for every product and quantity above.
+        </p>
       </div>
+
+      <AmountField
+        label="Combined deal price"
+        prefix="₦"
+        value={combo.bundlePromoPrice}
+        onChange={(value) => setCombo({ pricingMode: 'price', bundlePromoPrice: value })}
+      />
 
       <DealMathRows
         rows={[
+          { label: 'Regular combined price', value: `₦${formatDealAmount(pricing.originalTotal)}`, tone: 'strike' },
           {
-            label: 'Normal combined price',
-            value: `₦${formatDealAmount(pricing.originalTotal)}`,
-            tone: 'strike',
-            hint: 'Regular value of everything the customer must buy',
-          },
-          {
-            label: 'Discount amount',
+            label: 'Customer savings',
             value: `₦${formatDealAmount(Math.max(pricing.savings, 0))} (${pricing.savingsPct}% off)`,
             tone: 'savings',
           },
-          {
-            label: 'Final promotional price',
-            value: `₦${formatDealAmount(pricing.dealPrice)}`,
-            tone: 'primary',
-            hint: 'Diners pay this total on VEMTAP',
-          },
-          {
-            label: 'Customer savings',
-            value: `₦${formatDealAmount(Math.max(pricing.savings, 0))}`,
-            tone: 'savings',
-          },
-          {
-            label: 'Quantity restrictions',
-            value: combo.maxPurchaseLimit === 0 ? 'No per-order cap' : `Max ${combo.maxPurchaseLimit} per order`,
-          },
+          { label: 'Bundle deal price', value: `₦${formatDealAmount(pricing.dealPrice)}`, tone: 'primary' },
         ]}
       />
       <div className="rounded-lg bg-surface-tint-blue px-space-sm py-space-2xs flex flex-col gap-0.5">
@@ -801,89 +405,185 @@ function ComboBundlePanel({
           </span>
         ))}
       </div>
-      <DealConfigErrors errors={errors} />
-      <TakeHomeRow price={Math.max(pricing.dealPrice, 0)} />
+      <DealConfigErrors errors={validateDealConfiguration(studio, pricing.originalTotal, catalog)} />
     </div>
   );
 }
 
-function FlashPanel({
+function PriceSlashPanel({
   studio,
   onStudioChange,
-  basePrice,
+  regularTotal,
 }: {
   studio: DealStudioDraft;
   onStudioChange: (patch: Partial<DealStudioDraft>) => void;
-  basePrice: number;
+  regularTotal: number;
 }) {
-  const flash = studio.flash;
-  const setFlash = (patch: Partial<typeof flash>) => onStudioChange({ flash: { ...flash, ...patch } });
-  const pct = flash.discountPct;
-  const savings = Math.round((basePrice * pct) / 100);
-  const dealPrice = basePrice - savings;
+  const slash = studio.priceSlash;
+  const setSlash = (patch: Partial<typeof slash>) => onStudioChange({ priceSlash: { ...slash, ...patch } });
+  const pricing = resolvePriceSlashPricing(studio, regularTotal);
 
   return (
-    <div className="flex flex-col gap-space-xs">
-      <AmountField
-        label="Off-peak discount"
-        suffix="%"
-        value={pct}
-        onChange={(value) => setFlash({ discountPct: clampNumber(value, 1, 90) })}
-      />
-      <ChipRow
-        active={pct}
-        options={FLASH_PRESETS}
-        onSelect={(value: number) => setFlash({ discountPct: value })}
-        format={(value: number) => `${value}%`}
-      />
-      <div className="bg-surface-subtle rounded-lg px-space-sm py-space-2xs flex items-center justify-between gap-space-xs">
-        <div className="flex flex-col">
-          <span className="font-label-sm text-label-sm text-text-primary font-medium">Validity period</span>
-          <span className="font-caption text-caption text-text-tertiary">{formatFlashValidity(flash)}</span>
-        </div>
-        <div className="flex items-center gap-space-2xs">
-          <input
-            aria-label="Flash start date"
-            className="bg-surface-canvas px-2 py-1 rounded-lg shadow-xs font-label-sm text-label-sm text-text-primary outline-none"
-            type="date"
-            value={flash.startDate}
-            onChange={(event) => setFlash({ startDate: event.target.value })}
-          />
-          <span className="font-caption text-caption text-text-tertiary">→</span>
-          <input
-            aria-label="Flash end date"
-            className="bg-surface-canvas px-2 py-1 rounded-lg shadow-xs font-label-sm text-label-sm text-text-primary outline-none"
-            type="date"
-            value={flash.endDate}
-            onChange={(event) => setFlash({ endDate: event.target.value })}
-          />
-        </div>
+    <div className="flex flex-col gap-space-sm">
+      <div className="flex flex-col gap-space-2xs">
+        {(
+          [
+            { id: 'price', label: 'Set the new price', description: 'Enter the exact amount the customer pays.' },
+            { id: 'percentage', label: 'Choose a percentage off', description: 'The deal price is calculated for you.' },
+          ] as const
+        ).map((mode) => (
+          <label
+            key={mode.id}
+            className={`rounded-lg px-space-sm py-space-2xs flex items-center gap-space-xs cursor-pointer transition-colors ${
+              slash.mode === mode.id ? 'bg-surface-tint-blue' : 'bg-surface-subtle'
+            }`}
+          >
+            <input
+              aria-label={mode.label}
+              checked={slash.mode === mode.id}
+              className="w-4 h-4 text-primary-container focus:ring-0"
+              name="price_slash_mode"
+              type="radio"
+              onChange={() => setSlash({ mode: mode.id })}
+            />
+            <div className="flex flex-col min-w-0">
+              <span className="font-label-sm text-label-sm text-text-primary font-semibold">{mode.label}</span>
+              <span className="font-caption text-caption text-text-secondary leading-snug">{mode.description}</span>
+            </div>
+          </label>
+        ))}
       </div>
-      <span className="font-label-sm text-label-sm text-text-secondary">Daily happy-hour window</span>
-      <ChipRow active={flash.window} options={FLASH_WINDOWS} onSelect={(value: string) => setFlash({ window: value })} />
-      <ChipRow active={flash.days} options={FLASH_DAY_RANGES} onSelect={(value: string) => setFlash({ days: value })} />
+
+      {slash.mode === 'price' ? (
+        <AmountField
+          label="New deal price"
+          prefix="₦"
+          value={slash.newPrice}
+          onChange={(value) => setSlash({ newPrice: value })}
+        />
+      ) : (
+        <ChipRow
+          active={slash.discountPct}
+          options={PERCENT_PRESETS}
+          onSelect={(value: number) => setSlash({ discountPct: value })}
+          format={(value: number) => `${value}% off`}
+        />
+      )}
+
       <DealMathRows
         rows={[
-          { label: 'Regular Catalog Price', value: `₦${formatDealAmount(basePrice)}`, tone: 'strike' },
+          { label: 'Regular price', value: `₦${formatDealAmount(pricing.originalTotal)}`, tone: 'strike' },
           {
-            label: 'Window Member Price',
-            value: `₦${formatDealAmount(dealPrice)}`,
-            tone: 'primary',
-            hint: 'Price during the happy hour window',
-          },
-          {
-            label: 'Customer Net Savings',
-            value: `₦${formatDealAmount(savings)} (${pct}% OFF)`,
+            label: 'Customer savings',
+            value: `₦${formatDealAmount(Math.max(pricing.savings, 0))} (${pricing.savingsPct}% off)`,
             tone: 'savings',
           },
+          { label: 'New deal price', value: `₦${formatDealAmount(pricing.dealPrice)}`, tone: 'primary' },
         ]}
       />
-      <p className="font-caption text-caption text-text-tertiary">
-        {pct}% off auto-activates {flash.days.toLowerCase()}, {flash.window.toLowerCase()} only. Deal runs{' '}
-        {formatFlashValidity(flash).toLowerCase()}.
-      </p>
-      <DealConfigErrors errors={validateFlashDeal(flash)} />
-      <TakeHomeRow price={dealPrice} />
+      <DealConfigErrors errors={validateDealConfiguration(studio, regularTotal, [])} />
+    </div>
+  );
+}
+
+function BuyMorePanel({
+  studio,
+  onStudioChange,
+  regularTotal,
+}: {
+  studio: DealStudioDraft;
+  onStudioChange: (patch: Partial<DealStudioDraft>) => void;
+  regularTotal: number;
+}) {
+  const pricing = resolveQuantityPricing(studio, regularTotal);
+  const tiers = [...studio.quantityTiers].sort((a, b) => a.quantity - b.quantity);
+  const setTiers = (next: typeof studio.quantityTiers) => onStudioChange({ quantityTiers: next });
+
+  const updateTier = (id: string, patch: Partial<(typeof studio.quantityTiers)[number]>) =>
+    setTiers(studio.quantityTiers.map((tier) => (tier.id === id ? { ...tier, ...patch } : tier)));
+
+  return (
+    <div className="flex flex-col gap-space-sm">
+      <div className="flex flex-col gap-space-2xs">
+        <span className="font-label-md text-label-md text-text-primary font-semibold">Quantity levels</span>
+        <p className="font-caption text-caption text-text-secondary">
+          Set the quantity a customer must buy and the total price they pay at that level. Each level should save more
+          per unit than the one before it.
+        </p>
+        {tiers.map((tier, index) => (
+          <div
+            key={tier.id}
+            className="rounded-xl bg-surface-container-lowest ring-1 ring-border-subtle p-space-sm flex flex-col gap-space-2xs"
+          >
+            <div className="flex items-center justify-between">
+              <span className="font-label-sm text-label-sm text-text-primary font-semibold">Level {index + 1}</span>
+              {studio.quantityTiers.length > 2 && (
+                <button
+                  aria-label={`Remove level ${index + 1}`}
+                  className="text-text-tertiary hover:text-error"
+                  type="button"
+                  onClick={() => setTiers(studio.quantityTiers.filter((entry) => entry.id !== tier.id))}
+                >
+                  <Icon name="delete" className="text-[16px]" />
+                </button>
+              )}
+            </div>
+            <div className="flex items-center justify-between bg-surface-subtle rounded-lg px-space-sm py-space-2xs">
+              <span className="font-label-sm text-label-sm text-text-primary">Buy</span>
+              <QtyStepper
+                decreaseLabel={`Decrease quantity for level ${index + 1}`}
+                increaseLabel={`Increase quantity for level ${index + 1}`}
+                min={2}
+                value={tier.quantity}
+                onChange={(value) => updateTier(tier.id, { quantity: value })}
+              />
+            </div>
+            <AmountField
+              label="Total price at this level"
+              prefix="₦"
+              value={tier.price}
+              onChange={(value) => updateTier(tier.id, { price: value })}
+            />
+          </div>
+        ))}
+        <button
+          className="self-start flex items-center gap-1 px-space-xs py-1 rounded-lg font-label-sm text-label-sm text-primary hover:bg-surface-tint-blue transition-colors"
+          type="button"
+          onClick={() =>
+            setTiers([
+              ...studio.quantityTiers,
+              {
+                id: `tier-${Date.now()}`,
+                quantity: Math.max(...studio.quantityTiers.map((tier) => tier.quantity), 1) + 1,
+                price: 0,
+              },
+            ])
+          }
+        >
+          <Icon name="add" className="text-[14px]" />
+          <span>Add another level</span>
+        </button>
+      </div>
+
+      <DealMathRows
+        rows={[
+          {
+            label: 'Headline regular total',
+            value: `₦${formatDealAmount(pricing.originalTotal)}`,
+            tone: 'strike',
+          },
+          { label: 'Headline savings', value: `₦${formatDealAmount(Math.max(pricing.savings, 0))}`, tone: 'savings' },
+          { label: 'Headline deal price', value: `₦${formatDealAmount(pricing.dealPrice)}`, tone: 'primary' },
+        ]}
+      />
+      <div className="rounded-lg bg-surface-tint-blue px-space-sm py-space-2xs flex flex-col gap-0.5">
+        {describeQuantityTiers(studio, regularTotal).map((rule) => (
+          <span key={rule} className="font-caption text-caption text-text-secondary leading-snug">
+            {rule}
+          </span>
+        ))}
+      </div>
+      <DealConfigErrors errors={validateDealConfiguration(studio, regularTotal, [])} />
     </div>
   );
 }
@@ -892,25 +592,27 @@ function FlashPanel({
 /* Public configurator                                                 */
 /* ------------------------------------------------------------------ */
 
-export function DealTypeConfigurator({
+export function DealOfferConfigurator({
   studio,
   onStudioChange,
-  basePrice,
   catalog = DEFAULT_BUNDLE_CATALOG,
 }: {
   studio: DealStudioDraft;
   onStudioChange: (patch: Partial<DealStudioDraft>) => void;
-  basePrice: number;
   catalog?: ComboProduct[];
 }) {
-  if (!studio.strategy || studio.strategy === 'current') return null;
-  if (studio.strategy === 'percentage')
-    return <PercentagePanel studio={studio} onStudioChange={onStudioChange} basePrice={basePrice} />;
-  if (studio.strategy === 'fixed')
-    return <FixedPanel studio={studio} onStudioChange={onStudioChange} basePrice={basePrice} />;
-  if (studio.strategy === 'combo')
-    return (
-      <ComboBundlePanel studio={studio} onStudioChange={onStudioChange} basePrice={basePrice} catalog={catalog} />
-    );
-  return <FlashPanel studio={studio} onStudioChange={onStudioChange} basePrice={basePrice} />;
+  const regularTotal = selectedRegularTotal(studio, catalog);
+  switch (studio.structure) {
+    case 'bundle':
+      return <BundlePanel studio={studio} onStudioChange={onStudioChange} catalog={catalog} />;
+    case 'price-slash':
+      return <PriceSlashPanel studio={studio} onStudioChange={onStudioChange} regularTotal={regularTotal} />;
+    case 'buy-more-save-more':
+      return <BuyMorePanel studio={studio} onStudioChange={onStudioChange} regularTotal={regularTotal} />;
+    default:
+      return null;
+  }
 }
+
+/** Backwards-compatible name used by older callers. */
+export const DealTypeConfigurator = DealOfferConfigurator;

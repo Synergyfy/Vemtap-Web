@@ -305,7 +305,7 @@ export const CUSTOMER_HOW_IT_WORKS: string[] = [
   'Share your referral link with a business or a friend.',
   'They sign up to VEMTAP and complete the relevant setup.',
   'Business referrals may earn a smaller onboarding reward, plus a larger bonus when a qualifying business subscribes.',
-  'Consumer referrals may earn points for completing qualifying activities.',
+  'Customer referrals may earn points for completing qualifying activities.',
   'Points may be redeemed for available participating-business discounts and rewards.',
 ];
 

@@ -14,7 +14,6 @@ import { BusinessDealAssignmentScreen } from './BusinessDealAssignmentScreen';
 import { BusinessCustomersScreen } from './BusinessCustomersScreen';
 import { BusinessCustomerProfileScreen } from './BusinessCustomerProfileScreen';
 import { BusinessProfileManageScreen } from './BusinessProfileManageScreen';
-import { CreateDealItemPickerModal } from '../components/CreateDealItemPickerModal';
 
 export type BusinessHubStep =
   | 'hub'
@@ -44,6 +43,9 @@ export function BusinessHubScreen({
   onOpenAnalytics,
   onPreviewInvite,
   onAddLocation,
+  onUpgradePlan,
+  onBuyLocations,
+  initialBuyLocations = false,
   catalogMode = 'products',
   startWithNewProduct = false,
   startWithNewService = false,
@@ -69,6 +71,12 @@ export function BusinessHubScreen({
   onPreviewInvite?: (url: string) => void;
   /** "Add Location" on the locations step — opens the paid add-location flow. */
   onAddLocation?: () => void;
+  /** Location-limit modal — opens the dashboard plan page. */
+  onUpgradePlan?: () => void;
+  /** Location-limit modal and capacity card — opens the purchase form. */
+  onBuyLocations?: () => void;
+  /** Route mode: open the standalone location purchase form. */
+  initialBuyLocations?: boolean;
 }) {
   const [step, setStep] = useState<BusinessHubStep>(initialStep);
   const [assignmentItem, setAssignmentItem] = useState('Woodfire Aged Ribeye Steak');
@@ -76,7 +84,6 @@ export function BusinessHubScreen({
   // one-off catalogue message ("pick an item").
   const live = hasApiConfig();
   const [dealSource, setDealSource] = useState<CatalogueItem | null>(null);
-  const [dealPickerOpen, setDealPickerOpen] = useState(false);
   const [dealGroupId, setDealGroupId] = useState<string | null>(null);
   const [catalogNotice] = useState<string | null>(null);
   const [profileCustomer, setProfileCustomer] = useState(initialCustomer ?? (hasApiConfig() ? '' : 'Michael James'));
@@ -104,7 +111,16 @@ export function BusinessHubScreen({
       case 'hub':
         return <BusinessHubHomeScreen onTab={handleTab} onOpenModule={onOpenModule} />;
       case 'locations':
-        return <BusinessLocationsScreen onTab={handleTab} onAddBranch={() => setStep('addBranch')} onAddLocation={onAddLocation} />;
+        return (
+          <BusinessLocationsScreen
+            onTab={handleTab}
+            onAddBranch={() => setStep('addBranch')}
+            onAddLocation={onAddLocation}
+            onUpgradePlan={onUpgradePlan}
+            onBuyLocations={onBuyLocations}
+            initialBuyLocations={initialBuyLocations}
+          />
+        );
       case 'addBranch':
         return <BusinessAddBranchScreen onBack={() => setStep('locations')} onSaved={() => setStep('locations')} />;
       case 'catalog':
@@ -145,7 +161,9 @@ export function BusinessHubScreen({
               setStep('dealDetail');
             }}
             onCreateDeal={() => {
-              setDealPickerOpen(true);
+              // Create Deal starts type-first; the studio loads live products itself.
+              setDealSource(null);
+              setStep('dealCreate');
             }}
           />
         );
@@ -213,14 +231,6 @@ export function BusinessHubScreen({
   return (
     <div className="biz-flow">
       {renderStep()}
-      <CreateDealItemPickerModal
-        open={dealPickerOpen}
-        onClose={() => setDealPickerOpen(false)}
-        onSelectItem={(item) => {
-          setDealSource(item);
-          setStep('dealCreate');
-        }}
-      />
     </div>
   );
 }

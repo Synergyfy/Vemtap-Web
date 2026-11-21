@@ -1,5 +1,7 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import { clearAdminSession, getAdminSession, type AdminUser, SUPER_ADMIN_USER } from './adminAuth';
+import { authService } from '../../services/authService';
+import vemtapLogo from '../../hooks/VEMTAP LOGO NEW PNG.png';
 
 export interface AdminLayoutProps {
   currentPath: string;
@@ -141,6 +143,7 @@ export function AdminLayout({ currentPath, onNavigate, children, breadcrumb }: A
   const [quickNewOpen, setQuickNewOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [topUserMenuOpen, setTopUserMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -153,6 +156,7 @@ export function AdminLayout({ currentPath, onNavigate, children, breadcrumb }: A
         setSearchModalOpen(false);
         setQuickNewOpen(false);
         setUserDropdownOpen(false);
+        setTopUserMenuOpen(false);
         setNotificationsOpen(false);
       }
     };
@@ -162,7 +166,8 @@ export function AdminLayout({ currentPath, onNavigate, children, breadcrumb }: A
 
   const handleSignOut = () => {
     clearAdminSession();
-    onNavigate('/admin/login');
+    authService.logout().catch(() => {});
+    onNavigate('/superadmin/login');
   };
 
   // Determine active module
@@ -212,9 +217,11 @@ export function AdminLayout({ currentPath, onNavigate, children, breadcrumb }: A
               }}
               className="flex items-center gap-2.5 text-left group"
             >
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#0055c4] to-[#066cf4] flex items-center justify-center text-white font-bold text-base shadow-sm tracking-tight group-hover:opacity-95 transition-opacity">
-                V
-              </div>
+              <img
+                src={vemtapLogo}
+                alt="VEMTAP"
+                className="w-8 h-8 object-contain shrink-0 group-hover:opacity-95 transition-opacity"
+              />
               <div className="flex flex-col">
                 <div className="flex items-center gap-1.5">
                   <span className="font-bold text-[14px] tracking-tight text-slate-900 leading-tight">VEMTAP</span>
@@ -271,8 +278,27 @@ export function AdminLayout({ currentPath, onNavigate, children, breadcrumb }: A
             })}
           </nav>
 
-          {/* Bottom Status & Help */}
-          <div className="p-3 border-t border-slate-100 bg-slate-50/70 space-y-2">
+          {/* Bottom Profile & Status - Always visible on side menu */}
+          <div className="p-3 border-t border-slate-100 bg-slate-50/70 space-y-2.5">
+            <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#0055c4] to-[#066cf4] flex items-center justify-center text-white text-[12px] font-bold shrink-0 shadow-xs">
+                  {adminUser.initials || 'SA'}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12px] font-semibold text-slate-900 truncate leading-tight">{adminUser.name}</div>
+                  <div className="text-[10px] text-slate-500 truncate leading-tight">{adminUser.role}</div>
+                </div>
+              </div>
+              <button
+                onClick={handleSignOut}
+                title="Sign Out"
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
+              >
+                <span className="material-symbols-outlined text-[17px]">logout</span>
+              </button>
+            </div>
+
             <div className="flex items-center justify-between px-2.5 py-1.5 rounded-md bg-white border border-slate-200/80 shadow-2xs">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-100 animate-pulse"></span>
@@ -286,10 +312,11 @@ export function AdminLayout({ currentPath, onNavigate, children, breadcrumb }: A
                 PCI-DSS Level 1
               </span>
               <button
-                onClick={() => onNavigate('/admin/settings')}
-                className="text-[#0055c4] hover:underline font-medium"
+                onClick={handleSignOut}
+                className="text-red-600 hover:text-red-700 font-semibold hover:underline flex items-center gap-0.5"
               >
-                Docs & Help
+                <span className="material-symbols-outlined text-[13px]">logout</span>
+                Sign Out
               </button>
             </div>
           </div>
@@ -312,10 +339,10 @@ export function AdminLayout({ currentPath, onNavigate, children, breadcrumb }: A
               {/* V Brand Logo */}
               <button
                 onClick={() => onNavigate('/admin')}
-                className="w-10 h-10 rounded-xl bg-[#066cf4] flex items-center justify-center text-white font-bold text-[20px] tracking-wider shadow-[0_1px_8px_rgba(0,0,0,0.15)] mb-1 hover:opacity-90 transition-opacity"
+                className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center p-1.5 shadow-[0_1px_8px_rgba(0,0,0,0.15)] mb-1 hover:opacity-90 transition-opacity"
                 title="VEMTAP Admin Overview"
               >
-                V
+                <img src={vemtapLogo} alt="VEMTAP" className="w-full h-full object-contain" />
               </button>
 
               {/* Nav Icons */}
@@ -448,12 +475,20 @@ export function AdminLayout({ currentPath, onNavigate, children, breadcrumb }: A
               })}
             </nav>
 
-            {/* Bottom status */}
-            <div className="mt-auto px-4 pt-3 border-t border-slate-100 mx-3">
-              <div className="flex items-center gap-2 text-[11px] text-slate-500">
+            {/* Bottom status & Sign Out */}
+            <div className="mt-auto px-4 pt-3 pb-1 border-t border-slate-100 mx-3 flex items-center justify-between text-[11px]">
+              <div className="flex items-center gap-1.5 text-slate-500">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="font-medium text-slate-700">Engine v4.2 Operational</span>
+                <span className="font-medium text-slate-700">Engine v4.2</span>
               </div>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="text-red-600 hover:text-red-700 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[13px]">logout</span>
+                <span>Sign Out</span>
+              </button>
             </div>
           </aside>
         </>
@@ -569,15 +604,81 @@ export function AdminLayout({ currentPath, onNavigate, children, breadcrumb }: A
               <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#ba1a1a]" />
             </div>
 
-            {/* User */}
-            <div className="flex items-center gap-2 pl-2 border-l border-slate-100">
-              <div className="hidden sm:block text-right">
-                <div className="text-[12px] font-semibold text-[#191c1e] leading-none">{adminUser.name}</div>
-                <div className="text-[11px] text-[#4a5e88] mt-0.5 leading-none">{adminUser.role}</div>
-              </div>
-              <div className="w-8 h-8 rounded-full bg-[#0055c4] flex items-center justify-center text-white">
-                <span className="material-symbols-outlined text-[18px]">person</span>
-              </div>
+            {/* User Dropdown with Logout / Sign Out */}
+            <div className="relative pl-2 border-l border-slate-100">
+              <button
+                type="button"
+                onClick={() => setTopUserMenuOpen((prev) => !prev)}
+                className="flex items-center gap-2 hover:bg-slate-100/70 px-2 py-1.5 rounded-xl transition-colors text-left focus:outline-none"
+                title="Super Admin Account Menu"
+              >
+                <div className="hidden sm:block text-right">
+                  <div className="text-[12px] font-semibold text-[#191c1e] leading-none">{adminUser.name}</div>
+                  <div className="text-[10px] text-[#4a5e88] mt-0.5 leading-none">{adminUser.role}</div>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#0055c4] to-[#066cf4] flex items-center justify-center text-white font-bold text-[12px] shadow-xs">
+                  {adminUser.initials || 'SA'}
+                </div>
+                <span className="material-symbols-outlined text-[16px] text-slate-400">
+                  {topUserMenuOpen ? 'expand_less' : 'expand_more'}
+                </span>
+              </button>
+
+              {topUserMenuOpen && (
+                <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-slate-200/80 py-2 z-50">
+                  <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#0055c4] to-[#066cf4] flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                      {adminUser.initials || 'SA'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-[13px] text-slate-900 truncate">{adminUser.name}</div>
+                      <div className="text-[11px] text-slate-500 truncate">{adminUser.email}</div>
+                      <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-50 text-[#0055c4] uppercase tracking-wider border border-blue-100">
+                        {adminUser.role}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-1 space-y-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTopUserMenuOpen(false);
+                        onNavigate('/admin/settings/team');
+                      }}
+                      className="w-full px-3 py-2 text-left hover:bg-slate-50 rounded-lg flex items-center gap-2.5 text-[12px] text-slate-700 font-medium transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[17px] text-slate-400">manage_accounts</span>
+                      <span>Account & Security</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTopUserMenuOpen(false);
+                        onNavigate('/admin/settings');
+                      }}
+                      className="w-full px-3 py-2 text-left hover:bg-slate-50 rounded-lg flex items-center gap-2.5 text-[12px] text-slate-700 font-medium transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[17px] text-slate-400">tune</span>
+                      <span>Platform Settings</span>
+                    </button>
+                  </div>
+
+                  <div className="border-t border-slate-100 p-1 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTopUserMenuOpen(false);
+                        handleSignOut();
+                      }}
+                      className="w-full px-3 py-2 text-left hover:bg-red-50 text-red-600 rounded-lg flex items-center gap-2.5 text-[12px] font-semibold transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">logout</span>
+                      <span>Sign Out</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

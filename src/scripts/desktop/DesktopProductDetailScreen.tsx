@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { SaveToggle } from '../../components/SaveToggle';
 import { useCart } from '../../context/CartContext';
 import { Icon } from '../../components/ui/Icon';
+import { ProductImage } from '../../components/ui/ProductImage';
 import { Skeleton, SkeletonGroup } from '../../components/ui/Skeleton';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { naira } from '../catalogueData';
@@ -240,11 +241,14 @@ export function DesktopProductDetailScreen({ itemId, businessCode, onNav, onBack
             <section className="lg:col-span-7 flex flex-col gap-8 min-w-0">
               <div className="flex flex-col gap-3">
                 <div className="relative w-full h-[400px] sm:h-[480px] rounded-3xl overflow-hidden bg-surface-container shadow-md group flex items-center justify-center">
-                  {mainImage ? (
-                    <img alt={item.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" src={mainImage} />
-                  ) : (
-                    <Icon name={isService ? 'room_service' : 'inventory_2'} className="text-[72px] text-outline" />
-                  )}
+                  <ProductImage
+                    alt={item.name}
+                    className="h-full w-full"
+                    iconClassName="text-[52px]"
+                    imageClassName="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    showLabel={false}
+                    src={mainImage}
+                  />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20 pointer-events-none" />
                   <div className="absolute top-4 left-4 flex flex-wrap gap-2">
                     {item.discountLabel ? (
@@ -277,7 +281,13 @@ export function DesktopProductDetailScreen({ itemId, businessCode, onNav, onBack
                           selectedImage === index ? 'ring-2 ring-primary opacity-100' : 'opacity-80 hover:opacity-100'
                         }`}
                       >
-                        <img alt="" className="w-full h-full object-cover" src={src} />
+                        <ProductImage
+                          alt={`${item.name} image ${index + 1}`}
+                          className="h-full w-full"
+                          iconClassName="text-[18px]"
+                          showLabel={false}
+                          src={src}
+                        />
                       </button>
                     ))}
                   </div>

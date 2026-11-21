@@ -1,6 +1,7 @@
 import { useCart } from '../../context/CartContext';
 import { naira } from '../../scripts/catalogueData';
 import { Icon } from '../ui/Icon';
+import { ProductImage } from '../ui/ProductImage';
 import { SheetShell } from './SheetShell';
 
 interface CartSheetProps {
@@ -59,9 +60,13 @@ export function CartSheet({ open, onClose, onCheckout, title = 'Your Order' }: C
                 key={line.id}
                 className="flex items-center gap-space-sm bg-surface-subtle rounded-xl p-space-xs"
               >
-                <div className="w-14 h-14 rounded-lg overflow-hidden bg-surface-container shrink-0">
-                  <img src={line.image} alt={line.name} className="w-full h-full object-cover" />
-                </div>
+                <ProductImage
+                  alt={line.name}
+                  className="h-14 w-14 shrink-0 rounded-lg"
+                  iconClassName="text-[18px]"
+                  showLabel={false}
+                  src={line.image}
+                />
                 <div className="flex-1 min-w-0">
                   <p className="font-label-md text-label-md text-text-primary font-semibold truncate">{line.name}</p>
                   <p className="font-caption text-caption text-text-secondary">

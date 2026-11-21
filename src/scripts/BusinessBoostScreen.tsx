@@ -9,6 +9,7 @@ import { SubscriptionChrome } from './desktop/SubscriptionChrome';
 import { BusinessPortalChrome } from './desktop/BusinessPortalChrome';
 import { BusinessModeHeader } from './BusinessModeHeader';
 import { PUBLIC_IMAGES } from './publicPosData';
+import { dealPrimaryImage } from '../utils/dealImages';
 
 interface BusinessBoostScreenProps {
   onBack: () => void;
@@ -54,13 +55,8 @@ interface BoostItem {
   locText: string;
 }
 
-const getOfferImage = (offer: Record<string, unknown>) => {
-  const item = Array.isArray(offer.items) && offer.items[0] && typeof offer.items[0] === 'object'
-    ? (offer.items[0] as Record<string, unknown>)
-    : null;
-  const fallback = item?.mainImage ?? item?.image ?? offer.image ?? offer.coverImage ?? offer.heroImage ?? PUBLIC_IMAGES.hero;
-  return typeof fallback === 'string' && fallback.trim() ? fallback : PUBLIC_IMAGES.hero;
-};
+const getOfferImage = (offer: Record<string, unknown>) =>
+  dealPrimaryImage(offer) ?? PUBLIC_IMAGES.hero;
 
 const getOfferBusinessName = (offer: Record<string, unknown>) => {
   const business = offer.business && typeof offer.business === 'object' ? (offer.business as Record<string, unknown>) : {};

@@ -5,7 +5,9 @@ import { storeAuthResponse } from '../services/authService';
 import { SESSION_EXPIRED_EVENT } from '../services/api/client';
 import { ownerAuthService } from '../services/ownerAuthService';
 import { queryClient } from '../services/queryClient';
+import { resolveAccountDestination } from '../services/accountRouting';
 import type { SessionUser } from '../services/sessionService';
+import { adminSessionFromUser, clearAdminSession, setAdminSession } from '../scripts/admin/adminAuth';
 import { socketService } from '../services/socketService';
 import { forgetLocalBusinessSetup } from '../scripts/businessSetup';
 
@@ -13,6 +15,7 @@ interface AuthCredentials {
   identifier?: string;
   email?: string;
   password?: string;
+  twoFactorCode?: string;
   source?: string;
 }
 
@@ -159,6 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const handleExpired = () => {
       if (!readFlag(AUTHED_KEY)) return;
       clearStoredProfile();
+      clearAdminSession();
       queryClient.clear();
       writeFlag(AUTHED_KEY, false);
       setAuthed(false);
@@ -167,7 +171,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const handleStorage = (event: StorageEvent) => {
       if (event.key !== AUTHED_KEY && event.key !== null) return;
       const next = readFlag(AUTHED_KEY);
-      if (!next) queryClient.clear();
+      if (!next) {
+        clearAdminSession();
+        queryClient.clear();
+      }
       setAuthed(next);
     };
     window.addEventListener(SESSION_EXPIRED_EVENT, handleExpired);
@@ -209,9 +216,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const response = await authService.login({
               identifier,
               password: password.trim(),
+              ...(credentials?.twoFactorCode?.trim()
+                ? { twoFactorCode: credentials.twoFactorCode.trim() }
+                : {}),
             });
-            persistProfileFromUser(response);
             const user = (response as { user?: SessionUser }).user;
+            const destination = resolveAccountDestination(user);
+
+            // Never guess a dashboard. If the API did not return a usable
+            // account role/status, drop the session and send the caller back
+            // to sign-in instead of treating the account as a customer.
+            if (!destination) {
+              clearStoredProfile();
+              clearAdminSession();
+              clearAuthTokens();
+              queryClient.clear();
+              writeFlag(AUTHED_KEY, false);
+              setAuthed(false);
+              throw new Error('Account type could not be verified. Please sign in again.');
+            }
+
+            if (destination === 'admin') {
+              const adminSession = adminSessionFromUser(user);
+              if (!adminSession) {
+                clearStoredProfile();
+                clearAdminSession();
+                clearAuthTokens();
+                queryClient.clear();
+                writeFlag(AUTHED_KEY, false);
+                setAuthed(false);
+                throw new Error('Admin account details could not be verified. Please sign in again.');
+              }
+              clearStoredProfile();
+              setAdminSession(adminSession);
+            } else {
+              clearAdminSession();
+              persistProfileFromUser(response);
+            }
+
             if (user) queryClient.setQueryData(['session', 'profile'], user);
             writeFlag(AUTHED_KEY, true);
             setAuthed(true);
@@ -219,6 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } catch (error) {
             console.error('Login failed:', error);
             clearStoredProfile();
+            clearAdminSession();
             writeFlag(AUTHED_KEY, false);
             setAuthed(false);
             throw error;
@@ -239,6 +282,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             throw error;
           } finally {
             clearStoredProfile();
+            clearAdminSession();
             clearStoredClaims();
             // Setup progress belongs to this owner; the next person starts clean
             // (their account keeps a copy, so signing back in resumes it).
@@ -255,6 +299,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         clearAuthTokens();
         clearStoredProfile();
+        clearAdminSession();
         clearStoredClaims();
         writeFlag(AUTHED_KEY, false);
         writeFlag(CLAIMED_KEY, false);
@@ -262,26 +307,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setClaimed(false);
       },
       adoptSession: (response) => {
+        const user = response.user;
+        // Registration, upgrade and Google all arrive here. Apply the same
+        // fail-closed role check as password sign-in before trusting a session.
+        if (hasApiConfig() && user) {
+          const destination = resolveAccountDestination(user);
+          const adminSession = destination === 'admin' ? adminSessionFromUser(user) : null;
+          if (!destination || (destination === 'admin' && !adminSession)) {
+            clearStoredProfile();
+            clearAdminSession();
+            clearAuthTokens();
+            queryClient.clear();
+            writeFlag(AUTHED_KEY, false);
+            setAuthed(false);
+            throw new Error('Account type could not be verified. Please sign in again.');
+          }
+          if (adminSession) setAdminSession(adminSession);
+          else clearAdminSession();
+        } else {
+          clearAdminSession();
+        }
         storeAuthResponse(response);
         persistProfileFromUser(response);
-        if (response.user) queryClient.setQueryData(['session', 'profile'], response.user);
+        if (user) queryClient.setQueryData(['session', 'profile'], user);
         writeFlag(AUTHED_KEY, true);
         setAuthed(true);
-        return response.user;
+        return user;
       },
       switchShell: async (role) => {
         const response = (await ownerAuthService.switchRole(role)) as { access_token?: string; user?: SessionUser };
+        const user = response.user;
+        if (hasApiConfig() && user && !resolveAccountDestination(user)) {
+          clearAuthTokens();
+          clearAdminSession();
+          writeFlag(AUTHED_KEY, false);
+          setAuthed(false);
+          throw new Error('Account type could not be verified. Please sign in again.');
+        }
         storeAuthResponse(response);
+        clearAdminSession();
         persistProfileFromUser(response);
-        if (response.user) queryClient.setQueryData(['session', 'profile'], response.user);
+        if (user) queryClient.setQueryData(['session', 'profile'], user);
         await queryClient.resetQueries({ predicate: (query) => query.queryKey[0] !== 'session' });
-        return response.user;
+        return user;
       },
       markAuthenticated: (next = true) => {
         writeFlag(AUTHED_KEY, next);
         setAuthed(next);
         if (!next) {
           clearStoredProfile();
+          clearAdminSession();
           clearStoredClaims();
           writeFlag(CLAIMED_KEY, false);
           setClaimed(false);

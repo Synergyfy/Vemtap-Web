@@ -112,11 +112,11 @@ export function BusinessVerificationChrome({
             <div className="flex flex-wrap items-center gap-space-md">
               <div className="flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-lg bg-badge-discount-bg text-badge-discount-text">
                 <Icon name="verified_user" className="text-[16px]" />
-                <span className="font-caption text-caption font-semibold">NDPR Compliant</span>
+                <span className="font-caption text-caption font-semibold">Identity &amp; business checks</span>
               </div>
               <div className="flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-lg bg-surface-subtle text-text-secondary">
                 <Icon name="lock" className="text-[16px]" />
-                <span className="font-caption text-caption font-semibold">ISO 27001 Certified Enterprise Rails</span>
+                <span className="font-caption text-caption font-semibold">Secure verification records</span>
               </div>
             </div>
             <p className="font-caption text-caption text-text-tertiary">© 2025 VEMTAP Technologies Ltd. All rights reserved.</p>

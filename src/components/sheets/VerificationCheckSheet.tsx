@@ -6,9 +6,8 @@ interface VerificationCheckSheetProps {
   kind: 'id' | 'cac';
   /** The check as `GET /verification/status` reports it. */
   check: VerificationCheckSummary;
-  /** False in demo mode, where the sheet keeps its sample certificate. */
+  /** False in demo mode, where no details have been submitted yet. */
   live: boolean;
-  demo: { cacNumber: string; businessName: string };
   onClose: () => void;
   /** Opens the verification flow (nothing submitted, or a failed check). */
   onStart: () => void;
@@ -17,7 +16,7 @@ interface VerificationCheckSheetProps {
 }
 
 /** Credential details behind "View Details" / "View Certificate" on the verification status center. */
-export function VerificationCheckSheet({ kind, check, live, demo, onClose, onStart, centered = false }: VerificationCheckSheetProps) {
+export function VerificationCheckSheet({ kind, check, live, onClose, onStart, centered = false }: VerificationCheckSheetProps) {
   return (
     <div
       className={`fixed inset-0 z-50 bg-on-background/40 backdrop-blur-sm flex justify-center ${centered ? 'items-center p-margin' : 'items-end'}`}
@@ -37,14 +36,20 @@ export function VerificationCheckSheet({ kind, check, live, demo, onClose, onSta
             </div>
             <div>
               <h3 className="font-heading-sm text-heading-sm text-text-primary">
-                {kind === 'id' ? 'Director Identification Proof' : 'CAC Registration Credential'}
+                {check.submitted
+                  ? kind === 'id'
+                    ? 'Identity Check Details'
+                    : 'CAC Registration Details'
+                  : 'Verification Details'}
               </h3>
               <p className="font-caption text-caption text-text-secondary">
-                {!live || check.ok
-                  ? 'Validated on Federal Database'
-                  : check.submitted
-                    ? 'Not verified yet'
-                    : 'Nothing submitted yet'}
+                {check.sandbox
+                  ? 'Sandbox result — not live verification'
+                  : check.ok
+                    ? 'Verified on record'
+                    : check.submitted
+                      ? 'Not verified yet'
+                      : 'Nothing submitted yet'}
               </p>
             </div>
           </div>
@@ -56,75 +61,56 @@ export function VerificationCheckSheet({ kind, check, live, demo, onClose, onSta
             <Icon name="close" className="text-[18px]" />
           </button>
         </div>
-        {/* Certificate Preview Container */}
+        {/* Recorded check details */}
         <div className="rounded-xl bg-surface-container-low p-space-md mb-space-md">
-          {live ? (
-            <>
-              {check.submitted && (
-                <>
-                  <div className="flex justify-between items-center pb-2 mb-2">
-                    <span className="font-caption text-caption text-text-tertiary">
-                      {kind === 'id' ? check.idType ?? 'ID' : 'Registration Number'}
-                    </span>
-                    <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                      {check.ref ?? '—'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center pb-2 mb-2">
-                    <span className="font-caption text-caption text-text-tertiary">
-                      {kind === 'id' ? 'Name on Record' : 'Registered Entity'}
-                    </span>
-                    <span className="font-label-sm text-label-sm font-semibold text-text-primary text-right">
-                      {check.name ?? '—'}
-                    </span>
-                  </div>
-                </>
-              )}
-              <div className={`flex justify-between items-center ${check.submitted ? 'pb-2 mb-2' : ''}`}>
-                <span className="font-caption text-caption text-text-tertiary">Status</span>
-                <span
-                  className={`font-label-sm text-label-sm font-semibold flex items-center gap-1 ${
-                    check.ok ? 'text-badge-discount-text' : 'text-text-secondary'
-                  }`}
-                >
-                  <Icon name={check.ok ? 'check_circle' : check.submitted ? 'schedule' : 'pending'} className="text-[14px]" />
-                  {check.ok ? 'Active & Verified' : check.label}
-                </span>
-              </div>
-              {check.submitted && (
-                <div className="flex justify-between items-center">
-                  <span className="font-caption text-caption text-text-tertiary">
-                    {check.ok ? 'Verified On' : 'Submitted'}
-                  </span>
-                  <span className="font-caption text-caption text-text-secondary">{check.date ?? '—'}</span>
-                </div>
-              )}
-            </>
-          ) : (
+          {check.submitted && (
             <>
               <div className="flex justify-between items-center pb-2 mb-2">
-                <span className="font-caption text-caption text-text-tertiary">Registration Number</span>
+                <span className="font-caption text-caption text-text-tertiary">
+                  {kind === 'id' ? check.idType ?? 'ID' : 'Registration Number'}
+                </span>
                 <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                  {demo.cacNumber}
+                  {check.ref ?? '—'}
                 </span>
               </div>
               <div className="flex justify-between items-center pb-2 mb-2">
-                <span className="font-caption text-caption text-text-tertiary">Registered Entity</span>
-                <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                  {demo.businessName}
+                <span className="font-caption text-caption text-text-tertiary">
+                  {kind === 'id' ? 'Name on Record' : 'Registered Entity'}
                 </span>
-              </div>
-              <div className="flex justify-between items-center pb-2 mb-2">
-                <span className="font-caption text-caption text-text-tertiary">Status</span>
-                <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold flex items-center gap-1">
-                  <Icon name="check_circle" className="text-[14px]" /> Active & Verified
+                <span className="font-label-sm text-label-sm font-semibold text-text-primary text-right">
+                  {check.name ?? '—'}
                 </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="font-caption text-caption text-text-tertiary">Digital Hash</span>
-                <span className="font-caption text-caption font-mono text-text-secondary">#vm-8492048-ng</span>
               </div>
             </>
+          )}
+          <div className={`flex justify-between items-center ${check.submitted ? 'pb-2 mb-2' : ''}`}>
+            <span className="font-caption text-caption text-text-tertiary">Status</span>
+            <span
+              className={`font-label-sm text-label-sm font-semibold flex items-center gap-1 ${
+                check.ok ? 'text-badge-discount-text' : 'text-text-secondary'
+              }`}
+            >
+              <Icon name={check.ok ? 'check_circle' : check.submitted ? 'schedule' : 'pending'} className="text-[14px]" />
+              {check.ok ? (check.sandbox ? 'Sandbox verified' : 'Verified') : check.label}
+            </span>
+          </div>
+          {check.submitted && (
+            <div className="flex justify-between items-center">
+              <span className="font-caption text-caption text-text-tertiary">
+                {check.ok ? 'Verified On' : 'Submitted'}
+              </span>
+              <span className="font-caption text-caption text-text-secondary">{check.date ?? '—'}</span>
+            </div>
+          )}
+          {check.sandbox && (
+            <p className="mt-space-sm rounded-lg bg-surface-tint-blue px-space-sm py-space-2xs font-caption text-caption text-primary">
+              This is a sandbox result for testing. It is not live verification.
+            </p>
+          )}
+          {!live && !check.submitted && (
+            <p className="mt-space-sm font-caption text-caption text-text-secondary">
+              Start verification to see your result here.
+            </p>
           )}
         </div>
         {live && !check.ok && check.status !== 'pending' && check.status !== 'needs_review' && (

@@ -51,8 +51,8 @@ export function CreateDealItemPickerModal({
         setItems(data);
       })
       .catch(() => {
-        setError('Could not load catalogue items. Showing available inventory.');
-        setItems(demoCatalogueItems);
+        setError('Could not load your live products. Please try again.');
+        setItems([]);
       })
       .finally(() => setLoading(false));
   }, [open, live]);

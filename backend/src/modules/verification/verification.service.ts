@@ -30,10 +30,13 @@ import {
 } from '../businesses/entities/business.entity';
 import { User } from '../users/entities/user.entity';
 import {
+  ConfirmBusinessDto,
   ManualReviewDto,
+  PreviewBusinessDto,
   UnregisteredBusinessDto,
   VerifyBusinessDto,
   VerifyIdentityDto,
+  VerifyRepresentativeDto,
 } from './dto/verify.dto';
 import {
   businessNameMatches,
@@ -48,6 +51,15 @@ import { PushNotificationService } from '../notifications/push-notification.serv
 const ALLOWED_DOCUMENT_HOSTS = ['res.cloudinary.com'];
 const MAX_DOCUMENT_BYTES = 8 * 1024 * 1024;
 
+/**
+ * bytID's sandbox always returns ADAEZE TEST OKAFOR. Since the key decides the
+ * environment, the server sends that record's names for the supplied-field
+ * comparison; the app never asks for a DOB or a name it would have to guess.
+ */
+const SANDBOX_PERSON = { firstName: 'Adaeze', lastName: 'Okafor' };
+
+type ComparisonPerson = { firstName: string; lastName: string };
+
 export interface CheckView {
   id: string;
   kind: VerificationCheckKind;
@@ -57,9 +69,23 @@ export interface CheckView {
   recordName: string | null;
   reasons: string[];
   faceMatch: { status: string; score: number | null } | null;
+  /** `test` = sandbox result; the app must never present it as live verification. */
+  environment?: 'test' | 'live' | null;
   createdAt: string;
   reviewedAt: string | null;
   reviewNote: string | null;
+}
+
+/** Minimal, frontend-safe registry fields used only to prefill the CAC form. */
+export interface BusinessPreview {
+  legalName: string | null;
+  registrationNumber: string | null;
+  status: string | null;
+  registrationDate: string | null;
+  companyType: string | null;
+  /** Counts only: directors / beneficial owners' personal details are not sent to the app. */
+  representativeCount: number;
+  ownersPublished: boolean;
 }
 
 /**
@@ -138,6 +164,41 @@ export class VerificationService {
 
   // ─── identity ────────────────────────────────────────────────────────
 
+  /**
+   * Names bytID should compare against the registry record. In sandbox the
+   * provider always returns its fixed test person, so we supply that person
+   * rather than making the account holder fail a synthetic name check. In live
+   * mode the submitted name (falling back to the account name) is authoritative.
+   */
+  private comparisonPerson(
+    dto: VerifyIdentityDto,
+    user: User,
+  ): ComparisonPerson {
+    if (this.bytid.sandbox) return { ...SANDBOX_PERSON };
+    const firstName = (dto.firstName || user.firstName || '').trim();
+    const lastName = (dto.lastName || user.lastName || '').trim();
+    if (!firstName || !lastName) {
+      throw new BadRequestException(
+        'Add your first and last name before verifying your identity',
+      );
+    }
+    return { firstName, lastName };
+  }
+
+  /** Restore the names used for this attempt when a webhook completes it. */
+  private storedComparison(
+    check: VerificationCheck,
+    user: User,
+  ): ComparisonPerson {
+    const saved = (check.nameMatch as { compared?: ComparisonPerson } | null)
+      ?.compared;
+    if (saved?.firstName && saved?.lastName) return saved;
+    return {
+      firstName: (user.firstName ?? '').trim(),
+      lastName: (user.lastName ?? '').trim(),
+    };
+  }
+
   async verifyIdentity(
     businessId: string,
     userId: string,
@@ -149,6 +210,7 @@ export class VerificationService {
     ]);
     if (!user) throw new NotFoundException('User not found');
 
+    const compared = this.comparisonPerson(dto, user);
     const check = await this.checkRepo.save(
       this.checkRepo.create({
         businessId,
@@ -157,9 +219,14 @@ export class VerificationService {
         idType: dto.idType as IdentityDocumentType,
         idNumberMasked: maskIdNumber(dto.idNumber),
         reference: `ver_${uuidv4()}`,
-        livenessSessionId: dto.livenessSessionId,
+        livenessSessionId: dto.livenessSessionId ?? null,
         documentUrls: dto.documentUrl ? [dto.documentUrl] : null,
         status: VerificationCheckStatus.PENDING,
+        // Kept for async/webhook completion without asking the user again.
+        nameMatch: {
+          submittedName: [compared.firstName, compared.lastName].join(' '),
+          compared,
+        },
       }),
     );
     await this.markInProgress(business);
@@ -173,17 +240,19 @@ export class VerificationService {
           document_type: 'passport',
           liveness_session_id: dto.livenessSessionId,
         });
-        this.applyDocumentResult(check, result, user);
+        this.applyDocumentResult(check, result, user, compared);
       } else {
         const result = await this.bytid.verifyIdentity(dto.idType, {
           reference: check.reference,
           id_number: dto.idNumber!.replace(/\s+/g, ''),
-          first_name: dto.firstName,
-          last_name: dto.lastName,
-          ...(dto.dob && { dob: dto.dob }),
-          liveness_session_id: dto.livenessSessionId,
+          first_name: compared.firstName,
+          last_name: compared.lastName,
+          // BVN is a record lookup; bytID rejects a selfie on this endpoint.
+          ...(dto.idType !== 'bvn' && {
+            liveness_session_id: dto.livenessSessionId!,
+          }),
         });
-        this.applyIdentityResult(check, result, user);
+        this.applyIdentityResult(check, result, user, compared);
       }
     } catch (error) {
       check.status = VerificationCheckStatus.FAILED;
@@ -203,8 +272,10 @@ export class VerificationService {
     check: VerificationCheck,
     result: BytidIdentityCheck,
     user: User,
+    compared: ComparisonPerson = this.storedComparison(check, user),
   ) {
     check.providerCheckId = result.id;
+    check.environment = result.environment === 'test' ? 'test' : 'live';
     if (result.status === 'not_found') {
       check.status = VerificationCheckStatus.FAILED;
       check.reasons = ['id_not_found'];
@@ -228,19 +299,25 @@ export class VerificationService {
       ]
         .filter(Boolean)
         .join(' ');
-    const nameMatched = personNameMatches(user, result.data ?? undefined);
+    const nameMatched = personNameMatches(compared, result.data ?? undefined);
     check.nameMatch = {
       recordName: recordName || null,
       accountName: [user.firstName, user.lastName].filter(Boolean).join(' '),
+      submittedName: [compared.firstName, compared.lastName].join(' '),
       matched: nameMatched,
       fieldMatches: result.field_matches,
+      sandbox: result.environment === 'test',
     };
     check.faceMatch = result.face_match
       ? { status: result.face_match.status, score: result.face_match.score }
       : null;
 
     const reasons: string[] = [];
-    if (result.face_match?.status !== 'matched') {
+    // BVN is a record-only lookup, so a missing face match is expected.
+    if (
+      check.idType !== IdentityDocumentType.BVN &&
+      result.face_match?.status !== 'matched'
+    ) {
       reasons.push(
         result.face_match?.status === 'not_matched'
           ? 'face_not_matched'
@@ -248,6 +325,18 @@ export class VerificationService {
       );
     }
     if (!nameMatched) reasons.push('name_mismatch');
+    // Only judge fields we actually send. Date of birth is no longer collected,
+    // so a provider null/false there must not fail an otherwise good check.
+    const fieldsWeSend: Array<'first_name' | 'last_name'> = [
+      'first_name',
+      'last_name',
+    ];
+    if (
+      result.field_matches &&
+      fieldsWeSend.some((field) => result.field_matches?.[field] === false)
+    ) {
+      reasons.push('details_mismatch');
+    }
     check.reasons = reasons;
     check.status = reasons.length
       ? VerificationCheckStatus.NEEDS_REVIEW
@@ -258,12 +347,17 @@ export class VerificationService {
     check: VerificationCheck,
     result: BytidDocumentCheck,
     user: User,
+    compared: ComparisonPerson = this.storedComparison(check, user),
   ) {
     check.providerCheckId = result.id;
+    check.environment = this.bytid.sandbox ? 'test' : 'live';
     check.idNumberMasked =
       maskIdNumber(result.extracted?.id_number ?? result.id_number) ??
       check.idNumberMasked;
-    const nameMatched = personNameMatches(user, result.extracted ?? undefined);
+    const nameMatched = personNameMatches(
+      compared,
+      result.extracted ?? undefined,
+    );
     const recordName = [
       result.extracted?.first_name,
       result.extracted?.middle_name,
@@ -274,7 +368,9 @@ export class VerificationService {
     check.nameMatch = {
       recordName: recordName || null,
       accountName: [user.firstName, user.lastName].filter(Boolean).join(' '),
+      submittedName: [compared.firstName, compared.lastName].join(' '),
       matched: nameMatched,
+      sandbox: this.bytid.sandbox,
     };
     const face = result.checks?.face_match;
     if (face && typeof face === 'object') {
@@ -312,17 +408,40 @@ export class VerificationService {
 
   // ─── business ────────────────────────────────────────────────────────
 
-  async verifyBusiness(
+  private cacNumber(value: string): string {
+    return value.toUpperCase().replace(/[\s-]+/g, '');
+  }
+
+  /** Only the fields the form needs; never directors' personal details. */
+  private previewOf(result: BytidCacCheck, fallbackNumber: string): BusinessPreview {
+    const people = [
+      ...(result.data?.directors ?? []),
+      ...(result.data?.beneficial_owners ?? []),
+    ];
+    return {
+      legalName: result.data?.legal_name ?? null,
+      registrationNumber:
+        result.data?.registration_number ?? result.id_number ?? fallbackNumber,
+      status: result.data?.status ?? null,
+      registrationDate: result.data?.registration_date ?? null,
+      companyType: result.data?.company_type ?? null,
+      representativeCount: people.length,
+      ownersPublished: people.length > 0,
+    };
+  }
+
+  /**
+   * Registry lookup for autofill only. A successful lookup is NOT verification
+   * of the business or of ownership: the returned check stays pending until
+   * the owner confirms the details and a separate representative check runs.
+   */
+  async previewBusiness(
     businessId: string,
     userId: string,
-    dto: VerifyBusinessDto,
+    dto: PreviewBusinessDto,
   ) {
     const business = await this.business(businessId);
-    const owner = await this.userRepo.findOne({
-      where: { id: business.ownerId },
-    });
-    const number = dto.registrationNumber.toUpperCase().replace(/[\s-]+/g, '');
-
+    const number = this.cacNumber(dto.registrationNumber);
     const check = await this.checkRepo.save(
       this.checkRepo.create({
         businessId,
@@ -332,16 +451,101 @@ export class VerificationService {
         idNumberMasked: number,
         reference: `ver_${uuidv4()}`,
         status: VerificationCheckStatus.PENDING,
+        nameMatch: { preview: true },
       }),
     );
-    await this.markInProgress(business);
 
     try {
       const result = await this.bytid.lookupCac({
         reference: check.reference,
         id_number: number,
       });
-      this.applyCacResult(check, result, business, owner);
+      check.providerCheckId = result.id;
+      check.environment = result.environment === 'test' ? 'test' : 'live';
+      const preview = this.previewOf(result, number);
+      check.nameMatch = { ...preview, preview: true };
+      if (result.status === 'not_found') {
+        check.status = VerificationCheckStatus.FAILED;
+        check.reasons = ['cac_not_found'];
+      } else if (result.status === 'failed') {
+        check.status = VerificationCheckStatus.FAILED;
+        check.reasons = ['registry_unavailable'];
+        throw new ServiceUnavailableException(
+          'The CAC registry is not responding right now. Please try again shortly.',
+        );
+      }
+      await this.checkRepo.save(check);
+      return { ...this.view(check), preview };
+    } catch (error) {
+      check.status = VerificationCheckStatus.FAILED;
+      check.reasons = check.reasons?.length
+        ? check.reasons
+        : ['provider_error'];
+      await this.checkRepo.save(check);
+      throw error;
+    }
+  }
+
+  /** Confirm autofilled details (or submit without a preview) and check CAC. */
+  async verifyBusiness(
+    businessId: string,
+    userId: string,
+    dto: ConfirmBusinessDto,
+  ) {
+    const business = await this.business(businessId);
+    const number = this.cacNumber(dto.registrationNumber);
+    let check: VerificationCheck;
+
+    if (dto.previewId) {
+      if (dto.confirmed !== true) {
+        throw new BadRequestException(
+          'Confirm the registry details before using them',
+        );
+      }
+      const preview = await this.checkRepo.findOne({
+        where: { id: dto.previewId, businessId },
+      });
+      if (
+        !preview ||
+        preview.kind !== VerificationCheckKind.BUSINESS ||
+        preview.idType !== IdentityDocumentType.CAC ||
+        preview.status !== VerificationCheckStatus.PENDING ||
+        !(preview.nameMatch as Record<string, unknown> | null)?.preview ||
+        preview.idNumberMasked !== number
+      ) {
+        throw new BadRequestException('Registry lookup expired. Look it up again.');
+      }
+      check = preview;
+    } else {
+      check = await this.checkRepo.save(
+        this.checkRepo.create({
+          businessId,
+          userId,
+          kind: VerificationCheckKind.BUSINESS,
+          idType: IdentityDocumentType.CAC,
+          idNumberMasked: number,
+          reference: `ver_${uuidv4()}`,
+          status: VerificationCheckStatus.PENDING,
+        }),
+      );
+    }
+    await this.markInProgress(business);
+
+    try {
+      // Prefer the full check by provider id: the verifications list omits
+      // identity/registry data, and reusing the id avoids a second charge.
+      let result = check.providerCheckId
+        ? await this.bytid
+            .getVerification<BytidCacCheck>(check.providerCheckId)
+            .catch(() => null)
+        : null;
+      if (!result?.data) {
+        result = await this.bytid.lookupCac({
+          reference: check.reference,
+          id_number: number,
+        });
+      }
+      this.applyCacResult(check, result, business);
     } catch (error) {
       check.status = VerificationCheckStatus.FAILED;
       check.reasons = check.reasons?.length
@@ -356,13 +560,17 @@ export class VerificationService {
     return this.view(check);
   }
 
+  /**
+   * CAC name/status only. Ownership is deliberately decided by
+   * `verifyRepresentative`, never by a successful registry lookup.
+   */
   applyCacResult(
     check: VerificationCheck,
     result: BytidCacCheck,
     business: Business,
-    owner: User | null,
   ) {
     check.providerCheckId = result.id;
+    check.environment = result.environment === 'test' ? 'test' : 'live';
     if (result.status === 'not_found') {
       check.status = VerificationCheckStatus.FAILED;
       check.reasons = ['cac_not_found'];
@@ -375,34 +583,133 @@ export class VerificationService {
         'The CAC registry is not responding right now. Please try again shortly.',
       );
     }
-    const people = [
-      ...(result.data?.directors ?? []),
-      ...(result.data?.beneficial_owners ?? []),
-    ];
     const nameMatched = businessNameMatches(
       business.name,
       result.data?.legal_name,
     );
-    // Business-name (BN) records list no directors; the name match carries it.
-    const ownerListed =
-      people.length === 0 || (owner ? ownerListedOnCac(owner, people) : false);
     const active = !result.data?.status || /^active$/i.test(result.data.status);
-
     check.nameMatch = {
       recordName: result.data?.legal_name ?? null,
       businessName: business.name,
       matched: nameMatched,
-      ownerListed,
       companyStatus: result.data?.status ?? null,
+      ...this.previewOf(result, check.idNumberMasked ?? ''),
+      preview: false,
     };
     const reasons: string[] = [];
     if (!nameMatched) reasons.push('business_name_mismatch');
-    if (!ownerListed) reasons.push('owner_not_listed');
     if (!active) reasons.push('company_not_active');
     check.reasons = reasons;
     check.status = reasons.length
       ? VerificationCheckStatus.NEEDS_REVIEW
       : VerificationCheckStatus.VERIFIED;
+  }
+
+  /**
+   * Ownership is a separate, explicit check: the submitted representative must
+   * be a director or beneficial owner on the CAC record. BN records that do not
+   * publish people go to a human reviewer; they never pass automatically.
+   */
+  async verifyRepresentative(
+    businessId: string,
+    userId: string,
+    dto: VerifyRepresentativeDto,
+  ) {
+    await this.business(businessId);
+    const name = dto.representativeName.trim().replace(/\s+/g, ' ');
+    const parts = name.split(' ');
+    if (parts.length < 2) {
+      throw new BadRequestException(
+        "Enter the representative's first and last name",
+      );
+    }
+
+    const cacCheck = dto.previewId
+      ? await this.checkRepo.findOne({
+          where: { id: dto.previewId, businessId },
+        })
+      : await this.latest(businessId, VerificationCheckKind.BUSINESS);
+    if (
+      !cacCheck ||
+      cacCheck.idType !== IdentityDocumentType.CAC ||
+      !cacCheck.providerCheckId
+    ) {
+      throw new BadRequestException('Look up the CAC registration first');
+    }
+
+    const check = await this.checkRepo.save(
+      this.checkRepo.create({
+        businessId,
+        userId,
+        kind: VerificationCheckKind.REPRESENTATIVE,
+        idType: IdentityDocumentType.CAC,
+        idNumberMasked: cacCheck.idNumberMasked,
+        reference: `ver_${uuidv4()}`,
+        status: VerificationCheckStatus.PENDING,
+        nameMatch: { submittedName: name },
+      }),
+    );
+
+    try {
+      let result = await this.bytid
+        .getVerification<BytidCacCheck>(cacCheck.providerCheckId)
+        .catch(() => null);
+      if (!result?.data) {
+        result = await this.bytid.findByReference<BytidCacCheck>(
+          cacCheck.reference,
+        );
+      }
+      check.providerCheckId = result.id;
+      check.environment = result.environment === 'test' ? 'test' : 'live';
+      if (result.status === 'not_found') {
+        check.status = VerificationCheckStatus.FAILED;
+        check.reasons = ['cac_not_found'];
+      } else if (result.status === 'failed') {
+        check.status = VerificationCheckStatus.FAILED;
+        check.reasons = ['registry_unavailable'];
+        throw new ServiceUnavailableException(
+          'The CAC registry is not responding right now. Please try again shortly.',
+        );
+      } else {
+        const people = [
+          ...(result.data?.directors ?? []),
+          ...(result.data?.beneficial_owners ?? []),
+        ];
+        const matched =
+          people.length > 0 &&
+          ownerListedOnCac(
+            { firstName: parts[0], lastName: parts.slice(1).join(' ') },
+            people,
+          );
+        check.nameMatch = {
+          submittedName: name,
+          matched,
+          recordName: result.data?.legal_name ?? null,
+          peopleCount: people.length,
+        };
+        check.status = matched
+          ? VerificationCheckStatus.VERIFIED
+          : VerificationCheckStatus.NEEDS_REVIEW;
+        check.reasons = matched
+          ? []
+          : [
+              people.length === 0
+                ? 'representative_not_listed'
+                : 'representative_mismatch',
+            ];
+      }
+    } catch (error) {
+      check.status = VerificationCheckStatus.FAILED;
+      check.reasons = check.reasons?.length
+        ? check.reasons
+        : ['provider_error'];
+      await this.checkRepo.save(check);
+      throw error;
+    }
+
+    await this.checkRepo.save(check);
+    await this.evaluate(businessId);
+    return this.view(check);
   }
 
   /** A business without CAC registration: always reviewed by a person. */
@@ -439,9 +746,22 @@ export class VerificationService {
 
   /** The owner asks a person to look at a check that did not pass. */
   async requestManualReview(businessId: string, dto: ManualReviewDto) {
-    const check = dto.checkId
+    let check = dto.checkId
       ? await this.checkRepo.findOne({ where: { id: dto.checkId, businessId } })
-      : await this.latest(businessId, VerificationCheckKind.IDENTITY);
+      : null;
+    if (!check && !dto.checkId) {
+      const [identity, business, representative] = await Promise.all([
+        this.latest(businessId, VerificationCheckKind.IDENTITY),
+        this.latest(businessId, VerificationCheckKind.BUSINESS),
+        this.latest(businessId, VerificationCheckKind.REPRESENTATIVE),
+      ]);
+      check = [representative, business, identity].find(
+        (candidate) =>
+          candidate &&
+          candidate.status !== VerificationCheckStatus.VERIFIED &&
+          candidate.status !== VerificationCheckStatus.NEEDS_REVIEW,
+      ) ?? null;
+    }
     if (!check) throw new NotFoundException('No verification to review');
     if (check.status === VerificationCheckStatus.VERIFIED) {
       throw new BadRequestException('This check already passed');
@@ -460,13 +780,16 @@ export class VerificationService {
 
   async status(businessId: string) {
     const business = await this.business(businessId);
-    const [identity, businessCheck] = await Promise.all([
+    const [identity, businessCheck, representative] = await Promise.all([
       this.latest(businessId, VerificationCheckKind.IDENTITY),
       this.latest(businessId, VerificationCheckKind.BUSINESS),
+      this.latest(businessId, VerificationCheckKind.REPRESENTATIVE),
     ]);
     const identityOk = identity?.status === VerificationCheckStatus.VERIFIED;
     const businessOk =
       businessCheck?.status === VerificationCheckStatus.VERIFIED;
+    const representativeOk =
+      representative?.status === VerificationCheckStatus.VERIFIED;
     const nextStep =
       business.verificationStatus === BusinessVerificationStatus.VERIFIED
         ? 'done'
@@ -475,7 +798,7 @@ export class VerificationService {
           ? 'review'
           : !identityOk
             ? 'identity'
-            : !businessOk
+            : !businessOk || !representativeOk
               ? 'business'
               : 'review';
     return {
@@ -485,6 +808,7 @@ export class VerificationService {
       nextStep,
       identity: identity ? this.view(identity) : null,
       business: businessCheck ? this.view(businessCheck) : null,
+      representative: representative ? this.view(representative) : null,
     };
   }
 
@@ -496,14 +820,27 @@ export class VerificationService {
    */
   async evaluate(businessId: string): Promise<BusinessVerificationStatus> {
     const business = await this.business(businessId);
-    const [identity, businessCheck] = await Promise.all([
+    const [identity, businessCheck, representative] = await Promise.all([
       this.latest(businessId, VerificationCheckKind.IDENTITY),
       this.latest(businessId, VerificationCheckKind.BUSINESS),
+      this.latest(businessId, VerificationCheckKind.REPRESENTATIVE),
     ]);
-    const statuses = [identity?.status, businessCheck?.status];
+    const statuses = [
+      identity?.status,
+      businessCheck?.status,
+      representative?.status,
+    ];
+    // An unregistered business is never auto-verified; a human decides.
+    const ownershipProven =
+      businessCheck?.idType === IdentityDocumentType.UNREGISTERED
+        ? false
+        : representative?.status === VerificationCheckStatus.VERIFIED;
 
     let next: BusinessVerificationStatus;
-    if (statuses.every((s) => s === VerificationCheckStatus.VERIFIED)) {
+    if (
+      statuses.every((s) => s === VerificationCheckStatus.VERIFIED) &&
+      ownershipProven
+    ) {
       next = BusinessVerificationStatus.VERIFIED;
     } else if (
       business.verificationStatus === BusinessVerificationStatus.VERIFIED
@@ -645,16 +982,12 @@ export class VerificationService {
         await this.bytid.findByReference<BytidIdentityCheck>(check.reference),
         user,
       );
-    } else {
+    } else if (check.kind === VerificationCheckKind.BUSINESS) {
       const business = await this.business(check.businessId);
-      const owner = await this.userRepo.findOne({
-        where: { id: business.ownerId },
-      });
       this.applyCacResult(
         check,
         await this.bytid.findByReference<BytidCacCheck>(check.reference),
         business,
-        owner,
       );
     }
     await this.checkRepo.save(check);
@@ -702,6 +1035,12 @@ export class VerificationService {
         (check.nameMatch?.recordName as string | null | undefined) ?? null,
       reasons: check.reasons ?? [],
       faceMatch: check.faceMatch,
+      environment:
+        check.environment === 'test'
+          ? 'test'
+          : check.environment === 'live'
+            ? 'live'
+            : null,
       createdAt: (check.createdAt ?? new Date()).toISOString(),
       reviewedAt: check.reviewedAt?.toISOString() ?? null,
       reviewNote: check.reviewNote,

@@ -7,6 +7,7 @@ import type { DesktopNavKey } from './components/ui/DesktopChrome';
 import type { AccountTarget } from './components/AccountRows';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { isBusinessRole, isBusinessDesignated, type SessionUser } from './services/sessionService';
+import { isAdminRole, resolveAccountDestination, type AccountDestination } from './services/accountRouting';
 import { Skeleton, SkeletonGroup } from './components/ui/Skeleton';
 import { useSessionUser } from './hooks/useSessionUser';
 import { ApiError, SESSION_EXPIRED_EVENT } from './services/api/client';
@@ -25,7 +26,14 @@ import { BusinessOfferingsProvider } from './context/BusinessOfferingsContext';
 import { BusinessFeaturesProvider, useBusinessFeatures } from './context/BusinessFeaturesContext';
 import { BUSINESS_FEATURES, FEATURE_MANAGE_ROUTE, FEATURE_SETUP_ROUTE, findDisabledRoute, type FeatureId, type FeatureState } from './scripts/businessFeatures';
 import { allowedStaffRoute } from './scripts/staffPageAccess';
-import { isAdminAuthenticated } from './scripts/admin/adminAuth';
+import {
+  adminSessionFromUser,
+  clearAdminSession,
+  isAdminAuthenticated,
+  setAdminSession,
+} from './scripts/admin/adminAuth';
+import { AdminLoginScreen } from './scripts/admin/AdminLoginScreen';
+import { AdminDashboardScreen } from './scripts/admin/AdminDashboardScreen';
 import { addPaidBusinessLocation, getBusinessLocationCount } from './scripts/businessLocationsStore';
 import { CartProvider } from './context/CartContext';
 import { BookingProvider, useBooking } from './context/BookingContext';
@@ -132,7 +140,6 @@ import { type PosTerminalLine } from './scripts/desktop/posTerminalData';
 import { type PosCustomerRecord } from './scripts/desktop/posRegisterExtras';
 import { StoreOrderingProvider } from './context/StoreOrderingContext';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
-import { CreateDealItemPickerModal } from './components/CreateDealItemPickerModal';
 
 type Route =
   | 'welcome'
@@ -195,6 +202,7 @@ type Route =
   | 'business-hub'
   | 'hub-locations'
   | 'business-add-location'
+  | 'business-buy-locations'
   | 'hub-branch-detail'
   | 'hub-catalog'
   | 'hub-catalog-new-product'
@@ -418,6 +426,7 @@ const ROUTE_PATH: Record<Route, string> = {
   'business-hub': '/business/hub',
   'hub-locations': '/business/hub/locations',
   'business-add-location': '/business/hub/locations/add',
+  'business-buy-locations': '/business/hub/locations/buy',
   'hub-branch-detail': '/business/hub/locations/branch',
   'hub-catalog': '/business/hub/catalog',
   'hub-catalog-new-product': '/business/hub/catalog/products/new',
@@ -551,7 +560,7 @@ const ROUTE_PATH: Record<Route, string> = {
   // Platform Admin — deliberately absent from every user nav; admins open it
   // directly. Gating is the backend's job once auth exists.
   // Platform Admin — command centre and management console
-  'admin-login': '/admin/login',
+  'admin-login': '/superadmin/login',
   'admin-overview': '/admin',
   'admin-customers': '/admin/customers',
   'admin-businesses': '/admin/businesses',
@@ -603,6 +612,8 @@ const PATH_ROUTE = new Map(Object.entries(ROUTE_PATH).map(([key, path]) => [path
 PATH_ROUTE.set(ROUTE_PATH.discover, 'discover');
 PATH_ROUTE.set(ROUTE_PATH.messages, 'messages');
 PATH_ROUTE.set(ROUTE_PATH.orders, 'orders');
+PATH_ROUTE.set('/superadmin/login', 'admin-login');
+PATH_ROUTE.set('/admin/login', 'admin-login');
 
 /**
  * The sample spa flow from the original design (storefront, service catalogue and
@@ -724,6 +735,10 @@ const PORTAL_PREFIXES = ['/business/', '/pos/', '/analytics/', '/boost-hub', '/s
 /** Merchant portal pages: they need a signed-in business user once the API is configured. */
 function isPortalRoute(route: Route) {
   if (STOREFRONT_ROUTES.has(route)) return false;
+  // The dashboard's Verification page lives at /business-verification/status,
+  // which is not under /business/. Without this exception the business-shell
+  // guard treats it as a consumer route and bounces it to business-overview.
+  if (route === 'verification-status') return true;
   const path = ROUTE_PATH[route];
   return PORTAL_PREFIXES.some((prefix) => path.startsWith(prefix));
 }
@@ -857,6 +872,7 @@ const isSignedOutPath = (path: string) => {
 };
 
 function guardRoute(found: Route, authed: boolean, isDesktop: boolean): Route {
+  if (found === 'admin-login' || found.startsWith('admin-')) return found;
   if (DESKTOP_ONLY_ROUTES.has(found) && !isDesktop) return authed ? 'home' : 'welcome';
   if (authed) return found;
   if (hasApiConfig() && SIGNED_IN_ROUTES.has(found)) return 'welcome';
@@ -918,6 +934,12 @@ function dealDetailPath(deal?: ClaimDealSummary | null): string {
 function entryRoute(rawPath: string, authed: boolean, isDesktop: boolean, resume = false): Route {
   const url = new URL(rawPath, window.location.origin);
   const path = url.pathname.replace(/\/+$/, '') || '/';
+  if (path === '/superadmin/login' || path === '/admin/login') return 'admin-login';
+  if (path === '/admin') return 'admin-overview';
+  if (path.startsWith('/admin/')) {
+    const adminMatch = PATH_ROUTE.get(path);
+    if (adminMatch) return adminMatch;
+  }
   // Public customer invite page — reachable signed-out via /join/{business-slug}.
   if (path.startsWith('/join/')) return 'customer-invite-join';
   if (path === ROUTE_PATH['gift-reject']) return 'gift-reject';
@@ -1087,8 +1109,6 @@ const BusinessFeatureSetupScreen = lazyScreen(() => import('./scripts/BusinessFe
 const BusinessManageFeaturesScreen = lazyScreen(() => import('./scripts/BusinessManageFeaturesScreen').then((module) => module.BusinessManageFeaturesScreen));
 const DesktopBusinessFeatureSetupScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessFeatureSetupScreen').then((module) => module.DesktopBusinessFeatureSetupScreen));
 const DesktopBusinessManageFeaturesScreen = lazyScreen(() => import('./scripts/desktop/DesktopBusinessManageFeaturesScreen').then((module) => module.DesktopBusinessManageFeaturesScreen));
-const AdminLoginScreen = lazyScreen(() => import('./scripts/admin/AdminLoginScreen').then((module) => module.AdminLoginScreen));
-const AdminDashboardScreen = lazyScreen(() => import('./scripts/admin/AdminDashboardScreen').then((module) => module.AdminDashboardScreen));
 const BusinessOverviewScreen = lazyScreen(() => import('./scripts/BusinessOverviewScreen').then((module) => module.BusinessOverviewScreen));
 const BusinessPosMenuScreen = lazyScreen(() => import('./scripts/BusinessPosMenuScreen').then((module) => module.BusinessPosMenuScreen));
 const BusinessHubScreen = lazyScreen(() => import('./scripts/BusinessHubScreen').then((module) => module.BusinessHubScreen));
@@ -1300,6 +1320,8 @@ function AppInner() {
   // should open their dashboard instead of starting sign-up again.
   // Includes an owner whose token is currently scoped to the customer shell.
   const isBusinessSession = hasApiConfig() && !!sessionUser && (Boolean(sessionUser.businessRole) || isBusinessRole(sessionUser.role));
+  // Derived only from the authenticated account. `null` never means customer.
+  const accountDestination = hasApiConfig() ? resolveAccountDestination(sessionUser) : null;
   const cart = useCart();
   const booking = useBooking();
   const profile = useProfile();
@@ -1598,14 +1620,58 @@ function AppInner() {
     setRouteState(allowedTarget);
   };
 
+  /** Role decisions bypass staff allow-lists: they must land on the right shell. */
+  const goToRouteImmediately = (target: Route, replace = false) => {
+    const path = resolveRoutePath(target);
+    if (window.location.pathname !== path) {
+      if (replace) window.history.replaceState(null, '', path);
+      else window.history.pushState(null, '', path);
+    }
+    setRouteState(target);
+  };
+
+  const failClosedToSignIn = () => {
+    clearAdminSession();
+    goToRouteImmediately('sign-in', true);
+  };
+
+  const routeAdminAccount = (user?: SessionUser | null) => {
+    const adminSession = adminSessionFromUser(user);
+    if (!adminSession) return false;
+    setAdminSession(adminSession);
+    goToRouteImmediately('admin-overview', true);
+    return true;
+  };
+
+  /**
+   * Shared post-login decision for desktop and mobile. Returns true when the
+   * navigation is complete; a customer return keeps the existing flow.
+   */
+  const routeAccountAfterSignIn = (user?: SessionUser | null) => {
+    if (!hasApiConfig()) return false;
+    const destination = resolveAccountDestination(user);
+    if (!destination) {
+      failClosedToSignIn();
+      return true;
+    }
+    if (destination === 'admin') {
+      if (routeAdminAccount(user)) return true;
+      failClosedToSignIn();
+      return true;
+    }
+    return false;
+  };
+
   // Covers a denied URL opened directly or through browser back/forward, where
   // `setRoute` is not the entry point. Session data is required first so a
   // loading profile never redirects an owner by mistake.
   const permittedRoute = isProductOnlyHiddenRoute(route)
     ? productOnlyFallbackRoute(route)
-    : sessionUser
-      ? (allowedStaffRoute(sessionUser, route) as Route)
-      : route;
+    : route === 'admin-login' || route.startsWith('admin-')
+      ? route
+      : sessionUser
+        ? (allowedStaffRoute(sessionUser, route) as Route)
+        : route;
   useEffect(() => {
     if (!hasApiConfig() && !isProductOnlyHiddenRoute(route)) return;
     if (permittedRoute === route) return;
@@ -1699,6 +1765,19 @@ function AppInner() {
   const [shellSwitchFailed, setShellSwitchFailed] = useState<Route | null>(null);
   const shellSwitchInFlight = useRef(false);
   const onBusinessPage = isPortalRoute(route) || route === 'business-onboarding' || route === 'business-verification';
+  // Hold rendering until the account type is known. An unknown role, a failed
+  // profile lookup, or a role/route mismatch must never flash a customer
+  // dashboard for a business or admin account.
+  const accountStatusPending =
+    hasApiConfig() &&
+    authed &&
+    (sessionQuery.isLoading ||
+      sessionQuery.isError ||
+      (!!sessionUser && accountDestination === null) ||
+      (accountDestination === 'admin' && (route === 'admin-login' || !route.startsWith('admin-'))) ||
+      (accountDestination === 'business' &&
+        (!onBusinessPage || (route.startsWith('admin-') && route !== 'admin-login'))) ||
+      (accountDestination === 'customer' && route.startsWith('admin-') && route !== 'admin-login'));
   // A scanned voucher that isn't this customer's: a business account scans it for redeeming.
   const scanNeedsBusiness =
     route === 'claimed-deal' &&
@@ -1825,11 +1904,11 @@ function AppInner() {
 
   // The referral admin page is for platform admins only.
   const adminCheckPending =
-    hasApiConfig() && route === 'admin-referral' && (!sessionUser || (sessionUser.role !== 'SUPER_ADMIN' && sessionUser.role !== 'Admin'));
+    hasApiConfig() && route === 'admin-referral' && (!sessionUser || !isAdminRole(sessionUser.role));
   useEffect(() => {
     if (!hasApiConfig() || route !== 'admin-referral') return;
     if (!authed) setRouteState('sign-in');
-    else if (sessionUser && sessionUser.role !== 'SUPER_ADMIN' && sessionUser.role !== 'Admin') setRouteState('home');
+    else if (sessionUser && !isAdminRole(sessionUser.role)) failClosedToSignIn();
   }, [authed, route, sessionUser]);
 
   // Opening a portal page signed out (with the API configured) goes to sign in;
@@ -2446,17 +2525,12 @@ function AppInner() {
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [pricingItemId, setPricingItemId] = useState<string | null>(null);
   const [addingBranch, setAddingBranch] = useState(false);
-  const [dealPickerOpen, setDealPickerOpen] = useState(false);
-  /** Deals start from a real item; with none chosen, opens the create-deal item picker modal. */
+  /** Create Deal starts type-first; Make a Deal keeps the chosen product preselected. */
   const openDealStudio = (item?: CatalogueItem | null, choice?: DealPriceChoice) => {
-    if (item) {
-      setDealSource(item);
-      setDealPriceChoice(choice);
-      setCatalogNotice(null);
-      setRoute('deal-studio');
-      return;
-    }
-    setDealPickerOpen(true);
+    setDealSource(item ?? null);
+    setDealPriceChoice(choice);
+    setCatalogNotice(null);
+    setRoute('deal-studio');
   };
   /** Cluster "Create location": live opens the add-branch form in Locations. */
   const openCreateLocation = () => {
@@ -3223,35 +3297,42 @@ function AppInner() {
   };
 
   /**
-   * A signed-in owner returns to the shell they last used. Unfinished setup, or
-   * no business yet, is the customer shell; setup reopens from its button.
-   * Staff and admins only have the business side.
+   * A saved return path is only safe for a confirmed customer. Business and
+   * admin accounts never inherit a customer URL from a previous visit.
    */
-  const resumeReturnPath = () => {
+  const resumeReturnPath = (accountType?: AccountDestination) => {
     const path = window.sessionStorage.getItem(RETURN_PATH_KEY);
     window.sessionStorage.removeItem(RETURN_PATH_KEY);
     if (!path) return false;
-    setRoute(entryRoute(path, true, isDesktop));
+    const target = entryRoute(path, true, isDesktop);
+    if (
+      accountType === 'customer' &&
+      (target.startsWith('admin-') ||
+        isPortalRoute(target) ||
+        target === 'business-onboarding' ||
+        target === 'business-verification')
+    ) {
+      return false;
+    }
+    setRoute(target);
     return true;
   };
 
-  const routeSignedInOwner = async (user?: SessionUser | null, replaceTo?: (target: Route) => void) => {
-    if (!replaceTo && resumeReturnPath()) return;
+  /**
+   * A business account always lands in the business shell. Unfinished setup
+   * reopens there, but no business account is ever signed into customer home.
+   */
+  const routeSignedInOwner = async (_user?: SessionUser | null, replaceTo?: (target: Route) => void) => {
     const go = replaceTo ?? setRoute;
     const saved = await hydrateBusinessSetupFromServer();
-    // A business-designated account operates only in the business environment:
-    // signing in never lands it in the consumer shell, even when it was last
-    // active as a customer.
-    const customerShell =
-      !isBusinessDesignated(user) &&
-      (user?.lastActiveShell === 'customer' ||
-        (user?.role === 'Owner' && (hasUnfinishedBusinessSetup(saved) || !user.businessId)));
-    if (!customerShell) {
-      go('business-overview');
+    if (hasUnfinishedBusinessSetup(saved)) {
+      setBusinessOnboardingFrom('home');
+      setAuthIntent('customer');
+      setBusinessSetupSkipIntro(true);
+      setRoute('business-onboarding');
       return;
     }
-    setAuthIntent('customer');
-    go('home');
+    go('business-overview');
   };
 
   /**
@@ -3265,6 +3346,15 @@ function AppInner() {
     setSignInFrom('welcome');
     if (!hasApiConfig()) {
       enterBusinessProfile();
+      return;
+    }
+    const destination = resolveAccountDestination(user);
+    if (!destination) {
+      failClosedToSignIn();
+      return;
+    }
+    if (destination === 'admin') {
+      routeAdminAccount(user);
       return;
     }
     setBusinessOnboardingFrom('home');
@@ -3295,7 +3385,9 @@ function AppInner() {
       }
     } catch (error) {
       console.error('Could not continue to business setup:', error);
-      setRoute('home');
+      // A failed business shell switch must not drop a business account into
+      // the customer dashboard. Ask for a fresh sign-in instead.
+      failClosedToSignIn();
     } finally {
       setShellHold(false);
     }
@@ -3342,6 +3434,48 @@ function AppInner() {
     void routeSignedInOwner(sessionUser, setRouteState).finally(() => setReturningToShell(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [returningToShell, sessionUser, sessionQuery.isError]);
+
+  /**
+   * Resolve the authenticated account to its own shell. If the profile cannot
+   * be checked, or the role is not recognized, sign out and go back to sign-in
+   * rather than guessing that the account is a customer.
+   */
+  useEffect(() => {
+    if (!hasApiConfig() || !authed) return;
+
+    if (sessionQuery.isError || (!!sessionUser && !accountDestination)) {
+      failClosedToSignIn();
+      void signOut().catch(() => undefined);
+      return;
+    }
+    if (!sessionUser) return;
+
+    if (accountDestination === 'admin') {
+      const adminSession = adminSessionFromUser(sessionUser);
+      if (!adminSession) {
+        failClosedToSignIn();
+        void signOut().catch(() => undefined);
+        return;
+      }
+      setAdminSession(adminSession);
+      if (route === 'admin-login' || !route.startsWith('admin-')) {
+        goToRouteImmediately('admin-overview', true);
+      }
+      return;
+    }
+
+    if (accountDestination === 'business') {
+      if (route.startsWith('admin-') && route !== 'admin-login') {
+        goToRouteImmediately('business-overview', true);
+      } else if (!onBusinessPage) {
+        void routeSignedInOwner(sessionUser, goToRouteImmediately);
+      }
+      return;
+    }
+
+    if (route.startsWith('admin-') && route !== 'admin-login') failClosedToSignIn();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountDestination, authed, onBusinessPage, route, sessionQuery.isError, sessionUser, signOut]);
 
   // Business-designated accounts operate only in the business environment:
   // they sign in in the business shell and are never switched to or left on
@@ -3454,6 +3588,8 @@ function AppInner() {
           return;
         }
         const user = adoptSession(response);
+        if (routeAccountAfterSignIn(user)) return;
+        const destination = resolveAccountDestination(user);
         const isNew = Boolean(response.isNewUser);
         // A new account can still claim the code captured from a referral
         // link before Google redirected away — best effort, so a rejected or
@@ -3467,7 +3603,6 @@ function AppInner() {
               // Leave the stored code; the confirm screen can still take one.
             });
         }
-        const business = isBusinessRole(user?.role);
         if (intent === 'business') {
           if (isNew) {
             setAuthIntent('business');
@@ -3481,18 +3616,14 @@ function AppInner() {
         }
         // Setup left half way (customer or owner) reopens where it stopped.
         if (!isNew && (await resumeUnfinishedSetupAfterSignIn(user))) return;
-        if (business && user?.businessId && !isNew) {
-          await routeSignedInOwner(user);
-          return;
-        }
-        if (business) {
+        if (destination === 'business') {
           await routeSignedInOwner(user);
           return;
         }
         setAuthIntent('customer');
         // New accounts confirm their phone; returning customers go straight home.
         if (isNew) setRoute('google-confirm');
-        else if (!resumeReturnPath()) setRoute('home');
+        else if (!resumeReturnPath(destination ?? undefined)) setRoute('home');
       } catch (error) {
         fail(apiErrorMessage(error, 'Google sign-in failed. Please try again.'));
       } finally {
@@ -3732,18 +3863,20 @@ function AppInner() {
             onBack={() => setRoute(signInFrom)}
             onSignIn={async ({ identifier, password }) => {
               const user = await signIn({ identifier, password });
+              if (routeAccountAfterSignIn(user)) return;
+              const destination = resolveAccountDestination(user);
               if (resumeBusinessSetup) {
                 await continueBusinessAfterSignIn(user);
                 return;
               }
               // Setup left half way (customer or owner) reopens where it stopped.
               if (await resumeUnfinishedSetupAfterSignIn(user, password)) return;
-              if (isBusinessRole(user?.role)) {
+              if (destination === 'business') {
                 await routeSignedInOwner(user);
                 return;
               }
               // A returning customer goes straight home; onboarding is for sign-up.
-              if (!resumeReturnPath()) setRoute(hasApiConfig() ? 'home' : 'discovering');
+              if (!resumeReturnPath(destination ?? undefined)) setRoute(hasApiConfig() ? 'home' : 'discovering');
             }}
             onGoogleSignIn={async () => {
               if (hasApiConfig()) {
@@ -3784,18 +3917,20 @@ function AppInner() {
           onBack={() => setRoute(signInFrom)}
           onSignIn={async ({ identifier, password }) => {
             const user = await signIn({ identifier, password });
+            if (routeAccountAfterSignIn(user)) return;
+            const destination = resolveAccountDestination(user);
             if (resumeBusinessSetup) {
               await continueBusinessAfterSignIn(user);
               return;
             }
             // Setup left half way (customer or owner) reopens where it stopped.
             if (await resumeUnfinishedSetupAfterSignIn(user, password)) return;
-            if (isBusinessRole(user?.role)) {
+            if (destination === 'business') {
               await routeSignedInOwner(user);
               return;
             }
             // A returning customer goes straight home; onboarding is for sign-up.
-            if (!resumeReturnPath()) setRoute(hasApiConfig() ? 'home' : 'discovering');
+            if (!resumeReturnPath(destination ?? undefined)) setRoute(hasApiConfig() ? 'home' : 'discovering');
           }}
           onGoogleSignIn={async () => {
             if (hasApiConfig()) {
@@ -5429,15 +5564,16 @@ function AppInner() {
     case 'admin-settings-team':
     case 'admin-settings-audit':
     {
-      // The sample admin portal has no backend behind it: never shown against the live API.
-      const leave = () => setRoute(!authed ? 'welcome' : 'home');
-      if (hasApiConfig()) return isDesktop ? <DesktopNotFoundScreen onHome={leave} /> : <NotFoundScreen onHome={leave} />;
+      // Admin portal command console
+
+      // Admin console is accessible with live login integration at /superadmin/login.
       if (route === 'admin-login' || !isAdminAuthenticated()) {
         return <AdminLoginScreen onLoginSuccess={() => setRoute('admin-overview')} onBackToApp={() => setRoute('home')} />;
       }
       const navigateAdminPath = (path: string) => {
         if (path === '/dashboard') setRoute('dashboard');
         else if (path === '/') setRoute('home');
+        else if (path === '/superadmin/login' || path === '/admin/login') setRoute('admin-login');
         else setRoute((PATH_ROUTE.get(path) as Route | undefined) ?? 'admin-overview');
       };
       return <AdminDashboardScreen currentPath={ROUTE_PATH[route] || '/admin'} onNavigate={navigateAdminPath} />;
@@ -6377,6 +6513,37 @@ function AppInner() {
       return <Flow businessName="Urban Grill & Bistro" locationCount={getBusinessLocationCount()} onExit={leave} onLocationPaid={save} />;
     }
 
+    case 'business-buy-locations':
+      // Same locations page, opened directly on the config-driven purchase form.
+      if (isDesktop)
+        return (
+          <DesktopBusinessLocationsHubScreen
+            onNav={businessPortalNav}
+            onAddBranch={() => setAddingBranch(true)}
+            onUpgradePlan={() => setRoute('business-subscription')}
+            onBuyLocations={() => setRoute('business-buy-locations')}
+            initialBuyLocations
+            onOpenBranch={(branchId) => {
+              setSelectedBranchId(branchId ?? null);
+              setRoute('hub-branch-detail');
+            }}
+          />
+        );
+      return (
+        <BusinessHubScreen
+          initialStep="locations"
+          initialBuyLocations
+          onAddLocation={() => setRoute('business-add-location')}
+          onUpgradePlan={() => setRoute('business-subscription')}
+          onBuyLocations={() => setRoute('business-buy-locations')}
+          onTab={businessTab}
+          onBoost={(item) => openBoost(item)}
+          onOpenMessages={() => setRoute('business-messages')}
+          onPreviewStorefront={() => setRoute('hub-storefront-preview')}
+          onOpenModule={openHubModule}
+        />
+      );
+
     case 'hub-locations':
       if (isDesktop)
         return (
@@ -6387,6 +6554,8 @@ function AppInner() {
               onNav={businessPortalNav}
               // Live owners are already set up: the add-branch form opens here.
               onAddBranch={() => (hasApiConfig() ? setAddingBranch(true) : setRoute('business-add-location'))}
+              onUpgradePlan={() => setRoute('business-subscription')}
+              onBuyLocations={() => setRoute('business-buy-locations')}
               onOpenBranch={(branchId) => {
                 setSelectedBranchId(branchId ?? null);
                 setRoute('hub-branch-detail');
@@ -6394,7 +6563,19 @@ function AppInner() {
             />
           )
         );
-      return <BusinessHubScreen initialStep="locations" onAddLocation={() => setRoute('business-add-location')} onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
+      return (
+        <BusinessHubScreen
+          initialStep="locations"
+          onAddLocation={() => setRoute('business-add-location')}
+          onUpgradePlan={() => setRoute('business-subscription')}
+          onBuyLocations={() => setRoute('business-buy-locations')}
+          onTab={businessTab}
+          onBoost={(item) => openBoost(item)}
+          onOpenMessages={() => setRoute('business-messages')}
+          onPreviewStorefront={() => setRoute('hub-storefront-preview')}
+          onOpenModule={openHubModule}
+        />
+      );
 
     case 'hub-branch-detail':
       if (isDesktop)
@@ -6405,7 +6586,19 @@ function AppInner() {
             onBackToLocations={() => setRoute('hub-locations')}
           />
         );
-      return <BusinessHubScreen initialStep="locations" onAddLocation={() => setRoute('business-add-location')} onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
+      return (
+        <BusinessHubScreen
+          initialStep="locations"
+          onAddLocation={() => setRoute('business-add-location')}
+          onUpgradePlan={() => setRoute('business-subscription')}
+          onBuyLocations={() => setRoute('business-buy-locations')}
+          onTab={businessTab}
+          onBoost={(item) => openBoost(item)}
+          onOpenMessages={() => setRoute('business-messages')}
+          onPreviewStorefront={() => setRoute('hub-storefront-preview')}
+          onOpenModule={openHubModule}
+        />
+      );
 
     case 'hub-catalog':
     case 'hub-catalog-new-product':
@@ -6473,12 +6666,8 @@ function AppInner() {
         setDealPriceChoice(undefined);
         setRoute('hub-deals');
       };
-      // Live deals need a real item; without one open the picker modal.
-      if (hasApiConfig() && !dealSource) {
-        setDealPickerOpen(true);
-        setRoute('hub-deals');
-        return null;
-      }
+      // Create Deal can start with no preselected item: the studio asks for the
+      // structure first, then lets the merchant pick live products.
       if (isDesktop)
         return (
           <DesktopDealStudioFlow sourceItem={dealSource} priceChoice={dealPriceChoice} onComplete={leaveStudio} onExit={leaveStudio} onNav={businessPortalNav} />
@@ -7669,7 +7858,7 @@ function AppInner() {
   return (
     <StoreOrderingProvider>
     <>
-      {shellSwitching || returningToShell || plainCustomerOnBusinessPage || accessCheckPending || adminCheckPending ? (
+      {accountStatusPending || shellSwitching || returningToShell || plainCustomerOnBusinessPage || accessCheckPending || adminCheckPending ? (
         routeLoading
       ) : (
         <Suspense fallback={routeLoading}>{renderRoute()}</Suspense>
@@ -7803,11 +7992,6 @@ function AppInner() {
           onEdit={() => setClaimDialog('other')}
         />
       )}
-      <CreateDealItemPickerModal
-        open={dealPickerOpen}
-        onClose={() => setDealPickerOpen(false)}
-        onSelectItem={(item) => openDealStudio(item)}
-      />
       <PwaInstallPrompt />
     </>
     </StoreOrderingProvider>

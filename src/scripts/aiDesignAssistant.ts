@@ -20,12 +20,20 @@
  */
 import { BUSINESS_CATEGORIES } from './businessOnboardingSeed';
 import { getBusinessSetupSnapshot } from './businessSetup';
+import type { DealAiPromptData } from './deals/dealStudioShared';
 
 /** Asset the merchant is creating. Drives the label, template and aspect. */
-export type AiAssetType = 'logo' | 'banner' | 'product' | 'service' | 'description';
+export type AiAssetType =
+  | 'logo'
+  | 'banner'
+  | 'product'
+  | 'service'
+  | 'description'
+  | 'deal-image'
+  | 'deal-video';
 
 /** Mirrors the existing upload components' aspect-ratio options. */
-export type AiImageAspect = '4/3' | '16/9' | 'square';
+export type AiImageAspect = '4/3' | '16/9' | 'square' | '9/16';
 
 /**
  * Business/item facts available in the frontend. Every field is optional —
@@ -46,6 +54,8 @@ export interface AiPromptContext {
   brand?: string;
   /** Product/service description (product and service prompts only). */
   itemDescription?: string;
+  /** Verified Deal Studio facts, built from the in-flight draft (deal prompts only). */
+  deal?: DealAiPromptData;
 }
 
 export interface AiPromptOptions {
@@ -72,6 +82,8 @@ export const AI_ASSET_LABELS: Record<AiAssetType, string> = {
   product: 'Product Image',
   service: 'Service Image',
   description: 'Storefront Description',
+  'deal-image': 'Deal Image',
+  'deal-video': 'Deal Video',
 };
 
 /** Contextual trigger copy shown next to the existing upload/text controls. */
@@ -87,6 +99,10 @@ export function aiTriggerLabel(assetType: AiAssetType): string {
       return 'Need a service image? Create one with AI.';
     case 'description':
       return 'Write your Description with AI';
+    case 'deal-image':
+      return 'Generate Deal Image with AI';
+    case 'deal-video':
+      return 'Generate Deal Video with AI';
   }
 }
 
@@ -97,6 +113,8 @@ const DEFAULT_ASPECTS: Record<AiAssetType, AiImageAspect> = {
   service: '4/3',
   // Descriptions are text: an aspect ratio is never used for this template.
   description: 'square',
+  'deal-image': 'square',
+  'deal-video': '9/16',
 };
 
 /** Matches the Storefront Description textarea's `maxLength` in both views. */
@@ -111,6 +129,7 @@ const ASPECT_DIMENSIONS: Record<AiImageAspect, string> = {
   square: '1024 × 1024 pixels',
   '4/3': '1024 × 768 pixels',
   '16/9': '1280 × 720 pixels',
+  '9/16': '1080 × 1920 pixels',
 };
 const BANNER_DIMENSIONS = '1200 × 675 pixels';
 
@@ -172,7 +191,8 @@ function snapshotBusinessContext(): AiPromptContext {
 /** Merges explicit screen context over the snapshot, ignoring empty values. */
 function resolveContext(context: AiPromptContext): AiPromptContext {
   const explicit: AiPromptContext = {};
-  const fields = {
+  type ContextField = Exclude<keyof AiPromptContext, 'deal'>;
+  const fields: Record<ContextField, string | undefined> = {
     businessName: clean(context.businessName),
     category: resolveCategoryList(context.category),
     subcategory: clean(context.subcategory),
@@ -182,12 +202,16 @@ function resolveContext(context: AiPromptContext): AiPromptContext {
     itemName: clean(context.itemName),
     brand: clean(context.brand),
     itemDescription: clean(context.itemDescription),
-  } as const;
-  (Object.keys(fields) as Array<keyof AiPromptContext>).forEach((key) => {
+  };
+  (Object.keys(fields) as ContextField[]).forEach((key) => {
     const value = fields[key];
     if (value) explicit[key] = value;
   });
-  return { ...snapshotBusinessContext(), ...explicit };
+  return {
+    ...snapshotBusinessContext(),
+    ...explicit,
+    ...(context.deal ? { deal: context.deal } : {}),
+  };
 }
 
 /** Business fact lines, included only when the value exists. */
@@ -310,6 +334,71 @@ function buildDescriptionPrompt(context: AiPromptContext): string {
   ].join('\n');
 }
 
+/** Deal facts are always taken from the merchant's own draft, never invented. */
+function dealFactLines(deal: DealAiPromptData | undefined): string[] {
+  if (!deal) return ['Deal details are not available yet — keep the design generic.'];
+  const lines = [
+    `Deal title: ${deal.title}`,
+    `Deal structure: ${deal.structure}`,
+  ];
+  if (deal.description) lines.push(`Deal description: "${deal.description}"`);
+  if (deal.products.length) {
+    lines.push(
+      ...deal.products.map(
+        (product) => `Deal product: ${product.name} — ₦${product.price.toLocaleString('en-NG')}`,
+      ),
+    );
+  }
+  lines.push(...deal.offerLines.map((line) => `Offer: ${line}`));
+  if (deal.startDate || deal.endDate) {
+    lines.push(`Valid: ${deal.startDate || 'not set'} → ${deal.endDate || 'not set'}`);
+  }
+  lines.push(`Deal quantity: ${deal.quantity}`);
+  if (deal.branches.length) lines.push(`Running at: ${deal.branches.join(', ')}`);
+  return lines;
+}
+
+function buildDealImagePrompt(context: AiPromptContext, dimensions: string): string {
+  const facts = [
+    ...businessFactLines(context),
+    ...dealFactLines(context.deal),
+  ];
+  return [
+    'Create a promotional image for a customer-facing deal on a digital storefront.',
+    'Use only these verified facts about the business and the deal:',
+    ...facts,
+    '',
+    'Image requirements:',
+    `- A clean, trustworthy square storefront/social promotional image, output at ${dimensions} (or the closest supported size).`,
+    '- Make the deal title and the customer price the visual focus if text is included; use only the exact words and figures supplied above.',
+    '- Show the selected products accurately when their appearance is known. Do not invent packaging, ingredients, features, discounts, awards, certifications or customer claims.',
+    '- Keep text large and readable, with generous spacing and no clutter.',
+    '- No watermarks, stock logos, fabricated ratings, testimonials or unverified claims.',
+    NO_GUESSING,
+  ].join('\n');
+}
+
+function buildDealVideoPrompt(context: AiPromptContext, dimensions: string): string {
+  const facts = [
+    ...businessFactLines(context),
+    ...dealFactLines(context.deal),
+  ];
+  return [
+    'Create a short promotional video for a customer-facing deal on a digital storefront.',
+    'Use only these verified facts about the business and the deal:',
+    ...facts,
+    '',
+    'Video requirements:',
+    `- A 6–8 second vertical video at ${dimensions} (or the closest supported format), suitable for a storefront deal gallery.`,
+    '- Smooth, simple motion focused on the selected products and the deal price; keep the first frame readable as a thumbnail.',
+    '- If on-screen text is used, show only the deal title and price facts supplied above, large enough to read on a phone.',
+    '- Do not invent sounds, voices, packaging, ingredients, features, awards, certifications or customer claims. Silent output is preferred.',
+    '- No watermarks, stock logos, fabricated ratings, testimonials or unverified claims.',
+    '- Export a compressed MP4 suitable for upload (keep it under 5MB where the provider allows).',
+    NO_GUESSING,
+  ].join('\n');
+}
+
 /**
  * Builds the tailored prompt for the selected asset type from whatever
  * business data is actually available (screen context + setup snapshot).
@@ -335,6 +424,10 @@ export function buildAiPrompt(
       return buildItemPrompt('service', resolved, dimensions);
     case 'description':
       return buildDescriptionPrompt(resolved);
+    case 'deal-image':
+      return buildDealImagePrompt(resolved, dimensions);
+    case 'deal-video':
+      return buildDealVideoPrompt(resolved, dimensions);
   }
 }
 

@@ -362,7 +362,7 @@ export function DesktopAccountSettingsScreen({ onNav, onOpenAddresses }: Desktop
             <div className="space-y-2 max-w-3xl">
               <div className="inline-flex items-center gap-2 text-primary font-label-sm text-label-sm tracking-widest uppercase font-semibold">
                 <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                <span>Consumer Preferences &amp; Safety</span>
+                <span>Customer Preferences &amp; Safety</span>
               </div>
               <h1 className="font-display-hero text-display-hero text-on-surface">Account Settings &amp; Preferences</h1>
               <p className="font-body-lg text-body-lg text-on-surface-variant">
@@ -411,7 +411,7 @@ export function DesktopAccountSettingsScreen({ onNav, onOpenAddresses }: Desktop
                       {security.emailVerified ? 'Account verified' : profile.isComplete ? 'Email not verified' : 'Profile pending completion'}
                     </p>
                     <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-surface-container text-primary font-caption text-caption font-medium">
-                      Consumer Tier
+                      Customer Tier
                     </span>
                   </div>
                 </div>

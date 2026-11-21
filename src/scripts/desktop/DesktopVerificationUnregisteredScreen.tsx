@@ -13,35 +13,35 @@ const FEATURES = [
   {
     icon: 'local_offer',
     title: 'Post deals & daily flash offers',
-    body: 'Publish discount vouchers to nearby shoppers with automated redemption countdowns.',
+    body: 'Publish discount vouchers to nearby shoppers.',
   },
   {
     icon: 'qr_code_2',
     title: 'Set up your storefront & share instant QR code',
-    body: 'Display branded tabletop stands and direct links to your online menu and catalog.',
+    body: 'Display tabletop stands and links to your online menu and catalog.',
   },
   {
     icon: 'vemtap-chat',
     title: 'Receive direct customer chats & reservations',
-    body: 'Take inquiries, confirm table slots, and retain customer histories in your merchant inbox.',
+    body: 'Take inquiries and manage bookings from your merchant inbox.',
   },
   {
     icon: 'payments',
-    title: 'Accept direct customer payments (Card, Cash, Transfer)',
-    body: 'Instant settlement routed into your personal verified Nigerian commercial bank account.',
+    title: 'Accept direct customer payments',
+    body: 'Take payments through your own payment account.',
   },
   {
     icon: 'point_of_sale',
     title: 'Manage POS registers, staff tills & shifts',
-    body: 'Assign multiple cashier pins, track shift summaries, and print digital receipts.',
+    body: 'Assign tills, track shift summaries, and print digital receipts.',
   },
 ];
 
 const COMPARISON_ROWS = [
-  { icon: 'store', label: 'Deals & Storefront', informal: 'Informal: ✓', informalClass: 'bg-badge-discount-bg text-badge-discount-text font-semibold', cac: 'CAC: ✓', cacClass: 'bg-badge-discount-bg text-badge-discount-text font-semibold' },
-  { icon: 'credit_card', label: 'POS & Direct Payments', informal: 'Informal: ✓', informalClass: 'bg-badge-discount-bg text-badge-discount-text font-semibold', cac: 'CAC: ✓', cacClass: 'bg-badge-discount-bg text-badge-discount-text font-semibold' },
-  { icon: 'verified_user', label: 'Blue Verified Badge', informal: 'Optional', informalClass: 'bg-surface-container-high text-on-surface-variant', cac: 'CAC: ✓', cacClass: 'bg-surface-tint-blue text-primary font-semibold' },
-  { icon: 'radar', label: 'Top Radar Feed Boost', informal: 'Standard', informalClass: 'bg-surface-container-high text-on-surface-variant', cac: 'CAC: Priority', cacClass: 'bg-surface-tint-blue text-primary font-semibold' },
+  { icon: 'store', label: 'Deals & Storefront', informal: 'Available', informalClass: 'bg-badge-discount-bg text-badge-discount-text font-semibold', cac: 'Included', cacClass: 'bg-badge-discount-bg text-badge-discount-text font-semibold' },
+  { icon: 'credit_card', label: 'POS & Direct Payments', informal: 'Available', informalClass: 'bg-badge-discount-bg text-badge-discount-text font-semibold', cac: 'Included', cacClass: 'bg-badge-discount-bg text-badge-discount-text font-semibold' },
+  { icon: 'verified_user', label: 'Verified Badge', informal: 'Not included', informalClass: 'bg-surface-container-high text-on-surface-variant', cac: 'After verification', cacClass: 'bg-surface-tint-blue text-primary font-semibold' },
+  { icon: 'radar', label: 'Priority Placement', informal: 'Standard', informalClass: 'bg-surface-container-high text-on-surface-variant', cac: 'After verification', cacClass: 'bg-surface-tint-blue text-primary font-semibold' },
 ];
 
 export function DesktopVerificationUnregisteredScreen({
@@ -79,18 +79,17 @@ export function DesktopVerificationUnregisteredScreen({
                   You can still use VEMTAP without CAC registration
                 </h1>
                 <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-                  Launch your store, publish discount deals, and welcome walk-in customers immediately. Informal
-                  business owners, artisans, and solo founders have full functional access — registration can always be
-                  added later.
+                  Launch your store, publish discount deals, and welcome walk-in customers. Informal
+                  business owners, artisans, and solo founders can add registration details later.
                 </p>
               </div>
             </div>
             <div className="flex md:flex-col items-center md:items-end justify-between w-full md:w-auto gap-3 pt-2 md:pt-0">
               <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold">
                 <Icon name="check_circle" className="text-[16px]" />
-                <span>Account Active &amp; Ready</span>
+                <span>Ready to set up</span>
               </div>
-              <span className="font-caption text-caption text-text-tertiary">Tier 1: Solo Operator Access</span>
+              <span className="font-caption text-caption text-text-tertiary">Unregistered business</span>
             </div>
           </div>
         </div>
@@ -105,22 +104,22 @@ export function DesktopVerificationUnregisteredScreen({
                     Current Verification Standing
                   </h2>
                 </div>
-                <span className="font-caption text-caption text-text-secondary">Level 1 Compliant</span>
+                <span className="font-caption text-caption text-text-secondary">Check submitted</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="rounded-xl bg-surface-subtle p-4 flex flex-col justify-between gap-3">
                   <div className="flex items-center justify-between">
-                    <span className="font-caption text-caption text-text-secondary font-medium">Operator Identity (NIN)</span>
-                    <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                      <Icon name="check" className="text-[14px]" />
-                      Verified
+                    <span className="font-caption text-caption text-text-secondary font-medium">Operator Identity</span>
+                    <span className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
+                      <Icon name="schedule" className="text-[14px]" />
+                      Submitted
                     </span>
                   </div>
                   <div className="flex flex-col">
                     <span className="font-label-md text-label-md text-text-primary font-semibold">
-                      {legalName || 'Zainab Ahmed'}
+                      {legalName || 'Account holder'}
                     </span>
-                    <span className="font-caption text-caption text-text-tertiary">National Identity No: •••• 4821</span>
+                    <span className="font-caption text-caption text-text-tertiary">Identity check submitted</span>
                   </div>
                 </div>
                 <div className="rounded-xl bg-surface-subtle p-4 flex flex-col justify-between gap-3">
@@ -141,13 +140,13 @@ export function DesktopVerificationUnregisteredScreen({
             <div className="rounded-xl bg-surface-canvas shadow-sm p-6 flex flex-col gap-6">
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2">
-                  <Icon name="verified" className="text-badge-discount-text text-[22px]" />
+                  <Icon name="check_circle" className="text-badge-discount-text text-[22px]" />
                   <h3 className="font-heading-sm text-heading-sm text-text-primary font-semibold">
-                    What you can do right now (Full Access)
+                    What you can do right now
                   </h3>
                 </div>
                 <p className="font-caption text-caption text-text-secondary">
-                  Your store is completely functional across sales, marketing, and customer management rails.
+                  Your store is functional across sales, marketing, and customer management.
                 </p>
               </div>
               <div className="flex flex-col gap-3.5">
@@ -175,10 +174,9 @@ export function DesktopVerificationUnregisteredScreen({
               <div className="flex flex-col gap-1">
                 <span className="font-label-md text-label-md text-primary font-semibold">No pressure or rigid constraints</span>
                 <p className="font-caption text-caption text-text-secondary leading-relaxed">
-                  Take all the time you need. Whenever you choose to incorporate with CAC in the future, simply
-                  navigate to{' '}
+                  Take all the time you need. Whenever you choose to register with CAC, open{' '}
                   <span className="font-semibold text-text-primary">Business Profile Settings → Verification</span> to
-                  upload your RC/BN certificate and claim your official Verified checkmark.
+                  add your registration and complete business verification.
                 </p>
               </div>
             </div>
@@ -211,7 +209,7 @@ export function DesktopVerificationUnregisteredScreen({
               <div className="p-3.5 rounded-lg bg-surface-subtle flex items-center gap-3">
                 <Icon name="lightbulb" className="text-text-tertiary text-[18px]" />
                 <p className="font-caption text-caption text-text-secondary">
-                  92% of new artisans and food spots start as Sole Traders and upgrade later.
+                  You can upgrade to a CAC-verified business at any time from your verification settings.
                 </p>
               </div>
             </div>
@@ -223,24 +221,25 @@ export function DesktopVerificationUnregisteredScreen({
                 </div>
                 <div className="flex flex-col">
                   <h4 className="font-label-md text-label-md text-text-primary font-semibold">
-                    Need help registering with CAC?
+                    Planning to register with CAC?
                   </h4>
                   <span className="font-caption text-caption text-text-secondary">
-                    Optional support from certified legal partners
+                    Registration can be added at any time
                   </span>
                 </div>
               </div>
               <p className="font-caption text-caption text-text-secondary leading-relaxed">
-                When you're ready to register your Business Name (BN) or Limited Liability Company (LTD), our vetted
-                partner agents handle filings in 5–7 business days.
+                When you're ready to register your Business Name (BN) or Limited Liability Company (LTD), you can add
+                your certificate details later from verification settings.
               </p>
               <button
                 className="inline-flex items-center justify-between p-3 rounded-lg bg-surface-subtle hover:bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold transition-colors"
                 type="button"
+                onClick={onLearnMore}
               >
                 <span className="flex items-center gap-2">
                   <Icon name="open_in_new" className="text-[16px]" />
-                  Explore CAC Partner Assisted Desk
+                  Learn about business verification
                 </span>
                 <Icon name="chevron_right" className="text-[16px]" />
               </button>
@@ -249,9 +248,9 @@ export function DesktopVerificationUnregisteredScreen({
             <div className="rounded-xl bg-surface-container-low p-4 flex items-center gap-3.5">
               <Icon name="gavel" className="text-badge-discount-text text-[24px]" />
               <div className="flex flex-col">
-                <span className="font-label-sm text-label-sm text-text-primary font-semibold">NDPR &amp; CBN Tier-1 Compliant</span>
+                <span className="font-label-sm text-label-sm text-text-primary font-semibold">Data protection</span>
                 <span className="font-caption text-caption text-text-secondary">
-                  Personal identities and transaction settlements operate under audited Nigerian data privacy standards.
+                  Your details are handled in line with applicable data protection rules.
                 </span>
               </div>
             </div>
@@ -265,7 +264,7 @@ export function DesktopVerificationUnregisteredScreen({
             onClick={onLearnMore}
           >
             <Icon name="verified" className="text-[18px]" />
-            <span>Learn about business verification tiers →</span>
+            <span>Learn about business verification →</span>
           </button>
           <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
             <button

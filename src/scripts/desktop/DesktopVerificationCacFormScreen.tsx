@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { useVerificationActions } from '../../hooks/business/useVerification';
+import { ConfirmActionDialog } from '../../components/ConfirmActionDialog';
+import {
+  cacRegistrationNumber,
+  useVerificationActions,
+  type BusinessChecksOutcome,
+  type PreviewOutcome,
+} from '../../hooks/business/useVerification';
 import { Icon } from '../../components/ui/Icon';
 import type { CacEntityType, VerificationDraft } from '../verificationDraft';
 import { BusinessVerificationChrome } from './BusinessVerificationChrome';
@@ -8,7 +14,8 @@ interface DesktopVerificationCacFormScreenProps {
   onBack: () => void;
   draft: VerificationDraft;
   onDraftChange: (patch: Partial<VerificationDraft>) => void;
-  onVerified: () => void;
+  /** Carries both stored checks to the success screen. */
+  onVerified: (checks: BusinessChecksOutcome) => void;
   /** The registry check needs a person to review it; receives readable reasons. */
   onNeedsReview?: (reasons: string[]) => void;
   onNotIncorporated?: () => void;
@@ -25,28 +32,37 @@ const BENEFITS = [
   {
     icon: 'verified',
     iconClass: 'bg-surface-tint-blue text-primary',
-    title: 'Blue Verified Merchant Badge',
-    body: 'Displays on all hyper-local feeds, consumer search results, and map pins.',
+    title: 'Verification record',
+    body: 'Your confirmed registry details are saved against your business account.',
   },
   {
     icon: 'trending_up',
     iconClass: 'bg-badge-discount-bg text-badge-discount-text',
-    title: '3.8x Higher Conversion & Trust',
-    body: 'Shoppers spend significantly more when businesses have verified corporate credentials.',
+    title: 'Clear trust information',
+    body: 'Verified checks are reflected in your verification status and storefront information.',
   },
   {
     icon: 'campaign',
     iconClass: 'bg-surface-container-high text-primary',
-    title: 'Hyper-Local Deals Boost',
-    body: 'Unlock access to priority push alerts, flash deal promotions, and seasonal campaigns.',
+    title: 'Deal setup stays available',
+    body: 'You can keep building your catalog and deals while a check is reviewed.',
   },
   {
     icon: 'add_business',
     iconClass: 'bg-surface-tint-blue text-primary',
-    title: 'Multi-Location Expansions',
-    body: 'Add up to 50 branch locations under a unified corporate tax identity.',
+    title: 'Multiple locations',
+    body: 'Add your branches after your business profile is set up.',
   },
 ];
+
+const previewRow = (label: string, value: string | number | null | undefined) => (
+  <div className="flex items-start justify-between gap-space-sm py-space-2xs">
+    <span className="font-caption text-caption text-on-surface-variant shrink-0">{label}</span>
+    <span className="font-label-sm text-label-sm text-on-surface text-right font-medium break-words">
+      {value == null || value === '' ? 'Not published' : String(value)}
+    </span>
+  </div>
+);
 
 export function DesktopVerificationCacFormScreen({
   onBack,
@@ -67,7 +83,9 @@ export function DesktopVerificationCacFormScreen({
   }, [error]);
   const verification = useVerificationActions();
   const [verified, setVerified] = useState(false);
-  const [fileName, setFileName] = useState<string | null>('CAC_BN_Certificate.pdf');
+  const [preview, setPreview] = useState<PreviewOutcome | null>(null);
+  const [accepted, setAccepted] = useState(false);
+  const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const timers = useRef<number[]>([]);
 
@@ -80,25 +98,79 @@ export function DesktopVerificationCacFormScreen({
 
   const entity: CacEntityType = draft.entity || 'BN';
   const formatValid = /^[A-Z]{2}-?\d{6,8}$/i.test(draft.cacNumber.trim()) || draft.cacNumber.trim().length >= 6;
-  const canVerify = formatValid && draft.cacNumber.trim().length > 0;
+  const representativeNameValid = draft.representativeName.trim().split(/\s+/).filter(Boolean).length >= 2;
+  const canVerify = formatValid && draft.cacNumber.trim().length > 0 && draft.businessName.trim().length > 0 && representativeNameValid;
 
-  const handleVerify = () => {
-    if (verifying || verified || !canVerify) return;
+  const closePreview = () => {
+    setPreview(null);
+    setAccepted(false);
+  };
+
+  const handleReview = (reasons: string[], fallback: string) => {
+    onNeedsReview?.(reasons);
+    if (!onNeedsReview) setError(reasons[0] ?? fallback);
+  };
+
+  const handlePreview = () => {
+    if (verifying || verified || preview || !canVerify) return;
     setVerifying(true);
     setError(null);
-    verification
-      .verifyBusiness(draft.entity, draft.cacNumber)
-      .then((outcome) => {
-        if (outcome.result === 'review') {
-          onNeedsReview?.(outcome.reasons);
-          if (!onNeedsReview) setError(outcome.reasons[0] ?? 'Our team needs to review this registration.');
-          return;
-        }
-        setVerified(true);
-        timers.current.push(window.setTimeout(() => onVerified(), 1000));
-      })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Verification failed. Please try again.'))
-      .finally(() => setVerifying(false));
+    try {
+      const registrationNumber = cacRegistrationNumber(entity, draft.cacNumber);
+      verification
+        .previewBusiness(registrationNumber)
+        .then((outcome) => {
+          if (outcome.result === 'review') {
+            handleReview(outcome.reasons, 'Our team needs to review this registration.');
+            return;
+          }
+          setPreview(outcome);
+        })
+        .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Could not check this registration. Please try again.'))
+        .finally(() => setVerifying(false));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Enter a valid CAC number to continue.');
+      setVerifying(false);
+    }
+  };
+
+  const handleConfirmPreview = async () => {
+    if (!preview || !accepted || verifying) return;
+    setVerifying(true);
+    setError(null);
+    const registrationNumber = preview.preview.registrationNumber || cacRegistrationNumber(entity, draft.cacNumber);
+    const previewId = preview.check.id;
+    try {
+      const businessOutcome = await verification.confirmBusiness({ registrationNumber, previewId, confirmed: true });
+      if (businessOutcome.result === 'review') {
+        closePreview();
+        handleReview(businessOutcome.reasons, 'Our team needs to review this registration.');
+        return;
+      }
+      const representativeOutcome = await verification.verifyRepresentative({
+        previewId,
+        representativeName: draft.representativeName,
+      });
+      if (representativeOutcome.result === 'review') {
+        closePreview();
+        handleReview(representativeOutcome.reasons, 'Our team needs to review this representative.');
+        return;
+      }
+      onDraftChange({
+        businessName: preview.preview.legalName || draft.businessName,
+        cacNumber: registrationNumber,
+        entity,
+      });
+      closePreview();
+      setVerified(true);
+      timers.current.push(
+        window.setTimeout(() => onVerified({ business: businessOutcome, representative: representativeOutcome }), 1000),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Verification failed. Please try again.');
+    } finally {
+      setVerifying(false);
+    }
   };
 
   return (
@@ -120,7 +192,7 @@ export function DesktopVerificationCacFormScreen({
                 <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
                 66% Complete
               </span>
-              <span className="font-caption text-caption text-text-tertiary">Estimated: &lt; 90 seconds</span>
+              <span className="font-caption text-caption text-text-tertiary">Registry preview before saving</span>
             </div>
           </div>
           <div className="w-full h-2 rounded-full bg-surface-container-high overflow-hidden">
@@ -137,22 +209,22 @@ export function DesktopVerificationCacFormScreen({
                     Regulatory KYC
                   </span>
                   <span className="font-caption text-caption text-badge-discount-text font-medium flex items-center gap-1">
-                    <Icon name="bolt" className="text-[14px]" /> Automated Instant Sync
+                    <Icon name="bolt" className="text-[14px]" /> Preview before confirm
                   </span>
                 </div>
                 <h1 className="font-heading-lg text-heading-lg text-text-primary mb-space-2xs">
                   Enter your CAC Registration Details
                 </h1>
                 <p className="font-body-md text-body-md text-text-secondary">
-                  Your registration number will be validated directly against the Corporate Affairs Commission live
-                  registry.
+                  We'll check the registration number with the configured provider and show you what can be autofilled
+                  before anything is saved.
                 </p>
               </div>
 
               <div className="flex flex-col gap-space-xs mb-space-lg">
                 <label className="font-label-md text-label-md text-text-primary flex items-center justify-between">
                   <span>Incorporation Category</span>
-                  <span className="font-caption text-caption text-text-tertiary">Select official status on CAC portal</span>
+                  <span className="font-caption text-caption text-text-tertiary">Select the type on your CAC document</span>
                 </label>
                 <div className="grid grid-cols-3 gap-space-xs">
                   {ENTITY_PILLS.map((pill) => {
@@ -187,8 +259,8 @@ export function DesktopVerificationCacFormScreen({
                   </label>
                   {formatValid && draft.cacNumber.trim().length > 0 && (
                     <div className="flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text">
-                      <Icon name="verified" className="text-[14px]" />
-                      <span className="font-caption text-caption font-semibold">Format Valid (Live Match)</span>
+                      <Icon name="check_circle" className="text-[14px]" />
+                      <span className="font-caption text-caption font-semibold">Format valid</span>
                     </div>
                   )}
                 </div>
@@ -203,53 +275,73 @@ export function DesktopVerificationCacFormScreen({
                     onChange={(event) => onDraftChange({ cacNumber: event.target.value })}
                   />
                   <button
-                    className="absolute right-space-xs px-space-sm py-1.5 rounded-lg bg-surface-container-high hover:bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold transition-colors flex items-center gap-1"
+                    className="absolute right-space-xs px-space-sm py-1.5 rounded-lg bg-surface-container-high hover:bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold transition-colors flex items-center gap-1 disabled:opacity-60"
                     type="button"
+                    disabled={verifying || verified || preview !== null || !canVerify}
+                    onClick={handlePreview}
                   >
                     <Icon name="sync" className="text-[16px]" />
-                    Re-check
+                    Check
                   </button>
                 </div>
                 <div className="flex items-center justify-between font-caption text-caption text-text-tertiary px-space-2xs">
                   <span>Accepted prefixes: RC, BN, IT followed by 6–8 digits</span>
-                  <span className="text-primary hover:underline flex items-center gap-1 cursor-pointer">
-                    Lost certificate? <Icon name="open_in_new" className="text-[12px]" />
-                  </span>
+                  <span className="text-text-tertiary">No details are stored from this check until you confirm.</span>
                 </div>
               </div>
 
               <div className="flex flex-col gap-space-2xs mb-space-lg">
-                <label className="font-label-md text-label-md text-text-primary flex items-center justify-between">
+                <label className="font-label-md text-label-md text-text-primary" htmlFor="desktop-business-name">
                   <span>Registered Business Name</span>
-                  <span className="font-caption text-caption text-badge-discount-text flex items-center gap-1 font-medium">
-                    <Icon name="check_circle" className="text-[14px]" /> Verified Registry Title
-                  </span>
                 </label>
                 <div className="relative flex items-center">
                   <Icon name="storefront" className="absolute left-space-md text-text-tertiary" />
                   <input
-                    className="w-full h-12 pl-11 pr-11 rounded-xl bg-surface-container-low text-text-primary font-label-md text-label-md font-semibold cursor-not-allowed select-none"
-                    readOnly
+                    className="w-full h-12 pl-11 pr-11 rounded-xl bg-surface-container-low text-text-primary font-label-md text-label-md font-semibold focus:bg-surface-canvas focus:outline-none transition-all"
+                    id="desktop-business-name"
                     type="text"
-                    value={draft.businessName || 'Urban Grill & Bistro Ltd'}
+                    value={draft.businessName}
+                    placeholder="Legal entity name"
+                    onChange={(event) => onDraftChange({ businessName: event.target.value })}
                   />
-                  <Icon name="lock" className="absolute right-space-md text-text-tertiary" />
+                  <Icon name="edit" className="absolute right-space-md text-text-tertiary" />
                 </div>
                 <p className="font-caption text-caption text-text-secondary flex items-center gap-1">
                   <Icon name="info" className="text-[14px] text-text-tertiary" />
-                  Must match official Corporate Affairs Commission incorporation documents exactly.
+                  We'll replace this with the registry name only if you confirm the preview.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-space-2xs mb-space-lg">
+                <label className="font-label-md text-label-md text-text-primary" htmlFor="desktop-representative-name">
+                  <span>Director or Beneficial Owner Name</span>
+                </label>
+                <div className="relative flex items-center">
+                  <Icon name="person" className="absolute left-space-md text-text-tertiary" />
+                  <input
+                    className="w-full h-12 pl-11 pr-11 rounded-xl bg-surface-container-low text-text-primary font-label-md text-label-md font-semibold focus:bg-surface-canvas focus:outline-none transition-all"
+                    id="desktop-representative-name"
+                    type="text"
+                    value={draft.representativeName}
+                    placeholder="Full legal name as published"
+                    onChange={(event) => onDraftChange({ representativeName: event.target.value })}
+                  />
+                </div>
+                <p className="font-caption text-caption text-text-secondary">
+                  Checked separately against published directors and beneficial owners. A registry match alone does not
+                  prove account ownership.
                 </p>
               </div>
 
               <div className="flex flex-col gap-space-2xs mb-space-lg">
                 <div className="flex items-center justify-between">
                   <label className="font-label-md text-label-md text-text-primary flex items-center gap-space-2xs">
-                    <span>Upload CAC Certificate</span>
+                    <span>CAC Certificate</span>
                     <span className="px-space-xs py-space-2xs rounded-full bg-surface-container-high text-primary font-caption text-caption font-semibold">
-                      Recommended
+                      Optional
                     </span>
                   </label>
-                  <span className="font-caption text-caption text-text-tertiary">Speeds up tier-3 payout limit unlocking</span>
+                  <span className="font-caption text-caption text-text-tertiary">Selected for reference only</span>
                 </div>
                 <div
                   className="rounded-xl p-space-md bg-surface-subtle hover:bg-surface-container-low transition-all text-center flex flex-col items-center justify-center gap-space-xs group cursor-pointer"
@@ -265,10 +357,10 @@ export function DesktopVerificationCacFormScreen({
                   </div>
                   <div className="flex flex-col items-center">
                     <span className="font-label-md text-label-md text-text-primary font-semibold">
-                      Click to replace or drag &amp; drop document
+                      Click to select a certificate
                     </span>
                     <span className="font-caption text-caption text-text-secondary">
-                      Attach PDF or Photo (Max 10MB) • Color scan preferred
+                      PDF or Photo (Max 10MB) • This file is not uploaded by the registry check
                     </span>
                   </div>
                 </div>
@@ -280,32 +372,20 @@ export function DesktopVerificationCacFormScreen({
                       </div>
                       <div className="flex flex-col min-w-0">
                         <span className="font-label-md text-label-md font-semibold text-text-primary truncate">{fileName}</span>
-                        <div className="flex items-center gap-space-2xs font-caption text-caption text-text-tertiary">
-                          <span>1.4 MB</span>
-                          <span>•</span>
-                          <span className="text-badge-discount-text font-medium flex items-center gap-0.5">
-                            <Icon name="done_all" className="text-[12px]" /> Attached &amp; Validated
-                          </span>
-                        </div>
+                        <span className="font-caption text-caption text-text-tertiary">Selected on this device only</span>
                       </div>
                     </div>
-                    <div className="flex items-center gap-space-xs shrink-0">
-                      <button
-                        className="w-8 h-8 rounded-lg bg-surface-canvas text-text-secondary hover:text-primary transition-colors flex items-center justify-center"
-                        title="Preview document"
-                        type="button"
-                      >
-                        <Icon name="visibility" className="text-[18px]" />
-                      </button>
-                      <button
-                        className="w-8 h-8 rounded-lg bg-surface-canvas text-text-secondary hover:text-error transition-colors flex items-center justify-center"
-                        title="Remove attachment"
-                        type="button"
-                        onClick={() => setFileName(null)}
-                      >
-                        <Icon name="delete" className="text-[18px]" />
-                      </button>
-                    </div>
+                    <button
+                      className="w-8 h-8 rounded-lg bg-surface-canvas text-text-secondary hover:text-error transition-colors flex items-center justify-center"
+                      title="Remove selection"
+                      type="button"
+                      onClick={() => {
+                        setFileName(null);
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                    >
+                      <Icon name="delete" className="text-[18px]" />
+                    </button>
                   </div>
                 )}
                 <input
@@ -321,11 +401,11 @@ export function DesktopVerificationCacFormScreen({
                 <Icon name="verified_user" className="text-primary text-[20px] mt-0.5 shrink-0" />
                 <div className="flex flex-col">
                   <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                    Statutory Data Protection Guarantee
+                    Data protection and ownership
                   </span>
                   <p className="font-caption text-caption text-text-secondary">
-                    Your registration number is verified with accredited corporate registries under NDPR privacy
-                    standards. Official records are only queried for business legitimacy.
+                    Only the details you confirm are saved. The registry preview is not proof that you own or operate
+                    the business.
                   </p>
                 </div>
               </div>
@@ -343,22 +423,22 @@ export function DesktopVerificationCacFormScreen({
                     verified ? 'bg-badge-discount-text' : 'bg-primary-container text-on-primary'
                   } ${!canVerify && !verified ? 'opacity-60' : ''}`}
                   type="button"
-                  disabled={verifying || verified || !canVerify}
-                  onClick={handleVerify}
+                  disabled={verifying || verified || preview !== null || !canVerify}
+                  onClick={handlePreview}
                 >
                   {verifying ? (
                     <>
                       <Icon name="progress_activity" className="animate-spin text-[18px]" />
-                      <span>Verifying Registry...</span>
+                      <span>Checking Details...</span>
                     </>
                   ) : verified ? (
                     <>
                       <Icon name="check_circle" className="text-[18px]" />
-                      <span>Business Verified!</span>
+                      <span>Checks Complete</span>
                     </>
                   ) : (
                     <>
-                      <span>Verify Business</span>
+                      <span>Preview Registry Details</span>
                       <Icon name="arrow_forward" className="text-[18px]" />
                     </>
                   )}
@@ -385,49 +465,36 @@ export function DesktopVerificationCacFormScreen({
               <div className="flex items-center justify-between mb-space-sm">
                 <div className="flex items-center gap-space-2xs">
                   <Icon name="hub" className="text-primary text-[20px]" />
-                  <h2 className="font-heading-sm text-heading-sm text-text-primary">Registry Gateway</h2>
+                  <h2 className="font-heading-sm text-heading-sm text-text-primary">How this check works</h2>
                 </div>
-                <div className="flex items-center gap-1.5 px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                  <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                  Connected
-                </div>
+                <span className="px-space-xs py-space-2xs rounded-full bg-surface-container text-on-surface-variant font-caption text-caption font-semibold">
+                  Preview first
+                </span>
               </div>
               <p className="font-caption text-caption text-text-secondary mb-space-md">
-                Official Corporate Affairs Commission direct handshake active via government-approved encrypted
-                integration node.
+                You review the registry details before they are saved or used to complete your verification.
               </p>
               <div className="p-space-md rounded-xl bg-surface-subtle flex flex-col gap-space-md mb-space-sm">
-                <div className="flex items-center justify-between text-center relative">
-                  <div className="absolute left-1/4 right-1/4 top-1/2 -translate-y-1/2 h-0.5 bg-surface-container-high z-0">
-                    <div className="h-full bg-primary w-2/3 rounded-full animate-pulse" />
-                  </div>
-                  <div className="relative z-10 flex flex-col items-center gap-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-col items-center gap-1 flex-1">
                     <div className="w-11 h-11 rounded-xl bg-primary text-on-primary flex items-center justify-center">
-                      <Icon name="store" className="text-[20px]" />
+                      <Icon name="edit_document" className="text-[20px]" />
                     </div>
-                    <span className="font-label-sm text-label-sm font-semibold text-text-primary">VEMTAP Rails</span>
-                    <span className="font-caption text-caption text-badge-discount-text font-medium">Ready</span>
+                    <span className="font-label-sm text-label-sm font-semibold text-text-primary">Enter details</span>
                   </div>
-                  <div className="relative z-10 px-2 py-1 rounded-full bg-surface-canvas font-caption text-caption text-primary font-semibold flex items-center gap-1">
-                    <Icon name="speed" className="text-[14px] text-badge-discount-text" />
-                    &lt; 10 sec
-                  </div>
-                  <div className="relative z-10 flex flex-col items-center gap-1">
+                  <Icon name="arrow_forward" className="text-text-tertiary text-[18px]" />
+                  <div className="flex flex-col items-center gap-1 flex-1">
                     <div className="w-11 h-11 rounded-xl bg-badge-discount-bg text-badge-discount-text flex items-center justify-center">
-                      <Icon name="account_balance" className="text-[20px]" />
+                      <Icon name="visibility" className="text-[20px]" />
                     </div>
-                    <span className="font-label-sm text-label-sm font-semibold text-text-primary">CAC Database</span>
-                    <span className="font-caption text-caption text-badge-discount-text font-medium">Active Link</span>
+                    <span className="font-label-sm text-label-sm font-semibold text-text-primary">Review preview</span>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-space-xs pt-space-xs">
-                  <div className="flex flex-col p-space-xs rounded-lg bg-surface-canvas">
-                    <span className="font-caption text-caption text-text-tertiary">Registry Protocol</span>
-                    <span className="font-label-sm text-label-sm font-medium text-text-primary">REST 2.4 SSL</span>
-                  </div>
-                  <div className="flex flex-col p-space-xs rounded-lg bg-surface-canvas">
-                    <span className="font-caption text-caption text-text-tertiary">Response Latency</span>
-                    <span className="font-label-sm text-label-sm font-medium text-badge-discount-text">380ms (Instant)</span>
+                  <Icon name="arrow_forward" className="text-text-tertiary text-[18px]" />
+                  <div className="flex flex-col items-center gap-1 flex-1">
+                    <div className="w-11 h-11 rounded-xl bg-surface-container text-primary flex items-center justify-center">
+                      <Icon name="person_check" className="text-[20px]" />
+                    </div>
+                    <span className="font-label-sm text-label-sm font-semibold text-text-primary text-center">Confirm representative</span>
                   </div>
                 </div>
               </div>
@@ -436,11 +503,10 @@ export function DesktopVerificationCacFormScreen({
             <div className="bg-surface-canvas rounded-xl p-space-lg shadow-sm">
               <div className="flex items-center gap-space-2xs mb-space-sm">
                 <Icon name="military_tech" className="text-primary text-[20px]" />
-                <h2 className="font-heading-sm text-heading-sm text-text-primary">Verification Benefits Unlocked</h2>
+                <h2 className="font-heading-sm text-heading-sm text-text-primary">What gets saved</h2>
               </div>
               <p className="font-caption text-caption text-text-secondary mb-space-md">
-                Completing official CAC authentication elevates your merchant profile across consumer apps and local
-                rails.
+                Only the details you confirm are attached to your business verification record.
               </p>
               <div className="flex flex-col gap-space-sm">
                 {BENEFITS.map((benefit) => (
@@ -464,10 +530,10 @@ export function DesktopVerificationCacFormScreen({
                 </div>
                 <div className="flex flex-col">
                   <span className="font-label-md text-label-md font-semibold text-text-primary">
-                    NDPR Compliance &amp; Escrow Security
+                    Registry lookup and ownership are separate
                   </span>
                   <span className="font-caption text-caption text-text-secondary">
-                    TLS 1.3 256-bit encryption. Zero unmasked data storage.
+                    A company record is checked before the named representative is checked.
                   </span>
                 </div>
               </div>
@@ -480,6 +546,44 @@ export function DesktopVerificationCacFormScreen({
           {error}
         </div>
       )}
+      <ConfirmActionDialog
+        open={preview !== null}
+        onClose={closePreview}
+        onConfirm={handleConfirmPreview}
+        title="Confirm registry details"
+        message="Review the details returned by the registry check. Only confirm if they match your business documents."
+        bullets={[
+          'These fields are for autofill only and are not proof of ownership.',
+          'Confirming stores a business check and starts a separate representative check.',
+        ]}
+        confirmLabel="Confirm and continue"
+        busy={verifying}
+        confirmDisabled={!accepted || verifying}
+      >
+        {preview && (
+          <div className="rounded-xl bg-surface-subtle p-space-sm">
+            <div className="flex items-center gap-space-xs pb-space-xs">
+              <Icon name="domain_verification" className="text-primary text-[18px]" />
+              <span className="font-label-sm text-label-sm font-semibold text-on-surface">Registry preview</span>
+            </div>
+            {previewRow('Legal name', preview.preview.legalName)}
+            {previewRow('Registration number', preview.preview.registrationNumber)}
+            {previewRow('Status', preview.preview.status)}
+            {previewRow('Registration date', preview.preview.registrationDate)}
+            {previewRow('Company type', preview.preview.companyType)}
+            {previewRow('Representatives published', preview.preview.representativeCount)}
+            <label className="flex items-start gap-space-xs pt-space-xs text-on-surface font-label-sm text-label-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={accepted}
+                onChange={(event) => setAccepted(event.target.checked)}
+              />
+              <span>I confirm these details match my business documents and may be used to complete my verification.</span>
+            </label>
+          </div>
+        )}
+      </ConfirmActionDialog>
     </BusinessVerificationChrome>
   );
 }

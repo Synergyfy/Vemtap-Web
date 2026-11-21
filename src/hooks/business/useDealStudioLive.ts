@@ -1,15 +1,12 @@
 import { createContext, useContext } from 'react';
 import { hasApiConfig } from '../../services/api/client';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { firstUsableItemImage } from '../../scripts/catalogueLive';
 import { toPrice, type CatalogueItem } from '../../services/catalogueItemsService';
-import {
-  DEFAULT_BUNDLE_CATALOG,
-  type ComboProduct,
-  type DealStudioDraft,
-} from '../../scripts/deals/dealStudioShared';
+import type { ComboProduct, DealStudioDraft } from '../../scripts/deals/dealStudioShared';
 import { useCatalogueItems } from './useCatalogueItems';
 
-/** The catalogue item the live deal is built on, for the Deal Studio steps. */
+/** The primary live catalogue product the current deal is built around. */
 export const DealSourceContext = createContext<CatalogueItem | null>(null);
 
 export const useDealSource = () => useContext(DealSourceContext);
@@ -18,13 +15,20 @@ export interface DealBranchOption {
   id: string;
   name: string;
   area: string;
-  /** False when the deal's item isn't sold at this branch (the API would refuse it). */
+  /** False when any selected product isn't sold at this branch (the API would refuse it). */
   sellsItem: boolean;
 }
 
+type DealSourceInput = CatalogueItem | CatalogueItem[] | null | undefined;
+
+const sourceList = (source: DealSourceInput): CatalogueItem[] => {
+  if (!source) return [];
+  return Array.isArray(source) ? source.filter(Boolean) : [source];
+};
+
 /**
- * The branches a deal can run at, defaulting to the active one. An item that
- * lists its branches limits the choice to where it's sold.
+ * The branches a deal can run at. When products are selected, only branches
+ * that sell every selected product stay available.
  */
 export function pickDealBranchIds(
   studio: Pick<DealStudioDraft, 'branchIds'>,
@@ -38,13 +42,44 @@ export function pickDealBranchIds(
   return allowed.slice(0, 1);
 }
 
-/** The business's configured branches as deal choices. `source` defaults to the Deal Studio's item. */
-export function useDealBranchOptions(sourceOverride?: CatalogueItem | null) {
-  const live = hasApiConfig();
+/** Live products only — services are deliberately excluded in product-only mode. */
+export function useDealProductCatalog() {
+  const query = useCatalogueItems('product');
+  const products = (query.data ?? []).filter((item) => item.status === 'active' && !item.isSuspended);
+  const catalog: ComboProduct[] = products.map((item) => ({
+    id: item.id,
+    name: item.name,
+    price: toPrice(item.price ?? undefined) ?? 0,
+    image: firstUsableItemImage(item),
+  }));
+  return {
+    live: hasApiConfig(),
+    products,
+    catalog,
+    loading: query.isLoading,
+    error: query.error,
+  };
+}
+
+/** Selected live catalogue products, in the order the merchant picked them. */
+export function useDealSelectedProducts(productIds: string[], allProducts?: CatalogueItem[]) {
+  const fallback = useDealProductCatalog();
+  const products = allProducts ?? fallback.products;
+  const byId = new Map(products.map((item) => [item.id, item]));
+  return productIds.map((id) => byId.get(id)).filter((item): item is CatalogueItem => Boolean(item));
+}
+
+/** The business's configured branches as deal choices. */
+export function useDealBranchOptions(sourceOverride?: DealSourceInput) {
   const { branches, activeBranchId } = useBusinessBranch();
   const contextSource = useDealSource();
-  const source = sourceOverride === undefined ? contextSource : sourceOverride;
-  const soldAt = source?.branches?.length ? new Set(source.branches.map((branch) => branch.id)) : null;
+  const sources = sourceOverride === undefined ? sourceList(contextSource) : sourceList(sourceOverride);
+  const soldAtSets = sources
+    .map((source) => (source.branches?.length ? new Set(source.branches.map((branch) => branch.id)) : null))
+    .filter((set): set is Set<string> => Boolean(set));
+  const soldAt = soldAtSets.length
+    ? soldAtSets.reduce((intersection, set) => new Set([...intersection].filter((id) => set.has(id))))
+    : null;
   const options: DealBranchOption[] = branches
     .filter((branch) => Boolean(branch.id || branch.key))
     .map((branch) => ({
@@ -53,12 +88,15 @@ export function useDealBranchOptions(sourceOverride?: CatalogueItem | null) {
       area: branch.area || 'No address on file',
       sellsItem: soldAt && branch.id ? soldAt.has(branch.id) : true,
     }));
-  return { live, options, activeBranchId };
+  return { live: hasApiConfig(), options, activeBranchId };
 }
 
 /** Configured branch choices for the deal plus the ones it currently runs at. */
-export function useDealBranches(studio: Pick<DealStudioDraft, 'branchIds'>) {
-  const { live, options, activeBranchId } = useDealBranchOptions();
+export function useDealBranches(
+  studio: Pick<DealStudioDraft, 'branchIds'>,
+  sourceOverride?: DealSourceInput,
+) {
+  const { live, options, activeBranchId } = useDealBranchOptions(sourceOverride);
   const selectedIds = pickDealBranchIds(studio, options, activeBranchId);
   const selected = options.filter((option) => selectedIds.includes(option.id));
   /** The studio patch that turns `id` on or off (the last branch can't be turned off). */
@@ -69,21 +107,10 @@ export function useDealBranches(studio: Pick<DealStudioDraft, 'branchIds'>) {
   return { live, options, selectedIds, selected, toggle, activeBranchId };
 }
 
-/**
- * Items a combo can pair with the deal's item (`current`): the business's
- * active catalogue live, the sample menu in demo mode.
- */
-export function useDealBundleCatalog(title: string, basePrice: number, sourceOverride?: CatalogueItem | null): ComboProduct[] {
-  const live = hasApiConfig();
+/** Kept for older callers: live products only, with no synthetic source entry. */
+export function useDealBundleCatalog(_title: string, _basePrice: number, sourceOverride?: CatalogueItem | null): ComboProduct[] {
+  const { catalog } = useDealProductCatalog();
   const contextSource = useDealSource();
   const source = sourceOverride === undefined ? contextSource : sourceOverride;
-  const products = useCatalogueItems('product');
-  const services = useCatalogueItems('service');
-  const current: ComboProduct = { id: 'current', name: title, price: basePrice };
-  if (!live) return [current, ...DEFAULT_BUNDLE_CATALOG];
-  const others = [...(products.data ?? []), ...(services.data ?? [])]
-    .filter((item) => item.id !== source?.id && item.status === 'active' && !item.isSuspended)
-    .map((item) => ({ id: item.id, name: item.name, price: toPrice(item.price ?? undefined) ?? 0 }))
-    .filter((item) => item.price > 0);
-  return [current, ...others];
+  return source?.id ? catalog.filter((product) => product.id !== source.id) : catalog;
 }

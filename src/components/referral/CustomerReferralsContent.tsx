@@ -13,7 +13,7 @@ const POINT_STATS = [
   { id: 'points', label: 'Available points', value: '0', icon: 'stars' },
   { id: 'referrals', label: 'Total successful referrals', value: '0', icon: 'how_to_reg' },
   { id: 'businesses', label: 'Businesses referred', value: '0', icon: 'storefront' },
-  { id: 'consumers', label: 'Consumers referred', value: '0', icon: 'group' },
+  { id: 'customers', label: 'Customers referred', value: '0', icon: 'group' },
   { id: 'earned', label: 'Total points earned', value: '0', icon: 'trending_up' },
   { id: 'redeemed', label: 'Redeemed rewards', value: '0', icon: 'redeem' },
 ];

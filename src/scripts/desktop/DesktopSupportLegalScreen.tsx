@@ -78,7 +78,7 @@ export function DesktopSupportLegalScreen({ onNav, onBack, onNavigate }: Desktop
                 <Icon name="info" className="text-[20px]" />
               </div>
               <p className="font-caption text-caption text-text-tertiary pt-space-2xs leading-relaxed">
-                VEMTAP Consumer v2.4.0 • Made with pride in Abuja
+                VEMTAP Customer v2.4.0 • Made with pride in Abuja
               </p>
             </aside>
           </div>

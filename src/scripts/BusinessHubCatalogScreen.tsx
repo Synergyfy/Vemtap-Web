@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { FilterMenu } from '../components/FilterMenu';
 import { Icon } from '../components/ui/Icon';
+import { ProductImage } from '../components/ui/ProductImage';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessHubHeader } from './BusinessHubHeader';
 import { AddProductMethodsDialog } from '../components/import/AddProductMethodsDialog';
@@ -28,14 +29,19 @@ import { useCatalogueItemMutations, useCatalogueItems } from '../hooks/business/
 import { useCatalogueCategories } from '../hooks/business/useCatalogueCategories';
 import { useOffers } from '../hooks/business/useOffers';
 import { useOnboardingSync } from '../hooks/business/useOnboardingSync';
+import { usePrimaryStoreQrLinks } from '../hooks/business/usePrimaryStoreQrLinks';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { CatalogProductInfoPanel } from '../components/CatalogProductInfoPanel';
+import { CATALOG_PAGE_SIZE, CATALOG_SORT_CHOICES, paginateCatalogueRecords, sortCatalogueRecords, type CatalogSortKey } from './catalogSort';
 import { apiErrorMessage } from '../services/errorMessages';
+import { copyTextToClipboard } from './referralData';
 import { itemToProductDraft, itemToServiceDraft, type CatalogueItem as LiveCatalogueItem } from '../services/catalogueItemsService';
 import type { BusinessOffer } from '../services/offersService';
 import {
   activeDealFor,
   availabilityLabel,
   dealBadgeLabel,
+  firstUsableItemImage,
   isItemActive,
   isLowStock,
   itemComparePriceLabel,
@@ -43,10 +49,6 @@ import {
   stockLabel,
 } from './catalogueLive';
 import type { ProductDraft } from './productDraft';
-
-/** Neutral placeholder shown for imported products without an image. */
-const PLACEHOLDER_IMG =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' fill='%23e5e7eb'/%3E%3Ctext x='40' y='44' font-size='9' text-anchor='middle' fill='%239ca3af'%3Eno image%3C/text%3E%3C/svg%3E";
 
 interface BusinessHubCatalogScreenProps {
   /** Products and Services are separate pages; this screen renders one of them. */
@@ -63,6 +65,15 @@ interface BusinessHubCatalogScreenProps {
   /** A message to show once when the screen opens (e.g. "pick an item"). */
   notice?: string | null;
 }
+
+const MOBILE_FILTER_CHIPS = [
+  { key: 'all', label: 'All Status' },
+  { key: 'deals', label: 'Active Deals' },
+  { key: 'low', label: 'Low Stock' },
+  { key: 'takeaway', label: 'Dine-In & Takeaway' },
+] as const;
+
+type MobileCatalogChip = (typeof MOBILE_FILTER_CHIPS)[number]['key'];
 
 interface CatalogItem {
   key: string;
@@ -93,6 +104,9 @@ interface CatalogItem {
   stockOn: boolean;
   actionLabel: string;
   actionIcon: string;
+  filters?: MobileCatalogChip[];
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 const CATALOG_ITEMS: CatalogItem[] = [
@@ -190,8 +204,6 @@ const CATALOG_ITEMS: CatalogItem[] = [
   },
 ];
 
-const FILTER_CHIPS = ['All Status', 'Active Deals (4)', 'Low Stock', 'Dine-In & Takeaway'];
-
 /** Maps a bulk-imported product onto the mobile catalogue card model. */
 function importedToItem(product: ImportedProduct): CatalogItem {
   const published = product.status === 'published';
@@ -210,7 +222,7 @@ function importedToItem(product: ImportedProduct): CatalogItem {
     comparePrice: onSale && product.price !== null ? naira(product.price) : undefined,
     baseNote: published ? undefined : 'draft',
     // Own image first, then the category image as a fallback (linked, not copied).
-    img: resolveProductDisplayImage(product, getCategoryImageByName) ?? PLACEHOLDER_IMG,
+    img: resolveProductDisplayImage(product, getCategoryImageByName) ?? '',
     alt: product.description || product.name || 'Imported product',
     note: published ? undefined : 'Hidden from storefront until you publish it',
     noteIcon: published ? undefined : 'edit_note',
@@ -222,6 +234,7 @@ function importedToItem(product: ImportedProduct): CatalogItem {
     stockOn: (stock ?? 0) > 0,
     actionLabel: 'Review',
     actionIcon: 'rate_review',
+    filters: ['all'],
   };
 }
 
@@ -230,6 +243,10 @@ function liveToItem(item: LiveCatalogueItem, offers: BusinessOffer[], branchCoun
   const active = isItemActive(item);
   const deal = activeDealFor(item, offers);
   const low = isLowStock(item);
+  const modes = item.fulfillmentModes ?? [];
+  const dineInTakeaway =
+    modes.some((mode) => mode === 'dine_in' || mode === 'pickup') ||
+    /dine|take|pickup/i.test(item.serviceMode ?? '');
   return {
     key: item.id,
     category: item.category?.name || (item.itemType === 'service' ? 'Service' : 'Product'),
@@ -241,7 +258,7 @@ function liveToItem(item: LiveCatalogueItem, offers: BusinessOffer[], branchCoun
     name: item.name,
     price: itemPriceLabel(item),
     comparePrice: itemComparePriceLabel(item),
-    img: item.mainImage || getCategoryImageByName(item.category?.name ?? '') || PLACEHOLDER_IMG,
+    img: firstUsableItemImage(item) ?? '',
     alt: item.name,
     thumbOverlay: !active,
     dealBadge: deal ? `Deal Active • ${dealBadgeLabel(deal)}` : undefined,
@@ -255,8 +272,45 @@ function liveToItem(item: LiveCatalogueItem, offers: BusinessOffer[], branchCoun
     stockOn: active,
     actionLabel: 'Pricing',
     actionIcon: 'price_change',
+    filters: [
+      'all',
+      ...(deal ? (['deals'] as MobileCatalogChip[]) : []),
+      ...(low ? (['low'] as MobileCatalogChip[]) : []),
+      ...(dineInTakeaway ? (['takeaway'] as MobileCatalogChip[]) : []),
+    ],
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
   };
 }
+
+/** Demo cards still open the same panel; live mode always uses the real item below. */
+function catalogItemToLive(item: CatalogItem): LiveCatalogueItem {
+  return {
+    id: item.key,
+    name: item.name,
+    price: parseMoney(item.price) ?? undefined,
+    compareAtPrice: parseMoney(item.comparePrice ?? '') ?? undefined,
+    mainImage: item.img,
+    category: item.category ? { id: item.category, name: item.category } : null,
+    status: item.statusLabel.toLowerCase().includes('draft') || item.statusLabel.toLowerCase().includes('pause') ? 'inactive' : 'active',
+    itemType: 'product',
+    sku: item.sku,
+    barcode: item.barcode ?? undefined,
+    shortDescription: item.note ?? undefined,
+    description: item.alt,
+    isSuspended: !item.stockOn,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+const matchesMobileChip = (item: CatalogItem, selected: MobileCatalogChip) => {
+  if (selected === 'all') return true;
+  if (item.filters) return item.filters.includes(selected);
+  if (selected === 'deals') return Boolean(item.dealBadge);
+  if (selected === 'low') return item.thumbBadge === 'Low' || /low stock|limited stock/i.test(item.note ?? '');
+  return /dine-in|takeaway/i.test(item.note ?? '');
+};
 
 export function BusinessHubCatalogScreen({
   mode = 'products',
@@ -275,6 +329,7 @@ export function BusinessHubCatalogScreen({
   const itemsQuery = useCatalogueItems();
   const categoriesQuery = useCatalogueCategories('product');
   const offersQuery = useOffers();
+  const productLinks = usePrimaryStoreQrLinks();
   const { branches } = useBusinessBranch();
   const { create, update } = useCatalogueItemMutations();
   const sync = useOnboardingSync();
@@ -284,7 +339,11 @@ export function BusinessHubCatalogScreen({
   const liveById = new Map(liveItems.map((item) => [item.id, item]));
   const [addOpen, setAddOpen] = useState(false);
   const [tab, setTab] = useState<'products' | 'categories'>('products');
-  const [chip, setChip] = useState('All Status');
+  const [chip, setChip] = useState<MobileCatalogChip>('all');
+  const [sort, setSort] = useState<CatalogSortKey>('newest');
+  const [page, setPage] = useState(1);
+  const [detailItem, setDetailItem] = useState<LiveCatalogueItem | null>(null);
+  const [detailShowQr, setDetailShowQr] = useState(false);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [stock, setStock] = useState<Record<string, boolean>>(
@@ -343,9 +402,13 @@ export function BusinessHubCatalogScreen({
       ? catalogItems.length
       : 0;
   const liveDealCount = (offersQuery.data ?? []).filter((offer) => offer.status === 'active').length;
-  const filterChips = live
-    ? ['All Status', `Active Deals (${liveDealCount})`, 'Low Stock', 'Dine-In & Takeaway']
-    : FILTER_CHIPS;
+  const filterChips = MOBILE_FILTER_CHIPS.map((entry) => ({
+    ...entry,
+    label:
+      entry.key === 'deals'
+        ? `Active Deals (${live ? liveDealCount : allItems.filter((item) => Boolean(item.dealBadge)).length})`
+        : entry.label,
+  }));
 
   /** Live: shelf on/off is the item's active status. */
   const toggleLiveItem = (id: string) => {
@@ -367,6 +430,10 @@ export function BusinessHubCatalogScreen({
   useEffect(() => {
     if (notice) showToast(notice);
   }, [notice]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [chip, search, category, sort]);
 
   /** Live: a copy of the item at the active branch, hidden until reviewed. */
   const duplicateLiveItem = (item: LiveCatalogueItem) => {
@@ -398,7 +465,8 @@ export function BusinessHubCatalogScreen({
     })),
   ];
 
-  const visibleItems = allItems.filter((item) => {
+  const filteredItems = allItems.filter((item) => {
+    if (!matchesMobileChip(item, chip)) return false;
     if (category !== '' && item.category !== category) return false;
     const query = search.trim().toLowerCase();
     return (
@@ -409,6 +477,39 @@ export function BusinessHubCatalogScreen({
       (item.barcode ?? '').toLowerCase().includes(query)
     );
   });
+  // Default newest-first, then paginate 10 per screen like the desktop table.
+  const sortedItems = sortCatalogueRecords(filteredItems, sort);
+  const pagination = paginateCatalogueRecords(sortedItems, page, CATALOG_PAGE_SIZE);
+  const visibleItems = pagination.rows;
+
+  const openProductDetails = (item: LiveCatalogueItem, showQr = false) => {
+    setDetailShowQr(showQr);
+    setDetailItem(item);
+  };
+
+  const openCardDetails = (card: CatalogItem, showQr = false) => {
+    const item = live ? liveById.get(card.key) ?? catalogItemToLive(card) : catalogItemToLive(card);
+    openProductDetails(item, showQr);
+  };
+
+  const copyCardUrl = async (card: CatalogItem) => {
+    const url = productLinks.productUrl(card.key);
+    if (!url) return showToast('The public product link is still loading.');
+    const copied = await copyTextToClipboard(url);
+    showToast(copied ? 'Public product URL copied.' : 'Could not copy the link. Open the product panel to copy it manually.');
+  };
+
+  const editDetailItem = () => {
+    const item = detailItem;
+    setDetailItem(null);
+    if (item) editLiveItem(item);
+  };
+
+  const makeDealFromDetail = () => {
+    const item = detailItem;
+    setDetailItem(null);
+    if (item && live) onMakeDeal?.(item);
+  };
 
   if (view === 'importReview') {
     return (
@@ -792,9 +893,26 @@ export function BusinessHubCatalogScreen({
               value={category}
             />
           </div>
+          <div className="flex items-center justify-between gap-space-xs">
+            <span className="truncate font-caption text-caption text-text-secondary">
+              Sorted by <span className="font-semibold text-text-primary">{CATALOG_SORT_CHOICES.find((choice) => choice.value === sort)?.label}</span>
+            </span>
+            <FilterMenu
+              align="right"
+              ariaLabel="Sort products"
+              buttonClassName="flex items-center gap-1 rounded-lg bg-surface-container-high px-2 py-1 font-label-sm text-label-sm font-semibold text-on-surface hover:bg-surface-container-highest transition-colors"
+              choices={CATALOG_SORT_CHOICES}
+              icon="swap_vert"
+              iconClassName="text-[15px]"
+              label="Sort"
+              onChange={(next) => setSort(next as CatalogSortKey)}
+              title="Sort products"
+              value={sort}
+            />
+          </div>
           <div className="flex items-center gap-space-2xs overflow-x-auto no-scrollbar py-space-2xs">
             {filterChips.map((filterChip) => {
-              const active = chip === filterChip;
+              const active = chip === filterChip.key;
               return (
                 <button
                   className={`flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
@@ -802,11 +920,11 @@ export function BusinessHubCatalogScreen({
                       ? 'bg-primary-fixed text-on-primary-fixed font-semibold'
                       : 'bg-surface-container-high text-on-surface-variant hover:bg-surface-container-highest'
                   }`}
-                  key={filterChip}
+                  key={filterChip.key}
                   type="button"
-                  onClick={() => setChip(filterChip)}
+                  onClick={() => setChip(filterChip.key)}
                 >
-                  {filterChip}
+                  {filterChip.label}
                 </button>
               );
             })}
@@ -836,10 +954,19 @@ export function BusinessHubCatalogScreen({
               </div>
               {/* Main Row */}
               <div className="flex gap-2.5 items-start">
-                <div className="relative w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-surface-container shadow-xs">
-                  <img
+                <button
+                  aria-label={`View ${item.name} details`}
+                  className="relative block w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-surface-container shadow-xs"
+                  onClick={() => openCardDetails(item)}
+                  title="View product information"
+                  type="button"
+                >
+                  <ProductImage
                     alt={item.alt}
-                    className={`w-full h-full object-cover ${item.thumbOverlay ? 'grayscale-[40%]' : ''}`}
+                    className="h-full w-full"
+                    iconClassName="text-[20px]"
+                    imageClassName={`h-full w-full object-cover ${item.thumbOverlay ? 'grayscale-[40%]' : ''}`}
+                    showLabel={false}
                     src={item.img}
                   />
                   {item.thumbBadge && (
@@ -853,16 +980,19 @@ export function BusinessHubCatalogScreen({
                       <Icon name="pause_circle" className="text-on-surface text-[16px]" />
                     </div>
                   )}
-                </div>
+                </button>
                 <div className="flex-1 min-w-0 flex flex-col justify-between">
                   <div>
-                    <h2
-                      className={`font-label-md text-label-md font-semibold truncate ${
+                    <button
+                      className={`font-label-md text-label-md font-semibold truncate text-left ${
                         item.key === 'bread' ? 'text-text-secondary' : 'text-text-primary'
                       }`}
+                      onClick={() => openCardDetails(item)}
+                      title="View product information"
+                      type="button"
                     >
                       {item.name}
-                    </h2>
+                    </button>
                     <div className="flex items-baseline gap-1.5 mt-0.5">
                       <span
                         className={`font-label-md text-label-md font-bold ${
@@ -967,7 +1097,37 @@ export function BusinessHubCatalogScreen({
               </div>
             </div>
           ))}
-          {visibleItems.length === 0 && (
+          {filteredItems.length > 0 && (
+            <div className="mt-space-sm flex items-center justify-between rounded-xl bg-surface-container-low px-space-sm py-space-2xs">
+              <span className="font-caption text-caption text-text-secondary">
+                {pagination.from}–{pagination.to} of {filteredItems.length}
+              </span>
+              <div className="flex items-center gap-space-2xs">
+                <button
+                  aria-label="Previous products page"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-canvas text-text-secondary shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                  disabled={pagination.page <= 1}
+                  onClick={() => setPage(pagination.page - 1)}
+                  type="button"
+                >
+                  <Icon name="chevron_left" className="text-[18px]" />
+                </button>
+                <span className="min-w-16 text-center font-label-sm text-label-sm font-bold text-text-primary">
+                  {pagination.page}/{pagination.totalPages}
+                </span>
+                <button
+                  aria-label="Next products page"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-surface-canvas text-text-secondary shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
+                  disabled={pagination.page >= pagination.totalPages}
+                  onClick={() => setPage(pagination.page + 1)}
+                  type="button"
+                >
+                  <Icon name="chevron_right" className="text-[18px]" />
+                </button>
+              </div>
+            </div>
+          )}
+          {filteredItems.length === 0 && (
             <div className="py-space-xl flex flex-col items-center text-center">
               <div className="w-16 h-16 rounded-full bg-surface-container-high text-primary flex items-center justify-center mb-space-sm">
                 <Icon name="inventory_2" className="text-[32px]" />
@@ -985,6 +1145,7 @@ export function BusinessHubCatalogScreen({
                   onClick={() => {
                     setCategory('');
                     setSearch('');
+                    setChip('all');
                   }}
                 >
                   Clear filters
@@ -1019,6 +1180,9 @@ export function BusinessHubCatalogScreen({
               </button>
             </div>
             {[
+              { icon: 'visibility', iconClass: 'text-primary', label: 'View Details' },
+              { icon: 'content_copy', iconClass: 'text-secondary', label: 'Copy Public URL' },
+              { icon: 'qr_code_2', iconClass: 'text-secondary', label: 'View QR Code' },
               ...(live
                 ? [
                     { icon: 'edit', iconClass: 'text-primary', label: 'Edit Details' },
@@ -1039,7 +1203,17 @@ export function BusinessHubCatalogScreen({
                 type="button"
                 onClick={() => {
                   const liveItem = live && sheetKey ? liveById.get(sheetKey) : undefined;
-                  if (action.label === 'Manage Location Pricing') {
+                  const sheetCard = sheetKey ? allItems.find((item) => item.key === sheetKey) : undefined;
+                  if (action.label === 'View Details') {
+                    setSheetItem(null);
+                    if (sheetCard) openCardDetails(sheetCard);
+                  } else if (action.label === 'Copy Public URL') {
+                    setSheetItem(null);
+                    if (sheetCard) void copyCardUrl(sheetCard);
+                  } else if (action.label === 'View QR Code') {
+                    setSheetItem(null);
+                    if (sheetCard) openCardDetails(sheetCard, true);
+                  } else if (action.label === 'Manage Location Pricing') {
                     setSheetItem(null);
                     onOpenAssignment(liveItem ? liveItem.id : sheetItem);
                   } else if (liveItem && action.label === 'Edit Details') {
@@ -1115,6 +1289,17 @@ export function BusinessHubCatalogScreen({
           showToast(summariseImport(importResult));
         }}
         onOpenReview={() => setView('importReview')}
+      />
+
+      <CatalogProductInfoPanel
+        item={detailItem}
+        offers={offersQuery.data ?? []}
+        branchCount={branches.filter((branch) => branch.id).length}
+        initialShowQr={detailShowQr}
+        onClose={() => setDetailItem(null)}
+        onEdit={editDetailItem}
+        onMakeDeal={live && onMakeDeal ? makeDealFromDetail : undefined}
+        onNotify={showToast}
       />
 
       {toast && (

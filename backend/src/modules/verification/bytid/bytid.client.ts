@@ -22,6 +22,8 @@ const IDENTITY_PATHS: Record<BytidIdentityType, string> = {
   nin: '/identity/nin/face-match',
   drivers_license: '/identity/drivers-license/face-match',
   voters_card: '/identity/voters-card/face-match',
+  // BVN lookup has no selfie/face match in bytID.
+  bvn: '/identity/bvn',
 };
 
 /** Retries for timeouts and 500s — always with the same reference. */
@@ -43,10 +45,13 @@ export class BytidClient {
   private readonly logger = new Logger(BytidClient.name);
   private readonly http: AxiosInstance;
   readonly configured: boolean;
+  /** Sandbox keys start with `uvk_test_`; the key, not an app flag, decides. */
+  readonly sandbox: boolean;
 
   constructor(private readonly config: ConfigService) {
     const apiKey = this.config.get<string>('BYTID_API_KEY') ?? '';
     this.configured = apiKey.length > 0;
+    this.sandbox = apiKey.startsWith('uvk_test_');
     if (!this.configured) {
       this.logger.warn('bytID is not configured: BYTID_API_KEY is missing');
     }
@@ -75,7 +80,11 @@ export class BytidClient {
     );
   }
 
-  /** Registry lookup plus face match against a passed liveness session. */
+  /**
+   * Registry lookup. NIN/licence/VIN include face match against a passed
+   * liveness session; BVN is a record lookup with fields compared by bytID and
+   * no selfie (sending a selfie to `/identity/bvn` is a 400).
+   */
   verifyIdentity(
     type: BytidIdentityType,
     body: {
@@ -83,8 +92,7 @@ export class BytidClient {
       id_number: string;
       first_name?: string;
       last_name?: string;
-      dob?: string;
-      liveness_session_id: string;
+      liveness_session_id?: string;
     },
   ) {
     return this.post<BytidIdentityCheck>(IDENTITY_PATHS[type], body, () =>
@@ -117,6 +125,11 @@ export class BytidClient {
     return this.post<BytidCacCheck>('/business/cac', body, () =>
       this.findByReference<BytidCacCheck>(body.reference),
     );
+  }
+
+  /** Full check by provider id (the list endpoint omits identity data). */
+  getVerification<T>(id: string) {
+    return this.get<T>(`/verifications/${encodeURIComponent(id)}`);
   }
 
   /** The verification created earlier with this reference. */

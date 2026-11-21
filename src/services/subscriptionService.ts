@@ -94,6 +94,95 @@ export interface CreditBalance {
   aiCredits: number;
 }
 
+/** Derived from backend/admin plan and add-on configuration. */
+export interface LocationAccessSummary {
+  plan: {
+    id: string | null;
+    name: string;
+    isActive: boolean;
+    isTrial: boolean;
+  };
+  usage: {
+    total: number;
+    primary: number;
+    active: number;
+    restricted: number;
+    paused: number;
+  };
+  allowance: {
+    free: number;
+    subscription: number | 'unlimited';
+    purchased: number;
+    total: number | 'unlimited';
+  };
+  purchases: Array<{
+    id: string;
+    name: string;
+    locations: number;
+    billingType: 'one_time' | 'recurring' | null;
+    expiresAt: string | null;
+    purchasedAt: string;
+  }>;
+  canAddLocation: boolean;
+  blockedReason: 'PLAN_LIMIT_REACHED' | 'PLAN_FEATURE_NOT_INCLUDED' | null;
+  restrictionPolicy: 'restrict';
+  notice: string | null;
+  branches: Array<{
+    id: string;
+    name: string;
+    isPrimary: boolean;
+    isActive: boolean;
+    access: 'active' | 'restricted' | 'paused';
+    restrictionReason: string | null;
+    entitlementSource: 'free' | 'subscription' | 'purchased' | null;
+    isFree: boolean;
+    isPurchased: boolean;
+    address: string | null;
+  }>;
+  upgradePlans: Array<{
+    id: string;
+    name: string;
+    locationLimit: number | 'unlimited';
+    locationsEnabled: boolean;
+    currency: string;
+    monthlyPrice: Money;
+    quarterlyPrice: Money;
+    yearlyPrice: Money;
+    isFree: boolean;
+    permissionsConfigured: boolean;
+    isCurrent: boolean;
+  }>;
+  purchaseOption: {
+    available: boolean;
+    checkoutEnabled: boolean;
+    addonId: string | null;
+    name: string | null;
+    description: string | null;
+    price: Money | null;
+    currency: string | null;
+    billingType: 'one_time' | 'recurring' | null;
+    locationsPerPurchase: number;
+    maxPurchasable: number | null;
+    remainingPurchasable: number | null;
+    expiresAfterDays: number | null;
+  };
+}
+
+export interface LocationCheckoutResult {
+  reference: string;
+  amount: Money;
+  currency: string;
+  locations: number;
+  authorizationUrl: string;
+  accessCode: string;
+}
+
+export interface LocationCheckoutConfirmation {
+  reference: string;
+  status: 'completed' | 'pending';
+  locations: number;
+}
+
 export const planPrice = (plan: Plan, period: BillingPeriod) =>
   Number(period === 'yearly' ? plan.yearlyPrice : period === 'quarterly' ? plan.quarterlyPrice : plan.monthlyPrice) || 0;
 
@@ -103,6 +192,7 @@ export const isPurchasable = (plan: Plan) => plan.isActive !== false && (Boolean
 export const subscriptionService = {
   plans: () => api.get<Plan[]>('/plans', { params: { onlyActive: true } }),
   active: () => api.get<Subscription | null>('/subscriptions/active'),
+  locationAccess: () => api.get<LocationAccessSummary>('/subscriptions/locations/access'),
   startTrial: (planId: string, billingPeriod: BillingPeriod) => api.post<Subscription>('/subscriptions/trial', { planId, billingPeriod }),
   pricePreview: (planId: string, billingPeriod: BillingPeriod) =>
     api.get<PricePreview>('/subscriptions/price-preview', { params: { planId, billingPeriod } }),
@@ -115,6 +205,15 @@ export const subscriptionService = {
   cancel: () => api.post<unknown>('/subscriptions/cancel'),
   addons: () => api.get<Addon[]>('/addons'),
   myAddons: () => api.get<BusinessAddon[]>('/addons/my'),
+  startLocationCheckout: (input: {
+    addonId: string;
+    locations: number;
+    callbackUrl?: string;
+  }) => api.post<LocationCheckoutResult>('/addons/location-checkout', input),
+  confirmLocationCheckout: (reference: string) =>
+    api.post<LocationCheckoutConfirmation>(
+      `/addons/location-checkout/${encodeURIComponent(reference)}/confirm`,
+    ),
   creditPlans: () => api.get<CreditPlan[]>('/credit-plans'),
   creditBalance: () => api.get<CreditBalance>('/credits/balance'),
   startCreditCheckout: (planId: string, callbackUrl: string) =>

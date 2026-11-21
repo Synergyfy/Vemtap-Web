@@ -10,6 +10,7 @@ import { useOfferSummary, useOffers } from '../hooks/business/useOffers';
 import { DealEndDialog, type DealEndRequest } from '../components/DealEndDialog';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import type { BusinessOffer } from '../services/offersService';
+import { dealPrimaryImage } from '../utils/dealImages';
 import {
   dealBadgeLabel,
   isOfferPaused,
@@ -136,7 +137,7 @@ function offerToCard(offer: BusinessOffer): DealCard {
     category: [offer.branchName, offer.offerType].filter(Boolean).join(' · ') || 'Deal',
     price: offerPriceLabel(offer),
     compare: offerComparePriceLabel(offer),
-    img: offer.mainImage || LIVE_IMAGE_PLACEHOLDER,
+    img: dealPrimaryImage(offer) ?? LIVE_IMAGE_PLACEHOLDER,
     alt: offer.name,
     discountBadge: dealBadgeLabel(offer),
     scheduleLine: { icon: 'schedule', text: offerScheduleLabel(offer) },

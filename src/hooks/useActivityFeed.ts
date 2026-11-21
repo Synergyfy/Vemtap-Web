@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { api, hasApiConfig } from '../services/api/client';
 import { downloadCsv } from '../utils/exportCsv';
+import { safeDealImageUrl } from '../utils/dealImages';
 import { NO_IMAGE } from '../utils/homeOffer';
 import { clearRecentDeals, readRecentDeals, type RecentDeal } from '../utils/recentlyViewed';
 import { useTotalSaved } from './useCustomerDashboard';
@@ -72,7 +73,7 @@ const toRow = (raw: unknown): ActivityRow => {
     location: text(row.branchName) || text(row.branchAddress),
     value: amount > 0 ? naira(amount) : '',
     status,
-    image: text(row.image) || text(row.businessLogo) || NO_IMAGE,
+    image: safeDealImageUrl(text(row.image)) || safeDealImageUrl(text(row.businessLogo)) || NO_IMAGE,
     rating: row.rating === null || row.rating === undefined ? null : count(row.rating),
     body: text(row.body),
     reply: text(row.reply),
