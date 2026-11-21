@@ -525,8 +525,8 @@ export function DesktopPosSaleCompleteScreen({
                 <div className="flex items-center gap-space-xs">
                   <div className="relative flex-1">
                     <Icon
-                      name="sms"
-                      className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-[18px]"
+                      name="whatsapp"
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-badge-discount-text text-[18px]"
                     />
                     <input
                       id="receipt-phone"

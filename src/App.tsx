@@ -14,6 +14,7 @@ import { businessService } from './services/businessService';
 import { hasApiConfig } from './lib/api';
 import { authService } from './services';
 import type { CatalogueItem } from './services/catalogueItemsService';
+import type { DealPriceChoice } from './scripts/deals/dealStudioShared';
 import { ownerAuthService, OTP_GATE_MESSAGE, rememberUpgradePin } from './services/ownerAuthService';
 import { apiErrorMessage } from './services/errorMessages';
 import { startGoogleSignIn, takeGoogleRedirectResult, type GoogleIntent } from './services/googleAuth';
@@ -23,6 +24,7 @@ import { BusinessBranchProvider, BranchSwitchOverlay } from './context/BusinessB
 import { BusinessOfferingsProvider } from './context/BusinessOfferingsContext';
 import { BusinessFeaturesProvider, useBusinessFeatures } from './context/BusinessFeaturesContext';
 import { BUSINESS_FEATURES, FEATURE_MANAGE_ROUTE, FEATURE_SETUP_ROUTE, findDisabledRoute, type FeatureId, type FeatureState } from './scripts/businessFeatures';
+import { allowedStaffRoute } from './scripts/staffPageAccess';
 import { isAdminAuthenticated } from './scripts/admin/adminAuth';
 import { addPaidBusinessLocation, getBusinessLocationCount } from './scripts/businessLocationsStore';
 import { CartProvider } from './context/CartContext';
@@ -130,6 +132,7 @@ import { type PosTerminalLine } from './scripts/desktop/posTerminalData';
 import { type PosCustomerRecord } from './scripts/desktop/posRegisterExtras';
 import { StoreOrderingProvider } from './context/StoreOrderingContext';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
+import { CreateDealItemPickerModal } from './components/CreateDealItemPickerModal';
 
 type Route =
   | 'welcome'
@@ -279,6 +282,8 @@ type Route =
   | 'storefront'
   | 'storefront-products'
   | 'storefront-menu'
+  | 'business-deals'
+  | 'business-services'
   | 'business-profile'
   | 'spa-profile'
   | 'spa-services'
@@ -506,6 +511,10 @@ const ROUTE_PATH: Record<Route, string> = {
   storefront: '/discover',
   'storefront-products': '/discover',
   'storefront-menu': '/discover',
+  // Business-specific See All pages use a real per-business path; the path is
+  // computed from the selected business in `resolveRoutePath`.
+  'business-deals': '/discover',
+  'business-services': '/discover',
   'business-profile': '/discover',
   'spa-profile': '/discover',
   'spa-services': '/discover',
@@ -610,6 +619,25 @@ const SAMPLE_SPA_ROUTES = new Set<Route>([
   'spa-booking-confirmed',
 ]);
 
+/** Product-only rollout: service/booking pages are never entered or rendered. */
+const PRODUCT_ONLY_HIDDEN_ROUTES = new Set<Route>([
+  'hub-catalog-new-service',
+  'hub-services',
+  'business-services',
+  'spa-profile',
+  'spa-services',
+  'service-detail',
+  'spa-storefront',
+  'spa-booking',
+  'spa-booking-checkout',
+  'spa-booking-confirmed',
+  'business-bookings',
+  'booking-detail',
+]);
+const isProductOnlyHiddenRoute = (target: Route | string) => PRODUCT_ONLY_HIDDEN_ROUTES.has(target as Route);
+const productOnlyFallbackRoute = (target?: Route): Route =>
+  target && isPortalRoute(target) ? 'business-overview' : 'orders';
+
 const OVERLAY_ROUTES = new Set<Route>([
   'comments',
   'reviews',
@@ -676,6 +704,8 @@ const STOREFRONT_ROUTES = new Set<Route>([
   'storefront',
   'storefront-products',
   'storefront-menu',
+  'business-deals',
+  'business-services',
   'business-profile',
   'spa-profile',
   'spa-services',
@@ -839,7 +869,7 @@ function businessSectionRoute(section: string, venue: 'urban' | 'spa', serviceSl
   switch (section) {
     // The bundled demo storefront sub-pages are retired: their links land on the live business page.
     case 'deals':
-      return 'business-profile';
+      return 'business-deals';
     case 'products':
       return 'storefront-products';
     case 'checkout':
@@ -849,7 +879,7 @@ function businessSectionRoute(section: string, venue: 'urban' | 'spa', serviceSl
     case 'menu':
       return 'business-profile';
     case 'services':
-      return serviceSlug ? 'service-detail' : 'business-profile';
+      return serviceSlug ? 'service-detail' : 'business-services';
     case 'shop':
       return 'business-profile';
     case 'booking':
@@ -1273,11 +1303,12 @@ function AppInner() {
   const contacts = useContacts();
   const isDesktop = useIsDesktop();
   const featureConfig = useBusinessFeatures();
-  const [route, setRouteState] = useState<Route>(() =>
-    GOOGLE_REDIRECT
+  const [route, setRouteState] = useState<Route>(() => {
+    const initial = GOOGLE_REDIRECT
       ? ((GOOGLE_REDIRECT.pending.from in ROUTE_PATH ? GOOGLE_REDIRECT.pending.from : 'welcome') as Route)
-      : entryRoute(`${window.location.pathname}${window.location.search}`, authed, isDesktop, true),
-  );
+      : entryRoute(`${window.location.pathname}${window.location.search}`, authed, isDesktop, true);
+    return isProductOnlyHiddenRoute(initial) ? productOnlyFallbackRoute(initial) : initial;
+  });
   /** A failed "Continue with Google", shown on the screen it started from. */
   const [googleError, setGoogleError] = useState<{ route: Route; message: string } | null>(null);
   const [selectedBusiness, setSelectedBusiness] = useState<BusinessProfileRef | null>(() => {
@@ -1520,6 +1551,10 @@ function AppInner() {
         return selectedBusiness ? businessSubPath(selectedBusiness, 'products') : '/discover';
       case 'storefront-menu':
         return selectedBusiness ? businessSubPath(selectedBusiness, 'menu') : '/discover';
+      case 'business-deals':
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'deals') : '/discover';
+      case 'business-services':
+        return selectedBusiness ? businessSubPath(selectedBusiness, 'services') : '/discover';
       case 'business-profile':
         return selectedBusiness ? businessPath(selectedBusiness) : '/discover';
       case 'checkout':
@@ -1546,11 +1581,34 @@ function AppInner() {
   }, [liveItem, detailService, selectedBusiness, selectedDeal, hubCustomerId]);
 
   const setRoute = (target: Route, nextDeal?: ClaimDealSummary | null) => {
-    if (target === route) return;
-    const targetPath = resolveRoutePath(target, nextDeal);
+    // Services and bookings are hidden in this rollout; send every stale link,
+    // tab and quick action back to the dashboard instead of opening the page.
+    const visibleTarget = isProductOnlyHiddenRoute(target) ? productOnlyFallbackRoute(target) : target;
+    // A staff account never lands on a page the owner did not grant. The
+    // allow-list lives with the side-menu permissions so deep links, tabs and
+    // quick actions all share the same rule.
+    const allowedTarget = allowedStaffRoute(sessionUser, visibleTarget) as Route;
+    if (allowedTarget === route) return;
+    const targetPath = resolveRoutePath(allowedTarget, nextDeal);
     if (window.location.pathname !== targetPath) window.history.pushState(null, '', targetPath);
-    setRouteState(target);
+    setRouteState(allowedTarget);
   };
+
+  // Covers a denied URL opened directly or through browser back/forward, where
+  // `setRoute` is not the entry point. Session data is required first so a
+  // loading profile never redirects an owner by mistake.
+  const permittedRoute = isProductOnlyHiddenRoute(route)
+    ? productOnlyFallbackRoute(route)
+    : sessionUser
+      ? (allowedStaffRoute(sessionUser, route) as Route)
+      : route;
+  useEffect(() => {
+    if (!hasApiConfig() && !isProductOnlyHiddenRoute(route)) return;
+    if (permittedRoute === route) return;
+    const path = resolveRoutePath(permittedRoute);
+    if (window.location.pathname !== path) window.history.replaceState(null, '', path);
+    setRouteState(permittedRoute);
+  }, [permittedRoute, resolveRoutePath, route, sessionUser]);
 
   const openProduct = (id: string, display?: Partial<CatalogueProduct>, from?: Route) => {
     const base = findProduct(id);
@@ -1779,15 +1837,17 @@ function AppInner() {
   }, [authed, route]);
 
   useEffect(() => {
-    const qrCatalogueAlias =
-      /^\/b\/[^/]+\/?$/.test(window.location.pathname) && route === 'storefront-products';
+    // A scanned QR or a shared business link owns its URL. Rewriting it through
+    // `resolveRoutePath` used to drop ?src=/?category=/?product= and, when the
+    // selected business hadn't loaded yet, fall back to /discover.
+    const onPublicBusinessLink = Boolean(resolveBusinessPath(`${window.location.pathname}${window.location.search}`));
     const expected =
       route === 'customer-invite-join' ||
       route === 'not-found' ||
-      qrCatalogueAlias ||
+      onPublicBusinessLink ||
       (route === 'claimed-deal' && passIdFromPath(window.location.pathname)) ||
       (route === 'deal-detail' && window.location.pathname.startsWith('/deals/'))
-        ? null // dynamic /join/{slug}?invite=…, a deal's own link and unknown paths — never overwritten
+        ? null // dynamic links (invite, business/QR, deal) and unknown paths — never overwritten
         : resolveRoutePath(route);
     if (expected && window.location.pathname !== expected) {
       window.history.replaceState(null, '', expected);
@@ -1802,7 +1862,8 @@ function AppInner() {
 
     const onPopState = () => {
       const path = window.location.pathname;
-      setRouteState(entryRoute(`${path}${window.location.search}`, authed, isDesktop));
+      const nextRoute = entryRoute(`${path}${window.location.search}`, authed, isDesktop);
+      setRouteState(isProductOnlyHiddenRoute(nextRoute) ? productOnlyFallbackRoute(nextRoute) : nextRoute);
       const orderRef = orderRefFromPath(path);
       if (orderRef) setActiveOrderRef(orderRef);
       const bookingRef = bookingRefFromPath(path);
@@ -1832,8 +1893,9 @@ function AppInner() {
   useEffect(() => {
     if (route !== 'product-detail' || liveItem) return;
     const match = resolveBusinessPath(`${window.location.pathname}${window.location.search}`);
+    // Product QR links carry the id in ?product=; never send a scanner to
+    // /discover — the detail screen renders its own unavailable state instead.
     if (match?.productId) setLiveItem({ code: match.business.slug, id: match.productId });
-    else setRouteState('discover');
   }, [route, liveItem]);
 
   /**
@@ -2230,7 +2292,7 @@ function AppInner() {
         setRoute('storefront-products');
         break;
       case 'all-services':
-        setRoute('spa-services');
+        setRoute('business-services');
         break;
       case 'product-detail':
         setRoute('product-detail');
@@ -2312,7 +2374,7 @@ function AppInner() {
         setRoute('storefront-products');
         break;
       case 'all-services':
-        setRoute('spa-services');
+        setRoute('business-services');
         break;
       case 'product-detail':
         setRoute('product-detail');
@@ -2367,31 +2429,28 @@ function AppInner() {
   // Live deals: the catalogue item a new deal is built on, the deal being
   // viewed or priced, and a one-off catalogue message ("pick an item").
   const [dealSource, setDealSource] = useState<CatalogueItem | null>(null);
+  /** Price choice made in a published screen; undefined makes the studio ask first. */
+  const [dealPriceChoice, setDealPriceChoice] = useState<DealPriceChoice | undefined>(undefined);
   const [dealGroupId, setDealGroupId] = useState<string | null>(null);
   const [catalogNotice, setCatalogNotice] = useState<string | null>(null);
+  /** Services page asks the existing catalogue category form to open for a service category. */
+  const [catalogCategoryIntent, setCatalogCategoryIntent] = useState<'service' | null>(null);
   // Live branches & pricing: the branch opened from Locations, the item whose
   // branch prices are edited, and the add-branch form shown inside Locations.
   const [selectedBranchId, setSelectedBranchId] = useState<string | null>(null);
   const [pricingItemId, setPricingItemId] = useState<string | null>(null);
   const [addingBranch, setAddingBranch] = useState(false);
-  /** Deals start from a real item; with none chosen, live sends the owner to the catalogue. */
-  const openDealStudio = (item?: CatalogueItem | null) => {
+  const [dealPickerOpen, setDealPickerOpen] = useState(false);
+  /** Deals start from a real item; with none chosen, opens the create-deal item picker modal. */
+  const openDealStudio = (item?: CatalogueItem | null, choice?: DealPriceChoice) => {
     if (item) {
       setDealSource(item);
+      setDealPriceChoice(choice);
       setCatalogNotice(null);
       setRoute('deal-studio');
       return;
     }
-    if (hasApiConfig()) {
-      setCatalogNotice(
-        isDesktop
-          ? 'Pick an item, then choose Add to Deals (or Make a Deal after publishing).'
-          : 'Pick an item, then tap Make a Deal in its options.',
-      );
-      setRoute('hub-catalog');
-      return;
-    }
-    setRoute('deal-studio');
+    setDealPickerOpen(true);
   };
   /** Cluster "Create location": live opens the add-branch form in Locations. */
   const openCreateLocation = () => {
@@ -3456,6 +3515,9 @@ function AppInner() {
     // Sign In opened from the business sign-up modal: authenticating resumes
     // business setup instead of dropping the merchant into the customer feed.
     const resumeBusinessSetup = signInFrom === 'business-auth';
+    // Services and bookings are hidden in product-only mode; the route effect
+    // redirects, but return nothing here so a stale URL never paints them.
+    if (isProductOnlyHiddenRoute(route)) return null;
     // Never paint a sample spa page in live mode while the redirect above runs.
     if (hasApiConfig() && SAMPLE_SPA_ROUTES.has(route)) return null;
     switch (route) {
@@ -4041,6 +4103,65 @@ function AppInner() {
             }}
           />
         ) : null}
+        </>
+      );
+
+    case 'business-deals':
+      if (isDesktop)
+        return (
+          <>
+            <DesktopDealsScreen
+              key={`business-deals-${selectedBusiness?.slug ?? ''}`}
+              businessCode={selectedBusiness?.slug}
+              onNav={feedNav}
+              onOpenFilters={() => openFeedRoute('filters', 'business-deals')}
+              onOpenFeatured={() => openFeedRoute('featured-deals', 'business-deals')}
+              onOpenDeal={(deal) => openDeal('business-deals', deal ?? null)}
+              onOpenComments={(deal) => openDealComments('business-deals', deal ?? null)}
+              onClaim={openClaimPopup}
+              onHowToClaim={() => openHowToClaim('business-deals')}
+            />
+            {commentsModalOnly ? (
+              <CommentsDrawer
+                open
+                deal={selectedDeal}
+                onClose={() => {
+                  setCommentsModalOnly(false);
+                  setRoute('business-deals');
+                }}
+                onClaim={() => {
+                  setCommentsModalOnly(false);
+                  setRoute('deal-detail');
+                  openClaimPopup();
+                }}
+              />
+            ) : null}
+          </>
+        );
+      return (
+        <>
+          <DealsScreen
+            key={`business-deals-${selectedBusiness?.slug ?? ''}`}
+            businessCode={selectedBusiness?.slug}
+            onTab={(tab) => setRoute(tab)}
+            onOpenFilters={() => openFeedRoute('filters', 'business-deals')}
+            onOpenDeal={(deal) => openDeal('business-deals', deal ?? null)}
+            onOpenNotifications={() => setRoute('notifications')}
+            onClaim={openClaimPopup}
+            onAccount={() => setRoute('account')}
+            onHowToClaim={() => openHowToClaim('business-deals')}
+            onOpenComments={(deal) => openDealComments('business-deals', deal)}
+          />
+          {commentsModalOnly ? (
+            <CommentsSheet
+              open
+              deal={selectedDeal}
+              onClose={() => {
+                setCommentsModalOnly(false);
+                setRoute('business-deals');
+              }}
+            />
+          ) : null}
         </>
       );
 
@@ -4669,12 +4790,29 @@ function AppInner() {
             onClaim={(deal, onClaimed) => openClaimPopup(deal, onClaimed)}
             onOpenDeal={(deal) => openDeal('business-profile', deal)}
             onOpenItem={(itemId) => selectedBusiness?.slug && openItem(selectedBusiness.slug, itemId, 'business-profile')}
+            onOpenDeals={() => setRoute('business-deals')}
+            onOpenProducts={() => setRoute('storefront-products')}
             onCheckout={startCheckout}
             startChat={chatIntent}
             onChatStarted={(branchId) => {
               setChatIntent(false);
               openBranchChat(branchId);
             }}
+          />
+        );
+      if (hasApiConfig())
+        return (
+          <DealsScreen
+            key={`storefront-deals-${selectedBusiness?.slug ?? ''}`}
+            businessCode={selectedBusiness?.slug}
+            onTab={(tab) => setRoute(tab)}
+            onOpenFilters={() => openFeedRoute('filters', 'business-deals')}
+            onOpenDeal={(deal) => openDeal('business-deals', deal ?? null)}
+            onOpenNotifications={() => setRoute('notifications')}
+            onClaim={openClaimPopup}
+            onAccount={() => setRoute('account')}
+            onHowToClaim={() => openHowToClaim('business-deals')}
+            onOpenComments={(deal) => openDealComments('business-deals', deal)}
           />
         );
       return (
@@ -4698,6 +4836,12 @@ function AppInner() {
             onNav={feedNav}
             onBack={() => setRoute('storefront')}
             businessCode={selectedBusiness?.slug}
+            kind="product"
+            startChat={chatIntent}
+            onChatStarted={(branchId) => {
+              setChatIntent(false);
+              openBranchChat(branchId);
+            }}
             onOpenProduct={(id, display) => openProduct(id, display, 'storefront-products')}
           />
         );
@@ -4708,6 +4852,12 @@ function AppInner() {
           onOpenProduct={(id, display) => openProduct(id, display, 'storefront-products')}
           onCheckout={startCheckout}
           businessCode={selectedBusiness?.slug}
+          kind="product"
+          startChat={chatIntent}
+          onChatStarted={(branchId) => {
+            setChatIntent(false);
+            openBranchChat(branchId);
+          }}
         />
       );
 
@@ -4756,6 +4906,8 @@ function AppInner() {
             onClaim={(deal, onClaimed) => openClaimPopup(deal, onClaimed)}
             onOpenDeal={(deal) => openDeal('business-profile', deal)}
             onOpenItem={(itemId) => selectedBusiness?.slug && openItem(selectedBusiness.slug, itemId, 'business-profile')}
+            onOpenDeals={() => setRoute('business-deals')}
+            onOpenProducts={() => setRoute('storefront-products')}
             onCheckout={startCheckout}
             startChat={chatIntent}
             onChatStarted={(branchId) => {
@@ -4771,6 +4923,8 @@ function AppInner() {
           onClaim={(deal, onClaimed) => openClaimPopup(deal, onClaimed)}
           onOpenDeal={(deal) => openDeal('business-profile', deal)}
           onOpenItem={(itemId) => selectedBusiness?.slug && openItem(selectedBusiness.slug, itemId, 'business-profile')}
+          onOpenDeals={() => setRoute('business-deals')}
+          onOpenProducts={() => setRoute('storefront-products')}
           startChat={chatIntent}
           onChatStarted={(branchId) => {
             setChatIntent(false);
@@ -4779,7 +4933,37 @@ function AppInner() {
         />
       );
 
+    case 'business-services':
     case 'spa-services':
+      if (hasApiConfig())
+        return isDesktop ? (
+          <DesktopAllProductsScreen
+            onNav={feedNav}
+            onBack={() => setRoute('business-profile')}
+            businessCode={selectedBusiness?.slug}
+            kind="service"
+            startChat={chatIntent}
+            onChatStarted={(branchId) => {
+              setChatIntent(false);
+              openBranchChat(branchId);
+            }}
+            onOpenProduct={(id, display) => openProduct(id, display, 'business-services')}
+          />
+        ) : (
+          <ProductsCatalogueScreen
+            onBack={() => setRoute('business-profile')}
+            onListView={() => setRoute('business-services')}
+            onOpenProduct={(id, display) => openProduct(id, display, 'business-services')}
+            onCheckout={startCheckout}
+            businessCode={selectedBusiness?.slug}
+            kind="service"
+            startChat={chatIntent}
+            onChatStarted={(branchId) => {
+              setChatIntent(false);
+              openBranchChat(branchId);
+            }}
+          />
+        );
       if (isDesktop) return <DesktopAllServicesScreen onNav={feedNav} onBack={() => setRoute('spa-profile')} />;
       return (
         <ServicesCatalogueScreen
@@ -4960,7 +5144,6 @@ function AppInner() {
               setActiveOrderRef(ref);
               setRoute('order-detail');
             }}
-            onOpenBooking={() => setRoute('booking-detail')}
             onScan={() => setRoute('scan')}
           />
         );
@@ -4989,10 +5172,6 @@ function AppInner() {
             onOpenOrder={(ref) => {
               setActiveOrderRef(ref);
               setRoute('order-detail');
-            }}
-            onOpenBooking={(ref) => {
-              setActiveBookingRef(ref);
-              setRoute('booking-detail');
             }}
           />
         );
@@ -6218,16 +6397,18 @@ function AppInner() {
               setPricingItemId(itemId ?? null);
               setRoute('business-branch-pricing');
             }}
-            onOpenServices={() => setRoute('hub-services')}
-            onMakeDeal={(item) => openDealStudio(item)}
+            onMakeDeal={(item, choice) => openDealStudio(item, choice)}
             notice={route === 'hub-catalog' ? catalogNotice : null}
             onAddProduct={() => setRoute('hub-catalog-new-product')}
             startWithNewProduct={route === 'hub-catalog-new-product'}
             startWithNewService={route === 'hub-catalog-new-service'}
+            openCategoryModal={catalogCategoryIntent === 'service'}
+            initialCategoryKind={catalogCategoryIntent ?? 'product'}
+            onCategoryModalOpened={() => setCatalogCategoryIntent(null)}
             onCloseForm={() => setRoute('hub-catalog')}
           />
         );
-      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen key={route} initialStep="catalog" catalogMode={route === 'hub-catalog-new-service' ? 'services' : 'products'} startWithNewProduct={route === 'hub-catalog-new-product'} startWithNewService={route === 'hub-catalog-new-service'} onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'hub-services':
       if (isDesktop)
@@ -6237,12 +6418,16 @@ function AppInner() {
               onNav={businessPortalNav}
               onBackToCatalog={() => setRoute('hub-catalog')}
               onAddService={() => setRoute('hub-catalog-new-service')}
+              onAddCategory={() => {
+                setCatalogCategoryIntent('service');
+                setRoute('hub-catalog');
+              }}
             />
           ) : (
             <DesktopServicesCategoriesDemoScreen onNav={businessPortalNav} onBackToCatalog={() => setRoute('hub-catalog')} />
           )
         );
-      return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
+      return <BusinessHubScreen key={route} initialStep="catalog" catalogMode="services" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
 
     case 'hub-deals':
       if (isDesktop)
@@ -6262,31 +6447,20 @@ function AppInner() {
     case 'deal-studio': {
       const leaveStudio = () => {
         setDealSource(null);
+        setDealPriceChoice(undefined);
         setRoute('hub-deals');
       };
-      // Live deals need a real item; without one the catalogue is where to pick it.
+      // Live deals need a real item; without one open the picker modal.
       if (hasApiConfig() && !dealSource) {
-        const notice = 'Pick an item to make a deal from.';
-        if (isDesktop)
-          return (
-            <DesktopBusinessCatalogHubScreen
-              onNav={businessPortalNav}
-              onOpenBranchPricing={(itemId) => {
-              setPricingItemId(itemId ?? null);
-              setRoute('business-branch-pricing');
-            }}
-              onOpenServices={() => setRoute('hub-services')}
-              onMakeDeal={(item) => openDealStudio(item)}
-              notice={notice}
-            />
-          );
-        return <BusinessHubScreen initialStep="catalog" onTab={businessTab} onBoost={(item) => openBoost(item)} onOpenMessages={() => setRoute('business-messages')} onPreviewStorefront={() => setRoute('hub-storefront-preview')} onOpenModule={openHubModule} />;
+        setDealPickerOpen(true);
+        setRoute('hub-deals');
+        return null;
       }
       if (isDesktop)
         return (
-          <DesktopDealStudioFlow sourceItem={dealSource} onComplete={leaveStudio} onExit={leaveStudio} onNav={businessPortalNav} />
+          <DesktopDealStudioFlow sourceItem={dealSource} priceChoice={dealPriceChoice} onComplete={leaveStudio} onExit={leaveStudio} onNav={businessPortalNav} />
         );
-      return <BusinessDealStudioFlow sourceItem={dealSource} onComplete={leaveStudio} onExit={leaveStudio} />;
+      return <BusinessDealStudioFlow sourceItem={dealSource} priceChoice={dealPriceChoice} onComplete={leaveStudio} onExit={leaveStudio} />;
     }
 
     case 'hub-customers':
@@ -6375,8 +6549,7 @@ function AppInner() {
                 setPricingItemId(itemId ?? null);
                 setRoute('business-branch-pricing');
               }}
-              onOpenServices={() => setRoute('hub-services')}
-              onMakeDeal={(item) => openDealStudio(item)}
+                onMakeDeal={(item, choice) => openDealStudio(item, choice)}
               notice="Pick an item to make a deal from."
             />
           );
@@ -7607,6 +7780,11 @@ function AppInner() {
           onEdit={() => setClaimDialog('other')}
         />
       )}
+      <CreateDealItemPickerModal
+        open={dealPickerOpen}
+        onClose={() => setDealPickerOpen(false)}
+        onSelectItem={(item) => openDealStudio(item)}
+      />
       <PwaInstallPrompt />
     </>
     </StoreOrderingProvider>

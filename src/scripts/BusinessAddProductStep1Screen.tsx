@@ -157,7 +157,7 @@ export function BusinessAddProductStep1Screen({
                   className="w-full h-[52px] px-space-md rounded-xl bg-surface-subtle text-text-primary font-body-md focus:bg-surface-canvas focus:outline-none focus:shadow-[0_0_0_2px_#066cf4] transition-all"
                   id="product-title"
                   maxLength={80}
-                  placeholder="e.g. Woodfire Aged Angus Ribeye..."
+                  placeholder="e.g. Premium Leather Bag, Wireless Headphones, or Item Name"
                   type="text"
                   value={draft.title}
                   onChange={(event) => onDraftChange({ title: event.target.value })}
@@ -171,40 +171,6 @@ export function BusinessAddProductStep1Screen({
                   <Icon name="cancel" className="text-[18px]" />
                 </button>
               </div>
-            </div>
-            <div className="flex flex-col gap-space-xs">
-              <label className="font-label-md text-label-md text-text-primary font-semibold" htmlFor="brand-name">
-                Brand or Kitchen Producer
-              </label>
-              <div className="relative flex items-center">
-                <Icon className="absolute left-3.5 text-text-tertiary text-[20px]" name="storefront" />
-                <input
-                  className="w-full h-[52px] pl-11 pr-space-md rounded-xl bg-surface-subtle text-text-primary font-body-md focus:bg-surface-canvas focus:outline-none focus:shadow-[0_0_0_2px_#066cf4] transition-all"
-                  disabled={draft.unbranded}
-                  id="brand-name"
-                  placeholder="Search or enter brand name"
-                  type="text"
-                  value={draft.producer}
-                  onChange={(event) => onDraftChange({ producer: event.target.value })}
-                />
-              </div>
-              <label className="flex items-center gap-2.5 mt-1 cursor-pointer select-none">
-                <input
-                  checked={draft.unbranded}
-                  className="w-4 h-4 rounded text-primary-container focus:ring-0 cursor-pointer accent-primary-container"
-                  id="unbranded-check"
-                  type="checkbox"
-                  onChange={(event) =>
-                    onDraftChange({
-                      unbranded: event.target.checked,
-                      producer: event.target.checked ? 'Unbranded / Homemade' : editor.live ? '' : 'Urban Grill Kitchen',
-                    })
-                  }
-                />
-                <span className="font-body-md text-body-md text-text-secondary">
-                  This item is unbranded, artisanal, or homemade
-                </span>
-              </label>
             </div>
           </div>
 
@@ -313,7 +279,7 @@ export function BusinessAddProductStep1Screen({
           <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-space-2xs">
             <div className="flex items-center justify-between">
               <label className="font-label-md text-label-md text-text-primary font-semibold" htmlFor="product-desc">
-                Description &amp; Highlights
+                Product Description
               </label>
               <span className="font-caption text-caption text-badge-discount-text font-medium flex items-center gap-0.5">
                 <Icon name="auto_awesome" className="text-[14px]" /> AI Polish Ready
@@ -323,7 +289,7 @@ export function BusinessAddProductStep1Screen({
               <textarea
                 className="w-full p-space-sm rounded-xl bg-surface-subtle text-text-primary font-body-md focus:bg-surface-canvas focus:outline-none focus:shadow-[0_0_0_2px_#066cf4] transition-all resize-none leading-relaxed"
                 id="product-desc"
-                placeholder="List ingredients, taste notes, or preparation specifics..."
+                placeholder="Provide details, specifications, key features, and highlights about this product..."
                 rows={4}
                 value={draft.description}
                 onChange={(event) => onDraftChange({ description: event.target.value })}

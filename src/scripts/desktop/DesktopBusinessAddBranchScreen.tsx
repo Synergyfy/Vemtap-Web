@@ -13,6 +13,7 @@ import {
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { formatNaira, getLocationPricing } from '../locationPricing';
 import { useBusinessOfferings, type OfferingsState } from '../../context/BusinessOfferingsContext';
+import { STAFF_PAGE_DEFAULTS, toApiPermissions } from '../teamLive';
 
 interface DesktopBusinessAddBranchScreenProps {
   onBack: () => void;
@@ -118,7 +119,7 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
       if (dashboardAccess && leadName.trim() && leadEmail.trim()) {
         const [firstName, ...rest] = leadName.trim().split(/\s+/);
         await invite
-          .mutateAsync({ firstName, lastName: rest.join(' ') || firstName, email: leadEmail.trim(), phone: leadWhatsapp.trim() || undefined, role: 'Manager', jobTitle: role, branchId: branch.id })
+          .mutateAsync({ firstName, lastName: rest.join(' ') || firstName, email: leadEmail.trim(), phone: leadWhatsapp.trim() || undefined, role: 'Manager', jobTitle: role, permissions: toApiPermissions(STAFF_PAGE_DEFAULTS.manager), branchId: branch.id })
           .catch(() => setError('Branch saved, but the lead invite could not be sent. Invite them from Staff.'));
       }
       setBranchOfferings(branch.id, branchOfferings);
@@ -290,9 +291,7 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
                     ? 'bg-surface-tint-blue text-primary'
                     : 'bg-surface-container text-text-secondary'
                 }`}>
-                  {branchOfferings.hasProducts && branchOfferings.hasServices
-                    ? 'Products & Services'
-                    : branchOfferings.hasServices ? 'Services Only' : 'Products Only'}
+                  Products Only
                 </span>
               </div>
               <p className="font-body-sm text-body-sm text-text-secondary leading-relaxed">
@@ -321,6 +320,8 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
                     {!businessOfferings.hasProducts && <p className="font-caption text-caption text-primary italic mt-1">Enable on Business Profile</p>}
                   </div>
                 </div>
+                {/* Services option — hidden in product-only rollout */}
+                {false && (
                 <div onClick={() => toggleBranchOffering('services')} role="button" tabIndex={0}
                   className={`p-space-md rounded-xl border-2 transition-all flex flex-col gap-space-sm ${
                     !businessOfferings.hasServices
@@ -343,6 +344,7 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
                     {!businessOfferings.hasServices && <p className="font-caption text-caption text-primary italic mt-1">Enable on Business Profile</p>}
                   </div>
                 </div>
+                )}
               </div>
             </div>
 
@@ -549,7 +551,7 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
                     WhatsApp Number
                   </label>
                   <div className="relative flex items-center">
-                    <Icon name="chat" className="absolute left-4 text-[20px] text-badge-discount-text" />
+                    <Icon name="whatsapp" className="absolute left-4 text-[20px] text-badge-discount-text" />
                     <input
                       id="lead-whatsapp"
                       type="tel"

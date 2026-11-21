@@ -61,7 +61,6 @@ const RESULTS: SearchResult[] = [
 const TABS: Array<{ key: SearchTab; label: string }> = [
   { key: 'conversations', label: 'All' },
   { key: 'orders', label: 'Orders' },
-  { key: 'bookings', label: 'Bookings' },
   { key: 'deals', label: 'Deals' },
 ];
 

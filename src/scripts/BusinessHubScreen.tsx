@@ -14,6 +14,7 @@ import { BusinessDealAssignmentScreen } from './BusinessDealAssignmentScreen';
 import { BusinessCustomersScreen } from './BusinessCustomersScreen';
 import { BusinessCustomerProfileScreen } from './BusinessCustomerProfileScreen';
 import { BusinessProfileManageScreen } from './BusinessProfileManageScreen';
+import { CreateDealItemPickerModal } from '../components/CreateDealItemPickerModal';
 
 export type BusinessHubStep =
   | 'hub'
@@ -43,8 +44,17 @@ export function BusinessHubScreen({
   onOpenAnalytics,
   onPreviewInvite,
   onAddLocation,
+  catalogMode = 'products',
+  startWithNewProduct = false,
+  startWithNewService = false,
 }: {
   initialStep?: BusinessHubStep;
+  /** Mobile catalogue is split into its own product and service pages. */
+  catalogMode?: 'products' | 'services';
+  /** Route mode: open the new-product wizard straight away. */
+  startWithNewProduct?: boolean;
+  /** Route mode: open the new-service wizard straight away. */
+  startWithNewService?: boolean;
   onTab: (tab: BusinessTabKey) => void;
   onBoost: (item?: string) => void;
   onOpenMessages: () => void;
@@ -66,8 +76,9 @@ export function BusinessHubScreen({
   // one-off catalogue message ("pick an item").
   const live = hasApiConfig();
   const [dealSource, setDealSource] = useState<CatalogueItem | null>(null);
+  const [dealPickerOpen, setDealPickerOpen] = useState(false);
   const [dealGroupId, setDealGroupId] = useState<string | null>(null);
-  const [catalogNotice, setCatalogNotice] = useState<string | null>(null);
+  const [catalogNotice] = useState<string | null>(null);
   const [profileCustomer, setProfileCustomer] = useState(initialCustomer ?? (hasApiConfig() ? '' : 'Michael James'));
   const [profileCustomerId, setProfileCustomerId] = useState<string | null>(initialCustomerId ?? null);
 
@@ -99,6 +110,9 @@ export function BusinessHubScreen({
       case 'catalog':
         return (
           <BusinessHubCatalogScreen
+            mode={catalogMode}
+            startWithNewProduct={startWithNewProduct}
+            startWithNewService={startWithNewService}
             onTab={handleTab}
             onOpenAssignment={(itemName) => {
               setAssignmentItem(itemName);
@@ -131,13 +145,7 @@ export function BusinessHubScreen({
               setStep('dealDetail');
             }}
             onCreateDeal={() => {
-              // Live deals are made from a catalogue item's "Make a Deal".
-              if (live) {
-                setCatalogNotice('Pick an item, then tap Make a Deal in its options.');
-                setStep('catalog');
-                return;
-              }
-              setStep('dealCreate');
+              setDealPickerOpen(true);
             }}
           />
         );
@@ -202,5 +210,17 @@ export function BusinessHubScreen({
     }
   };
 
-  return <div className="biz-flow">{renderStep()}</div>;
+  return (
+    <div className="biz-flow">
+      {renderStep()}
+      <CreateDealItemPickerModal
+        open={dealPickerOpen}
+        onClose={() => setDealPickerOpen(false)}
+        onSelectItem={(item) => {
+          setDealSource(item);
+          setStep('dealCreate');
+        }}
+      />
+    </div>
+  );
 }

@@ -14,6 +14,7 @@ import { posService } from '../../services/posService';
 import { apiErrorMessage } from '../../services/errorMessages';
 import { branchAddressLabel, branchOpenLabel } from '../branchLive';
 import { isLowStock } from '../catalogueLive';
+import type { Branch } from '../../services/branchService';
 
 interface DesktopBranchDetailScreenProps {
   /** Live: the branch to show; defaults to the active branch. */
@@ -79,13 +80,51 @@ const DOSSIER_ROWS: Array<{ label: string; value: string; valueClass?: string; m
   { label: 'Tax ID / TIN', value: '10984429-0001', mono: true },
 ];
 
+const DEFAULT_DEMO_BRANCH: Branch = {
+  id: 'wuse-ii',
+  name: 'Wuse II Branch',
+  uniqueCode: 'WSE-02-ABJ',
+  address: 'Plot 12 Adetokunbo Ademola Crescent',
+  city: 'Abuja',
+  state: 'FCT',
+  district: 'Wuse II Commercial Zone',
+  phone: '+234 803 219 8831',
+  officialEmail: 'wuse01@urbangrill.ng',
+  managerName: 'John Peter',
+  managerPhone: '+234 803 219 8831',
+  managerEmail: 'john.peter@urbangrill.ng',
+  isActive: true,
+  isMainBranch: true,
+  businessHours: {
+    monday: { open: '08:00', close: '22:00' },
+    tuesday: { open: '08:00', close: '22:00' },
+    wednesday: { open: '08:00', close: '22:00' },
+    thursday: { open: '08:00', close: '22:00' },
+    friday: { open: '08:00', close: '23:00' },
+    saturday: { open: '09:00', close: '23:00' },
+    sunday: { open: '10:00', close: '21:00' },
+  },
+};
+
 export function DesktopBranchDetailScreen({
   branchId, onNav, onBackToLocations }: DesktopBranchDetailScreenProps) {
   // Live: the branch's real record, catalogue, deals and tills; demo keeps the sample branch.
   const live = hasApiConfig();
-  const { activeBranchId, switchTo } = useBusinessBranch();
+  const { branch: operatingBranch, activeBranchId, switchTo } = useBusinessBranch();
   const branchesQuery = useBranches();
-  const branch = (branchesQuery.data ?? []).find((entry) => entry.id === (branchId ?? activeBranchId));
+  const [demoOverride, setDemoOverride] = useState<Partial<Branch> | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [showDeactivateModal, setShowDeactivateModal] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const rawBranch =
+    (branchesQuery.data ?? []).find((entry) => entry.id === branchId || entry.id === activeBranchId) ??
+    (branchesQuery.data ?? []).find((entry) => entry.isMainBranch) ??
+    (branchesQuery.data ?? [])[0];
+  const branch = live 
+    ? (rawBranch ? { ...rawBranch, ...(demoOverride ?? {}) } : undefined) 
+    : { ...DEFAULT_DEMO_BRANCH, ...(demoOverride ?? {}) };
+
   const id = branch?.id ?? '';
   const itemsQuery = useQuery({
     queryKey: ['catalogue-items', id, 'any'],
@@ -100,6 +139,21 @@ export function DesktopBranchDetailScreen({
     setToast(message);
     window.setTimeout(() => setToast(null), 3500);
   };
+
+  const isCurrentLocation = Boolean(
+    branch && (
+      (live && branch.id && (branch.id === activeBranchId || branch.id === operatingBranch?.id)) ||
+      (!live && (
+        !branchId ||
+        branchId === operatingBranch?.key ||
+        branchId === operatingBranch?.id ||
+        branch.id === operatingBranch?.key ||
+        branch.id === operatingBranch?.id ||
+        branch.name === operatingBranch?.name
+      ))
+    )
+  );
+
   const items = itemsQuery.data ?? [];
   const products = items.filter((item) => item.itemType !== 'service');
   const services = items.filter((item) => item.itemType === 'service');
@@ -154,16 +208,125 @@ export function DesktopBranchDetailScreen({
         { label: 'Tax ID / TIN', value: '—', mono: true },
       ]
     : DOSSIER_ROWS;
+
   const setActive = (isActive: boolean) => {
-    if (!branch) return;
-    update.mutate(
-      { id: branch.id, input: { isActive } },
-      {
-        onSuccess: () => showToast(isActive ? `${branch.name} is active again.` : `${branch.name} is paused.`),
-        onError: (error) => showToast(apiErrorMessage(error, 'Could not update this branch.')),
-      },
-    );
+    if (live && branch?.id) {
+      update.mutate(
+        { id: branch.id, input: { isActive } },
+        {
+          onSuccess: () => showToast(isActive ? `${branch.name} is active again.` : `${branch.name} has been deactivated.`),
+          onError: (error) => showToast(apiErrorMessage(error, 'Could not update this branch.')),
+        },
+      );
+    } else {
+      setDemoOverride((prev) => ({ ...prev, isActive }));
+      showToast(isActive ? `${branch?.name ?? 'Branch'} is active again.` : `${branch?.name ?? 'Branch'} has been deactivated.`);
+    }
   };
+
+  const [editDraft, setEditDraft] = useState({
+    name: '',
+    address: '',
+    district: '',
+    city: '',
+    state: '',
+    phone: '',
+    officialEmail: '',
+    managerName: '',
+    managerPhone: '',
+    managerEmail: '',
+    openTime: '08:00',
+    closeTime: '22:00',
+  });
+
+  const handleOpenEdit = () => {
+    const mondayHour = hours['monday'] || hours['tuesday'] || {};
+    setEditDraft({
+      name: branch?.name ?? 'Wuse Branch #01',
+      address: branch?.address ?? 'Plot 12 Adetokunbo Ademola Crescent',
+      district: branch?.district ?? 'Wuse II Commercial Zone',
+      city: branch?.city ?? 'Abuja',
+      state: branch?.state ?? 'FCT',
+      phone: branch?.phone ?? '+234 803 219 8831',
+      officialEmail: branch?.officialEmail ?? 'wuse01@urbangrill.ng',
+      managerName: branch?.managerName ?? 'John Peter',
+      managerPhone: branch?.managerPhone ?? '+234 803 219 8831',
+      managerEmail: branch?.managerEmail ?? 'john.peter@urbangrill.ng',
+      openTime: (mondayHour.open as string) || '08:00',
+      closeTime: (mondayHour.close as string) || '22:00',
+    });
+    setIsEditing(true);
+  };
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editDraft.name.trim()) {
+      showToast('Branch location name is required.');
+      return;
+    }
+
+    const businessHours = {
+      monday: { open: editDraft.openTime, close: editDraft.closeTime },
+      tuesday: { open: editDraft.openTime, close: editDraft.closeTime },
+      wednesday: { open: editDraft.openTime, close: editDraft.closeTime },
+      thursday: { open: editDraft.openTime, close: editDraft.closeTime },
+      friday: { open: editDraft.openTime, close: editDraft.closeTime },
+      saturday: { open: editDraft.openTime, close: editDraft.closeTime },
+      sunday: { open: editDraft.openTime, close: editDraft.closeTime },
+    };
+
+    const branchInput = {
+      name: editDraft.name.trim(),
+      ...(editDraft.address.trim() ? { address: editDraft.address.trim() } : {}),
+      ...(editDraft.district.trim() ? { district: editDraft.district.trim() } : {}),
+      ...(editDraft.city.trim() ? { city: editDraft.city.trim() } : {}),
+      ...(editDraft.state.trim() ? { state: editDraft.state.trim() } : {}),
+      ...(editDraft.phone.trim() ? { phone: editDraft.phone.trim() } : {}),
+      ...(editDraft.officialEmail.trim() ? { officialEmail: editDraft.officialEmail.trim() } : {}),
+      ...(editDraft.managerName.trim() ? { managerName: editDraft.managerName.trim() } : {}),
+      ...(editDraft.managerPhone.trim() ? { managerPhone: editDraft.managerPhone.trim() } : {}),
+      ...(editDraft.managerEmail.trim() ? { managerEmail: editDraft.managerEmail.trim() } : {}),
+    };
+
+    if (live && branch?.id) {
+      setSavingEdit(true);
+      update.mutate(
+        {
+          id: branch.id,
+          input: branchInput,
+        },
+        {
+          onSuccess: () => {
+            setSavingEdit(false);
+            setDemoOverride({ ...editDraft, businessHours });
+            setIsEditing(false);
+            showToast('Branch location details updated successfully.');
+          },
+          onError: (err) => {
+            setSavingEdit(false);
+            showToast(apiErrorMessage(err, 'Could not save branch changes.'));
+          },
+        }
+      );
+    } else {
+      setDemoOverride({
+        name: editDraft.name.trim(),
+        address: editDraft.address.trim(),
+        district: editDraft.district.trim(),
+        city: editDraft.city.trim(),
+        state: editDraft.state.trim(),
+        phone: editDraft.phone.trim(),
+        officialEmail: editDraft.officialEmail.trim(),
+        managerName: editDraft.managerName.trim(),
+        managerPhone: editDraft.managerPhone.trim(),
+        managerEmail: editDraft.managerEmail.trim(),
+        businessHours,
+      });
+      setIsEditing(false);
+      showToast('Branch location details updated successfully.');
+    }
+  };
+
   const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
   return (
     <MerchantShell activeNav="business-locations" onNav={onNav}>
@@ -205,43 +368,62 @@ export function DesktopBranchDetailScreen({
               </button>
               <span className="inline-flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
                 <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
-                {v(`${paused ? 'Paused' : 'Active'}${branch?.isMainBranch ? ' • Main Branch' : ''}`, 'Active Terminal • Primary Hub')}
+                {v(`${paused ? 'Paused' : 'Active'}${branch?.isMainBranch ? ' • Main Branch' : ''}`, `${paused ? 'Paused' : 'Active'} • Main Branch`)}
               </span>
               <span className="px-space-xs py-space-2xs rounded bg-surface-container-high text-secondary font-caption text-caption font-medium">
-                {v(`Code: ${branch?.uniqueCode ?? '—'}`, 'Node ID: #WSE-01-ABJ')}
+                {v(`Code: ${branch?.uniqueCode ?? '—'}`, `Code: ${branch?.uniqueCode ?? 'WSE-01-ABJ'}`)}
               </span>
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
-              {v(`${branch?.name ?? 'Branch'} — Details & Operations`, 'Wuse Branch #01 — Flagship Details & Operations')}
+              {v(`${branch?.name ?? 'Branch'} — Details & Operations`, `${branch?.name ?? 'Wuse Branch #01'} — Details & Operations`)}
             </h1>
             <p className="font-body-md text-body-md text-text-secondary flex items-center gap-space-xs">
               <Icon name="pin_drop" className="text-primary text-[18px]" />
-              {v(branch ? branchAddressLabel(branch) : '—', 'Adetokunbo Ademola Corridor, Wuse II • Synced to Abuja Regional Gateway')}
+              {v(branch ? branchAddressLabel(branch) : '—', branch ? branchAddressLabel(branch) : 'Plot 12 Adetokunbo Ademola Crescent, Wuse II, Abuja')}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-space-xs">
+            {!isCurrentLocation && (
+              <button
+                type="button"
+                onClick={live && branch ? () => {
+                  switchTo(branch.id);
+                  showToast(`Switched operating view to ${branch.name}`);
+                } : () => {
+                  switchTo(branch?.id || branchId || 'wuse-01');
+                  showToast(`Switched operating view to ${branch?.name ?? 'Branch'}`);
+                }}
+                className="px-space-md py-space-xs rounded-xl bg-primary hover:bg-on-primary-fixed-variant text-on-primary font-button-primary text-button-primary shadow-sm hover:shadow transition-all flex items-center gap-space-2xs cursor-pointer"
+              >
+                <Icon name="sync_alt" className="text-[18px]" />
+                <span>Switch to this Operating View</span>
+              </button>
+            )}
             <button
               type="button"
-              onClick={live && branch ? () => switchTo(branch.id) : undefined}
-              className="px-space-md py-space-xs rounded-xl bg-primary hover:bg-on-primary-fixed-variant text-on-primary font-button-primary text-button-primary shadow-sm hover:shadow transition-all flex items-center gap-space-2xs"
-            >
-              <Icon name="sync_alt" className="text-[18px]" />
-              <span>Switch to this Operating View</span>
-            </button>
-            <button
-              type="button"
-              className="px-space-md py-space-xs rounded-xl bg-surface-canvas hover:bg-surface-container-high text-on-surface font-button-secondary text-button-secondary shadow-sm transition-colors flex items-center gap-space-2xs"
+              onClick={handleOpenEdit}
+              className="px-space-md py-space-xs rounded-xl bg-surface-canvas hover:bg-surface-container-high text-on-surface font-button-secondary text-button-secondary shadow-sm transition-colors flex items-center gap-space-2xs cursor-pointer"
             >
               <Icon name="edit" className="text-[18px]" />
-              <span>Edit Branch Details</span>
+              <span>Edit Location</span>
             </button>
             <button
               type="button"
-              onClick={live ? () => setActive(paused) : undefined}
-              className="px-space-md py-space-xs rounded-xl bg-error-container hover:bg-error/20 text-on-error-container font-button-secondary text-button-secondary transition-colors flex items-center gap-space-2xs"
+              onClick={() => {
+                if (paused) {
+                  setActive(true);
+                } else {
+                  setShowDeactivateModal(true);
+                }
+              }}
+              className={`px-space-md py-space-xs rounded-xl font-button-secondary text-button-secondary transition-colors flex items-center gap-space-2xs cursor-pointer ${
+                paused
+                  ? 'bg-badge-discount-bg hover:bg-badge-discount-bg/80 text-badge-discount-text'
+                  : 'bg-error-container hover:bg-error/20 text-on-error-container'
+              }`}
             >
               <Icon name="power_settings_new" className="text-[18px]" />
-              <span>{v(paused ? 'Reactivate Location' : 'Deactivate Location', 'Deactivate Location')}</span>
+              <span>{paused ? 'Reactivate Location' : 'Deactivate Location'}</span>
             </button>
           </div>
         </div>
@@ -332,7 +514,7 @@ export function DesktopBranchDetailScreen({
                     title="Send internal message"
                     className="px-space-xs py-space-2xs rounded-lg bg-surface-canvas hover:bg-surface-container-high text-on-surface-variant font-button-secondary text-button-secondary shadow-sm transition-colors flex items-center gap-1"
                   >
-                    <Icon name="chat" className="text-[16px]" />
+                    <Icon name="vemtap-chat" className="text-[16px]" />
                   </button>
                 </div>
               </div>
@@ -724,16 +906,307 @@ export function DesktopBranchDetailScreen({
               </button>
               <button
                 type="button"
-                onClick={live ? () => setActive(paused) : undefined}
-                className="text-error font-label-sm text-label-sm font-semibold hover:underline flex items-center gap-1"
+                onClick={() => {
+                  if (paused) {
+                    setActive(true);
+                  } else {
+                    setShowDeactivateModal(true);
+                  }
+                }}
+                className="text-error font-label-sm text-label-sm font-semibold hover:underline flex items-center gap-1 cursor-pointer"
               >
-                <span>{v(paused ? 'Reactivate Outlet' : 'Deactivate Outlet', 'Deactivate Outlet')}</span>
+                <span>{paused ? 'Reactivate Location' : 'Deactivate Location'}</span>
                 <Icon name="chevron_right" className="text-[14px]" />
               </button>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Deactivate Location Confirmation Modal */}
+      {showDeactivateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="relative w-full max-w-lg rounded-2xl bg-surface-canvas p-space-lg shadow-2xl border border-border-subtle flex flex-col gap-space-md">
+            <div className="flex items-start gap-space-md">
+              <div className="w-12 h-12 rounded-xl bg-error-container text-error flex items-center justify-center shrink-0">
+                <Icon name="warning" className="text-[28px]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-heading-md text-heading-md font-bold text-text-primary">
+                  Deactivate Location?
+                </h3>
+                <p className="font-caption text-caption text-text-secondary mt-0.5">
+                  {v(branch?.name ?? 'This branch', 'Wuse Branch #01 (Flagship)')}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDeactivateModal(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-text-tertiary hover:text-text-primary transition-colors cursor-pointer"
+              >
+                <Icon name="close" className="text-[20px]" />
+              </button>
+            </div>
+
+            <div className="p-space-md rounded-xl bg-error-container/40 border border-error/20 space-y-2.5">
+              <p className="font-label-md text-label-md font-semibold text-on-error-container flex items-center gap-1.5">
+                <Icon name="error" className="text-[18px] text-error" />
+                <span>Operational Impact &amp; Safety Warning</span>
+              </p>
+              <ul className="space-y-1.5 text-xs text-on-error-container/90 list-disc list-inside">
+                <li><strong className="text-on-surface">Storefront &amp; Discovery:</strong> Customers cannot discover this location on Vemtap or place pickup / delivery orders here.</li>
+                <li><strong className="text-on-surface">POS &amp; Registers:</strong> All cashier terminals, walk-in registers, and tills assigned to this location will immediately lock and stop processing sales.</li>
+                <li><strong className="text-on-surface">Deals &amp; Vouchers:</strong> Active promotional deals tied to this branch will be paused and cannot be redeemed at this outlet.</li>
+                <li><strong className="text-on-surface">Staff Operations:</strong> Team members assigned to this location cannot open registers or process transactions.</li>
+              </ul>
+              <p className="font-caption text-[11px] text-text-secondary pt-1 border-t border-error/20">
+                Ledger integrity is 100% preserved. Past receipts, transactions, and audit records remain safe. You can reactivate this location at any time.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-space-sm pt-space-xs border-t border-border-subtle">
+              <button
+                type="button"
+                onClick={() => setShowDeactivateModal(false)}
+                className="px-space-md py-2.5 rounded-xl border border-border-subtle bg-surface-canvas hover:bg-surface-subtle text-text-primary font-button-secondary text-button-secondary transition-colors cursor-pointer"
+              >
+                Keep Active
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeactivateModal(false);
+                  setActive(false);
+                }}
+                className="px-space-md py-2.5 rounded-xl bg-error hover:bg-error/90 text-white font-button-primary text-button-primary shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Icon name="power_settings_new" className="text-[18px]" />
+                <span>Confirm Deactivation</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Branch Details Modal */}
+      {isEditing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in overflow-y-auto">
+          <div className="relative w-full max-w-2xl rounded-2xl bg-surface-canvas p-space-lg shadow-2xl border border-border-subtle flex flex-col gap-space-md my-8">
+            <div className="flex items-center justify-between pb-space-xs border-b border-border-subtle">
+              <div className="flex items-center gap-space-xs">
+                <div className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center">
+                  <Icon name="edit_location" className="text-[22px]" />
+                </div>
+                <div>
+                  <h3 className="font-heading-md text-heading-md font-bold text-text-primary">
+                    Edit Location Details
+                  </h3>
+                  <p className="font-caption text-caption text-text-secondary">
+                    Update physical address, operating schedule, and manager contact
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-text-tertiary hover:text-text-primary transition-colors cursor-pointer"
+              >
+                <Icon name="close" className="text-[20px]" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="space-y-space-md">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md">
+                <div>
+                  <label className="block font-label-sm text-label-sm font-semibold text-text-primary mb-1">
+                    Branch Name <span className="text-error">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editDraft.name}
+                    onChange={(e) => setEditDraft({ ...editDraft, name: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border-subtle text-body-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="e.g. Wuse Branch #01"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-label-sm text-label-sm font-semibold text-text-primary mb-1">
+                    Direct Phone Hotline
+                  </label>
+                  <input
+                    type="text"
+                    value={editDraft.phone}
+                    onChange={(e) => setEditDraft({ ...editDraft, phone: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border-subtle text-body-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 font-mono"
+                    placeholder="+234 803 000 0000"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block font-label-sm text-label-sm font-semibold text-text-primary mb-1">
+                    Street Address <span className="text-error">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editDraft.address}
+                    onChange={(e) => setEditDraft({ ...editDraft, address: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border-subtle text-body-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="Plot / Street / Building"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-label-sm text-label-sm font-semibold text-text-primary mb-1">
+                    District / Landmark
+                  </label>
+                  <input
+                    type="text"
+                    value={editDraft.district}
+                    onChange={(e) => setEditDraft({ ...editDraft, district: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border-subtle text-body-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="e.g. Wuse II Commercial Zone"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block font-label-sm text-label-sm font-semibold text-text-primary mb-1">
+                      City
+                    </label>
+                    <input
+                      type="text"
+                      value={editDraft.city}
+                      onChange={(e) => setEditDraft({ ...editDraft, city: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border-subtle text-body-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      placeholder="Abuja"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-label-sm text-label-sm font-semibold text-text-primary mb-1">
+                      State
+                    </label>
+                    <input
+                      type="text"
+                      value={editDraft.state}
+                      onChange={(e) => setEditDraft({ ...editDraft, state: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border-subtle text-body-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      placeholder="FCT"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-label-sm text-label-sm font-semibold text-text-primary mb-1">
+                    Official Branch Email
+                  </label>
+                  <input
+                    type="email"
+                    value={editDraft.officialEmail}
+                    onChange={(e) => setEditDraft({ ...editDraft, officialEmail: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border-subtle text-body-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="branch@urbangrill.ng"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-label-sm text-label-sm font-semibold text-text-primary mb-1">
+                    Manager in Charge
+                  </label>
+                  <input
+                    type="text"
+                    value={editDraft.managerName}
+                    onChange={(e) => setEditDraft({ ...editDraft, managerName: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border-subtle text-body-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="Manager full name"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-label-sm text-label-sm font-semibold text-text-primary mb-1">
+                    Manager Phone
+                  </label>
+                  <input
+                    type="text"
+                    value={editDraft.managerPhone}
+                    onChange={(e) => setEditDraft({ ...editDraft, managerPhone: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border-subtle text-body-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 font-mono"
+                    placeholder="+234 800 000 0000"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-label-sm text-label-sm font-semibold text-text-primary mb-1">
+                    Manager Email
+                  </label>
+                  <input
+                    type="email"
+                    value={editDraft.managerEmail}
+                    onChange={(e) => setEditDraft({ ...editDraft, managerEmail: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border-subtle text-body-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    placeholder="manager@urbangrill.ng"
+                  />
+                </div>
+
+                <div className="md:col-span-2 p-3 rounded-xl bg-surface-container-low border border-border-subtle space-y-2">
+                  <span className="font-label-sm text-label-sm font-semibold text-text-primary block">
+                    Operating Schedule (Daily Open / Close)
+                  </span>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-caption text-text-secondary block mb-1">Opening Time</span>
+                      <input
+                        type="time"
+                        value={editDraft.openTime}
+                        onChange={(e) => setEditDraft({ ...editDraft, openTime: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl bg-surface-canvas border border-border-subtle text-body-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                    </div>
+                    <div>
+                      <span className="text-caption text-text-secondary block mb-1">Closing Time</span>
+                      <input
+                        type="time"
+                        value={editDraft.closeTime}
+                        onChange={(e) => setEditDraft({ ...editDraft, closeTime: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl bg-surface-canvas border border-border-subtle text-body-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-space-sm pt-space-xs border-t border-border-subtle">
+                <button
+                  type="button"
+                  onClick={() => setIsEditing(false)}
+                  className="px-space-md py-2.5 rounded-xl border border-border-subtle bg-surface-canvas hover:bg-surface-subtle text-text-primary font-button-secondary text-button-secondary transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="px-space-md py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-on-primary font-button-primary text-button-primary shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {savingEdit ? (
+                    <>
+                      <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                      <span>Saving…</span>
+                    </>
+                  ) : (
+                    <>
+                      <Icon name="check" className="text-[18px]" />
+                      <span>Save Changes</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       {toast && (
         <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
           {toast}

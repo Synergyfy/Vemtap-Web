@@ -235,7 +235,7 @@ export function DesktopProductReviewScreen({
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-3 p-space-md bg-surface-subtle gap-space-md text-center">
+              <div className="grid grid-cols-2 p-space-md bg-surface-subtle gap-space-md text-center">
                 <div className="flex flex-col items-center">
                   <span className="font-caption text-caption text-text-secondary uppercase tracking-wider">
                     Internal SKU
@@ -253,14 +253,6 @@ export function DesktopProductReviewScreen({
                   </span>
                   <span className="font-label-md text-label-md text-primary font-semibold mt-0.5">
                     {variantMode ? `${totalStock} Units` : 'Single item'}
-                  </span>
-                </div>
-                <div className="flex flex-col items-center">
-                  <span className="font-caption text-caption text-text-secondary uppercase tracking-wider">
-                    Primary Tax Tier
-                  </span>
-                  <span className="font-label-md text-label-md text-text-primary font-semibold mt-0.5">
-                    Standard VAT (7.5%)
                   </span>
                 </div>
               </div>
@@ -435,7 +427,7 @@ export function DesktopProductReviewScreen({
                             Wuse Branch
                           </span>
                           <span className="font-caption text-caption text-primary font-medium">
-                            Central Flagship Kitchen
+                            Central Flagship Location
                           </span>
                         </div>
                       </div>
@@ -593,7 +585,7 @@ export function DesktopProductReviewScreen({
                     <Icon name="menu_book" className="text-[18px]" />
                   </div>
                   <h3 className="font-heading-sm text-heading-sm text-text-primary">
-                    Culinary Narrative &amp; Dietary Badges
+                    Product Description &amp; Badges
                   </h3>
                 </div>
                 <button type="button" onClick={onEditDescription} className={EDIT_BUTTON_CLASS}>
@@ -623,15 +615,15 @@ export function DesktopProductReviewScreen({
                   </div>
                   <div className="px-space-sm py-1.5 rounded-full bg-surface-subtle text-text-primary font-label-sm text-label-sm flex items-center gap-1.5 shadow-sm">
                     <Icon name="verified" className="text-[16px] text-badge-discount-text" />
-                    <span>Halal Certified Kitchen</span>
+                    <span>Certified Quality Assurance</span>
                   </div>
                   <div className="px-space-sm py-1.5 rounded-full bg-surface-subtle text-text-primary font-label-sm text-label-sm flex items-center gap-1.5 shadow-sm">
                     <Icon name="recycling" className="text-[16px] text-primary" />
-                    <span>Biodegradable Thermal Packaging</span>
+                    <span>Eco-Friendly Quality Packaging</span>
                   </div>
                   <div className="px-space-sm py-1.5 rounded-full bg-surface-subtle text-text-primary font-label-sm text-label-sm flex items-center gap-1.5 shadow-sm">
-                    <Icon name="restaurant" className="text-[16px] text-tertiary" />
-                    <span>Chef's Choice Recommended</span>
+                    <Icon name="star" className="text-[16px] text-tertiary" />
+                    <span>Recommended Selection</span>
                   </div>
                 </div>
               )}

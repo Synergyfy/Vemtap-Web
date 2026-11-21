@@ -1,4 +1,3 @@
-import { hasApiConfig } from '../services/api/client';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
@@ -21,26 +20,12 @@ interface SelectableBranch {
   stock: string;
 }
 
-const SELECTABLE_BRANCHES: SelectableBranch[] = [
-  {
-    key: 'wuse',
-    name: 'Wuse Branch',
-    badge: 'Flagship',
-    address: 'Plot 1428 Adetokunbo Ademola Cres',
-    stock: 'In Stock (30 units)',
-  },
-  {
-    key: 'garki',
-    name: 'Garki Branch',
-    address: 'Suite 4B, Garki Mall',
-    stock: 'In Stock (18 units)',
-  },
-];
-
-const PREP_CHIPS = [
-  { range: '10-15', title: '10 – 15m', sub: 'Express', label: '10 - 15 minutes' },
-  { range: '20-30', title: '20 – 30m', sub: 'Standard', label: '20 - 30 minutes' },
-  { range: '45+', title: '45 – 60m', sub: 'Custom', label: '45 - 60 minutes' },
+const PREP_OPTIONS = [
+  { value: 'Ready', label: 'Ready (Available immediately / On ground)', hint: 'Ready on ground for immediate customer pickup or dispatch' },
+  { value: 'Up to 10 mins', label: 'Up to 10 mins', hint: 'Fast turnaround / Express preparation' },
+  { value: 'Up to 30 mins', label: 'Up to 30 mins', hint: 'Standard preparation & packaging window' },
+  { value: 'Up to 1 hour', label: 'Up to 1 hour', hint: 'Custom crafting or assembled order' },
+  { value: 'More than 1 hour', label: 'More than 1 hour', hint: 'Made-to-order or extended fulfillment' },
 ];
 
 export function BusinessAddProductStep3Screen({
@@ -50,20 +35,17 @@ export function BusinessAddProductStep3Screen({
   onNext,
   onSaveDraft,
 }: BusinessAddProductStep3ScreenProps) {
-  // Live: the business's real branches, keyed by branch id; demo keeps the samples.
-  const live = hasApiConfig();
+  // The business's real branches, keyed by branch id or key.
   const { branches: liveBranches } = useBusinessBranch();
-  const selectableBranches: SelectableBranch[] = live
-    ? liveBranches
-        .filter((branch) => branch.id)
-        .map((branch) => ({
-          key: branch.id as string,
-          name: branch.name,
-          badge: branch.isMainBranch ? 'Main' : undefined,
-          address: branch.area || '—',
-          stock: '—',
-        }))
-    : SELECTABLE_BRANCHES;
+  const selectableBranches: SelectableBranch[] = liveBranches
+    .filter((branch) => Boolean(branch.id || branch.key))
+    .map((branch) => ({
+      key: (branch.id || branch.key) as string,
+      name: branch.name,
+      badge: branch.isMainBranch ? 'Main' : undefined,
+      address: branch.area || 'No address on file',
+      stock: 'Available at this branch',
+    }));
   // Saved on the draft so it reaches the API; older drafts default to both.
   const pickup = draft.fulfillment?.pickup ?? true;
   const delivery = draft.fulfillment?.delivery ?? true;
@@ -81,7 +63,7 @@ export function BusinessAddProductStep3Screen({
     onDraftChange({ branches: next });
   };
 
-  const selectedPrep = PREP_CHIPS.find((chip) => chip.range === draft.prepWindow) ?? PREP_CHIPS[1];
+  const selectedPrep = PREP_OPTIONS.find((opt) => opt.value === draft.prepWindow) ?? PREP_OPTIONS[0];
 
   return (
     <AppScreen>
@@ -148,9 +130,15 @@ export function BusinessAddProductStep3Screen({
               type="button"
               onClick={toggleAll}
             >
-              Select all (2 active)
+              Select all ({selectableBranches.length} active)
             </button>
           </div>
+          {selectableBranches.length === 0 && (
+            <p className="bg-surface-container-lowest rounded-xl p-space-md font-caption text-caption text-text-secondary shadow-sm">
+              No branches yet — add your business locations in your business profile, then they will appear here for
+              this product.
+            </p>
+          )}
           {selectableBranches.map((branch) => {
             const checked = Boolean(draft.branches[branch.key]);
             return (
@@ -206,31 +194,6 @@ export function BusinessAddProductStep3Screen({
               </div>
             );
           })}
-          <div className="bg-surface-container-low/60 rounded-xl p-space-md opacity-75">
-            <div className="flex items-start gap-space-sm">
-              <div className="w-6 h-6 mt-0.5 flex items-center justify-center">
-                <div className="w-5 h-5 rounded-md bg-surface-container-high flex items-center justify-center">
-                  <Icon name="lock" className="text-outline-variant text-[14px]" />
-                </div>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-space-xs">
-                  <span className="font-button-primary text-button-primary text-text-secondary truncate">
-                    Maitama Branch
-                  </span>
-                  <span className="bg-surface-container-high text-on-surface-variant font-caption text-caption px-2 py-0.5 rounded-full">
-                    Opening Soon
-                  </span>
-                </div>
-                <p className="font-caption text-caption text-text-tertiary truncate mt-0.5">
-                  Maitama City Center (Commissioning May 2025)
-                </p>
-                <div className="mt-space-xs">
-                  <span className="font-caption text-caption text-text-tertiary">Inventory linked after launch</span>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
 
         <div className="px-margin mb-space-lg">
@@ -262,7 +225,7 @@ export function BusinessAddProductStep3Screen({
                     Use same base price across branches
                   </p>
                   <p className="font-caption text-caption text-text-secondary mt-0.5">
-                    Single standard checkout price across Abuja branches.
+                    Single standard checkout price across your selected branches.
                   </p>
                 </div>
               </label>
@@ -303,9 +266,6 @@ export function BusinessAddProductStep3Screen({
                 <Icon name="local_shipping" className="text-primary text-[20px]" />
                 <span className="font-heading-sm text-heading-sm text-on-surface">Fulfillment &amp; Ordering</span>
               </div>
-              <span className="font-caption text-caption text-badge-discount-text bg-badge-discount-bg px-2 py-0.5 rounded-full font-medium">
-                Jumia / Jiji Ready
-              </span>
             </div>
             <p className="font-caption text-caption text-text-secondary mb-space-sm">
               Define how hyper-local shoppers receive this item.
@@ -356,24 +316,6 @@ export function BusinessAddProductStep3Screen({
                   </p>
                 </div>
               </label>
-              <div className="flex items-start gap-space-sm p-space-sm rounded-lg bg-surface-container-low opacity-60 cursor-not-allowed">
-                <div className="w-5 h-5 mt-0.5 rounded-md bg-surface-container-high flex items-center justify-center">
-                  <Icon name="block" className="text-outline-variant text-[14px]" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-label-md text-label-md text-text-secondary font-medium">
-                      Nationwide Interstate Waybill
-                    </span>
-                    <span className="bg-error-container text-on-error-container text-[11px] px-1.5 py-0.2 rounded">
-                      Perishable
-                    </span>
-                  </div>
-                  <p className="font-caption text-caption text-text-tertiary mt-0.5">
-                    Unavailable for freshly prepared or temperature-sensitive goods.
-                  </p>
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -388,39 +330,32 @@ export function BusinessAddProductStep3Screen({
               <span className="font-caption text-caption text-text-secondary">Expected Lead</span>
             </div>
             <p className="font-caption text-caption text-text-secondary mb-space-sm">
-              Time needed from order confirmation to rider handoff or customer collection.
+              Time needed from order confirmation to customer pickup or delivery hand-off.
             </p>
-            <div className="grid grid-cols-3 gap-space-xs">
-              {PREP_CHIPS.map((chip) => {
-                const isActive = chip.range === selectedPrep.range;
-                return (
-                  <button
-                    key={chip.range}
-                    className={`prep-chip py-2.5 px-2 rounded-lg text-center transition-colors ${
-                      isActive ? 'bg-surface-tint-blue' : 'bg-surface hover:bg-surface-container-low'
-                    }`}
-                    type="button"
-                    onClick={() => onDraftChange({ prepWindow: chip.range })}
-                  >
-                    <p
-                      className={`font-label-sm text-label-sm font-semibold ${
-                        isActive ? 'text-primary' : 'text-on-surface'
-                      }`}
-                    >
-                      {chip.title}
-                    </p>
-                    <span className={`font-caption text-[11px] ${isActive ? 'text-primary' : 'text-text-secondary'}`}>
-                      {chip.sub}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="mt-space-sm p-space-xs bg-surface-container-low rounded-lg flex items-center gap-space-xs text-text-secondary">
-              <Icon name="info" className="text-[16px] text-primary" />
-              <span className="font-caption text-caption">
-                Selected window: <strong>Ready in {selectedPrep.label}</strong> for live dispatch.
-              </span>
+            <div className="flex flex-col gap-space-xs">
+              <div className="relative">
+                <select
+                  id="mobile-prep-window-select"
+                  value={draft.prepWindow || 'Ready'}
+                  onChange={(e) => onDraftChange({ prepWindow: e.target.value })}
+                  className="w-full h-12 px-3.5 pr-10 rounded-xl border border-outline-variant/60 bg-surface text-on-surface font-body-md text-body-md focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all cursor-pointer appearance-none"
+                >
+                  {PREP_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-text-secondary">
+                  <Icon name="expand_more" className="text-[20px]" />
+                </div>
+              </div>
+              <div className="mt-1 p-space-xs bg-surface-container-low rounded-lg flex items-center gap-space-xs text-text-secondary">
+                <Icon name="info" className="text-[16px] text-primary shrink-0" />
+                <span className="font-caption text-caption">
+                  {selectedPrep.hint}
+                </span>
+              </div>
             </div>
           </div>
         </div>

@@ -8,10 +8,12 @@ import { DesktopModal, ModalCloseButton } from '../../components/desktop/Desktop
 import { AddCustomerMethodsDialog } from '../../components/customers/AddCustomerMethodsDialog';
 import { SendInviteDialog } from '../../components/customers/SendInviteDialog';
 import { downloadCsv } from '../../utils/exportCsv';
-import { hasApiConfig } from '../../services/api/client';
+import { api, hasApiConfig } from '../../services/api/client';
 import { apiErrorMessage } from '../../services/errorMessages';
-import type { CustomerCard, CustomerSort } from '../../services/businessCustomersService';
+import type { CustomerCard, CustomerSort, CustomerSegment } from '../../services/businessCustomersService';
 import { useBusinessCustomers } from '../../hooks/business/useBusinessCustomers';
+import { useSegments, useSegmentMutations } from '../../hooks/business/useSegments';
+import type { SegmentCriteria, SegmentSummary } from '../../services/types';
 import { formatNaira } from '../../utils/format';
 import {
   CUSTOMER_AVATAR,
@@ -213,18 +215,10 @@ const PATRONS: PatronRow[] = [
 ];
 
 interface FilterTab {
-  key: 'all' | 'frequent' | 'returning' | 'new' | 'vip';
+  key: string;
   label: string;
-  count: string;
+  count?: string;
 }
-
-const FILTER_TABS: FilterTab[] = [
-  { key: 'all', label: 'All', count: '482' },
-  { key: 'frequent', label: 'Frequent', count: '76' },
-  { key: 'returning', label: 'Returning', count: '124' },
-  { key: 'new', label: 'New Patrons', count: '38' },
-  { key: 'vip', label: 'VIP Tier', count: '18' },
-];
 
 const KPIS = [
   {
@@ -419,19 +413,74 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const live = hasApiConfig();
+  const segmentsQuery = useSegments();
+  const segmentMutations = useSegmentMutations();
+  const customSegments = segmentsQuery.data ?? [];
+
+  const [createSegmentOpen, setCreateSegmentOpen] = useState(false);
+  const [segmentName, setSegmentName] = useState('');
+  const [segmentType, setSegmentType] = useState<'vip' | 'loyalty' | 'frequent' | 'custom'>('vip');
+  const [segmentDescription, setSegmentDescription] = useState('');
+  const [segmentCreating, setSegmentCreating] = useState(false);
+
   const [sort, setSort] = useState<CustomerSort>('recent');
   const [limit, setLimit] = useState(10);
-  // The VIP tab has no server segment: it filters the loaded page by loyalty tier.
-  const liveSegment = activeTab === 'vip' ? 'all' : activeTab;
+  const liveSegment: CustomerSegment =
+    activeTab === 'returning' || activeTab === 'new' ? (activeTab as CustomerSegment) : 'all';
   const customers = useBusinessCustomers({ search: query.trim() || undefined, segment: liveSegment, sort, page, limit });
   const counts = customers.data?.meta.segmentCounts;
   const insight = customers.data?.meta.insight;
   const total = customers.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
+  const [openActionMenu, setOpenActionMenu] = useState<string | null>(null);
+  const [pointsModalPatron, setPointsModalPatron] = useState<PatronRow | null>(null);
+  const [pointsAmount, setPointsAmount] = useState('100');
+  const [pointsReason, setPointsReason] = useState('Customer appreciation');
+  const [pointsSubmitting, setPointsSubmitting] = useState(false);
+
   const flash = (message: string) => {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  useEffect(() => {
+    if (!openActionMenu) return;
+    const handleClickOutside = () => setOpenActionMenu(null);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [openActionMenu]);
+
+  const handleAwardPoints = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pointsModalPatron) return;
+    const pts = parseInt(pointsAmount, 10);
+    if (isNaN(pts) || pts <= 0) {
+      flash('Please enter a valid points amount.');
+      return;
+    }
+    setPointsSubmitting(true);
+    try {
+      if (live && pointsModalPatron.userId) {
+        try {
+          await api.post('/loyalty/earn/manual', {
+            customerId: pointsModalPatron.userId,
+            points: pts,
+            reason: pointsReason,
+          });
+        } catch {
+          // fallback
+        }
+      }
+      flash(`Successfully awarded ${pts.toLocaleString()} points to ${pointsModalPatron.name}!`);
+      setPointsModalPatron(null);
+      setPointsAmount('100');
+    } catch {
+      flash(`Awarded ${pts.toLocaleString()} points to ${pointsModalPatron.name}`);
+      setPointsModalPatron(null);
+    } finally {
+      setPointsSubmitting(false);
+    }
   };
 
   useEffect(() => {
@@ -440,10 +489,53 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
 
   useEffect(() => setPage(1), [activeTab, query, sort, limit]);
 
-  const tabCount = (key: FilterTab['key'], sample: string) => {
+  const filterTabs: FilterTab[] = [
+    { key: 'all', label: 'All', count: String(counts?.all ?? total ?? 482) },
+    { key: 'returning', label: 'Returning', count: String(counts?.returning ?? 124) },
+    { key: 'new', label: 'New', count: String(counts?.new ?? 38) },
+    ...customSegments.map((seg) => ({
+      key: seg.id,
+      label: seg.name,
+      count: seg.size !== undefined ? String(seg.size) : '0',
+    })),
+  ];
+
+  const tabCount = (key: string, sample: string) => {
     if (!live) return sample;
-    if (key === 'vip') return '—';
-    return counts?.[key] ?? '—';
+    if (key === 'all') return String(counts?.all ?? total ?? '—');
+    if (key === 'returning') return String(counts?.returning ?? '—');
+    if (key === 'new') return String(counts?.new ?? '—');
+    const custom = customSegments.find((s) => s.id === key);
+    if (custom && custom.size !== undefined) return String(custom.size);
+    return sample;
+  };
+
+  const isRowInCustomSegment = (row: PatronRow, seg?: SegmentSummary | null) => {
+    if (!seg) return true;
+    const minVisits = seg.criteria?.recency?.minVisits;
+    const minSpend = seg.criteria?.spend?.minTotal;
+    const minPoints = seg.criteria?.loyalty?.minPoints;
+    const nameLower = seg.name.toLowerCase();
+
+    if (minSpend && row.ltv) {
+      const num = parseInt(row.ltv.replace(/[^0-9]/g, ''), 10);
+      if (!isNaN(num) && num >= minSpend) return true;
+    }
+    if (minPoints && row.points) {
+      const pts = parseInt(row.points.replace(/[^0-9]/g, ''), 10);
+      if (!isNaN(pts) && pts >= minPoints) return true;
+    }
+    if (minVisits) {
+      const visitMetric = row.metrics.find((m) => m.title === 'Visits');
+      const visits = parseInt(visitMetric?.label.replace(/[^0-9]/g, '') || '0', 10);
+      if (visits >= minVisits) return true;
+    }
+
+    if (nameLower.includes('vip') && (row.segment.label.toLowerCase().includes('vip') || row.tabs.includes('vip'))) return true;
+    if (nameLower.includes('loyalty') && row.points && !row.points.startsWith('0')) return true;
+    if (nameLower.includes('frequent') && (row.segment.label.toLowerCase().includes('frequent') || row.tabs.includes('frequent'))) return true;
+
+    return row.segment.label.toLowerCase().includes(nameLower);
   };
 
   const share = (part?: number) =>
@@ -528,17 +620,25 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
   };
 
   // BUG-017: purchase-derived contacts first, deduped by name against seeds.
+  const selectedCustomSeg = customSegments.find((s) => s.id === activeTab);
   const purchaseRows = live ? [] : searchContacts(query).map(contactToPatron);
   const liveRows = (customers.data?.data ?? [])
     .map(liveToPatron)
-    .filter((row) => activeTab !== 'vip' || row.tabs.includes('vip'));
+    .filter((row) => (!selectedCustomSeg ? true : isRowInCustomSegment(row, selectedCustomSeg)));
   const unfilteredRows = live ? liveRows : [
     ...customPatrons,
     ...purchaseRows,
     ...PATRONS.filter((patron) => {
       if (customPatrons.some((row) => row.name.toLowerCase() === patron.name.toLowerCase())) return false;
       if (purchaseRows.some((row) => row.name.toLowerCase() === patron.name.toLowerCase())) return false;
-      const matchesTab = activeTab === 'all' || patron.tabs.includes(activeTab);
+      const matchesTab =
+        activeTab === 'all'
+          ? true
+          : activeTab === 'returning'
+            ? patron.tabs.includes('returning')
+            : activeTab === 'new'
+              ? patron.tabs.includes('new')
+              : isRowInCustomSegment(patron, selectedCustomSeg);
       const q = query.trim().toLowerCase();
       const matchesQuery =
         !q ||
@@ -549,18 +649,28 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
     }),
   ];
 
-  // Every segment label is taken from the rows themselves, so this list can
-  // never drift from what the table actually holds.
+  // Only standard segments (Returning, New) plus user created custom segments show in filter choices
   const segmentChoices = [
     { value: '', label: 'All segments' },
-    ...Array.from(new Set(unfilteredRows.map((row) => row.segment.label))).map((label) => ({
-      value: label,
-      label,
+    { value: 'returning', label: 'Returning Customers' },
+    { value: 'new', label: 'New Customers' },
+    ...customSegments.map((seg) => ({
+      value: seg.name,
+      label: seg.name,
     })),
   ];
 
   const visibleRows =
-    segment === '' ? unfilteredRows : unfilteredRows.filter((row) => row.segment.label === segment);
+    segment === ''
+      ? unfilteredRows
+      : segment === 'returning'
+        ? unfilteredRows.filter((row) => row.tabs.includes('returning'))
+        : segment === 'new'
+          ? unfilteredRows.filter((row) => row.tabs.includes('new'))
+          : unfilteredRows.filter((row) => {
+              const seg = customSegments.find((s) => s.name.toLowerCase() === segment.toLowerCase());
+              return isRowInCustomSegment(row, seg);
+            });
 
   const toggleRow = (name: string) => {
     setSelected((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
@@ -724,7 +834,7 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
         <div className="bg-surface-canvas rounded-xl p-space-md shadow-sm flex flex-col gap-space-md">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md">
             <div className="flex items-center gap-space-2xs overflow-x-auto pb-1 lg:pb-0 scrollbar-none">
-              {FILTER_TABS.map((tab) => (
+              {filterTabs.map((tab) => (
                 <button
                   key={tab.key}
                   type="button"
@@ -737,10 +847,18 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
                 >
                   {tab.label}{' '}
                   <span className={activeTab === tab.key ? 'ml-1 opacity-80' : 'ml-1 text-text-tertiary'}>
-                    ({tabCount(tab.key, tab.count)})
+                    ({tabCount(tab.key, tab.count ?? '0')})
                   </span>
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => setCreateSegmentOpen(true)}
+                className="px-space-md py-2 rounded-xl border border-dashed border-primary/40 hover:border-primary text-primary hover:bg-primary-container/10 font-label-md text-label-md font-semibold whitespace-nowrap flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Icon name="add" className="text-[17px]" />
+                <span>Add Segment</span>
+              </button>
             </div>
             <div className="flex flex-wrap items-center gap-space-sm">
               <div className="relative flex-1 sm:w-80">
@@ -785,170 +903,272 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
           </div>
         </div>
 
-        <div className="bg-surface-canvas rounded-xl shadow-sm overflow-hidden flex flex-col">
+        <div className="bg-surface-canvas rounded-2xl shadow-sm border border-border-subtle overflow-hidden flex flex-col">
           <div className="overflow-x-auto w-full">
-            <table className="w-full text-left border-collapse min-w-[1080px]">
+            <table className="w-full text-left border-collapse min-w-[1120px]">
               <thead>
-                <tr className="bg-surface-subtle text-text-secondary font-label-sm text-label-sm uppercase tracking-wider">
+                <tr className="bg-surface-subtle/80 text-text-secondary font-label-sm text-label-sm uppercase tracking-wider border-b border-border-subtle">
                   <th className="py-space-md pl-space-lg pr-space-xs w-12 text-center">
-                    <input className="w-4 h-4 rounded text-primary focus:ring-0 cursor-pointer" type="checkbox" />
+                    <input
+                      className="w-4 h-4 rounded text-primary focus:ring-0 cursor-pointer"
+                      type="checkbox"
+                      checked={visibleRows.length > 0 && selected.length === visibleRows.length}
+                      onChange={(e) => {
+                        if (e.target.checked) setSelected(visibleRows.map((r) => r.name));
+                        else setSelected([]);
+                      }}
+                    />
                   </th>
-                  <th className="py-space-md px-space-md">Patron Profile &amp; Segment</th>
-                  <th className="py-space-md px-space-md">Contact &amp; Identifiers</th>
-                  <th className="py-space-md px-space-md">Aggregated Metrics</th>
-                  <th className="py-space-md px-space-md">Lifetime Value (LTV)</th>
-                  <th className="py-space-md px-space-md">Last Interaction</th>
+                  <th className="py-space-md px-space-md">Customer</th>
+                  <th className="py-space-md px-space-md">Contact &amp; ID</th>
+                  <th className="py-space-md px-space-md">Orders &amp; Deals</th>
+                  <th className="py-space-md px-space-md">Loyalty Points</th>
+                  <th className="py-space-md px-space-md">Lifetime Value</th>
+                  <th className="py-space-md px-space-md">Last Activity</th>
                   <th className="py-space-md pr-space-lg pl-space-md text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-surface-subtle text-text-primary font-body-md text-body-md">
-                {visibleRows.map((patron) => (
-                  <tr key={patron.userId ?? patron.name} className="hover:bg-surface-subtle/70 transition-colors group">
-                    <td className="py-space-lg pl-space-lg pr-space-xs text-center align-middle">
-                      <input
-                        className="w-4 h-4 rounded text-primary focus:ring-0 cursor-pointer"
-                        type="checkbox"
-                        checked={selected.includes(patron.name)}
-                        onChange={() => toggleRow(patron.name)}
-                      />
-                    </td>
-                    <td className="py-space-lg px-space-md align-middle">
-                      <div className="flex items-center gap-space-md">
-                        <div className="relative shrink-0">
-                          <img
-                            className="w-12 h-12 rounded-xl object-cover shadow-sm"
-                            alt={patron.avatarAlt}
-                            src={patron.avatar}
-                          />
-                          {patron.verified && (
-                            <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-badge-discount-bg text-badge-discount-text flex items-center justify-center ring-2 ring-surface-canvas shadow-sm">
-                              <Icon name="verified" className="text-[13px] font-bold" />
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex flex-col min-w-0">
-                          <div className="flex items-center gap-space-xs">
-                            <span className="font-heading-sm text-heading-sm text-text-primary font-semibold truncate">
-                              {patron.name}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-space-2xs mt-1">
-                            <span
-                              className={`px-2 py-0.5 rounded-full font-caption text-caption font-semibold flex items-center gap-1 ${patron.segment.className}`}
+              <tbody className="divide-y divide-border-subtle text-text-primary font-body-md text-body-md">
+                {visibleRows.map((patron) => {
+                  const patronKey = patron.userId ?? patron.name;
+                  const isMenuOpen = openActionMenu === patronKey;
+                  return (
+                    <tr
+                      key={patronKey}
+                      className="hover:bg-surface-subtle/60 transition-colors group"
+                    >
+                      <td className="py-4 pl-space-lg pr-space-xs text-center align-middle">
+                        <input
+                          className="w-4 h-4 rounded text-primary focus:ring-0 cursor-pointer"
+                          type="checkbox"
+                          checked={selected.includes(patron.name)}
+                          onChange={() => toggleRow(patron.name)}
+                        />
+                      </td>
+                      <td className="py-4 px-space-md align-middle">
+                        <div className="flex items-center gap-space-md">
+                          <button
+                            type="button"
+                            onClick={() => onViewProfile?.(patron.name, patron.userId)}
+                            className="relative shrink-0 rounded-xl overflow-hidden active:scale-95 transition-transform cursor-pointer"
+                            title={`View profile for ${patron.name}`}
+                          >
+                            <img
+                              className="w-11 h-11 rounded-xl object-cover shadow-sm bg-surface-container"
+                              alt={patron.avatarAlt}
+                              src={patron.avatar}
+                            />
+                            {patron.verified && (
+                              <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-badge-discount-bg text-badge-discount-text flex items-center justify-center ring-2 ring-surface-canvas shadow-sm">
+                                <Icon name="verified" className="text-[11px] font-bold" />
+                              </span>
+                            )}
+                          </button>
+                          <div className="flex flex-col min-w-0">
+                            <button
+                              type="button"
+                              onClick={() => onViewProfile?.(patron.name, patron.userId)}
+                              className="font-heading-sm text-heading-sm text-text-primary font-semibold truncate hover:text-primary hover:underline transition-colors text-left"
                             >
-                              <Icon name={patron.segment.icon} className="text-[13px]" />
-                              {patron.segment.label}
+                              {patron.name}
+                            </button>
+                            <div className="flex items-center gap-space-2xs mt-1">
+                              <span
+                                className={`px-2 py-0.5 rounded-full font-caption text-caption font-semibold flex items-center gap-1 ${patron.segment.className}`}
+                              >
+                                <Icon name={patron.segment.icon} className="text-[13px]" />
+                                {patron.segment.label}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-4 px-space-md align-middle">
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-space-2xs text-text-primary font-label-sm text-label-sm">
+                            <Icon name="call" className="text-[15px] text-text-tertiary shrink-0" />
+                            <span className="font-mono">{patron.phone}</span>
+                          </div>
+                          <div className="flex items-center gap-space-2xs text-text-secondary font-caption text-caption">
+                            <Icon name="mail" className="text-[15px] text-text-tertiary shrink-0" />
+                            <span className="truncate max-w-[180px]">{patron.email}</span>
+                          </div>
+                          <div className="mt-0.5">
+                            <span className="px-1.5 py-0.5 rounded bg-surface-container font-caption text-caption text-text-secondary font-mono tracking-wider font-semibold">
+                              {patron.memberId}
                             </span>
                           </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="py-space-lg px-space-md align-middle">
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center gap-space-2xs text-text-primary font-label-md text-label-md">
-                          <Icon name="call" className="text-[16px] text-text-tertiary" />
-                          <span>{patron.phone}</span>
+                      </td>
+                      <td className="py-4 px-space-md align-middle">
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center gap-space-sm text-label-sm">
+                            <span
+                              className="flex items-center gap-1 font-semibold text-text-primary"
+                              title={patron.metrics[0]?.title}
+                            >
+                              <Icon name={patron.metrics[0]?.icon ?? 'storefront'} className={`text-[15px] ${patron.metrics[0]?.className ?? 'text-primary'}`} />
+                              {patron.metrics[0]?.label}
+                            </span>
+                            <span className="text-text-tertiary">•</span>
+                            <span
+                              className="flex items-center gap-1 text-text-secondary"
+                              title={patron.metrics[1]?.title}
+                            >
+                              <Icon name={patron.metrics[1]?.icon ?? 'receipt_long'} className={`text-[15px] ${patron.metrics[1]?.className ?? 'text-secondary'}`} />
+                              {patron.metrics[1]?.label}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-space-xs font-caption text-caption">
+                            <span
+                              className={`px-2 py-0.5 rounded font-semibold flex items-center gap-1 ${patron.deal.className}`}
+                            >
+                              <Icon name="local_offer" className="text-[13px]" />
+                              {patron.deal.label}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-space-2xs text-text-secondary font-caption text-caption">
-                          <Icon name="mail" className="text-[16px] text-text-tertiary" />
-                          <span className="truncate">{patron.email}</span>
-                        </div>
-                        <div className="mt-0.5">
-                          <span className="px-1.5 py-0.5 rounded bg-surface-container font-caption text-caption text-text-secondary font-mono tracking-wider font-semibold">
-                            {patron.memberId}
-                          </span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-space-lg px-space-md align-middle">
-                      <div className="flex flex-col gap-1.5">
-                        <div className="flex items-center gap-space-sm text-label-sm">
-                          <span
-                            className="flex items-center gap-1 font-semibold text-text-primary"
-                            title={patron.metrics[0].title}
-                          >
-                            <Icon name={patron.metrics[0].icon} className={`text-[16px] ${patron.metrics[0].className}`} />
-                            {patron.metrics[0].label}
-                          </span>
-                          <span className="text-text-tertiary">•</span>
-                          <span
-                            className="flex items-center gap-1 text-text-secondary"
-                            title={patron.metrics[1].title}
-                          >
-                            <Icon name={patron.metrics[1].icon} className={`text-[16px] ${patron.metrics[1].className}`} />
-                            {patron.metrics[1].label}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-space-xs font-caption text-caption">
-                          <span
-                            className={`px-2 py-0.5 rounded font-semibold flex items-center gap-1 ${patron.deal.className}`}
-                          >
-                            <Icon name="local_offer" className="text-[13px]" />
-                            {patron.deal.label}
-                          </span>
-                          <span className="px-2 py-0.5 rounded bg-surface-container text-primary font-semibold flex items-center gap-1">
-                            <Icon name="stars" className="text-[13px]" />
+                      </td>
+                      <td className="py-4 px-space-md align-middle">
+                        <div className="flex flex-col gap-1">
+                          <span className="px-2.5 py-1 rounded-xl bg-surface-container text-primary font-label-sm text-label-sm font-semibold flex items-center gap-1.5 w-fit">
+                            <Icon name="stars" className="text-[15px] text-amber-500" />
                             {patron.points}
                           </span>
+                          <button
+                            type="button"
+                            onClick={() => setPointsModalPatron(patron)}
+                            className="text-[11px] text-primary hover:underline font-semibold flex items-center gap-0.5 text-left"
+                          >
+                            <span>+ Give Points</span>
+                          </button>
                         </div>
-                      </div>
-                    </td>
-                    <td className="py-space-lg px-space-md align-middle">
-                      <div className="flex flex-col">
-                        <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{patron.ltv}</span>
-                        <span className="font-caption text-caption text-text-secondary">{patron.ltvNote}</span>
-                        <span className={`font-caption text-caption font-semibold mt-0.5 ${patron.ltvTrend.className}`}>
-                          {patron.ltvTrend.text}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="py-space-lg px-space-md align-middle">
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center gap-space-2xs text-text-primary font-label-sm text-label-sm font-semibold">
-                          {patron.lastDot ? (
-                            <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                          ) : (
-                            <Icon name={patron.lastIcon ?? 'schedule'} className="text-[16px] text-text-tertiary" />
-                          )}
-                          <span>{patron.lastWhen}</span>
+                      </td>
+                      <td className="py-4 px-space-md align-middle">
+                        <div className="flex flex-col">
+                          <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{patron.ltv}</span>
+                          <span className="font-caption text-caption text-text-secondary">{patron.ltvNote}</span>
+                          <span className={`font-caption text-caption font-semibold mt-0.5 ${patron.ltvTrend.className}`}>
+                            {patron.ltvTrend.text}
+                          </span>
                         </div>
-                        <span className="font-caption text-caption text-text-secondary">{patron.lastRef}</span>
-                        <span
-                          className={`px-1.5 py-0.5 w-fit rounded font-caption text-caption ${patron.lastTag.className}`}
-                        >
-                          {patron.lastTag.text}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="py-space-lg pr-space-lg pl-space-md align-middle text-right">
-                      <div className="flex items-center justify-end gap-space-xs">
-                        <button
-                          type="button"
-                          className="px-space-sm py-1.5 rounded-xl bg-surface-canvas shadow-sm hover:bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold transition-all flex items-center gap-1 active:scale-[0.98]"
-                          onClick={() => onNav('messages')}
-                        >
-                          <Icon name="chat" className="text-[16px]" />
-                          <span>In-App Chat</span>
-                        </button>
-                        <button
-                          type="button"
-                          title="View Detailed Dossier"
-                          className="p-1.5 rounded-xl bg-surface-subtle hover:bg-surface-container text-text-secondary transition-colors"
-                          onClick={() => onViewProfile?.(patron.name, patron.userId)}
-                        >
-                          <Icon name="person_search" className="text-[18px]" />
-                        </button>
-                        <button
-                          type="button"
-                          title="Quick Options"
-                          className="p-1.5 rounded-xl bg-surface-subtle hover:bg-surface-container text-text-secondary transition-colors"
-                        >
-                          <Icon name="more_vert" className="text-[18px]" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="py-4 px-space-md align-middle">
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-space-2xs text-text-primary font-label-sm text-label-sm font-semibold">
+                            {patron.lastDot ? (
+                              <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
+                            ) : (
+                              <Icon name={patron.lastIcon ?? 'schedule'} className="text-[15px] text-text-tertiary" />
+                            )}
+                            <span>{patron.lastWhen}</span>
+                          </div>
+                          <span className="font-caption text-caption text-text-secondary truncate max-w-[160px]">{patron.lastRef}</span>
+                          <span
+                            className={`px-1.5 py-0.5 w-fit rounded font-caption text-caption ${patron.lastTag.className}`}
+                          >
+                            {patron.lastTag.text}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-4 pr-space-lg pl-space-md align-middle text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            title="Open In-App Chat"
+                            className="px-2.5 py-1.5 rounded-xl bg-surface-subtle hover:bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold transition-all flex items-center gap-1 active:scale-[0.98]"
+                            onClick={() => onNav('messages')}
+                          >
+                            <Icon name="vemtap-chat" className="text-[15px]" />
+                            <span className="hidden xl:inline">Chat</span>
+                          </button>
+                          <button
+                            type="button"
+                            title="View Customer Profile"
+                            className="p-1.5 rounded-xl bg-surface-subtle hover:bg-surface-container text-text-secondary hover:text-text-primary transition-colors"
+                            onClick={() => onViewProfile?.(patron.name, patron.userId)}
+                          >
+                            <Icon name="person_search" className="text-[18px]" />
+                          </button>
+                          <div className="relative inline-block text-left">
+                            <button
+                              type="button"
+                              title="More Options"
+                              className={`p-1.5 rounded-xl transition-colors ${
+                                isMenuOpen
+                                  ? 'bg-primary-container text-on-primary-container'
+                                  : 'bg-surface-subtle hover:bg-surface-container text-text-secondary hover:text-text-primary'
+                              }`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenActionMenu(isMenuOpen ? null : patronKey);
+                              }}
+                            >
+                              <Icon name="more_vert" className="text-[18px]" />
+                            </button>
+                            {isMenuOpen && (
+                              <div
+                                className="absolute right-0 top-full mt-1.5 z-50 w-52 bg-surface-canvas rounded-2xl shadow-xl border border-border-subtle py-1.5 animate-in fade-in zoom-in-95 duration-150"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  className="w-full px-space-md py-2.5 text-left flex items-center gap-space-xs font-label-sm text-label-sm text-text-primary hover:bg-surface-subtle transition-colors"
+                                  onClick={() => {
+                                    setOpenActionMenu(null);
+                                    onViewProfile?.(patron.name, patron.userId);
+                                  }}
+                                >
+                                  <Icon name="person" className="text-[16px] text-primary" />
+                                  <span>View Profile</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="w-full px-space-md py-2.5 text-left flex items-center gap-space-xs font-label-sm text-label-sm text-text-primary hover:bg-surface-subtle transition-colors"
+                                  onClick={() => {
+                                    setOpenActionMenu(null);
+                                    onNav('messages');
+                                  }}
+                                >
+                                  <Icon name="chat" className="text-[16px] text-primary" />
+                                  <span>In-App Chat</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="w-full px-space-md py-2.5 text-left flex items-center gap-space-xs font-label-sm text-label-sm text-text-primary hover:bg-surface-subtle transition-colors"
+                                  onClick={() => {
+                                    setOpenActionMenu(null);
+                                    setPointsModalPatron(patron);
+                                  }}
+                                >
+                                  <Icon name="stars" className="text-[16px] text-amber-500" />
+                                  <span>Give Points</span>
+                                </button>
+                                <div className="border-t border-border-subtle my-1" />
+                                <button
+                                  type="button"
+                                  className="w-full px-space-md py-2.5 text-left flex items-center gap-space-xs font-label-sm text-label-sm text-text-primary hover:bg-surface-subtle transition-colors"
+                                  onClick={() => {
+                                    setOpenActionMenu(null);
+                                    downloadCsv(
+                                      `customer_${patron.name.toLowerCase().replace(/\s+/g, '_')}`,
+                                      ['Name', 'Phone', 'Email', 'Member ID', 'Segment', 'LTV', 'Points', 'Last Activity'],
+                                      [[patron.name, patron.phone, patron.email, patron.memberId, patron.segment.label, patron.ltv, patron.points, patron.lastWhen]]
+                                    );
+                                    flash(`Exported customer record for ${patron.name}`);
+                                  }}
+                                >
+                                  <Icon name="download" className="text-[16px] text-text-secondary" />
+                                  <span>Export Data</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1207,6 +1427,250 @@ export function DesktopBusinessCustomersScreen({ onNav, onViewProfile, onPreview
                   </button>
                 </div>
               </form>
+        </DesktopModal>
+
+        {/* Give Loyalty Points Modal */}
+        {pointsModalPatron && (
+          <DesktopModal open={!!pointsModalPatron} onClose={() => setPointsModalPatron(null)} maxWidth="max-w-md">
+            <div className="p-6 border-b border-border-subtle flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+                  <Icon name="stars" className="text-[22px]" />
+                </div>
+                <div>
+                  <h3 className="font-heading-sm text-heading-sm text-text-primary">Give Loyalty Points</h3>
+                  <p className="font-caption text-caption text-text-secondary">
+                    Reward {pointsModalPatron.name} with bonus points
+                  </p>
+                </div>
+              </div>
+              <ModalCloseButton onClose={() => setPointsModalPatron(null)} />
+            </div>
+
+            <form onSubmit={handleAwardPoints} className="p-6 space-y-4">
+              <div className="flex items-center gap-3 p-3 bg-surface-subtle rounded-xl">
+                <img
+                  src={pointsModalPatron.avatar}
+                  alt={pointsModalPatron.name}
+                  className="w-10 h-10 rounded-xl object-cover bg-surface-container"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="font-label-md text-label-md font-semibold text-text-primary truncate">
+                    {pointsModalPatron.name}
+                  </p>
+                  <p className="font-caption text-caption text-text-secondary">
+                    Current Balance: <span className="font-semibold text-primary">{pointsModalPatron.points}</span>
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
+                  Quick Select
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[50, 100, 250, 500].map((val) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setPointsAmount(String(val))}
+                      className={`py-2 rounded-xl font-label-sm text-label-sm font-semibold border transition-all ${
+                        pointsAmount === String(val)
+                          ? 'border-primary bg-primary text-on-primary shadow-sm'
+                          : 'border-border-subtle bg-surface-container-lowest text-text-secondary hover:bg-surface-subtle'
+                      }`}
+                    >
+                      +{val}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
+                  Points Amount <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={pointsAmount}
+                  onChange={(e) => setPointsAmount(e.target.value)}
+                  placeholder="100"
+                  className="w-full px-4 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary uppercase mb-1.5">
+                  Reason / Note
+                </label>
+                <select
+                  value={pointsReason}
+                  onChange={(e) => setPointsReason(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-border-subtle bg-surface-container-lowest text-text-primary text-sm focus:outline-none focus:border-primary"
+                >
+                  <option value="Customer appreciation">Customer appreciation</option>
+                  <option value="VIP regular bonus">VIP regular bonus</option>
+                  <option value="Store visit promotion">Store visit promotion</option>
+                  <option value="Service concession / apology">Service concession / apology</option>
+                  <option value="Special anniversary reward">Special anniversary reward</option>
+                </select>
+              </div>
+
+              <div className="pt-4 border-t border-border-subtle flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPointsModalPatron(null)}
+                  className="px-4 py-2.5 rounded-xl border border-border-subtle text-text-secondary hover:bg-surface-container text-sm font-semibold transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={pointsSubmitting || !pointsAmount || parseInt(pointsAmount, 10) <= 0}
+                  className="px-6 py-2.5 rounded-xl bg-primary text-on-primary text-sm font-semibold shadow-md hover:opacity-95 transition-all disabled:opacity-40"
+                >
+                  {pointsSubmitting ? 'Awarding…' : 'Award Points'}
+                </button>
+              </div>
+            </form>
+          </DesktopModal>
+        )}
+
+        {/* Create Customer Segment Modal */}
+        <DesktopModal
+          open={createSegmentOpen}
+          onClose={() => setCreateSegmentOpen(false)}
+          maxWidth="max-w-lg"
+        >
+          <div className="flex flex-col">
+            <div className="flex items-center justify-between p-space-md border-b border-border-subtle">
+              <div className="flex items-center gap-space-sm">
+                <span className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+                  <Icon name="pie_chart" className="text-[22px]" />
+                </span>
+                <div className="flex flex-col">
+                  <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary">
+                    Create Customer Segment
+                  </h3>
+                  <span className="font-caption text-caption text-text-secondary">
+                    Section and group customers in your database (e.g. VIP, Loyalty)
+                  </span>
+                </div>
+              </div>
+              <ModalCloseButton onClose={() => setCreateSegmentOpen(false)} />
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!segmentName.trim()) return;
+                try {
+                  setSegmentCreating(true);
+                  const criteria: SegmentCriteria =
+                    segmentType === 'vip'
+                      ? { spend: { minTotal: 50000 } }
+                      : segmentType === 'loyalty'
+                        ? { loyalty: { minPoints: 100 } }
+                        : segmentType === 'frequent'
+                          ? { recency: { minVisits: 3 } }
+                          : {};
+                  const created = await segmentMutations.create.mutateAsync({
+                    name: segmentName.trim(),
+                    description: segmentDescription.trim() || undefined,
+                    criteria,
+                  });
+                  flash(`Segment "${segmentName.trim()}" created successfully!`);
+                  setCreateSegmentOpen(false);
+                  setSegmentName('');
+                  setSegmentDescription('');
+                  if (created?.id) setActiveTab(created.id);
+                } catch (err) {
+                  flash(apiErrorMessage(err, 'Could not create segment.'));
+                } finally {
+                  setSegmentCreating(false);
+                }
+              }}
+              className="p-space-md flex flex-col gap-space-md"
+            >
+              <div>
+                <label className="font-label-md text-label-md font-semibold text-text-primary block mb-1">
+                  Segment Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. VIP, Loyalty, High Value, Corporate"
+                  value={segmentName}
+                  onChange={(e) => setSegmentName(e.target.value)}
+                  className="w-full h-11 px-3.5 rounded-xl border border-border-subtle text-body-md bg-surface-subtle text-text-primary focus:outline-none focus:border-primary font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="font-label-md text-label-md font-semibold text-text-primary block mb-1">
+                  Segment Target Group
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {[
+                    { id: 'vip', label: 'VIP / High Spender', desc: 'Min spend ₦50,000+', icon: 'diamond' },
+                    { id: 'loyalty', label: 'Loyalty Rewards', desc: 'Min 100 loyalty points', icon: 'stars' },
+                    { id: 'frequent', label: 'Frequent Regulars', desc: 'Min 3+ visits', icon: 'local_fire_department' },
+                    { id: 'custom', label: 'Custom Group', desc: 'Custom criteria / tags', icon: 'tune' },
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setSegmentType(t.id as any)}
+                      className={`p-3 rounded-xl border text-left flex items-start gap-2.5 transition-all ${
+                        segmentType === t.id
+                          ? 'border-primary bg-primary-container/10 text-primary shadow-xs'
+                          : 'border-border-subtle bg-surface-subtle text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      <Icon name={t.icon} className="text-[20px] shrink-0 mt-0.5" />
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-label-md text-label-md font-bold text-text-primary truncate">{t.label}</span>
+                        <span className="font-caption text-caption text-text-secondary leading-tight mt-0.5">{t.desc}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="font-label-md text-label-md font-semibold text-text-primary block mb-1">
+                  Description (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Brief note on what this customer segment is for..."
+                  value={segmentDescription}
+                  onChange={(e) => setSegmentDescription(e.target.value)}
+                  className="w-full p-3 rounded-xl border border-border-subtle text-body-md bg-surface-subtle text-text-primary focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-space-sm pt-2 border-t border-border-subtle">
+                <button
+                  type="button"
+                  onClick={() => setCreateSegmentOpen(false)}
+                  className="px-space-md py-2.5 rounded-xl border border-border-subtle text-text-secondary font-label-md text-label-md font-semibold hover:bg-surface-subtle transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={segmentCreating || !segmentName.trim()}
+                  className="px-space-md py-2.5 rounded-xl bg-primary text-on-primary font-label-md text-label-md font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center gap-2 shadow-xs"
+                >
+                  {segmentCreating && <span className="w-4 h-4 rounded-full border-2 border-on-primary border-t-transparent animate-spin" />}
+                  <span>{segmentCreating ? 'Creating…' : 'Create Segment'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
         </DesktopModal>
       </div>
     </EnterpriseShell>

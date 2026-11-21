@@ -20,6 +20,8 @@ export interface SessionUser {
   /** The shell a dual-role account last used. */
   lastActiveShell?: 'customer' | 'business' | null;
   roleTag?: string | null;
+  /** Owner-assigned staff label, when the account is a team member. */
+  jobTitle?: string | null;
   permissions?: string[] | null;
   status?: string;
   businessId?: string | null;

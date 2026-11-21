@@ -6,10 +6,9 @@ import { DealClaimsLedger } from '../components/DealClaimsLedger';
 import { FilterMenu } from '../components/FilterMenu';
 import { MobileAccountMenu, MobileLocationMenu, MobileNotificationBell } from '../components/BusinessHeaderMenus';
 import { hasApiConfig } from '../services/api/client';
-import { useOfferMutations, useOfferSummary, useOffers } from '../hooks/business/useOffers';
+import { useOfferSummary, useOffers } from '../hooks/business/useOffers';
 import { DealEndDialog, type DealEndRequest } from '../components/DealEndDialog';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
-import { apiErrorMessage } from '../services/errorMessages';
 import type { BusinessOffer } from '../services/offersService';
 import {
   dealBadgeLabel,
@@ -161,7 +160,6 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
   // Live: the active branch's real deals; demo keeps the sample cards.
   const live = hasApiConfig();
   const offersQuery = useOffers();
-  const offerMutations = useOfferMutations();
   const liveOffers = offersQuery.data ?? [];
   const liveById = new Map(liveOffers.map((offer) => [offer.id, offer]));
   const deals = live ? liveOffers.map(offerToCard) : DEALS;
@@ -181,15 +179,17 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
     const offer = liveById.get(key);
     return offer ? isOfferPaused(offer) : false;
   };
-  /** Live: pause/resume is the offer's status. */
-  const toggleLivePause = (key: string) => {
+  /** Pause/resume with explicit confirmation dialog */
+  const requestPauseToggle = (key: string, name: string) => {
+    const pausedNow = live ? isPaused(key) : Boolean(paused[key]);
     const offer = liveById.get(key);
-    if (!offer) return false;
-    offerMutations.setStatus.mutate(
-      { id: offer.id, status: isOfferPaused(offer) ? 'active' : 'inactive' },
-      { onError: (error) => showToast(apiErrorMessage(error, 'Could not update this deal.')) },
-    );
-    return true;
+    setEndRequest({
+      kind: pausedNow ? 'resume' : 'pause',
+      dealGroupId: offer?.dealGroupId ?? key,
+      offerId: offer?.id,
+      name,
+      onDemoConfirm: () => setPaused((current) => ({ ...current, [key]: !current[key] })),
+    });
   };
   const [tab, setTab] = useState<DealStatus>('active');
   const [search, setSearch] = useState('');
@@ -505,8 +505,7 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
-                      if (live && toggleLivePause(deal.key)) return;
-                      setPaused((current) => ({ ...current, [deal.key]: !current[deal.key] }));
+                      requestPauseToggle(deal.key, deal.name);
                     }}
                   >
                     <span className={(live ? isPaused(deal.key) : paused[deal.key]) ? 'text-primary font-semibold' : 'text-on-surface-variant'}>
@@ -546,7 +545,7 @@ export function BusinessDealsScreen({ onTab, onBoost, onOpenDeal, onCreateDeal }
       </div>
 
       <div className="px-margin pb-space-md">
-        <DealClaimsLedger title="Recent deal claims" limit={30} />
+        <DealClaimsLedger title="Recent deal claims" limit={30} allowRedeem />
       </div>
 
       {/* Floating Create Deal */}

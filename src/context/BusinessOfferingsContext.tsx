@@ -28,15 +28,17 @@ const STORAGE_KEY = 'vemtap_business_offerings';
 const BRANCH_STORAGE_KEY = 'vemtap_branch_offerings';
 export const DEFAULT_BUSINESS_ID = 'urban-grill-bistro-104';
 
+// Product-only rollout: services may exist in the API, but no UI can enable or
+// show them yet. Stored values are intentionally ignored here.
 const DEFAULT_OFFERINGS: BusinessOfferings = {
   hasProducts: true,
-  hasServices: true,
+  hasServices: false,
 };
 
 const DEFAULT_BRANCH_OFFERINGS: Record<string, OfferingType[]> = {
-  'wuse-ii': ['products', 'services'],
+  'wuse-ii': ['products'],
   'maitama': ['products'],
-  'victoria-island': ['products', 'services'],
+  'victoria-island': ['products'],
 };
 
 function getBusinessStorageKey(bizId: string): string {
@@ -52,10 +54,9 @@ function readStoredOfferings(bizId: string = DEFAULT_BUSINESS_ID): BusinessOffer
     if (!raw) return DEFAULT_OFFERINGS;
     const parsed = JSON.parse(raw) as Partial<BusinessOfferings>;
     const hasProducts = Boolean(parsed.hasProducts);
-    const hasServices = Boolean(parsed.hasServices);
-    // At least one must be true
-    if (!hasProducts && !hasServices) return DEFAULT_OFFERINGS;
-    return { hasProducts, hasServices };
+    // Services are hidden in product-only mode even when old storage says otherwise.
+    if (!hasProducts) return DEFAULT_OFFERINGS;
+    return { hasProducts: true, hasServices: false };
   } catch {
     return DEFAULT_OFFERINGS;
   }
@@ -65,7 +66,10 @@ function readStoredBranchOfferings(): Record<string, OfferingType[]> {
   try {
     const raw = window.localStorage.getItem(BRANCH_STORAGE_KEY);
     if (!raw) return DEFAULT_BRANCH_OFFERINGS;
-    return JSON.parse(raw) as Record<string, OfferingType[]>;
+    const parsed = JSON.parse(raw) as Record<string, OfferingType[]>;
+    return Object.fromEntries(
+      Object.entries(parsed).map(([key, types]) => [key, types.filter((type) => type === 'products')]),
+    );
   } catch {
     return DEFAULT_BRANCH_OFFERINGS;
   }
@@ -120,12 +124,15 @@ export function BusinessOfferingsProvider({ children, initialBusinessId = DEFAUL
         error: 'At least one offering must remain enabled (Products or Services).',
       };
     }
+    // Product-only mode: persist products only and ignore any attempts to
+    // re-enable services from stale UI or saved selections.
+    const applied: BusinessOfferings = { hasProducts: next.hasProducts, hasServices: false };
     try {
-      window.localStorage.setItem(getBusinessStorageKey(businessId), JSON.stringify(next));
+      window.localStorage.setItem(getBusinessStorageKey(businessId), JSON.stringify(applied));
       if (businessId === DEFAULT_BUSINESS_ID) {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(applied));
       }
-      setOfferingsState(next);
+      setOfferingsState(applied);
       return { success: true };
     } catch {
       return {
@@ -136,9 +143,12 @@ export function BusinessOfferingsProvider({ children, initialBusinessId = DEFAUL
   };
 
   const toggleOffering = (type: OfferingType): { success: boolean; error?: string } => {
+    if (type === 'services') {
+      return { success: false, error: 'Services are unavailable in the product-only rollout.' };
+    }
     const next = {
       hasProducts: type === 'products' ? !offerings.hasProducts : offerings.hasProducts,
-      hasServices: type === 'services' ? !offerings.hasServices : offerings.hasServices,
+      hasServices: offerings.hasServices,
     };
     if (!next.hasProducts && !next.hasServices) {
       return {
@@ -173,6 +183,8 @@ export function BusinessOfferingsProvider({ children, initialBusinessId = DEFAUL
       if (newOfferings.hasProducts) types.push('products');
       if (newOfferings.hasServices) types.push('services');
     }
+    // Product-only mode: branches cannot opt into services.
+    types = types.filter((type) => type === 'products');
     setBranchOfferingsMap((prev) => {
       const normalized = branchKey.toLowerCase().trim().replace(/\s+/g, '-');
       const next = { ...prev, [branchKey]: types, [normalized]: types };

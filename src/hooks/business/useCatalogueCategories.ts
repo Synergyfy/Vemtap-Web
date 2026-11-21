@@ -4,8 +4,12 @@ import { hasApiConfig } from '../../services/api/client';
 
 export const categoriesKeys = { all: ['catalogue-categories'] as const };
 
-export function useCatalogueCategories() {
-  return useQuery({ queryKey: categoriesKeys.all, queryFn: categoriesService.list, enabled: hasApiConfig() });
+export function useCatalogueCategories(kind?: 'product' | 'service') {
+  return useQuery({
+    queryKey: [...categoriesKeys.all, kind ?? 'all'],
+    queryFn: () => categoriesService.list(kind),
+    enabled: hasApiConfig(),
+  });
 }
 
 export type CategoryMutation =
@@ -17,7 +21,12 @@ export type CategoryMutation =
 
 export function useCategoryMutation() {
   const queryClient = useQueryClient();
-  return useMutation<unknown, Error, CategoryMutation, { previous?: CatalogueCategory[] }>({
+  return useMutation<
+    unknown,
+    Error,
+    CategoryMutation,
+    { previous?: Array<[readonly unknown[], CatalogueCategory[] | undefined]> }
+  >({
     mutationFn: (input) => {
       switch (input.type) {
         case 'create':
@@ -36,17 +45,20 @@ export function useCategoryMutation() {
     onMutate: async (input) => {
       if (input.type !== 'reorder') return {};
       await queryClient.cancelQueries({ queryKey: categoriesKeys.all });
-      const previous = queryClient.getQueryData<CatalogueCategory[]>(categoriesKeys.all);
-      if (previous) {
+      const previous = queryClient.getQueriesData<CatalogueCategory[]>({ queryKey: categoriesKeys.all });
+      previous.forEach(([key, list]) => {
+        if (!list) return;
         queryClient.setQueryData(
-          categoriesKeys.all,
-          input.orderedIds.map((id) => previous.find((c) => c.id === id)).filter(Boolean),
+          key,
+          input.orderedIds.map((id) => list.find((c) => c.id === id)).filter(Boolean),
         );
-      }
+      });
       return { previous };
     },
     onError: (_error, _input, context) => {
-      if (context?.previous) queryClient.setQueryData(categoriesKeys.all, context.previous);
+      context?.previous?.forEach(([key, list]) => {
+        if (list) queryClient.setQueryData(key, list);
+      });
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: categoriesKeys.all }),
   });

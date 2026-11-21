@@ -209,12 +209,12 @@ export function BusinessStorefrontPreviewScreen({ onNav, onBack, onEditProfile }
                 <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 shrink-0">
                   {whatsapp && (
                     <span className="px-5 py-3 rounded-xl bg-emerald-600 text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-sm w-full sm:w-auto">
-                      <Icon name="chat" className="text-[20px]" />
+                      <Icon name="whatsapp" className="text-[20px]" />
                       <span>WhatsApp</span>
                     </span>
                   )}
                   <span className="px-5 py-3 rounded-xl bg-primary-container text-on-primary-container font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-md w-full sm:w-auto">
-                    <Icon name="forum" className="text-[20px]" />
+                    <Icon name="vemtap-chat-white" className="text-[20px]" />
                     <span>Direct Chat on VEMTAP</span>
                   </span>
                 </div>

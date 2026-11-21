@@ -903,7 +903,7 @@ export function DealTypeConfigurator({
   basePrice: number;
   catalog?: ComboProduct[];
 }) {
-  if (!studio.strategy) return null;
+  if (!studio.strategy || studio.strategy === 'current') return null;
   if (studio.strategy === 'percentage')
     return <PercentagePanel studio={studio} onStudioChange={onStudioChange} basePrice={basePrice} />;
   if (studio.strategy === 'fixed')

@@ -269,7 +269,7 @@ export function DesktopDealAutoImportScreen({
                 <div>
                   <h2 className="font-heading-sm text-heading-sm text-on-surface">Limits &amp; Scarcity Settings</h2>
                   <p className="font-caption text-caption text-text-secondary">
-                    Control kitchen load, table turnarounds, and redemption caps
+                    Control operational load, store turnarounds, and redemption caps
                   </p>
                 </div>
               </div>

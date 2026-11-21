@@ -439,7 +439,7 @@ export function DealDetailScreen({
             onClick={onTerms}
           />
           <NavRow
-            icon="forum"
+            icon="vemtap-chat"
             iconClass="bg-surface-tint-blue text-primary"
             title="In-App Chat"
             subtitle={`Message ${detail.businessName}`}
@@ -447,7 +447,7 @@ export function DealDetailScreen({
           />
           {whatsapp && (
             <NavRow
-              icon="chat"
+              icon="whatsapp"
               iconClass="bg-surface-tint-blue text-[#128C7E]"
               title="WhatsApp"
               subtitle={`Message ${detail.businessName}`}

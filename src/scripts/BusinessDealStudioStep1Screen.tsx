@@ -34,9 +34,11 @@ export function BusinessDealStudioStep1Screen({
   onNext,
   onSaveDraft,
 }: BusinessDealStudioStep1ScreenProps) {
-  const [page, setPage] = useState<'choose' | 'configure'>(studio.strategy ? 'configure' : 'choose');
+  // A current-price deal skips this step; if restored here, send it back to the chooser.
+  const selectedStrategy = studio.strategy === 'current' ? null : studio.strategy;
+  const [page, setPage] = useState<'choose' | 'configure'>(selectedStrategy ? 'configure' : 'choose');
 
-  const activeStrategy = DEAL_TYPE_OPTIONS.find((item) => item.id === studio.strategy);
+  const activeStrategy = DEAL_TYPE_OPTIONS.find((item) => item.id === selectedStrategy);
 
   const activeVariants = getActiveVariants(draft);
   const regularVariant = activeVariants.find((variant) => variant.name === 'Regular') ?? activeVariants[0];
@@ -47,7 +49,7 @@ export function BusinessDealStudioStep1Screen({
   const activeBranchCount = liveBranch.live ? dealBranches.selectedIds.length : Object.values(studio.branches).filter(Boolean).length;
 
   const bundleCatalog: ComboProduct[] = useDealBundleCatalog(draft.title, baseAmount);
-  const configErrors = studio.strategy ? validateDealConfiguration(studio, baseAmount, bundleCatalog) : [];
+  const configErrors = selectedStrategy ? validateDealConfiguration(studio, baseAmount, bundleCatalog) : [];
 
   const chooseStrategy = (id: DealStrategy) => {
     onStudioChange({ strategy: id });
@@ -184,7 +186,7 @@ export function BusinessDealStudioStep1Screen({
             </div>
 
             <div className="px-margin mt-space-sm">
-              <DealTypeSelector selected={studio.strategy} onSelect={chooseStrategy} />
+              <DealTypeSelector selected={selectedStrategy} onSelect={chooseStrategy} />
             </div>
           </>
         )}
@@ -228,11 +230,11 @@ export function BusinessDealStudioStep1Screen({
           <button
             className="w-full h-11 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)] active:scale-[0.98] transition-transform flex items-center justify-center gap-space-2xs disabled:opacity-40 disabled:shadow-none"
             type="button"
-            disabled={!studio.strategy}
+            disabled={!selectedStrategy}
             onClick={openConfigure}
           >
-            <span>{studio.strategy ? 'Continue to Discount Setup' : 'Select a strategy to continue'}</span>
-            {studio.strategy && <Icon name="arrow_forward" className="text-[18px]" />}
+            <span>{selectedStrategy ? 'Continue to Discount Setup' : 'Select a strategy to continue'}</span>
+            {selectedStrategy && <Icon name="arrow_forward" className="text-[18px]" />}
           </button>
           <button
             className="w-full h-9 rounded-xl bg-transparent text-text-secondary font-button-secondary text-button-secondary hover:text-text-primary active:scale-[0.99] transition-transform flex items-center justify-center gap-1"

@@ -1,11 +1,20 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
+import { ImageCropControl } from '../components/media/ImageCropControl';
 import { Icon } from '../components/ui/Icon';
 import { CreateWithAiButton } from '../components/CreateWithAiButton';
 import type { AiPromptContext } from './aiDesignAssistant';
 import type { ProductDraft } from './productDraft';
 import { useLiveItemEditor } from '../hooks/business/useLiveItemEditor';
 import { UserAvatar } from '../components/ui/UserAvatar';
+import {
+  imageFileError,
+  MAX_IMAGE_UPLOAD_MB,
+  MAX_VIDEO_UPLOAD_MB,
+  pickImage,
+  pickAndUploadVideo,
+} from '../services/uploadService';
+import { apiErrorMessage } from '../services/errorMessages';
 
 interface BusinessAddProductImageScreenProps {
   draft: ProductDraft;
@@ -16,49 +25,88 @@ interface BusinessAddProductImageScreenProps {
   onDraftChange?: (patch: Partial<ProductDraft>) => void;
 }
 
-const PRODUCT_IMAGES = [
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDb04jGdHJx6xDCQKaYcqPFlB_pwgrGUJAO1XwYICyWuKFQPwHL7jGKdtmszrrEK5OBpvqwE6Kji3tla0GeIcAREU8WxHUJbyO-m-c6_N0WLDzhuenCDfaWpOARU46_kz9Pvek7HsHfvWwLQ8r2HNp0Ua3VpJYPmIMBxkWrLA8rrklo9NNB8gE7pIF52fHy7bY78AmNm9szf0Hgivl87UUVxp9DG9g9bxBCZSBtc1zwxq7iVhpSklKSTw',
-    alt: 'Gourmet woodfire seared Angus ribeye steak on a rustic slate board, garnished with rosemary sprig and melted garlic herb butter, soft ambient studio lighting, vibrant warm colors, sharp culinary macro photography',
-  },
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBE-0GAPf0QHM1fTcU_AU5WM4JRfGNunDjoBvWC1NwHIyw7Zbc3JTZfKHgxMNTBbbThCbeQKP8UbGZeNph93IHdpwvR4J_ThXQmyP8e66P65AFXyGx4fd266Gs797nS06_4jfAQEPAnYd6B4NluGR5XO-OA3pWEfhzTn43JsD57JLSoWkHoPw3oj-9YBYFYMYxO1jDz4tgMf4neG3K-Dl_zJUYoJNnZ31n2p93nKcj3c5iQ_mcppyuHrg',
-    alt: 'Close up cut of prime grilled Angus ribeye showing medium rare pink tender center, glossy juices, professional food studio lighting',
-  },
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBcPbi3ftjrPgLZdFEyanapeTBLeAVdSN5I8ptOLo2-2njr8Xg2hiazj5oOuplksYKjbyWRkXLd23iwEbjwFCpGfEJ92A5eCxaNnLvpErrRnJHtnujZOF8rTA6RD4ThAP846ccbeSen6rYcAnXWWoA4kRZFJj0xQN_F6EjpokrCrsKvTmKnAFYJYxzRhK__1SmDFAQ9VK5x64A6S-1pfYMoCXq3Db_6DspxxCAoD4RUakg6-zfetdmJkw',
-    alt: 'Side dish of golden crispy roasted rosemary baby potatoes beside seasoned grilled meat in an artisan brass bowl, commercial food photography',
-  },
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuABfg1FQrGRzuijaGj1JTdU-5KcrLmJdd9-u77PwSzNOue1HQZ5sPkZmde_PXTK0kBf98hF960Q31otL-aqj3gFoz3vV_913yeXPHntCFeWYhTgly2UMSe6DbcmOrUy1DQ4VIY82p5O_ogrbABeSIma6-JaMXO6gVIzlDIRZ0qO185p4ARa7wjDPnV2wzrvC6oCBfynH-xQ67-3ihKQZu85qtiarb2OKhC5hpNkyK9VEqjRH38lIU5gYA',
-    alt: 'Chef delicately basting ribeye steak with a melted herb butter rosemary brush over smoking charcoal fire, warm sparks, appetizing culinary scene',
-  },
-];
-
 /**
  * Product image step — runs *after* the details and pricing steps so the AI
  * assistant can build its prompt from everything already entered (name,
- * brand, description, category). The merchant never re-enters product
+ * description, category). The merchant never re-enters product
  * information here; the draft stays mounted in the container meanwhile.
  */
 export function BusinessAddProductImageScreen({ draft, onBack, onNext, onSaveDraft, onDraftChange }: BusinessAddProductImageScreenProps) {
-  // Live: the photo tiles upload a real image into the draft's `mainImage`.
+  // Live: photos are cropped before upload; videos go to the item's `videos` field.
   const editor = useLiveItemEditor('product');
-  const changePhoto = async () => {
-    if (!editor.live || editor.uploading) return;
-    const url = await editor.uploadPhoto();
-    if (url) onDraftChange?.({ mainImage: url });
+  const [pendingPhoto, setPendingPhoto] = useState<{ file: File; target: 'cover' | 'gallery' } | null>(null);
+  const [videoBusy, setVideoBusy] = useState(false);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+
+  const galleryImages = draft.galleryImages ?? [];
+  const totalPhotos = (draft.mainImage ? 1 : 0) + galleryImages.length;
+
+  const pickAndPreparePhoto = async (target: 'cover' | 'gallery') => {
+    if (editor.uploading) return;
+    const file = await pickImage();
+    if (!file) return;
+    const problem = imageFileError(file);
+    if (problem) {
+      setMediaError(problem);
+      return;
+    }
+    setMediaError(null);
+    setPendingPhoto({ file, target });
   };
+
+  const useCroppedPhoto = async (file: File) => {
+    if (!pendingPhoto) return;
+    const target = pendingPhoto.target;
+    const url = await editor.uploadFile(file);
+    if (url) {
+      if (target === 'cover') {
+        onDraftChange?.({ mainImage: url });
+      } else {
+        const next = [...galleryImages, url].slice(0, 4);
+        onDraftChange?.({ galleryImages: next });
+      }
+    }
+    setPendingPhoto(null);
+  };
+
+  const removeCoverPhoto = () => {
+    onDraftChange?.({ mainImage: undefined });
+  };
+
+  const removeGalleryPhoto = (index: number) => {
+    const next = galleryImages.filter((_, i) => i !== index);
+    onDraftChange?.({ galleryImages: next });
+  };
+
+  const addVideo = async () => {
+    if (videoBusy) return;
+    setVideoBusy(true);
+    setMediaError(null);
+    try {
+      const url = await pickAndUploadVideo();
+      if (url) onDraftChange?.({ videos: [...(draft.videos ?? []), url] });
+    } catch (error) {
+      setMediaError(apiErrorMessage(error, 'Could not upload this video.'));
+    } finally {
+      setVideoBusy(false);
+    }
+  };
+
   useEffect(() => {
     if (!editor.uploadError) return;
     const timer = window.setTimeout(editor.clearUploadError, 4000);
     return () => window.clearTimeout(timer);
   }, [editor.uploadError]);
+
+  useEffect(() => {
+    if (!mediaError) return;
+    const timer = window.setTimeout(() => setMediaError(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [mediaError]);
   /** Product facts from the draft — business facts come from setup state. */
   const aiProductContext: AiPromptContext = {
     itemName: draft.title,
     itemDescription: draft.description,
-    brand: draft.unbranded ? undefined : draft.producer,
     category: draft.primaryCategory,
     subcategory: draft.subCategory,
   };
@@ -131,73 +179,148 @@ export function BusinessAddProductImageScreen({ draft, onBack, onNext, onSaveDra
                     Required
                   </span>
                 </h2>
-                <span className="font-caption text-caption text-text-secondary">Up to 6 high-res shots</span>
+                <span className="font-caption text-caption text-text-secondary">
+                  Photos JPG, PNG or WEBP up to {MAX_IMAGE_UPLOAD_MB}MB · videos up to {MAX_VIDEO_UPLOAD_MB}MB
+                </span>
               </div>
-              <span className="font-caption text-caption text-primary flex items-center gap-1 font-medium cursor-pointer">
-                <Icon name="help_outline" className="text-[16px]" />
-                Guidelines
+              <span className="font-label-sm text-label-sm text-primary font-semibold bg-surface-tint-blue px-2 py-0.5 rounded-full">
+                {totalPhotos} of 5 Photos Added
               </span>
             </div>
-            <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-surface-container-low group shadow-inner">
-              {(!editor.live || draft.mainImage) && (
+
+            {draft.mainImage ? (
+              <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-surface-container-low group shadow-inner">
                 <img
-                  alt={editor.live ? draft.title || 'Product photo' : PRODUCT_IMAGES[0].alt}
+                  alt={draft.title || 'Product cover photo'}
                   className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                  src={editor.live ? draft.mainImage : PRODUCT_IMAGES[0].src}
+                  src={draft.mainImage}
                 />
-              )}
-              <div className="absolute top-3 left-3 bg-inverse-surface/85 backdrop-blur-md text-inverse-on-surface px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
-                <Icon className="text-[14px] text-badge-discount-bg" filled name="star" />
-                <span className="font-caption text-caption font-semibold">Cover Photo</span>
+                <div className="absolute top-3 left-3 bg-inverse-surface/85 backdrop-blur-md text-inverse-on-surface px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-sm">
+                  <Icon className="text-[14px] text-badge-discount-bg" filled name="star" />
+                  <span className="font-caption text-caption font-semibold">Cover Photo</span>
+                </div>
+                <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    aria-label="Remove cover photo"
+                    onClick={removeCoverPhoto}
+                    className="w-8 h-8 rounded-full bg-inverse-surface/85 hover:bg-error text-inverse-on-surface flex items-center justify-center transition-colors shadow-sm"
+                  >
+                    <Icon name="close" className="text-[16px]" />
+                  </button>
+                </div>
+                <button
+                  className="absolute bottom-3 right-3 bg-surface-container-lowest/95 backdrop-blur-md text-text-primary hover:text-primary px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-md active:scale-95 transition-all"
+                  type="button"
+                  onClick={() => pickAndPreparePhoto('cover')}
+                >
+                  <Icon name="add_a_photo" className="text-[16px] text-primary" />
+                  <span className="font-label-sm text-label-sm font-semibold">{editor.uploading ? 'Uploading…' : 'Change'}</span>
+                </button>
               </div>
-              <div className="absolute top-3 right-3 bg-surface-container-lowest/90 backdrop-blur-md text-text-primary px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
-                <Icon name="drag_indicator" className="text-[14px]" />
-                <span className="font-caption text-caption font-medium">Drag to arrange</span>
+            ) : (
+              <div className="relative w-full aspect-square rounded-xl border-2 border-dashed border-outline-variant/60 hover:border-primary bg-surface-container-low flex flex-col items-center justify-center p-space-md text-center transition-colors">
+                <div className="w-12 h-12 rounded-full bg-surface-tint-blue text-primary flex items-center justify-center mb-space-xs">
+                  <Icon name="add_a_photo" className="text-[24px]" />
+                </div>
+                <h3 className="font-label-md text-label-md font-semibold text-text-primary mb-1">
+                  Add Cover Photo
+                </h3>
+                <p className="font-caption text-caption text-text-secondary max-w-[220px] mb-space-sm">
+                  Required main product image. JPG, PNG or WEBP up to {MAX_IMAGE_UPLOAD_MB}MB.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => pickAndPreparePhoto('cover')}
+                  className="px-space-md py-space-xs rounded-xl bg-primary text-on-primary font-button-primary text-button-primary shadow-sm hover:shadow-md transition-all flex items-center gap-1.5"
+                >
+                  <Icon name="cloud_upload" className="text-[16px]" />
+                  <span>{editor.uploading ? 'Uploading…' : 'Upload Cover Photo'}</span>
+                </button>
               </div>
-              <button
-                className="absolute bottom-3 right-3 bg-surface-container-lowest/95 backdrop-blur-md text-text-primary hover:text-primary px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-md active:scale-95 transition-all"
-                type="button"
-                onClick={changePhoto}
-              >
-                <Icon name="add_a_photo" className="text-[16px] text-primary" />
-                <span className="font-label-sm text-label-sm font-semibold">{editor.uploading ? 'Uploading…' : 'Change'}</span>
-              </button>
+            )}
+
+            {(editor.uploadError || mediaError) && (
+              <p role="alert" className="rounded-lg bg-error-container px-space-sm py-space-xs font-caption text-caption text-error font-semibold">
+                {editor.uploadError ?? mediaError}
+              </p>
+            )}
+
+            {pendingPhoto && (
+              <ImageCropControl
+                file={pendingPhoto.file}
+                onApply={useCroppedPhoto}
+                onCancel={() => setPendingPhoto(null)}
+              />
+            )}
+
+            <div className="flex flex-col gap-space-2xs mt-1">
+              <div className="flex items-center justify-between">
+                <span className="font-caption text-caption font-medium text-text-secondary">
+                  Gallery Photos ({galleryImages.length} of 4)
+                </span>
+                <span className="font-caption text-[11px] text-text-tertiary">Optional</span>
+              </div>
+              <div className="grid grid-cols-5 gap-space-2xs">
+                {galleryImages.map((src, index) => (
+                  <div
+                    key={`${src}-${index}`}
+                    className="relative aspect-square rounded-lg overflow-hidden bg-surface-container-high shadow-sm ring-1 ring-border-subtle"
+                  >
+                    <img alt={`Gallery photo ${index + 1}`} className="w-full h-full object-cover" src={src} />
+                    <button
+                      type="button"
+                      aria-label={`Remove photo ${index + 1}`}
+                      onClick={() => removeGalleryPhoto(index)}
+                      className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-inverse-surface/85 text-inverse-on-surface hover:bg-error flex items-center justify-center transition-colors"
+                    >
+                      <Icon name="close" className="text-[12px]" />
+                    </button>
+                    <span className="absolute bottom-0.5 left-0.5 bg-inverse-surface/75 text-inverse-on-surface text-[9px] font-bold px-1 rounded">
+                      #{index + 2}
+                    </span>
+                  </div>
+                ))}
+                {galleryImages.length < 4 && (
+                  <button
+                    className="aspect-square rounded-lg bg-surface-container-low hover:bg-surface-tint-blue flex flex-col items-center justify-center text-primary active:scale-95 transition-all border border-dashed border-outline-variant/60"
+                    type="button"
+                    onClick={() => pickAndPreparePhoto('gallery')}
+                  >
+                    <Icon name="add" className="text-[20px]" />
+                    <span className="text-[10px] font-medium text-text-secondary mt-0.5">Add</span>
+                  </button>
+                )}
+                {(draft.videos ?? []).map((video, index) => (
+                  <div
+                    key={`${video}-${index}`}
+                    className="relative aspect-square rounded-lg overflow-hidden bg-surface-container-high shadow-sm"
+                  >
+                    <video src={video} muted playsInline className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      aria-label={`Remove video ${index + 1}`}
+                      onClick={() => onDraftChange?.({ videos: (draft.videos ?? []).filter((_, i) => i !== index) })}
+                      className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-inverse-surface/85 text-inverse-on-surface flex items-center justify-center"
+                    >
+                      <Icon name="close" className="text-[12px]" />
+                    </button>
+                    <span className="absolute bottom-0.5 left-0.5 rounded bg-inverse-surface/80 px-1 text-[9px] font-bold text-inverse-on-surface">
+                      V{index + 1}
+                    </span>
+                  </div>
+                ))}
+                <button
+                  className="aspect-square rounded-lg bg-surface-container-low/60 flex flex-col items-center justify-center text-text-secondary active:scale-95 transition-all border border-dashed border-outline-variant/60"
+                  type="button"
+                  onClick={addVideo}
+                >
+                  <Icon name="videocam" className="text-[18px]" />
+                  <span className="text-[9px] font-medium mt-0.5">{videoBusy ? 'Uploading…' : 'Video'}</span>
+                </button>
+              </div>
             </div>
-            <div className="grid grid-cols-5 gap-space-2xs mt-1">
-              {!editor.live && (
-                <>
-              <div className="relative aspect-square rounded-lg overflow-hidden bg-surface-container-high shadow-sm cursor-pointer ring-2 ring-primary-container">
-                <img alt={PRODUCT_IMAGES[1].alt} className="w-full h-full object-cover" src={PRODUCT_IMAGES[1].src} />
-                <span className="absolute bottom-0.5 left-0.5 bg-inverse-surface/75 text-inverse-on-surface text-[9px] font-bold px-1 rounded">
-                  1
-                </span>
-              </div>
-              <div className="relative aspect-square rounded-lg overflow-hidden bg-surface-container-high shadow-sm cursor-pointer opacity-90 hover:opacity-100 transition-opacity">
-                <img alt={PRODUCT_IMAGES[2].alt} className="w-full h-full object-cover" src={PRODUCT_IMAGES[2].src} />
-                <span className="absolute bottom-0.5 left-0.5 bg-inverse-surface/75 text-inverse-on-surface text-[9px] font-bold px-1 rounded">
-                  2
-                </span>
-              </div>
-              <div className="relative aspect-square rounded-lg overflow-hidden bg-surface-container-high shadow-sm cursor-pointer opacity-90 hover:opacity-100 transition-opacity">
-                <img alt={PRODUCT_IMAGES[3].alt} className="w-full h-full object-cover" src={PRODUCT_IMAGES[3].src} />
-                <span className="absolute bottom-0.5 left-0.5 bg-inverse-surface/75 text-inverse-on-surface text-[9px] font-bold px-1 rounded">
-                  3
-                </span>
-              </div>
-                </>
-              )}
-              <button
-                className="aspect-square rounded-lg bg-surface-container-low hover:bg-surface-container flex flex-col items-center justify-center text-primary active:scale-95 transition-all"
-                type="button"
-                onClick={changePhoto}
-              >
-                <Icon name="add" className="text-[20px]" />
-                <span className="text-[10px] font-medium text-text-secondary mt-0.5">Add</span>
-              </button>
-              <div className="aspect-square rounded-lg bg-surface-container-low/60 flex items-center justify-center text-outline-variant">
-                <Icon name="photo_camera" className="text-[18px]" />
-              </div>
-            </div>
+
             <div className="flex items-start gap-space-xs p-space-sm bg-surface-tint-blue rounded-xl text-primary">
               <Icon className="text-[20px] text-primary-container shrink-0 mt-0.5" filled name="lightbulb" />
               <p className="font-caption text-caption text-on-secondary-container leading-relaxed">
@@ -217,9 +340,8 @@ export function BusinessAddProductImageScreen({ draft, onBack, onNext, onSaveDra
               </h2>
               <p className="font-caption text-caption text-text-secondary mt-1 leading-relaxed">
                 VEMTAP prepares an image prompt from your product name
-                {draft.title ? ` (“${draft.title}”)` : ''}, brand
-                {draft.unbranded ? '' : draft.producer ? ` (${draft.producer})` : ''}, description and category.
-                You can review and edit the prompt before opening ChatGPT or Google Gemini, then upload the
+                {draft.title ? ` (“${draft.title}”)` : ''}, description and category
+                {draft.primaryCategory ? ` (${draft.primaryCategory})` : ''}. You can review and edit the prompt before opening ChatGPT or Google Gemini, then upload the
                 result right here.
               </p>
             </div>

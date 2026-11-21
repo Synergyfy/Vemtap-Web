@@ -60,7 +60,9 @@ export function DesktopDealStudioStep1Screen({
   onSaveDraft,
   onNav,
 }: DesktopDealStudioStep1ScreenProps) {
-  const [page, setPage] = useState<'choose' | 'configure'>(studio.strategy ? 'configure' : 'choose');
+  // A current-price deal skips this step; if restored here, send it back to the chooser.
+  const selectedStrategy = studio.strategy === 'current' ? null : studio.strategy;
+  const [page, setPage] = useState<'choose' | 'configure'>(selectedStrategy ? 'configure' : 'choose');
 
   const activeVariants = getActiveVariants(draft);
   const variantPriceSource =
@@ -79,10 +81,10 @@ export function DesktopDealStudioStep1Screen({
       ? `Runs at ${dealBranches.selected.length} branches`
       : `Runs at ${dealBranches.selected[0]?.name ?? liveBranch.name}`;
   const businessLabel = [business?.name, business?.subcategory?.name ?? business?.category?.name].filter(Boolean).join(' • ');
-  const activeStrategy = DEAL_TYPE_OPTIONS.find((item) => item.id === studio.strategy);
-  const configErrors = studio.strategy ? validateDealConfiguration(studio, basePrice, bundleCatalog) : [];
+  const activeStrategy = DEAL_TYPE_OPTIONS.find((item) => item.id === selectedStrategy);
+  const configErrors = selectedStrategy ? validateDealConfiguration(studio, basePrice, bundleCatalog) : [];
   // Live preview math for whatever type is selected (percentage before a type is chosen).
-  const pricing = resolveDealPricing({ ...studio, strategy: studio.strategy ?? 'percentage' }, basePrice, bundleCatalog);
+  const pricing = resolveDealPricing({ ...studio, strategy: selectedStrategy ?? 'percentage' }, basePrice, bundleCatalog);
 
   const chooseStrategy = (id: DealStrategy) => {
     onStudioChange({ strategy: id });
@@ -264,7 +266,7 @@ export function DesktopDealStudioStep1Screen({
                     Each type opens its own configuration step
                   </span>
                 </div>
-                <DealTypeSelector selected={studio.strategy} onSelect={chooseStrategy} variant="desktop" />
+                <DealTypeSelector selected={selectedStrategy} onSelect={chooseStrategy} variant="desktop" />
               </>
             ) : (
               <div className="bg-surface-canvas rounded-2xl p-space-md shadow-sm">
@@ -377,7 +379,7 @@ export function DesktopDealStudioStep1Screen({
                     </div>
                     <h3 className="font-heading-sm text-heading-sm text-on-surface font-bold">{draft.title}</h3>
                     <p className="font-caption text-caption text-on-surface-variant line-clamp-1">
-                      {studio.strategy
+                      {selectedStrategy
                         ? 'Deal configured in the Deal Studio'
                         : liveBranch.live
                           ? draft.description || 'Pick a discount strategy to preview the deal'
@@ -503,24 +505,24 @@ export function DesktopDealStudioStep1Screen({
             <div className="hidden md:flex flex-col text-right">
               <span className="font-caption text-caption text-on-surface-variant">Selected Strategy:</span>
               <span className="font-label-md text-label-md text-on-surface font-bold">
-                {studio.strategy
+                {selectedStrategy
                   ? `${activeStrategy?.title ?? 'Strategy'} (₦${FORMAT_AMOUNT(pricing.dealPrice)})`
                   : 'No strategy selected yet'}
               </span>
-              {studio.strategy && configErrors.length > 0 && (
+              {selectedStrategy && configErrors.length > 0 && (
                 <span className="font-caption text-caption text-error">{configErrors[0]}</span>
               )}
             </div>
             <button
               type="button"
-              disabled={!studio.strategy || configErrors.length > 0}
+              disabled={!selectedStrategy || configErrors.length > 0}
               onClick={() => {
-                if (studio.strategy && configErrors.length === 0) onNext();
+                if (selectedStrategy && configErrors.length === 0) onNext();
               }}
               className="w-full sm:w-auto px-space-xl py-space-sm rounded-xl bg-primary hover:bg-primary-container text-on-primary font-button-primary text-button-primary shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-space-xs disabled:opacity-40 disabled:shadow-none"
             >
-              <span>{!studio.strategy ? 'Select a deal type to continue' : configErrors.length > 0 ? 'Fix setup to continue' : 'Continue to Limits & Rules'}</span>
-              {studio.strategy && configErrors.length === 0 && <Icon name="arrow_forward" className="text-[20px]" />}
+              <span>{!selectedStrategy ? 'Select a deal type to continue' : configErrors.length > 0 ? 'Fix setup to continue' : 'Continue to Limits & Rules'}</span>
+              {selectedStrategy && configErrors.length === 0 && <Icon name="arrow_forward" className="text-[20px]" />}
             </button>
           </div>
         </div>

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { useCart } from '../../context/CartContext';
+import { BusinessChatBox } from '../../components/BusinessChatBox';
 import { URBAN_PRODUCTS, naira, type CatalogueProduct } from '../catalogueData';
 import { hasApiConfig } from '../../services/api/client';
 import { usePublicBusiness } from '../../hooks/usePublicBusiness';
@@ -11,6 +12,10 @@ interface DesktopAllProductsScreenProps {
   onBack: () => void;
   businessCode?: string;
   onOpenProduct: (productId: string, display?: Partial<CatalogueProduct>) => void;
+  /** Which live catalogue the "See All" page shows. `all` keeps the legacy combined list. */
+  kind?: 'product' | 'service' | 'all';
+  startChat?: boolean;
+  onChatStarted?: (branchId: string) => void;
 }
 
 const CATEGORIES: { key: string; label: string }[] = [
@@ -22,14 +27,20 @@ const CATEGORIES: { key: string; label: string }[] = [
   { key: 'drinks', label: 'Drinks' },
 ];
 
-export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenProduct }: DesktopAllProductsScreenProps) {
+export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenProduct, kind = 'all', startChat, onChatStarted }: DesktopAllProductsScreenProps) {
   const cart = useCart();
   const live = hasApiConfig();
   const publicBusiness = usePublicBusiness(businessCode);
   const [category, setCategory] = useState(() => new URLSearchParams(window.location.search).get('category') ?? 'all');
   const [query, setQuery] = useState('');
+  const [chatOpen, setChatOpen] = useState(Boolean(startChat));
+  const liveItems = [
+    ...(kind === 'service' ? [] : publicBusiness.products),
+    ...(kind === 'product' ? [] : publicBusiness.services),
+  ];
+  const sectionLabel = kind === 'service' ? 'Services' : kind === 'product' ? 'Products' : 'Products & Services';
   const sourceProducts: Array<CatalogueProduct & { kind: 'product' | 'service' }> = live
-    ? [...publicBusiness.products, ...publicBusiness.services].map((item) => ({
+    ? liveItems.map((item) => ({
         id: item.id,
         name: item.name,
         desc: item.description ?? '',
@@ -44,7 +55,7 @@ export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenPr
     ? [
         { key: 'all', label: 'All Items' },
         ...[...new Map(
-          [...publicBusiness.products, ...publicBusiness.services]
+          liveItems
             .filter((item) => item.categoryId || item.category)
             .map((item) => [item.categoryId ?? item.category ?? '', { key: item.categoryId ?? item.category ?? '', label: item.category ?? 'Category' }]),
         ).values()],
@@ -78,7 +89,7 @@ export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenPr
               <span>{live ? publicBusiness.business?.name ?? 'Business' : 'Urban Grill &amp; Bistro'}</span>
             </button>
             <span className="text-outline-variant">/</span>
-            <span className="text-on-surface font-semibold">{live ? 'Store Catalogue' : 'All Products'}</span>
+            <span className="text-on-surface font-semibold">{live ? sectionLabel : 'All Products'}</span>
           </nav>
 
           <div className="flex items-end justify-between gap-4">
@@ -87,27 +98,43 @@ export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenPr
                 {live ? publicBusiness.business?.name ?? 'Business storefront' : 'All Products'}
               </h1>
               <p className="font-body-md text-body-md text-text-secondary">
-                {live ? `Products and services — ${products.length} items.` : `Full Urban Grill & Bistro catalogue — ${products.length} items priced in Nigerian Naira (₦).`}
+                {live ? `${sectionLabel} — ${products.length} items.` : `Full Urban Grill & Bistro catalogue — ${products.length} items priced in Nigerian Naira (₦).`}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => onNav('cart')}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-canvas shadow-sm shrink-0 hover:ring-2 hover:ring-primary-container/30 transition-all"
-            >
-              <div className="relative">
-                <Icon name="shopping_cart" className="text-[18px] text-primary" />
-                {cart.count > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 bg-primary text-on-primary font-caption text-[10px] font-bold rounded-full flex items-center justify-center">
-                    {cart.count}
-                  </span>
-                )}
-              </div>
-              <span className="font-label-md text-label-md text-on-surface font-semibold">
-                {cart.count} {cart.count === 1 ? 'item' : 'items'} · {naira(cart.total)}
-              </span>
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              {live && publicBusiness.business ? (
+                <button
+                  type="button"
+                  aria-pressed={chatOpen}
+                  onClick={() => setChatOpen((open) => !open)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-canvas shadow-sm hover:ring-2 hover:ring-primary-container/30 transition-all"
+                >
+                  <Icon name="vemtap-chat" className="text-[18px] text-primary" />
+                  <span className="font-label-md text-label-md text-on-surface font-semibold">Chat</span>
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => onNav('cart')}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-surface-canvas shadow-sm hover:ring-2 hover:ring-primary-container/30 transition-all"
+              >
+                <div className="relative">
+                  <Icon name="shopping_cart" className="text-[18px] text-primary" />
+                  {cart.count > 0 && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-0.5 bg-primary text-on-primary font-caption text-[10px] font-bold rounded-full flex items-center justify-center">
+                      {cart.count}
+                    </span>
+                  )}
+                </div>
+                <span className="font-label-md text-label-md text-on-surface font-semibold">
+                  {cart.count} {cart.count === 1 ? 'item' : 'items'} · {naira(cart.total)}
+                </span>
+              </button>
+            </div>
           </div>
+          {chatOpen && publicBusiness.business ? (
+            <BusinessChatBox business={publicBusiness.business} onClose={() => setChatOpen(false)} onStarted={onChatStarted} />
+          ) : null}
 
           <div className="flex items-start gap-6">
             <div className="flex-1 min-w-0 flex flex-col gap-6">
@@ -144,7 +171,7 @@ export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenPr
             <span className="font-label-sm text-label-sm text-text-secondary">
               {query.trim() || category !== 'all'
                 ? `Showing ${products.length} matching items`
-                : `Showing all ${products.length} products`}
+                : `Showing all ${products.length} ${kind === 'service' ? 'services' : 'items'}`}
             </span>
           </div>
 
@@ -206,18 +233,7 @@ export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenPr
                           <span className="font-caption text-caption text-text-tertiary line-through">{naira(product.was)}</span>
                         )}
                       </div>
-                        {product.kind === 'service' ? (
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onOpenProduct(product.id, product);
-                            }}
-                            className="h-9 px-4 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold flex items-center gap-1 active:scale-95 transition-all shadow-sm shrink-0"
-                          >
-                            <span>View service</span>
-                          </button>
-                        ) : cart.qtyOf(product.id) === 0 ? (
+                        {cart.qtyOf(product.id) === 0 ? (
                           <button
                             type="button"
                             onClick={(event) => {

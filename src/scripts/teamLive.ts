@@ -1,41 +1,23 @@
 import type { TeamMember } from '../services/teamService';
+import { toPageIds } from './staffPageAccess';
 
 /**
- * Shared mapping between the staff screens' page permissions and the
- * backend's `StaffPermission` values, plus display values for live members.
+ * Shared live-team helpers. Page permission mapping now lives in
+ * `staffPageAccess`, which derives its tree from the business side menu.
  */
-
-/** Each page toggle on the invite/permission screens → backend permissions. */
-export const PAGE_PERMISSIONS: Record<string, string[]> = {
-  overview: ['dashboard'],
-  orders: ['pos:orders'],
-  pos: ['pos'],
-  messages: ['messages'],
-  catalog: ['inventory'],
-  deals: ['marketing'],
-  loyalty: ['visitors:loyalty'],
-  boost: ['discovery'],
-  customers: ['visitors'],
-  staff: ['staff'],
-  locations: ['settings'],
-  profile: ['settings:profile'],
-  analytics: ['analytics'],
-  subscription: ['settings:subscription'],
-  verification: ['settings:compliance'],
-  more: ['settings'],
-};
-
-export const toApiPermissions = (pageIds: string[]) => [
-  ...new Set(pageIds.flatMap((id) => PAGE_PERMISSIONS[id] ?? [])),
-];
-
-/** Page toggles a member's stored permissions switch on. */
-export const toPageIds = (permissions: string[] | null | undefined) => {
-  const granted = new Set(permissions ?? []);
-  return Object.entries(PAGE_PERMISSIONS)
-    .filter(([, needed]) => needed.every((permission) => granted.has(permission)))
-    .map(([id]) => id);
-};
+export {
+  ALL_STAFF_PAGE_IDS,
+  PAGE_PERMISSIONS,
+  STAFF_PAGE_DEFAULTS,
+  STAFF_PAGE_NODE_BY_ID,
+  STAFF_PAGE_TREE,
+  canAccessPage,
+  grantedPageLabels,
+  sessionRoleLabel,
+  toApiPermissions,
+  toPageIds,
+  toPermissionMap,
+} from './staffPageAccess';
 
 /**
  * The backend keeps Manager vs Staff; the chosen preset or custom title is
@@ -60,8 +42,15 @@ export const isOwnerMember = (member: TeamMember) => member.role === 'Owner';
 
 export const isPendingMember = (member: TeamMember) => member.status === 'Invited' || member.status === 'Pending';
 
-export const memberRoleLabel = (member: TeamMember) =>
-  member.jobTitle || member.roleTag || member.role || 'Staff';
+const ROLE_FALLBACKS = new Set(['staff', 'custom']);
+
+/** The owner-assigned label, falling back to `Staff` when no label exists. */
+export const memberRoleLabel = (member: TeamMember) => {
+  if (isOwnerMember(member)) return 'Owner';
+  const label = member.jobTitle || member.roleTag || member.role;
+  if (!label || ROLE_FALLBACKS.has(label.trim().toLowerCase())) return 'Staff';
+  return label.trim();
+};
 
 /** Which directory filter a member belongs under. */
 export const memberRoleGroup = (member: TeamMember): 'owners' | 'managers' | 'cashiers' | 'staff' => {
@@ -70,3 +59,6 @@ export const memberRoleGroup = (member: TeamMember): 'owners' | 'managers' | 'ca
   if (/cashier/i.test(`${member.roleTag ?? ''} ${member.jobTitle ?? ''}`)) return 'cashiers';
   return 'staff';
 };
+
+/** Count of side-menu pages this member's stored permissions unlock. */
+export const memberGrantedPageCount = (member: TeamMember) => toPageIds(member.permissions).length;

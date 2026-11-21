@@ -112,7 +112,8 @@ export function useActivityFeed() {
     enabled,
   });
 
-  const rows = feed.data ?? [];
+  // Product-only rollout: booking activity is never shown.
+  const rows = (feed.data ?? []).filter((row) => row.kind !== 'booking');
   const recent = useMemo<RecentDeal[]>(() => readRecentDeals(userId), [userId, recentTick]);
   const stat = (key: string) => (summary.isSuccess ? String(count(rec(summary.data)[key])) : '—');
 

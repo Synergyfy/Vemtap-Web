@@ -58,3 +58,13 @@ export const offerDiscountLabel = (offer: OfferRecord): string => {
 /** The business's category name from the API, if any. */
 export const offerCategoryLabel = (offer: OfferRecord): string | undefined =>
   firstString(offer.categoryName, asRecord(offer.business).categoryName);
+
+/** Keeps a deals feed on one business's offers (a "See All Deals" page). */
+export const offerMatchesBusiness = (offer: OfferRecord, code?: string | null): boolean => {
+  if (!code) return true;
+  const business = asRecord(offer.business);
+  const wanted = code.toLowerCase();
+  return [business.uniqueCode, business.slug, offer.businessCode, business.code]
+    .some((value) => typeof value === 'string' && value.toLowerCase() === wanted)
+    || (typeof business.id === 'string' && business.id === code);
+};

@@ -298,7 +298,7 @@ export function BusinessPosDisplayReceiptScreen({ onBack, onDone }: BusinessPosD
               }}
             />
             <div className="flex items-center gap-space-2xs min-w-0 flex-1">
-              <Icon name="chat" className="text-[18px] text-badge-discount-text" />
+              <Icon name="whatsapp" className="text-[18px] text-badge-discount-text" />
               <span className="font-label-sm text-label-sm text-text-primary font-medium truncate">
                 WhatsApp ({live ? receipt.sale?.customer?.phone || 'no phone on file' : '+234 803 219 8831'})
               </span>

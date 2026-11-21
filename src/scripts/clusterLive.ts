@@ -347,30 +347,34 @@ export function useLiveClusterBoost() {
   const assets = useEligibleAssets();
   const sponsored = useSponsoredCampaigns();
   const wallet = useAdWallet();
+  const business = useMyBusiness();
   const queryClient = useQueryClient();
   const current = cluster.state.currentCluster;
   const shown = new Map(cluster.state.showcaseItems.map((item) => [item.id, item.showInCluster]));
   const helpers = liveBoostHelpers(sponsored.data ?? []);
 
-  const eligibleItems: ClusterShowcaseItem[] = (assets.data ?? []).map((asset) => ({
-    id: asset.id,
-    clusterId: current?.id ?? '',
-    businessId: 'self',
-    businessName: '',
-    entityType: asset.type,
-    title: asset.title,
-    price: Number(asset.price) || 0,
-    oldPrice: asset.wasPrice ? Number(asset.wasPrice) : undefined,
-    image: asset.image || NO_IMAGE,
-    category: asset.type,
-    status: shown.get(asset.id) === false ? 'hidden' : 'in_rotator',
-    showInCluster: shown.get(asset.id) ?? asset.type === 'profile',
-    views: 0,
-    impressions: 0,
-    clicks: 0,
-    submittedAt: '',
-    expiresAt: '',
-  }));
+  const eligibleItems: ClusterShowcaseItem[] = (assets.data ?? []).map((asset) => {
+    const isProfile = asset.type === 'profile';
+    return {
+      id: asset.id,
+      clusterId: current?.id ?? '',
+      businessId: business.data?.id ?? 'self',
+      businessName: business.data?.name || (isProfile ? 'Urban Grill & Bistro' : ''),
+      entityType: asset.type,
+      title: isProfile ? (business.data?.name ? `${business.data.name} — Storefront Profile` : asset.title) : asset.title,
+      price: Number(asset.price) || 0,
+      oldPrice: asset.wasPrice ? Number(asset.wasPrice) : undefined,
+      image: isProfile ? (business.data?.logoUrl || business.data?.coverImage || asset.image || NO_IMAGE) : (asset.image || NO_IMAGE),
+      category: isProfile ? (business.data?.category?.name || asset.type) : asset.type,
+      status: shown.get(asset.id) === false ? 'hidden' : 'in_rotator',
+      showInCluster: shown.get(asset.id) ?? asset.type === 'profile',
+      views: 0,
+      impressions: 0,
+      clicks: 0,
+      submittedAt: '',
+      expiresAt: '',
+    };
+  });
 
   const capacity: ClusterBoostCapacity = {
     maxBoostSlots: 0,

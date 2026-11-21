@@ -11,11 +11,14 @@ import { SendInviteDialog } from '../components/customers/SendInviteDialog';
 import { downloadCsv } from '../utils/exportCsv';
 import { hasApiConfig } from '../services/api/client';
 import { apiErrorMessage } from '../services/errorMessages';
-import type { CustomerCard } from '../services/businessCustomersService';
+import type { CustomerCard, CustomerSegment } from '../services/businessCustomersService';
 import { useBusinessCustomers } from '../hooks/business/useBusinessCustomers';
+import { useSegments, useSegmentMutations } from '../hooks/business/useSegments';
+import type { SegmentCriteria, SegmentSummary } from '../services/types';
 import {
   customerContact,
   customerName,
+  customerSpend,
   exportCustomers,
   lastInteractionLabel,
   plural,
@@ -34,14 +37,12 @@ interface BusinessCustomersScreenProps {
   onPreviewInvite?: (url: string) => void;
 }
 
-type CrmFilterKey = 'all' | 'frequent' | 'returning' | 'new' | 'inactive';
+type CrmFilterKey = 'all' | 'returning' | 'new' | string;
 
-const CRM_FILTERS: { key: CrmFilterKey; label: string; count: string; icon?: string }[] = [
-  { key: 'all', label: 'All', count: '482' },
-  { key: 'frequent', label: 'Frequent', count: '76', icon: 'stars' },
-  { key: 'returning', label: 'Returning', count: '124' },
-  { key: 'new', label: 'New', count: '38' },
-  { key: 'inactive', label: 'Inactive', count: '42' },
+const BASE_CRM_FILTERS: { key: string; label: string; icon?: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'returning', label: 'Returning', icon: 'repeat' },
+  { key: 'new', label: 'New', icon: 'fiber_new' },
 ];
 
 interface CustomerRow {
@@ -60,6 +61,10 @@ interface CustomerRow {
   historyParts: { text: string; strong: string; strongClass: string }[];
   category: string;
   userId?: string;
+  visits?: number;
+  orders?: number;
+  spend?: number;
+  points?: number;
 }
 
 const CUSTOMERS: CustomerRow[] = [
@@ -201,7 +206,30 @@ const liveRow = (card: CustomerCard): CustomerRow => {
       { text: 'Last: ', strong: lastInteractionLabel(card), strongClass: 'text-primary font-medium' },
     ],
     category: card.segment,
+    visits: card.visits,
+    orders: card.orders,
+    spend: customerSpend(card),
+    points: card.pointsBalance ?? undefined,
   };
+};
+
+const isRowInCustomSegment = (row: CustomerRow, seg?: SegmentSummary): boolean => {
+  if (!seg) return true;
+  const nameLower = seg.name.toLowerCase();
+  const criteria = seg.criteria;
+  const minSpend = criteria?.spend?.minTotal;
+  const minVisits = criteria?.recency?.minVisits;
+  const minPoints = criteria?.loyalty?.minPoints;
+
+  if (minSpend && (row.spend ?? 0) >= minSpend) return true;
+  if (minPoints && (row.points ?? 0) >= minPoints) return true;
+  if (minVisits && (row.visits ?? 0) >= minVisits) return true;
+
+  if (nameLower.includes('vip') && (row.tierLabel.toLowerCase().includes('vip') || row.category === 'vip')) return true;
+  if (nameLower.includes('loyalty') && ((row.points ?? 0) > 0 || row.tierLabel.toLowerCase().includes('loyalty'))) return true;
+  if (nameLower.includes('frequent') && (row.tierLabel.toLowerCase().includes('frequent') || row.category === 'frequent')) return true;
+
+  return row.tierLabel.toLowerCase().includes(nameLower) || row.category.toLowerCase().includes(nameLower);
 };
 
 export function BusinessCustomersScreen({
@@ -214,9 +242,21 @@ export function BusinessCustomersScreen({
   const isDesktop = useIsDesktop();
   const live = hasApiConfig();
   const { search: searchContacts } = useContacts();
-  const [filter, setFilter] = useState<CrmFilterKey>(live ? 'all' : 'frequent');
+  const segmentsQuery = useSegments();
+  const segmentMutations = useSegmentMutations();
+  const customSegments = segmentsQuery.data ?? [];
+
+  const [createSegmentOpen, setCreateSegmentOpen] = useState(false);
+  const [segmentName, setSegmentName] = useState('');
+  const [segmentType, setSegmentType] = useState<'vip' | 'loyalty' | 'frequent' | 'custom'>('vip');
+  const [segmentDescription, setSegmentDescription] = useState('');
+  const [segmentCreating, setSegmentCreating] = useState(false);
+
+  const [filter, setFilter] = useState<CrmFilterKey>('all');
   const [search, setSearch] = useState('');
-  const customers = useBusinessCustomers({ search: search.trim() || undefined, segment: filter, sort: 'recent', limit: 50 });
+  const liveSegment: CustomerSegment =
+    filter === 'returning' || filter === 'new' ? (filter as CustomerSegment) : 'all';
+  const customers = useBusinessCustomers({ search: search.trim() || undefined, segment: liveSegment, sort: 'recent', limit: 50 });
   const counts = customers.data?.meta.segmentCounts;
   const insight = customers.data?.meta.insight;
   const [drawerCustomer, setDrawerCustomer] = useState<string | null>(null);
@@ -236,6 +276,33 @@ export function BusinessCustomersScreen({
   const [newPoints, setNewPoints] = useState('100');
   const [consentGranted, setConsentGranted] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+
+  const handleCreateSegment = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!segmentName.trim()) return;
+    setSegmentCreating(true);
+    try {
+      const criteria: SegmentCriteria = {};
+      if (segmentType === 'vip') criteria.spend = { minTotal: 100000 };
+      else if (segmentType === 'loyalty') criteria.loyalty = { minPoints: 500 };
+      else if (segmentType === 'frequent') criteria.recency = { minVisits: 5 };
+
+      await segmentMutations.create.mutateAsync({
+        name: segmentName.trim(),
+        description: segmentDescription.trim() || undefined,
+        criteria,
+      });
+      showToast(`Segment "${segmentName.trim()}" created successfully!`);
+      setSegmentName('');
+      setSegmentDescription('');
+      setSegmentType('vip');
+      setCreateSegmentOpen(false);
+    } catch (err) {
+      showToast(apiErrorMessage(err, 'Failed to create segment. Please try again.'));
+    } finally {
+      setSegmentCreating(false);
+    }
+  };
 
   useEffect(
     () => () => {
@@ -320,8 +387,12 @@ export function BusinessCustomersScreen({
     closeManualSheet();
   };
 
+  const selectedCustomSeg = customSegments.find((s) => s.id === filter);
   const visibleCustomers = (() => {
-    if (live) return (customers.data?.data ?? []).map(liveRow);
+    if (live) {
+      const rows = (customers.data?.data ?? []).map(liveRow);
+      return selectedCustomSeg ? rows.filter((r) => isRowInCustomSegment(r, selectedCustomSeg)) : rows;
+    }
     // BUG-017: purchase-derived contacts first, deduped against the seeded
     // CRM rows by name so a returning patron never appears twice.
     const purchaseRows: CustomerRow[] = searchContacts(search).map((contact) => ({
@@ -353,23 +424,46 @@ export function BusinessCustomersScreen({
           strongClass: 'text-primary font-medium',
         },
       ],
-      category: 'frequent',
+      category: contact.orderCount > 1 ? 'returning' : 'new',
+      visits: contact.orderCount,
+      orders: contact.orderCount,
+      spend: contact.totalSpend,
     }));
 
     const seededRows = CUSTOMERS.filter((customer) => {
       if (purchaseRows.some((row) => row.name.toLowerCase() === customer.name.toLowerCase())) return false;
       if (addedRows.some((row) => row.name.toLowerCase() === customer.name.toLowerCase())) return false;
-      const matchesFilter = filter === 'all' || customer.category === filter;
+      const matchesFilter =
+        filter === 'all'
+          ? true
+          : filter === 'returning'
+            ? customer.category === 'returning' || (customer.visits ?? 0) > 1
+            : filter === 'new'
+              ? customer.category === 'new' || (customer.visits ?? 0) <= 1
+              : isRowInCustomSegment(customer, selectedCustomSeg);
       const matchesQuery =
         search.trim() === '' || customer.name.toLowerCase().includes(search.trim().toLowerCase());
       return matchesFilter && matchesQuery;
     });
 
     const filterPurchaseRows =
-      filter === 'all' || filter === 'frequent' ? purchaseRows : [];
+      filter === 'all'
+        ? purchaseRows
+        : filter === 'returning'
+          ? purchaseRows.filter((r) => (r.orders ?? 0) > 1)
+          : filter === 'new'
+            ? purchaseRows.filter((r) => (r.orders ?? 0) <= 1)
+            : purchaseRows.filter((r) => isRowInCustomSegment(r, selectedCustomSeg));
 
     const addedVisible = addedRows.filter((row) => {
-      const matchesFilter = filter === 'all' || row.category === filter;
+      const matchesFilter =
+        filter === 'all'
+          ? true
+          : filter === 'returning'
+            ? row.category === 'returning'
+            : filter === 'new'
+              ? row.category === 'new'
+              : isRowInCustomSegment(row, selectedCustomSeg);
       const matchesQuery = search.trim() === '' || row.name.toLowerCase().includes(search.trim().toLowerCase());
       return matchesFilter && matchesQuery;
     });
@@ -445,8 +539,14 @@ export function BusinessCustomersScreen({
         {/* Filter Chips */}
         <div className="w-full bg-surface-canvas px-margin py-space-sm shadow-sm">
           <div className="flex items-center gap-space-xs overflow-x-auto no-scrollbar py-1">
-            {CRM_FILTERS.map((crmFilter) => {
+            {BASE_CRM_FILTERS.map((crmFilter) => {
               const active = filter === crmFilter.key;
+              const countVal =
+                crmFilter.key === 'all'
+                  ? live ? (counts?.all ?? visibleCustomers.length) : visibleCustomers.length
+                  : crmFilter.key === 'returning'
+                    ? (counts?.returning ?? '—')
+                    : (counts?.new ?? '—');
               return (
                 <button
                   className={`flex items-center gap-1 px-2.5 py-1 rounded-full font-label-sm text-label-sm whitespace-nowrap transition-all ${
@@ -465,11 +565,50 @@ export function BusinessCustomersScreen({
                       active ? 'bg-white/20' : 'bg-surface-canvas text-text-secondary'
                     }`}
                   >
-                    {live ? (counts?.[crmFilter.key] ?? '—') : crmFilter.count}
+                    {countVal}
                   </span>
                 </button>
               );
             })}
+
+            {/* User Custom Segments */}
+            {customSegments.map((seg) => {
+              const active = filter === seg.id;
+              return (
+                <button
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full font-label-sm text-label-sm whitespace-nowrap transition-all ${
+                    active
+                      ? 'bg-primary-container text-on-primary-container shadow-sm'
+                      : 'text-text-secondary bg-surface-container-low hover:bg-surface-container-high'
+                  }`}
+                  key={seg.id}
+                  type="button"
+                  onClick={() => setFilter(seg.id)}
+                >
+                  <Icon name="label" className="text-[14px]" />
+                  <span>{seg.name}</span>
+                  {seg.size !== undefined && (
+                    <span
+                      className={`font-caption text-caption px-1.5 rounded-full ${
+                        active ? 'bg-white/20' : 'bg-surface-canvas text-text-secondary'
+                      }`}
+                    >
+                      {seg.size}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+
+            {/* + Add Segment Button */}
+            <button
+              type="button"
+              onClick={() => setCreateSegmentOpen(true)}
+              className="flex items-center gap-1 px-3 py-1 rounded-full font-label-sm text-label-sm whitespace-nowrap border border-dashed border-primary/50 text-primary hover:bg-primary/5 transition-all shrink-0"
+            >
+              <Icon name="add" className="text-[14px]" />
+              <span>Add Segment</span>
+            </button>
           </div>
         </div>
 
@@ -497,7 +636,7 @@ export function BusinessCustomersScreen({
               type="button"
               onClick={() => {
                 if (live) {
-                  exportCustomers({ search: search.trim() || undefined, segment: filter, sort: 'recent' })
+                  exportCustomers({ search: search.trim() || undefined, segment: liveSegment, sort: 'recent' })
                     .then((records) => showToast(`Exported ${records} patron records (CSV)`))
                     .catch((error) => showToast(apiErrorMessage(error, 'Could not export your customers.')));
                   return;
@@ -943,6 +1082,96 @@ export function BusinessCustomersScreen({
             >
               <Icon name="save" className="text-[17px]" />
               <span>Save Customer</span>
+            </button>
+          </div>
+        </form>
+      </SheetShell>
+
+      {/* Create Customer Segment Sheet (Mobile) */}
+      <SheetShell
+        open={createSegmentOpen}
+        onClose={() => setCreateSegmentOpen(false)}
+      >
+        <div className="w-full flex justify-center pt-3 pb-1">
+          <div className="w-12 h-1.5 rounded-full bg-surface-dim" />
+        </div>
+        <div className="px-margin pb-space-sm">
+          <h3 className="font-heading-sm text-heading-sm text-on-surface">Create Customer Segment</h3>
+        </div>
+        <form onSubmit={handleCreateSegment} className="flex flex-col gap-4 p-4">
+          <div>
+            <label className="text-xs font-semibold text-text-secondary uppercase">Segment Name</label>
+            <input
+              type="text"
+              placeholder="e.g. VIP Patrons, Loyalty Champions"
+              value={segmentName}
+              onChange={(e) => setSegmentName(e.target.value)}
+              className="w-full mt-1 px-3 py-2 border border-border-subtle rounded-xl text-sm bg-surface-canvas text-on-surface"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-text-secondary uppercase">Segment Target Group</label>
+            <div className="grid grid-cols-2 gap-2 mt-1">
+              {[
+                { id: 'vip', label: 'VIP (High Spend)', desc: 'Min ₦100,000 spend' },
+                { id: 'loyalty', label: 'Loyalty Club', desc: '500+ points' },
+                { id: 'frequent', label: 'Frequent Visitors', desc: '5+ visits' },
+                { id: 'custom', label: 'Custom Group', desc: 'Custom tag' },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setSegmentType(item.id as any)}
+                  className={`p-2.5 rounded-xl border text-left flex flex-col justify-between transition-all ${
+                    segmentType === item.id
+                      ? 'border-primary bg-primary/5 text-primary'
+                      : 'border-border-subtle bg-surface-container-low text-on-surface'
+                  }`}
+                >
+                  <span className="font-semibold text-xs">{item.label}</span>
+                  <span className="text-[10px] text-text-secondary mt-0.5">{item.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-text-secondary uppercase">Description (Optional)</label>
+            <textarea
+              placeholder="Brief description of this customer group..."
+              value={segmentDescription}
+              onChange={(e) => setSegmentDescription(e.target.value)}
+              rows={2}
+              className="w-full mt-1 px-3 py-2 border border-border-subtle rounded-xl text-sm bg-surface-canvas text-on-surface resize-none"
+            />
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setCreateSegmentOpen(false)}
+              className="flex-1 py-2.5 rounded-xl border border-border-subtle text-text-secondary font-medium text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!segmentName.trim() || segmentCreating}
+              className="flex-[2] py-2.5 rounded-xl bg-primary text-on-primary font-semibold text-sm disabled:opacity-50 flex items-center justify-center gap-1.5"
+            >
+              {segmentCreating ? (
+                <>
+                  <Icon name="progress_activity" className="animate-spin text-[16px]" />
+                  <span>Creating...</span>
+                </>
+              ) : (
+                <>
+                  <Icon name="group_add" className="text-[16px]" />
+                  <span>Create Segment</span>
+                </>
+              )}
             </button>
           </div>
         </form>

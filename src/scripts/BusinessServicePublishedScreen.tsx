@@ -5,10 +5,12 @@ import { Icon } from '../components/ui/Icon';
 import type { ServiceDraft } from './serviceDraft';
 import { NO_ITEM_IMAGE, draftImageAlt } from './desktop/draftImage';
 import { UserAvatar } from '../components/ui/UserAvatar';
+import { DealPriceChoiceModal } from './deals/DealPriceChoiceModal';
+import type { DealPriceChoice } from './deals/dealStudioShared';
 
 interface BusinessServicePublishedScreenProps {
   draft: ServiceDraft;
-  onMakeDeal: () => void;
+  onMakeDeal: (choice: DealPriceChoice) => void;
   onViewCatalog: () => void;
   onAddAnother: () => void;
 }
@@ -20,6 +22,7 @@ export function BusinessServicePublishedScreen({
   onAddAnother,
 }: BusinessServicePublishedScreenProps) {
   const [status, setStatus] = useState<'live' | 'draft'>('live');
+  const [priceChoiceOpen, setPriceChoiceOpen] = useState(false);
   const isLive = status === 'live';
   // Live: the merchant's real branches backing the locations chosen at publish time.
   const { branches: liveBranches } = useBusinessBranch();
@@ -167,7 +170,7 @@ export function BusinessServicePublishedScreen({
 
           <div className="w-full rounded-xl bg-surface-tint-blue p-space-md flex items-start gap-space-sm">
             <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-primary mt-0.5">
-              <Icon name="notifications_active" className="text-[20px]" />
+              <Icon name="whatsapp" className="text-[20px]" />
             </div>
             <div className="flex flex-col space-y-1">
               <h4 className="font-label-md text-label-md font-semibold text-primary">Live Bookings Enabled</h4>
@@ -208,7 +211,7 @@ export function BusinessServicePublishedScreen({
             <button
               className="w-full h-13 min-h-[52px] rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-space-xs shadow-lg shadow-primary-container/20 active:scale-[0.98] transition-all"
               type="button"
-              onClick={onMakeDeal}
+              onClick={() => setPriceChoiceOpen(true)}
             >
               <span>Make as a Deal 🔥</span>
               <Icon name="arrow_forward" className="text-[20px]" />
@@ -237,6 +240,17 @@ export function BusinessServicePublishedScreen({
           </div>
         </div>
       </div>
+
+      <DealPriceChoiceModal
+        open={priceChoiceOpen}
+        itemName={draft.title}
+        priceLabel={lowPrice || undefined}
+        onClose={() => setPriceChoiceOpen(false)}
+        onChoose={(choice) => {
+          setPriceChoiceOpen(false);
+          onMakeDeal(choice);
+        }}
+      />
     </AppScreen>
   );
 }

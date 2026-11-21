@@ -244,7 +244,18 @@ export function useOnboardingSync() {
         await queryClient.invalidateQueries({ queryKey: catalogueItemKeys.all });
       }, () => next(saved));
     },
-    saveLocation: (location: { address?: string; city?: string; state?: string; latitude?: number; longitude?: number }, next: () => void) =>
+    saveLocation: (
+      location: {
+        branchName?: string;
+        address?: string;
+        district?: string;
+        city?: string;
+        state?: string;
+        latitude?: number;
+        longitude?: number;
+      },
+      next: () => void,
+    ) =>
       saveThen(async () => {
         await patch(location);
         // Typed addresses have no GPS fix: let the backend geocode it so the

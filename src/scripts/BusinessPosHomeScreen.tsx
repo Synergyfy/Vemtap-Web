@@ -6,6 +6,7 @@ import { apiErrorMessage } from '../services/errorMessages';
 import { formatRelativeTime } from '../utils/format';
 import { naira, useLivePos } from './posLive';
 import { useRegisterShift } from './useRegisterShift';
+import { cleanPosBusinessName, drawerDateTime, drawerMoney } from './posDrawerFormat';
 
 interface BusinessPosHomeScreenProps {
   initialOffline?: boolean;
@@ -105,7 +106,7 @@ export function BusinessPosHomeScreen({
   const lastSync = pos.offline.lastSyncedAt ? formatRelativeTime(new Date(pos.offline.lastSyncedAt).toISOString()) : 'never';
   const expectedCash = pos.zReport?.expectedCash != null ? Number(pos.zReport.expectedCash) : null;
   const identity = live
-    ? `${branch.area || branch.name} · ${pos.isOpen ? pos.tillName : 'No till open'} · ${pos.cashierName}`
+    ? `${branch.area || branch.name} · ${pos.isOpen ? pos.tillName : 'No register open'} · ${pos.cashierName}`
     : null;
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -128,33 +129,6 @@ export function BusinessPosHomeScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pos.error]);
 
-  /** Live: a sale needs an open register on a till. */
-  const startSale = () => {
-    if (live && !pos.isOpen) {
-      showToast('Open a till first — pick one in Switch Branch & Till.');
-      onSwitchTill();
-      return;
-    }
-    onNewSale();
-  };
-
-  /** Live: the drawer button closes the open register (end of shift). */
-  const closeDrawer = () => {
-    if (!pos.isOpen) {
-      showToast('No register is open. Open a till from Switch Branch & Till.');
-      return;
-    }
-    if (!window.confirm(`Close the register on ${pos.tillName} and end this shift?`)) return;
-    pos.mutations.closeRegister.mutate(
-      {},
-      {
-        onSuccess: (session) =>
-          showToast(`Register closed · ${naira(Number(session.totalSales) || 0)} in ${session.transactionCount ?? 0} sales`),
-        onError: (error) => showToast(apiErrorMessage(error, 'Could not close the register.')),
-      },
-    );
-  };
-
   const {
     registerOpen,
     openingFloat,
@@ -174,11 +148,46 @@ export function BusinessPosHomeScreen({
     setCountedCashInput,
     closeNotes,
     setCloseNotes,
+    drawerHistory,
     lastZReport,
     busy,
     confirmOpen,
     confirmClose,
   } = useRegisterShift(pos, showToast);
+
+  const [pendingSale, setPendingSale] = useState(false);
+  const [showDrawerHistory, setShowDrawerHistory] = useState(false);
+
+  /** Live: a sale needs an open register. */
+  const startSale = () => {
+    if ((live && !pos.isOpen) || (!live && !registerOpen)) {
+      setPendingSale(true);
+      setOpenRegisterModal(true);
+      showToast('Set the initial drawer float to open the cash register.');
+      return;
+    }
+    onNewSale();
+  };
+
+  /** Live: the drawer button closes the open register (end of shift). */
+  const closeDrawer = () => {
+    if (!pos.isOpen) {
+      showToast('No register is open. Open a register from Switch Branch & Register.');
+      return;
+    }
+    if (!window.confirm(`Close the register on ${pos.tillName} and end this shift?`)) return;
+    const answer = window.prompt('Counted cash left in the drawer (₦)', String(expectedCashInDrawer));
+    if (answer === null) return;
+    const countedCash = Number(answer.replace(/[^\d.]/g, '')) || expectedCashInDrawer;
+    pos.mutations.closeRegister.mutate(
+      { countedCash },
+      {
+        onSuccess: (session) =>
+          showToast(`Register closed · ${naira(Number(session.totalSales) || 0)} in ${session.transactionCount ?? 0} sales`),
+        onError: (error) => showToast(apiErrorMessage(error, 'Could not close the register.')),
+      },
+    );
+  };
 
   const hardwareSoon = () => showToast('Hardware status is coming soon.');
 
@@ -281,9 +290,9 @@ export function BusinessPosHomeScreen({
                     <Icon name="storefront" className="text-primary text-[20px]" />
                   </span>
                   <div className="flex flex-col min-w-0">
-                    <span className="font-label-sm text-label-sm text-on-surface truncate">{live ? pos.businessName : 'Urban Grill & Bistro'}</span>
+                    <span className="font-label-sm text-label-sm text-on-surface truncate">{live ? cleanPosBusinessName(pos.businessName, pos.branchName) : 'Urban Grill & Bistro'}</span>
                     <span className="font-caption text-caption text-text-secondary truncate">
-                      {identity ?? `${branch.area} · Till 01 · Emeka O.`}
+                      {identity ?? `${branch.area} · Register 01 · Emeka O.`}
                     </span>
                   </div>
                 </div>
@@ -443,9 +452,9 @@ export function BusinessPosHomeScreen({
                     <Icon name="restaurant" className="text-on-primary text-[20px]" />
                   </span>
                   <div className="flex flex-col min-w-0">
-                    <span className="font-label-sm text-label-sm text-on-surface truncate">{live ? pos.businessName : 'Urban Grill & Bistro'}</span>
+                    <span className="font-label-sm text-label-sm text-on-surface truncate">{live ? cleanPosBusinessName(pos.businessName, pos.branchName) : 'Urban Grill & Bistro'}</span>
                     <span className="font-caption text-caption text-text-secondary truncate">
-                      {identity ?? `${branch.area} · Till 01 · Emeka O. (Cashier)`}
+                      {identity ?? `${branch.area} · Register 01 · Emeka O. (Cashier)`}
                     </span>
                   </div>
                 </div>
@@ -541,7 +550,7 @@ export function BusinessPosHomeScreen({
                 ) : (
                   <div className="flex flex-col gap-2 py-1">
                     <p className="font-caption text-[11px] text-text-secondary leading-relaxed">
-                      Register is closed for this till. Count and record your opening drawer cash float to start a new shift.
+                      Register is closed. Count and record your opening drawer cash float to start a new shift.
                     </p>
                     {lastZReport && (
                       <span className="font-caption text-[10px] text-badge-discount-text font-medium">
@@ -556,6 +565,46 @@ export function BusinessPosHomeScreen({
                       <Icon name="point_of_sale" className="text-[18px]" />
                       <span>Open Register &amp; Start Shift</span>
                     </button>
+                  </div>
+                )}
+                {live && (
+                  <div className="pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowDrawerHistory((current) => !current)}
+                      className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl border border-border-subtle text-text-primary"
+                    >
+                      <span className="text-[12px] font-semibold flex items-center gap-1.5">
+                        <Icon name="history" className="text-[16px] text-primary" />
+                        Drawer Records
+                      </span>
+                      <Icon name={showDrawerHistory ? 'expand_less' : 'expand_more'} className="text-[17px] text-text-secondary" />
+                    </button>
+                    {showDrawerHistory && (
+                      <div className="mt-1.5 max-h-40 overflow-y-auto rounded-xl border border-border-subtle divide-y divide-border-subtle">
+                        {drawerHistory.data?.length ? (
+                          drawerHistory.data.map((record) => (
+                            <div key={record.id} className="px-2.5 py-1.5 flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <span className="block text-[11px] text-text-primary font-medium">
+                                  {record.cashierName} · {drawerDateTime(record.openedAt)}
+                                </span>
+                                <span className="block text-[10px] text-text-secondary">
+                                  Opened {drawerMoney(record.openingCash)} · Closed {record.countedCash != null ? drawerMoney(record.countedCash) : 'Not counted'}
+                                </span>
+                              </div>
+                              <span className={`text-[10px] font-semibold ${record.status === 'open' ? 'text-primary' : 'text-text-secondary'}`}>
+                                {record.status === 'open' ? 'Open' : 'Closed'}
+                              </span>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="px-2.5 py-2 text-[11px] text-text-secondary">
+                            {drawerHistory.isLoading ? 'Loading drawer records…' : 'No drawer records yet.'}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -631,8 +680,8 @@ export function BusinessPosHomeScreen({
               />
               <ControlRow
                 icon="swap_horiz"
-                title="Switch Branch & Till"
-                meta={`Active: ${branch.shortName} · ${live ? pos.tillName : 'Till 01'}`}
+                title="Switch Branch & Register"
+                meta={`Active: ${branch.shortName} · ${live ? pos.tillName : 'Register 01'}`}
                 trailing={<Icon name="chevron_right" className="text-[18px]" />}
                 onClick={onSwitchTill}
               />
@@ -716,6 +765,26 @@ export function BusinessPosHomeScreen({
               </button>
             </div>
 
+            {expectedCashInDrawer > 0 ? (
+              <div className="p-2.5 rounded-xl bg-surface-container-low border border-border-subtle flex items-center justify-between text-[12px]">
+                <div className="flex items-center gap-1.5">
+                  <Icon name="payments" className="text-primary text-[18px]" />
+                  <span className="text-text-secondary">Current Money in Drawer:</span>
+                </div>
+                <strong className="text-text-primary font-bold">₦{expectedCashInDrawer.toLocaleString()}</strong>
+              </div>
+            ) : (
+              <div className="p-2.5 rounded-xl bg-surface-tint-blue border border-primary/20 text-[11px] text-primary space-y-0.5">
+                <p className="font-semibold flex items-center gap-1 text-[12px]">
+                  <Icon name="info" className="text-[15px]" />
+                  <span>Set Starting Cash Drawer Float</span>
+                </p>
+                <p className="text-text-secondary leading-tight">
+                  Count the physical cash in your drawer and enter it below before starting shift transactions.
+                </p>
+              </div>
+            )}
+
             <div className="flex flex-col gap-2">
               <label className="font-caption text-[11px] text-text-secondary">Opening Cash Drawer Float (₦)</label>
               <div className="relative">
@@ -747,14 +816,22 @@ export function BusinessPosHomeScreen({
             <div className="grid grid-cols-2 gap-2 pt-1">
               <button
                 type="button"
-                onClick={() => setOpenRegisterModal(false)}
+                onClick={() => {
+                  setOpenRegisterModal(false);
+                  setPendingSale(false);
+                }}
                 className="h-10 rounded-xl bg-surface-container text-text-secondary text-[12px] font-semibold"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={() => void confirmOpen()}
+                onClick={() => void confirmOpen(() => {
+                  if (pendingSale) {
+                    setPendingSale(false);
+                    onNewSale();
+                  }
+                })}
                 disabled={busy}
                 className="h-10 rounded-xl bg-primary text-on-primary text-[12px] font-semibold flex items-center justify-center gap-1 shadow-sm"
               >

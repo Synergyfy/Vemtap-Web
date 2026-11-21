@@ -187,10 +187,18 @@ export class CatalogueOrder extends AbstractBaseEntity {
   @Column({ type: 'varchar', length: 30, nullable: true })
   storeStatus: string | null;
 
-  /** Store-ordering steps, newest first: `{ status, at, note, staffName }`. */
+  /** Store-ordering steps, newest first: `{ status, at, note, staffName, staffId, staffRole }`. */
   @Column({ type: 'jsonb', nullable: true })
   storeHistory:
-    { status: string; at: string; note?: string; staffName?: string }[] | null;
+    | {
+        status: string;
+        at: string;
+        note?: string;
+        staffName?: string;
+        staffId?: string;
+        staffRole?: string;
+      }[]
+    | null;
 
   @ApiProperty({
     example: 'unpaid',

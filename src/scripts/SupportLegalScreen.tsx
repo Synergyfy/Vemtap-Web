@@ -16,7 +16,7 @@ const HELP_ROWS: AccountRow[] = [
     target: 'help',
   },
   {
-    icon: 'headset_mic',
+    icon: 'vemtap-chat',
     iconClass: 'bg-surface-container-high text-on-surface-variant',
     label: 'Contact Support / Feedback',
     sub: 'Chat with the VEMTAP team',

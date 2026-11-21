@@ -44,6 +44,33 @@ export interface RegisterSession {
   till?: { id: string; name?: string | null; code?: string | null } | null;
 }
 
+/** A persisted drawer record returned by GET /pos/register/history. */
+export interface RegisterDrawerRecord {
+  id: string;
+  branchId: string;
+  branchName?: string | null;
+  tillId?: string | null;
+  tillName?: string | null;
+  cashierId: string;
+  cashierName: string;
+  openedAt: string;
+  closedAt?: string | null;
+  openingCash: number;
+  expectedCash: number;
+  countedCash?: number | null;
+  variance?: number | null;
+  totalSales: number;
+  transactionCount: number;
+  status: 'open' | 'closed';
+}
+
+export interface RegisterHistoryResponse {
+  data: RegisterDrawerRecord[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface ZReport {
   registerSessionId: string;
   status: string;
@@ -307,6 +334,7 @@ const scope = (branchId?: string | null) => ({ params: branchId ? { branchId } :
 /** `/pos/*` — register sessions, sales, held tickets, customers, kitchen, stock and staff PINs. */
 export const posService = {
   registerStatus: () => api.get<{ isOpen: boolean; session?: RegisterSession | null }>('/pos/register/status'),
+  registerHistory: () => api.get<RegisterHistoryResponse>('/pos/register/history', { params: { limit: 20 } }),
   openRegister: (body: { openingCash: number; tillId?: string }) => api.post<RegisterSession>('/pos/register/open', body),
   closeRegister: (body: { countedCash?: number }) => api.post<RegisterSession>('/pos/register/close', body),
   cashDrop: (body: { amount: number; reason: string }) => api.post<unknown>('/pos/register/cash-drop', body),

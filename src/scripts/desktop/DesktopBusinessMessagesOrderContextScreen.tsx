@@ -95,32 +95,17 @@ const CONVS: OrderConv[] = [
     online: false,
     prep: false,
   },
-  {
-    id: 'c4',
-    name: 'Dr. Chidi Okafor',
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuC_QV6uRZyyO54NZ_xP-h2bJ8ASlYYKyHrhcifuXhWq8-8e8k7vVjQp92ikYv3cH5MH1U3mE-cqvqgIrgvoTD-_3v0kflAwqqy8Epu7Gxy7JGLPfKzbysfHasIYlfBSpqOZTvvLMf7DdGcoLZHsJdXHYXPoe6YzKvM1VfQBm0hKUBoocqfb1jEx0XIwvHG3Cu3MbVVrfoRPKvM2x6jDPEgCeLL7VDkEoBDmTl5tggWL',
-    preview: 'Private dining for 8 at 7:30 PM.',
-    time: '1 hr',
-    unread: 0,
-    status: 'Booking BK-77402',
-    statusTone: 'bg-surface-tint-blue text-primary',
-    tags: ['Booking', 'Corporate'],
-    channel: 'bookings',
-    online: false,
-    prep: false,
-  },
 ];
 
 const FILTERS: Array<{ key: ConvFilter; label: string }> = [
   { key: 'all', label: 'All' },
   { key: 'unread', label: 'Unread' },
   { key: 'orders', label: 'Orders' },
-  { key: 'bookings', label: 'Bookings' },
   { key: 'deals', label: 'Deals' },
 ];
 
 const DOSSIER_NOTES = [
-  { label: 'Preferred station', value: 'Grill Station', icon: 'kitchen' },
+  { label: 'Preferred station', value: 'Main Counter', icon: 'storefront' },
   { label: 'Last visit', value: 'Oct 8, 2025', icon: 'history' },
   { label: 'Favorite item', value: 'Truffle Fries', icon: 'restaurant' },
   { label: 'Allergies', value: 'None on file', icon: 'health_and_safety' },
@@ -159,7 +144,7 @@ export function DesktopBusinessMessagesOrderContextScreen({
   const conversations: OrderConv[] = useMemo(
     () =>
       live
-        ? liveRows.map((row) => ({
+        ? liveRows.filter((row) => row.kind !== 'booking').map((row) => ({
             id: row.id,
             name: row.name,
             avatar: row.avatar,
@@ -536,7 +521,7 @@ export function DesktopBusinessMessagesOrderContextScreen({
                       <img src={selected.avatar} alt="" className="w-8 h-8 rounded-full object-cover self-end" />
                       <div className="max-w-[75%]">
                         <div className="px-space-sm py-space-xs rounded-2xl rounded-bl-md bg-surface border border-border text-on-surface">
-                          <p className="font-body-md text-body-md whitespace-pre-wrap">Hi! I just placed order #VG-94021 — Truffle Fries Combo with extra sauce. Can you confirm it&apos;s in the kitchen?</p>
+                          <p className="font-body-md text-body-md whitespace-pre-wrap">Hi! I just placed order #VG-94021 — Truffle Fries Combo with extra sauce. Can you confirm it&apos;s being prepared?</p>
                         </div>
                         <div className="font-caption text-caption text-text-tertiary mt-1 flex items-center gap-1">9:32 AM</div>
                       </div>
@@ -836,7 +821,7 @@ export function DesktopBusinessMessagesOrderContextScreen({
                     <Icon name="support_agent" className="text-[18px] text-primary shrink-0 mt-0.5" filled />
                     <div>
                       <div className="font-label-sm text-label-sm text-on-surface font-semibold">Need Staff Backup?</div>
-                      <p className="font-body-sm text-body-sm text-on-surface-variant">Transfer this conversation to Floor Manager or Kitchen Lead with full context.</p>
+                      <p className="font-body-sm text-body-sm text-on-surface-variant">Transfer this conversation to Floor Manager or Fulfillment Lead with full context.</p>
                       <button
                         type="button"
                         onClick={() => (live ? showToast('Transferring chats to staff is coming soon') : setTransferred(true))}

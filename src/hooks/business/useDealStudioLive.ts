@@ -38,30 +38,28 @@ export function pickDealBranchIds(
   return allowed.slice(0, 1);
 }
 
-/** The business's live branches as deal choices. `source` defaults to the Deal Studio's item. */
+/** The business's configured branches as deal choices. `source` defaults to the Deal Studio's item. */
 export function useDealBranchOptions(sourceOverride?: CatalogueItem | null) {
   const live = hasApiConfig();
   const { branches, activeBranchId } = useBusinessBranch();
   const contextSource = useDealSource();
   const source = sourceOverride === undefined ? contextSource : sourceOverride;
   const soldAt = source?.branches?.length ? new Set(source.branches.map((branch) => branch.id)) : null;
-  const options: DealBranchOption[] = live
-    ? branches
-        .filter((branch): branch is typeof branch & { id: string } => Boolean(branch.id))
-        .map((branch) => ({
-          id: branch.id,
-          name: branch.name,
-          area: branch.area,
-          sellsItem: soldAt ? soldAt.has(branch.id) : true,
-        }))
-    : [];
+  const options: DealBranchOption[] = branches
+    .filter((branch) => Boolean(branch.id || branch.key))
+    .map((branch) => ({
+      id: (branch.id || branch.key) as string,
+      name: branch.name,
+      area: branch.area || 'No address on file',
+      sellsItem: soldAt && branch.id ? soldAt.has(branch.id) : true,
+    }));
   return { live, options, activeBranchId };
 }
 
-/** Live branch choices for the deal plus the ones it currently runs at. Empty in demo mode. */
+/** Configured branch choices for the deal plus the ones it currently runs at. */
 export function useDealBranches(studio: Pick<DealStudioDraft, 'branchIds'>) {
   const { live, options, activeBranchId } = useDealBranchOptions();
-  const selectedIds = live ? pickDealBranchIds(studio, options, activeBranchId) : [];
+  const selectedIds = pickDealBranchIds(studio, options, activeBranchId);
   const selected = options.filter((option) => selectedIds.includes(option.id));
   /** The studio patch that turns `id` on or off (the last branch can't be turned off). */
   const toggle = (id: string): Partial<DealStudioDraft> => {

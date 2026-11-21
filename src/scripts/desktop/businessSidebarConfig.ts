@@ -44,7 +44,7 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
   {
     key: 'messages',
     label: 'Messages',
-    icon: 'forum',
+    icon: 'vemtap-chat',
     defaultKey: 'messages-inapp',
     badge: '2',
     badgeClass: 'bg-tertiary-container text-on-tertiary',
@@ -54,7 +54,7 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
     // channels: In-App Chat, SMS and Email.
     link: true,
     items: [
-      { key: 'messages-inapp', label: 'In-App Chat', icon: 'chat', badge: '2', badgeClass: 'bg-tertiary-container text-on-tertiary' },
+      { key: 'messages-inapp', label: 'In-App Chat', icon: 'vemtap-chat', badge: '2', badgeClass: 'bg-tertiary-container text-on-tertiary' },
       { key: 'messages-sms', label: 'SMS', icon: 'sms' },
       { key: 'messages-email', label: 'Email', icon: 'mail' },
     ],
@@ -66,7 +66,8 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
     defaultKey: 'business-profile',
     items: [
       { key: 'business-catalog', label: 'My Products', icon: 'inventory_2' },
-      { key: 'business-services', label: 'My Service', icon: 'design_services' },
+      // Product-only rollout: My Service is hidden.
+      // { key: 'business-services', label: 'My Service', icon: 'design_services' },
       { key: 'business-deals', label: 'Deals', icon: 'local_offer' },
       { key: 'business-customers', label: 'Customers', icon: 'group' },
       { key: 'business-loyalty', label: 'Loyalty & Rewards', icon: 'stars' },
@@ -91,7 +92,8 @@ export const BUSINESS_SIDEBAR_SECTIONS: BusinessSidebarSection[] = [
       { key: 'pos-home', label: 'POS Overview', icon: 'dashboard' },
       { key: 'pos-sale', label: 'New Sale', icon: 'add_shopping_cart' },
       { key: 'orders-all', label: 'Orders', icon: 'receipt_long', badge: '4', badgeClass: 'bg-primary-container text-on-primary' },
-      { key: 'orders-bookings', label: 'Bookings', icon: 'calendar_month' },
+      // Product-only rollout: Bookings is hidden.
+      // { key: 'orders-bookings', label: 'Bookings', icon: 'calendar_month' },
       { key: 'pos-transactions', label: 'Transactions', icon: 'receipt' },
       { key: 'pos-settings', label: 'POS Settings', icon: 'settings' },
     ],
@@ -157,10 +159,8 @@ export function filterSidebarSections(
 
   let list = sections;
 
-  // POS off but Bookings on: the Bookings entry moves into the Business group so
-  // appointments stay reachable from the rail without a "POS" header that only
-  // contains bookings.
-  if (!isEnabled('pos') && isEnabled('bookings')) {
+  // Product-only rollout: bookings are never re-injected into the side rail.
+  if (false && !isEnabled('pos') && isEnabled('bookings')) {
     list = sections.map((section) => {
       if (section.key === 'pos' && section.items?.some((item) => item.key === 'orders-bookings')) {
         return { ...section, items: section.items.filter((item) => item.key !== 'orders-bookings') };

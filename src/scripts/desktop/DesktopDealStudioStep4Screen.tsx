@@ -6,13 +6,15 @@ import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
 import type { ProductDraft } from './desktopProductDraft';
 import type { DealStudioDraft } from './desktopDealStudio';
-import { dealDurationLabel, formatDealValidity } from './desktopDealStudio';
+import { formatDealValidity } from './desktopDealStudio';
 import {
   DEAL_TYPE_OPTIONS,
   claimLimitLabel,
+  dealBadgeLabel,
   dealTypeTitle,
   describeComboRules,
   formatFlashValidity,
+  isCurrentPriceDeal,
   resolveDealPricing,
   validateDealConfiguration,
 } from '../deals/dealStudioShared';
@@ -45,13 +47,6 @@ const SHOWCASE_IMAGES: Array<{ src: string; alt: string }> = [
   },
 ];
 
-const RADAR_IMAGES: Array<{ src: string; alt: string }> = [
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB7S-mYAqNQ-XH6O1qbIjVx69tV_1v1DRQhorX_74sSryZ8lxDqOMnv1IuF-d1vBQBFYJ5gaF_cpThIZzkDp65C7tkGIlR3003sMKiBzaJjeZurqt2ZJnFtLSLex6-y2kVrkeYVgyxTl7hcL5EKH6o9xzINKwi-CGYdYhFMB1HdokjE6p5a95udQj-vzkqTC-M4k9AR28olACl_jQz2-X91MrwHW9z8LPBpwdF8VwkQ3gP8XbfCpgV2Yw',
-    alt: '',
-  },
-];
-
 const DAY_ORDER: Array<{ key: keyof DealStudioDraft['days']; label: string }> = [
   { key: 'mon', label: 'Mon' },
   { key: 'tue', label: 'Tue' },
@@ -60,12 +55,6 @@ const DAY_ORDER: Array<{ key: keyof DealStudioDraft['days']; label: string }> = 
   { key: 'fri', label: 'Fri' },
   { key: 'sat', label: 'Sat' },
   { key: 'sun', label: 'Sun' },
-];
-
-const BRANCH_ROWS: Array<{ key: keyof DealStudioDraft['branches']; label: string }> = [
-  { key: 'wuseII', label: 'Wuse II Flagship' },
-  { key: 'garkiII', label: 'Garki II Branch' },
-  { key: 'maitama', label: 'Maitama Heights' },
 ];
 
 const TO_NUMBER = (value: string) => {
@@ -98,15 +87,17 @@ export function DesktopDealStudioStep4Screen({
   const basePrice = parsedVariantPrice > 0 ? parsedVariantPrice : TO_NUMBER(draft.basePrice);
   const discount = studio.discountPct;
   const bundleCatalog = useDealBundleCatalog(draft.title, basePrice);
-  // Live: the business's branches picked in step 3; demo keeps the sample outlets.
+  // The business's branches picked in step 3.
   const dealBranches = useDealBranches(studio);
-  const live = dealBranches.live;
   const pricing = resolveDealPricing(studio, basePrice, bundleCatalog);
   const dealPrice = pricing.dealPrice;
   const savings = pricing.savings;
   const savingsPct = pricing.savingsPct;
+  const isCurrent = isCurrentPriceDeal(studio);
   const strategyTitle = dealTypeTitle(studio.strategy);
-  const strategyIcon = DEAL_TYPE_OPTIONS.find((option) => option.id === studio.strategy)?.icon ?? 'percent';
+  const strategyIcon = isCurrent
+    ? 'payments'
+    : DEAL_TYPE_OPTIONS.find((option) => option.id === studio.strategy)?.icon ?? 'percent';
   const comboRules = studio.strategy === 'combo' ? describeComboRules(studio.combo, basePrice, bundleCatalog) : [];
 
   // Everything that must hold before the deal can be published: pricing rules
@@ -116,8 +107,8 @@ export function DesktopDealStudioStep4Screen({
     ...(studio.vouchers <= 0 ? ['Set the total promotional quantity to at least 1.'] : []),
     ...(studio.claimSteps.length === 0 ? ['Add at least one “how to claim” instruction.'] : []),
     ...(studio.terms.length === 0 ? ['Add at least one term & condition.'] : []),
-    ...((live ? dealBranches.selectedIds.length === 0 : Object.values(studio.branches).every((value) => !value))
-      ? [live ? 'This item isn’t sold at any of your branches yet — add it to a branch first.' : 'Select at least one participating branch.']
+    ...(dealBranches.selectedIds.length === 0
+      ? ['Select at least one participating branch in Step 3.']
       : []),
     ...(Object.values(studio.days).every((value) => !value) ? ['Select at least one redemption day.'] : []),
   ];
@@ -142,8 +133,9 @@ export function DesktopDealStudioStep4Screen({
     setPublication(publishDeal({ dealTitle: draft.title, studio }));
     setShowModal(true);
   };
-  const strategyDetail =
-    studio.strategy === 'fixed'
+  const strategyDetail = isCurrent
+    ? 'Current Price (no discount — customers pay the listed price)'
+    : studio.strategy === 'fixed'
       ? `Fixed Amount Off (₦${FORMAT_AMOUNT(studio.fixed.amountOff)} off${
           studio.fixed.minSpend > 0 ? ` • min spend ₦${FORMAT_AMOUNT(studio.fixed.minSpend)}` : ''
         })`
@@ -152,9 +144,10 @@ export function DesktopDealStudioStep4Screen({
         : studio.strategy === 'combo'
           ? (comboRules[0] ?? 'Combo & Bundle Deal')
           : `Percentage Discount (${discount}% Off)`;
-  const activeBranches = live
-    ? dealBranches.selected.map((branch) => ({ key: branch.id, label: branch.name }))
-    : BRANCH_ROWS.filter((branch) => studio.branches[branch.key]);
+  const activeBranches = dealBranches.selected.map((branch) => ({
+    key: branch.id,
+    label: branch.name,
+  }));
   const activeDays = DAY_ORDER.filter((day) => studio.days[day.key]);
   const dayIndices = activeDays.map((day) => DAY_ORDER.findIndex((entry) => entry.key === day.key));
   const contiguous =
@@ -246,7 +239,7 @@ export function DesktopDealStudioStep4Screen({
                   <img className="w-full h-full object-cover" alt={draftImageAlt(draft.title, SHOWCASE_IMAGES[0].alt)} src={draftImage(draft.mainImage, SHOWCASE_IMAGES[0].src)} />
                   <div className="absolute top-space-xs left-space-xs px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center gap-space-2xs shadow-sm">
                     <Icon name="local_offer" className="text-[14px]" />
-                    <span>{savingsPct}% OFF</span>
+                    <span>{dealBadgeLabel(studio, savingsPct)}</span>
                   </div>
                 </div>
                 <div className="flex flex-col justify-between flex-1 gap-space-sm">
@@ -271,23 +264,27 @@ export function DesktopDealStudioStep4Screen({
                         ? `Validity: ${formatFlashValidity(studio.flash)} • ${studio.flash.days}, ${studio.flash.window}`
                         : studio.strategy === 'combo'
                           ? (comboRules[1] ?? comboRules[0] ?? '')
-                          : live
-                            ? `${strategyDetail}${draft.description ? ` — ${draft.description}` : ''}`
-                            : `${strategyDetail} — Prime 45-day dry-aged Black Angus cut served with truffle chimichurri and flame-roasted bone marrow mash.`}
+                          : `${strategyDetail}${draft.description ? ` — ${draft.description}` : ''}`}
                     </p>
                   </div>
                   <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-wrap items-baseline justify-between gap-space-xs">
                     <div className="flex items-baseline gap-space-xs">
-                      <span className="font-caption text-caption text-on-surface-variant">Member Pay:</span>
+                      <span className="font-caption text-caption text-on-surface-variant">
+                        {isCurrent ? 'Deal Price:' : 'Member Pay:'}
+                      </span>
                       <span className="font-heading-md text-heading-md text-primary font-bold">
                         ₦{FORMAT_AMOUNT(dealPrice)}
                       </span>
-                      <span className="font-label-sm text-label-sm text-text-tertiary line-through">
-                        ₦{FORMAT_AMOUNT(pricing.originalTotal)}
-                      </span>
+                      {!isCurrent && (
+                        <span className="font-label-sm text-label-sm text-text-tertiary line-through">
+                          ₦{FORMAT_AMOUNT(pricing.originalTotal)}
+                        </span>
+                      )}
                     </div>
                     <span className="font-caption text-caption font-semibold text-badge-discount-text">
-                      Save ₦{FORMAT_AMOUNT(Math.max(savings, 0))} ({savingsPct}% Off)
+                      {isCurrent
+                        ? 'Listed price — no discount'
+                        : `Save ₦${FORMAT_AMOUNT(Math.max(savings, 0))} (${savingsPct}% Off)`}
                     </span>
                   </div>
                 </div>
@@ -332,27 +329,14 @@ export function DesktopDealStudioStep4Screen({
                     <span className="font-caption text-caption text-on-surface-variant">Claim Limit</span>
                     <span className="font-label-md text-label-md text-on-surface font-semibold">{claimLimit}</span>
                     <span className="font-caption text-caption text-on-surface-variant mt-0.5">
-                      {live ? (studio.claimOnce ? 'Once per customer, ever' : studio.unlimitedClaims ? 'No per-customer cap' : 'Counted per calendar month') : 'Fair-share community rule applied'}
+                      {studio.claimOnce
+                        ? 'Once per customer, ever'
+                        : studio.unlimitedClaims
+                          ? 'No per-customer cap'
+                          : 'Counted per calendar month'}
                     </span>
                   </div>
                 </div>
-                {/* Not stored by the API yet — demo only. */}
-                {!live && (
-                <div className="p-space-md rounded-xl bg-surface-subtle flex items-start gap-space-sm">
-                  <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center shrink-0 text-primary">
-                    <Icon name="shopping_cart" className="text-[20px]" />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="font-caption text-caption text-on-surface-variant">Max Per Order</span>
-                    <span className="font-label-md text-label-md text-on-surface font-semibold">
-                      {studio.maxUnitsPerOrder} Units
-                    </span>
-                    <span className="font-caption text-caption text-on-surface-variant mt-0.5">
-                      Per single order or redemption
-                    </span>
-                  </div>
-                </div>
-                )}
                 <div className="p-space-md rounded-xl bg-surface-subtle flex items-start gap-space-sm">
                   <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center shrink-0 text-primary">
                     <Icon name="card_giftcard" className="text-[20px]" />
@@ -367,23 +351,6 @@ export function DesktopDealStudioStep4Screen({
                     </span>
                   </div>
                 </div>
-                {/* No advance-notice setting exists yet — sample only. */}
-                {!live && (
-                <div className="p-space-md rounded-xl bg-surface-subtle flex items-start gap-space-sm">
-                  <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center shrink-0 text-primary">
-                    <Icon name="schedule" className="text-[20px]" />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="font-caption text-caption text-on-surface-variant">Advance Notice</span>
-                    <span className="font-label-md text-label-md text-on-surface font-semibold">
-                      1 Hour Prep / Booking
-                    </span>
-                    <span className="font-caption text-caption text-on-surface-variant mt-0.5">
-                      Protects kitchen capacity
-                    </span>
-                  </div>
-                </div>
-                )}
               </div>
               <div className="flex flex-wrap items-center gap-space-sm pt-space-xs">
                 <span className="font-caption text-caption text-on-surface-variant">Redemption Modes:</span>
@@ -452,11 +419,7 @@ export function DesktopDealStudioStep4Screen({
                     <div className="flex items-center gap-space-xs">
                       <Icon name="calendar_month" className="text-[18px] text-on-surface-variant" />
                       <span className="font-label-md text-label-md text-on-surface font-medium">
-                        {live
-                          ? formatDealValidity(studio)
-                          : studio.duration === 'forever'
-                            ? 'Always On — No Fixed Expiry'
-                            : `Oct 19 – Nov 2, 2025 (${dealDurationLabel(studio.duration)})`}
+                        {formatDealValidity(studio)}
                       </span>
                     </div>
                     <div className="flex items-center gap-space-xs">
@@ -533,9 +496,7 @@ export function DesktopDealStudioStep4Screen({
 
           <div className="lg:col-span-5 flex flex-col gap-space-lg lg:sticky lg:top-20">
             <div className="rounded-xl bg-surface-container-lowest shadow-md p-space-lg flex flex-col gap-space-lg">
-              {live ? (
-                <>
-                  <div className="flex items-center gap-space-xs text-primary">
+              <div className="flex items-center gap-space-xs text-primary">
                     <Icon name="rocket_launch" className="text-[20px]" />
                     <span className="font-heading-sm text-heading-sm text-on-surface">Launch Summary</span>
                   </div>
@@ -567,95 +528,7 @@ export function DesktopDealStudioStep4Screen({
                       </div>
                     )}
                   </div>
-                </>
-              ) : (
-                <>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-space-xs text-primary">
-                  <Icon name="radar" className="text-[20px]" />
-                  <span className="font-heading-sm text-heading-sm text-on-surface">Audience Reach &amp; Forecast</span>
-                </div>
-                <span className="px-space-xs py-space-2xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
-                  Live Algorithm
-                </span>
-              </div>
-              <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-surface-tint-blue to-surface-container p-space-lg flex flex-col gap-space-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-caption text-caption text-secondary font-semibold uppercase tracking-wider">
-                    Estimated Instant Reach
-                  </span>
-                  <Icon name="sensors" className="text-[24px] text-primary" />
-                </div>
-                <div className="flex items-baseline gap-space-2xs">
-                  <span className="font-display-hero text-display-hero text-on-surface font-extrabold tracking-tight">
-                    ~1,420
-                  </span>
-                  <span className="font-heading-sm text-heading-sm text-primary font-semibold">verified foodies</span>
-                </div>
-                <p className="font-caption text-caption text-on-surface-variant mt-space-2xs">
-                  Active VEMTAP users within a <strong>3.5 km radius</strong> of your 2 registered locations will
-                  receive an alert upon live launch.
-                </p>
-              </div>
-              <div className="flex flex-col gap-space-xs">
-                <div className="flex items-center justify-between font-caption text-caption text-on-surface-variant">
-                  <span>Geo-Targeting Coverage (3.5 km Radar)</span>
-                  <span className="font-semibold text-primary">Wuse II + Garki II</span>
-                </div>
-                <div className="relative w-full h-44 rounded-xl overflow-hidden bg-surface-container">
-                  <div
-                    className="w-full h-full bg-cover bg-center"
-                    style={{ backgroundImage: `url('${RADAR_IMAGES[0].src}')` }}
-                  />
-                  <div className="absolute top-1/3 left-1/3 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center">
-                    <div className="w-12 h-12 rounded-full bg-primary/20 animate-ping absolute" />
-                    <div className="w-8 h-8 rounded-full bg-primary/40 flex items-center justify-center shadow-lg">
-                      <div className="w-3.5 h-3.5 rounded-full bg-primary ring-2 ring-white" />
-                    </div>
-                  </div>
-                  <div className="absolute bottom-1/3 right-1/3 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center">
-                    <div className="w-10 h-10 rounded-full bg-primary/20 animate-ping absolute" />
-                    <div className="w-7 h-7 rounded-full bg-primary/40 flex items-center justify-center shadow-lg">
-                      <div className="w-3 h-3 rounded-full bg-primary ring-2 ring-white" />
-                    </div>
-                  </div>
-                  <div className="absolute bottom-space-xs left-space-xs px-space-xs py-space-2xs rounded-lg bg-inverse-surface/85 backdrop-blur text-inverse-on-surface font-caption text-caption flex items-center gap-space-2xs">
-                    <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                    <span>Signal Broadcast Ready</span>
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-col gap-space-sm pt-space-xs">
-                <div className="flex items-start gap-space-sm">
-                  <div className="w-7 h-7 rounded-lg bg-surface-container flex items-center justify-center text-primary shrink-0 mt-0.5">
-                    <Icon name="push_pin" className="text-[16px]" />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="font-label-md text-label-md text-on-surface font-semibold">
-                      Pinned Placement Guaranteed
-                    </span>
-                    <span className="font-caption text-caption text-on-surface-variant">
-                      Featured at the top of the Apo &amp; Wuse local discovery feed for 72 hours.
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-start gap-space-sm">
-                  <div className="w-7 h-7 rounded-lg bg-badge-discount-bg flex items-center justify-center text-badge-discount-text shrink-0 mt-0.5">
-                    <Icon name="payments" className="text-[16px]" />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="font-label-md text-label-md text-on-surface font-semibold">
-                      0% Commission Guarantee
-                    </span>
-                    <span className="font-caption text-caption text-on-surface-variant">
-                      100% of customer pay price (₦{FORMAT_AMOUNT(dealPrice)}) settles directly to your account. No
-                      hidden cuts.
-                    </span>
-                  </div>
-                </div>
-              </div>
-                </>
-              )}
+                
               <div className="flex flex-col gap-space-sm pt-space-md">
                 {!canPublish && (
                   <div className="rounded-xl bg-error/5 border border-error/20 p-space-sm flex flex-col gap-space-2xs">

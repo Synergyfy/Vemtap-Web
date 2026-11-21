@@ -41,36 +41,6 @@ export interface ServiceLocation {
   badge?: string;
 }
 
-export const SERVICE_LOCATIONS: ServiceLocation[] = [
-  {
-    id: 'main',
-    name: 'Downtown Flagship (Main Branch)',
-    address: 'Plot 14 Amazon Street, Maitama',
-    eligible: true,
-    badge: 'Flagship',
-  },
-  {
-    id: 'maitama',
-    name: 'Maitama Heights Studio',
-    address: 'Plot 14 Amazon Street, Maitama',
-    eligible: true,
-    badge: 'Flagship',
-  },
-  {
-    id: 'wuseII',
-    name: 'Wuse II Sanctuary',
-    address: 'Plot 1428 Adetokunbo Ademola Cres',
-    eligible: true,
-  },
-  {
-    id: 'garki',
-    name: 'Garki Branch',
-    address: 'Area 11 Commercial District, Garki',
-    eligible: false,
-    note: 'Opening June',
-  },
-];
-
 import type { BusinessBranchData } from '../context/BusinessBranchContext';
 
 /**
@@ -86,7 +56,7 @@ export function liveServiceLocations(branches: BusinessBranchData[]): ServiceLoc
       name: branch.name,
       address: branch.area || '',
       eligible: true,
-      badge: branch.isMainBranch ? 'Main Branch' : 'Branch',
+      badge: branch.isMainBranch ? 'Main' : 'Branch',
     }));
 }
 
@@ -100,12 +70,9 @@ export function resolveSelectedLocations(
   branches: BusinessBranchData[],
 ): Array<{ id: string; name: string; address: string }> {
   const byId = new Map(branches.filter((branch) => branch.id).map((branch) => [branch.id as string, branch]));
-  const legacyById = new Map(SERVICE_LOCATIONS.map((loc) => [loc.id, loc]));
   return locations.map((id) => {
     const branch = byId.get(id);
     if (branch) return { id, name: branch.name, address: branch.area || '' };
-    const legacy = legacyById.get(id);
-    if (legacy) return { id, name: legacy.name, address: legacy.address };
     return { id, name: id, address: '' };
   });
 }

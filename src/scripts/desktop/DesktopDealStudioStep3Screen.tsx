@@ -17,53 +17,6 @@ interface DesktopDealStudioStep3ScreenProps {
   onNav?: (key: string) => void;
 }
 
-const MAP_IMAGES: Array<{ src: string; alt: string }> = [
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuABS6J6aCf6BOdbKD5Zn86NMf3Q7G3V3Pn-Jyoi8YHmK_n2CqhfHUYunlhDcrDoufgdV78xQMC7p-QPzi_ZPvwvNNIKhmfRwn18Vynz-T3snXNoyWwr5l2DRPHmBY99CzJaN8gz6mptHriUXiJHTwIwu9L6FdNePgRxMOBxR2NLRab5-AtlS2Xi2YrrfjkNv2cjUpE7qmTBWqdhUTqU-dawWsBAceLjSB4gnZP-IZiKRcY9To8CwzmpSQ',
-    alt: '',
-  },
-];
-
-const BRANCHES: Array<{
-  key: keyof DealStudioDraft['branches'];
-  name: string;
-  address: string;
-  badge: string;
-  hardware: Array<{ icon: string; label: string }>;
-  disabled?: boolean;
-  note?: string;
-}> = [
-  {
-    key: 'wuseII',
-    name: 'Wuse II Flagship Studio',
-    address: 'Plot 1428 Adetokunbo Ademola Cres, Wuse II, Abuja',
-    badge: 'Active Outlet',
-    hardware: [
-      { icon: 'fiber_manual_record', label: 'POS Linked' },
-      { icon: 'sensors', label: 'NFC Tap Pod Active' },
-    ],
-  },
-  {
-    key: 'garkiII',
-    name: 'Garki II Branch',
-    address: 'Suite 4B, Garki Mall, Area 11, Garki, Abuja',
-    badge: 'Active Outlet',
-    hardware: [
-      { icon: 'fiber_manual_record', label: 'POS Linked' },
-      { icon: 'qr_code_scanner', label: 'QR Camera Stand' },
-    ],
-  },
-  {
-    key: 'maitama',
-    name: 'Maitama Heights',
-    address: 'Plot 702 Aguiyi Ironsi St, Maitama District, Abuja',
-    badge: 'Coming Soon - Inactive',
-    hardware: [],
-    disabled: true,
-    note: 'Site installation scheduled for Nov 28',
-  },
-];
-
 const DAYS: Array<{ key: keyof DealStudioDraft['days']; label: string; offLabel: string }> = [
   { key: 'mon', label: 'Mon', offLabel: 'Mon (off)' },
   { key: 'tue', label: 'Tue', offLabel: 'Tue (off)' },
@@ -107,54 +60,18 @@ const HOUR_OPTIONS = [
   '11:00 PM',
 ];
 
-const SUGGESTED_CLAUSES = ['Valid ID required', 'One per table', 'Not valid on public holidays', 'Subject to seating capacity'];
-/** Live: suggestions that fit any kind of business. */
-const LIVE_SUGGESTED_CLAUSES = ['Valid ID required', 'One per customer per visit', 'Not valid on public holidays', 'While stocks last'];
+const SUGGESTED_CLAUSES = ['Valid ID required', 'One per customer per visit', 'Not valid on public holidays', 'While stocks last'];
 
 interface BranchRow {
   rowKey: string;
   name: string;
   address: string;
   badge: string;
-  hardware: Array<{ icon: string; label: string }>;
   disabled?: boolean;
   note?: string;
   checked: boolean;
   onToggle: (checked: boolean) => void;
 }
-
-const HEATMAP_ROWS: Array<{ time: string; cells: Array<{ label: string; tone: string }> }> = [
-  {
-    time: '12 PM',
-    cells: [
-      { label: 'M', tone: 'bg-secondary-fixed text-on-secondary-fixed' },
-      { label: 'M', tone: 'bg-secondary-fixed text-on-secondary-fixed' },
-      { label: 'H', tone: 'bg-primary-fixed-dim text-on-primary-fixed font-bold' },
-      { label: 'H', tone: 'bg-primary-fixed-dim text-on-primary-fixed font-bold' },
-      { label: 'Peak', tone: 'bg-primary text-on-primary font-bold' },
-    ],
-  },
-  {
-    time: '02 PM',
-    cells: [
-      { label: 'Peak', tone: 'bg-primary-container text-on-primary font-bold' },
-      { label: 'Peak', tone: 'bg-primary-container text-on-primary font-bold' },
-      { label: 'Peak', tone: 'bg-primary text-on-primary font-bold' },
-      { label: 'Peak', tone: 'bg-primary-container text-on-primary font-bold' },
-      { label: 'Peak', tone: 'bg-primary text-on-primary font-bold' },
-    ],
-  },
-  {
-    time: '04 PM',
-    cells: [
-      { label: 'Low', tone: 'bg-surface-container text-text-secondary' },
-      { label: 'M', tone: 'bg-secondary-fixed text-on-secondary-fixed' },
-      { label: 'M', tone: 'bg-secondary-fixed text-on-secondary-fixed' },
-      { label: 'H', tone: 'bg-primary-fixed-dim text-on-primary-fixed font-medium' },
-      { label: 'H', tone: 'bg-primary-fixed-dim text-on-primary-fixed font-medium' },
-    ],
-  },
-];
 
 export function DesktopDealStudioStep3Screen({
   studio,
@@ -176,34 +93,23 @@ export function DesktopDealStudioStep3Screen({
   const [newStep, setNewStep] = useState('');
   const [newTerm, setNewTerm] = useState('');
 
-  // Live: the business's own branches (only those selling the item can be picked); demo keeps the samples.
+  // The business's own branches — only those selling the item can be picked.
   const dealBranches = useDealBranches(studio);
-  const live = dealBranches.live;
-  const branchList: BranchRow[] = live
-    ? dealBranches.options.map((option) => ({
-        rowKey: option.id,
-        name: option.name,
-        address: option.area || 'No address on file',
-        badge: !option.sellsItem ? 'Item not sold here' : option.id === dealBranches.activeBranchId ? 'Current branch' : 'Your branch',
-        hardware: [],
-        disabled: !option.sellsItem,
-        note: option.sellsItem ? undefined : 'Add this item to the branch in your catalogue to include it.',
-        checked: dealBranches.selectedIds.includes(option.id),
-        onToggle: () => onStudioChange(dealBranches.toggle(option.id)),
-      }))
-    : BRANCHES.map((branch) => ({
-        rowKey: branch.key,
-        name: branch.name,
-        address: branch.address,
-        badge: branch.badge,
-        hardware: branch.hardware,
-        disabled: branch.disabled,
-        note: branch.note,
-        checked: studio.branches[branch.key],
-        onToggle: (checked: boolean) => onStudioChange({ branches: { ...studio.branches, [branch.key]: checked } }),
-      }));
-  const selectedBranches = live ? dealBranches.selectedIds.length : BRANCHES.filter((branch) => studio.branches[branch.key]).length;
-  const suggestedClauses = live ? LIVE_SUGGESTED_CLAUSES : SUGGESTED_CLAUSES;
+  const branchList: BranchRow[] = dealBranches.options.map((option) => ({
+    rowKey: option.id,
+    name: option.name,
+    address: option.area || 'No address on file',
+    badge: !option.sellsItem
+      ? 'Item not sold here'
+      : option.id === dealBranches.activeBranchId
+        ? 'Current branch'
+        : 'Your branch',
+    disabled: !option.sellsItem,
+    note: option.sellsItem ? undefined : 'Add this item to the branch in your catalogue to include it.',
+    checked: dealBranches.selectedIds.includes(option.id),
+    onToggle: () => onStudioChange(dealBranches.toggle(option.id)),
+  }));
+  const selectedBranches = dealBranches.selectedIds.length;
 
   const selectedDays = DAYS.filter((day) => studio.days[day.key]);
   const everyDay = selectedDays.length === DAYS.length;
@@ -317,8 +223,7 @@ export function DesktopDealStudioStep3Screen({
             Participating Branches &amp; Redemption Terms
           </h1>
           <p className="font-body-md text-body-md text-text-secondary mt-1">
-            Designate eligible locations, active redemption hours, customer claim steps, and your own
-            {live ? ' policies.' : ' restaurant policies.'}
+            Designate eligible locations, active redemption hours, customer claim steps, and your own policies.
           </p>
         </div>
 
@@ -334,24 +239,15 @@ export function DesktopDealStudioStep3Screen({
                     </span>
                   </h2>
                   <p className="font-caption text-caption text-text-secondary mt-0.5">
-                    {live
-                      ? 'Pick the branches where customers can redeem this deal. Each branch gets its own copy.'
-                      : 'Toggle merchant outlets enabled for voucher code redemption.'}
+                    Pick the branches where customers can redeem this deal. Each branch gets its own copy.
                   </p>
                 </div>
-                {!live && (
-                  <button
-                    type="button"
-                    className="text-primary font-label-sm text-label-sm hover:underline flex items-center gap-1"
-                  >
-                    <Icon name="add_location_alt" className="text-[16px]" />
-                    <span>Manage Outlets</span>
-                  </button>
-                )}
               </div>
               <div className="flex flex-col gap-space-sm">
-                {live && branchList.length === 0 && (
-                  <p className="font-body-md text-body-md text-text-secondary">Your branches are still loading…</p>
+                {branchList.length === 0 && (
+                  <p className="font-body-md text-body-md text-text-secondary">
+                    No branches yet — add your business locations in your business profile.
+                  </p>
                 )}
                 {branchList.map((branch) => {
                   const active = branch.checked;
@@ -399,21 +295,7 @@ export function DesktopDealStudioStep3Screen({
                         >
                           {branch.address}
                         </p>
-                        {branch.hardware.length > 0 ? (
-                          <div className="flex items-center gap-space-md mt-space-xs font-caption text-caption text-on-surface-variant">
-                            {branch.hardware.map((item) => (
-                              <span key={item.label} className="flex items-center gap-1">
-                                <Icon
-                                  name={item.icon}
-                                  className={`text-[15px] ${
-                                    item.icon === 'fiber_manual_record' ? 'text-badge-discount-text' : ''
-                                  }`}
-                                />
-                                {item.label}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
+                        {branch.note && (
                           <span className="inline-block mt-space-xs font-caption text-caption text-tertiary">
                             {branch.note}
                           </span>
@@ -815,7 +697,7 @@ export function DesktopDealStudioStep3Screen({
                       Suggested Standard Clauses
                     </span>
                     <div className="flex flex-wrap gap-space-xs">
-                      {suggestedClauses.map((clause) => (
+                      {SUGGESTED_CLAUSES.map((clause) => (
                         <button
                           key={clause}
                           type="button"
@@ -860,19 +742,25 @@ export function DesktopDealStudioStep3Screen({
           </div>
 
           <div className="lg:col-span-5 flex flex-col gap-space-xl">
-            {live ? (
               <section className="bg-surface-canvas rounded-xl shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] p-space-lg flex flex-col gap-space-md">
                 <div className="flex items-center justify-between">
                   <h2 className="font-heading-sm text-heading-sm text-on-surface font-semibold">Where &amp; When Customers Redeem</h2>
                   <Icon name="event_available" className="text-primary text-[20px]" />
                 </div>
                 <div className="flex flex-col gap-space-xs">
+                  {dealBranches.selected.length === 0 && (
+                    <p className="p-space-sm rounded-lg bg-surface-subtle font-caption text-caption text-text-secondary">
+                      No participating branches selected yet.
+                    </p>
+                  )}
                   {dealBranches.selected.map((branch) => (
                     <div key={branch.id} className="flex items-start gap-space-xs p-space-sm rounded-lg bg-surface-subtle">
                       <Icon name="pin_drop" className="text-[18px] text-primary mt-0.5" />
                       <div className="min-w-0">
                         <div className="font-label-md text-label-md text-on-surface font-semibold">{branch.name}</div>
-                        {branch.area && <div className="font-caption text-caption text-text-secondary">{branch.area}</div>}
+                        <div className="font-caption text-caption text-text-secondary">
+                          {branch.area || 'No address on file'}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -888,130 +776,7 @@ export function DesktopDealStudioStep3Screen({
                   <span>{dealDurationLabel(studio.duration)}</span>
                 </div>
               </section>
-            ) : (
-              <>
-            <section className="bg-surface-canvas rounded-xl shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] p-space-lg">
-              <div className="flex items-center justify-between mb-space-md">
-                <div>
-                  <h2 className="font-heading-sm text-heading-sm text-on-surface font-semibold">
-                    Weekly Live Slot Matrix
-                  </h2>
-                  <p className="font-caption text-caption text-text-secondary mt-0.5">
-                    Projected customer influx during active windows.
-                  </p>
-                </div>
-                <Icon name="calendar_view_week" className="text-primary text-[20px]" />
-              </div>
-              <div className="bg-surface-subtle rounded-xl p-space-md">
-                <div className="grid grid-cols-6 gap-1 text-center font-caption text-caption font-semibold text-text-secondary mb-2">
-                  <div>Time</div>
-                  <div>Mon</div>
-                  <div>Tue</div>
-                  <div>Wed</div>
-                  <div>Thu</div>
-                  <div>Fri</div>
-                </div>
-                <div className="space-y-1.5 font-caption text-caption">
-                  {HEATMAP_ROWS.map((row) => (
-                    <div key={row.time} className="grid grid-cols-6 gap-1 items-center">
-                      <span className="text-text-tertiary">{row.time}</span>
-                      {row.cells.map((cell, index) => (
-                        <div key={`${cell.label}-${index}`} className={`h-7 rounded flex items-center justify-center ${cell.tone}`}>
-                          {cell.label}
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-                <div className="flex items-center justify-between mt-space-md pt-space-xs text-text-secondary font-caption text-caption">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded bg-surface-container" /> Low Flow
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded bg-secondary-fixed" /> Moderate
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded bg-primary-fixed-dim" /> High
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-3 h-3 rounded bg-primary-container" /> Peak Demand
-                  </span>
-                </div>
-              </div>
-            </section>
 
-            <section className="bg-surface-canvas rounded-xl shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] p-space-lg">
-              <div className="flex items-center justify-between mb-space-md">
-                <div>
-                  <div className="flex items-center gap-space-2xs">
-                    <span className="w-2.5 h-2.5 rounded-full bg-badge-discount-text animate-pulse" />
-                    <h2 className="font-heading-sm text-heading-sm text-on-surface font-semibold">Catchment Radar</h2>
-                  </div>
-                  <p className="font-caption text-caption text-text-secondary mt-0.5">
-                    3.5 km geofence radius around enabled studios.
-                  </p>
-                </div>
-                <span className="px-space-xs py-space-2xs rounded bg-surface-tint-blue text-primary font-caption text-caption font-bold">
-                  Dynamic Radius
-                </span>
-              </div>
-              <div
-                className="relative w-full h-56 rounded-xl overflow-hidden shadow-sm bg-cover bg-center"
-                style={{ backgroundImage: `url('${MAP_IMAGES[0].src}')` }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-t from-inverse-surface/80 via-transparent to-transparent flex flex-col justify-end p-space-md text-on-primary">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="font-caption text-caption uppercase tracking-wider text-primary-fixed font-bold">
-                        Coverage Zones
-                      </span>
-                      <div className="font-label-md text-label-md font-bold">Wuse II • Garki II • Area 11</div>
-                    </div>
-                    <div className="px-space-xs py-1 rounded bg-inverse-surface/80 text-on-primary font-caption text-caption font-bold backdrop-blur">
-                      3.5 km Geofence
-                    </div>
-                  </div>
-                </div>
-                <div className="absolute top-1/2 left-1/3 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center">
-                  <div className="w-16 h-16 rounded-full bg-primary-container/20 animate-ping absolute" />
-                  <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-lg text-on-primary">
-                    <Icon name="store" className="text-[16px]" />
-                  </div>
-                </div>
-                <div className="absolute top-2/3 right-1/4 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center">
-                  <div className="w-14 h-14 rounded-full bg-primary-container/20 animate-ping absolute" />
-                  <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-lg text-on-primary">
-                    <Icon name="store" className="text-[16px]" />
-                  </div>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-space-sm mt-space-md">
-                <div className="p-space-md bg-surface-subtle rounded-xl">
-                  <div className="font-caption text-caption text-text-secondary">Audience In Reach</div>
-                  <div className="font-heading-md text-heading-md font-bold text-on-surface mt-1">~34,000</div>
-                  <div className="font-caption text-caption text-badge-discount-text font-medium mt-0.5 flex items-center gap-1">
-                    <Icon name="trending_up" className="text-[14px]" />
-                    <span>Active local seekers</span>
-                  </div>
-                </div>
-                <div className="p-space-md bg-surface-subtle rounded-xl">
-                  <div className="font-caption text-caption text-text-secondary">Maitama / Wuse Apps</div>
-                  <div className="font-heading-md text-heading-md font-bold text-primary mt-1">19,400</div>
-                  <div className="font-caption text-caption text-text-secondary mt-0.5 flex items-center gap-1">
-                    <Icon name="smartphone" className="text-[14px]" />
-                    <span>Push ready in range</span>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-space-md p-space-sm bg-badge-discount-bg text-badge-discount-text rounded-xl flex items-center gap-space-sm font-caption text-caption">
-                <Icon name="verified_user" className="text-[18px]" />
-                <span>
-                  All {selectedBranches} selected branches pass high-speed NFC &amp; QR camera validation checks.
-                </span>
-              </div>
-            </section>
-              </>
-            )}
           </div>
         </div>
 

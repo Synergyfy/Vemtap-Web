@@ -92,7 +92,9 @@ export function BusinessPosPaymentScreen({
   // Live: the business's earn rule and rewards, not the demo rates.
   const pointsRate = useTillPointsRate();
   const liveRewards = useTillRewards(customerId);
-  const orderPoints = loyaltyEnabled ? (pointsRate ? pointsRate(total) : pointsForAmount(total)) : 0;
+  const attachedPoints = cart.reduce((sum, line) => sum + ((line.loyaltyPoints ?? 0) * (line.qty || 1)), 0);
+  const spendPoints = pointsRate ? pointsRate(total) : pointsForAmount(total);
+  const orderPoints = loyaltyEnabled ? (attachedPoints > 0 ? attachedPoints : spendPoints) : 0;
   const projectedTotal = currentPoints + orderPoints;
   const eligibleCount = (liveRewards ? rewardsUnlocked(liveRewards, currentPoints) : unlockedRewards(currentPoints)).length;
 

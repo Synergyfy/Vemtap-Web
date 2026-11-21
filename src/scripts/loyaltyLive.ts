@@ -1,4 +1,11 @@
-import type { LoyaltyReward, LoyaltyRules, LoyaltyStats, PointLog, RewardCategory } from '../services/loyaltyService';
+import type {
+  LoyaltyReward,
+  LoyaltyRules,
+  LoyaltyRulesPatch,
+  LoyaltyStats,
+  PointLog,
+  RewardCategory,
+} from '../services/loyaltyService';
 import { formatNaira } from '../utils/format';
 import { whenLabel } from './customersLive';
 
@@ -30,8 +37,66 @@ export const earnsOnVisit = (rules: LoyaltyRules) => rules.ruleType !== 'spendin
 export const ruleTypeFor = (spend: boolean, visit: boolean): LoyaltyRules['ruleType'] | null =>
   spend && visit ? 'hybrid' : spend ? 'spending' : visit ? 'visit' : null;
 
-/** Bonuses fall back to the backend defaults when switched back on. */
+/** Bonuses fall back to these values when a disabled rule is switched back on. */
 export const DEFAULT_BONUS = { birthdayBonus: 500, referralBonus: 200 };
+
+/** Live bonus labels: a zero bonus is shown as off, never as a sample figure. */
+export const birthdayRuleLabel = (rules: LoyaltyRules) =>
+  rules.birthdayBonus > 0
+    ? `+${rules.birthdayBonus.toLocaleString('en-US')} Points on customer birthday week`
+    : 'Birthday bonus is off';
+
+export const referralRuleLabel = (rules: LoyaltyRules) =>
+  rules.referralBonus > 0
+    ? `+${rules.referralBonus.toLocaleString('en-US')} Points per referral`
+    : 'Referral bonus is off';
+
+/** The four earning rules supported by `PATCH /loyalty/rules`. */
+export type EarningRuleKey = 'spend' | 'visit' | 'birthday' | 'referral';
+
+type NumericRuleField =
+  | 'spendingBaseAmount'
+  | 'spendingBasePoints'
+  | 'visitPoints'
+  | 'visitCooldownHours'
+  | 'birthdayBonus'
+  | 'referralBonus';
+
+export interface EditableRuleField {
+  field: NumericRuleField;
+  label: string;
+  min: number;
+}
+
+/** Inline editor fields for each live rule (the same fields in both views). */
+export const EDITABLE_RULE_FIELDS: Record<EarningRuleKey, EditableRuleField[]> = {
+  spend: [
+    { field: 'spendingBaseAmount', label: 'Spend amount (₦)', min: 1 },
+    { field: 'spendingBasePoints', label: 'Points awarded', min: 1 },
+  ],
+  visit: [
+    { field: 'visitPoints', label: 'Points per visit', min: 0 },
+    { field: 'visitCooldownHours', label: 'Cooldown (hours)', min: 0 },
+  ],
+  birthday: [{ field: 'birthdayBonus', label: 'Birthday points', min: 0 }],
+  referral: [{ field: 'referralBonus', label: 'Referral points', min: 0 }],
+};
+
+/** Current values of a rule's editable fields, read from the live rules response. */
+export const ruleEditValues = (rules: LoyaltyRules, key: EarningRuleKey) =>
+  Object.fromEntries(EDITABLE_RULE_FIELDS[key].map(({ field }) => [field, Number(rules[field]) || 0])) as Record<
+    NumericRuleField,
+    number
+  >;
+
+/** A safe PATCH body from the inline editor's numeric inputs. */
+export const rulePatchFromValues = (
+  key: EarningRuleKey,
+  values: Record<NumericRuleField, number>,
+): LoyaltyRulesPatch =>
+  Object.fromEntries(
+    EDITABLE_RULE_FIELDS[key].map(({ field, min }) => [field, Math.max(min, Number(values[field]) || 0)]),
+  ) as LoyaltyRulesPatch;
 
 export type RewardStatus = 'active' | 'draft' | 'archived';
 

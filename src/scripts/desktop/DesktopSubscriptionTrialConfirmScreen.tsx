@@ -54,7 +54,7 @@ const TRIAL_FEATURES = [
   { icon: 'local_offer', label: 'Deals & offers' },
   { icon: 'hub', label: 'Multiple locations' },
   { icon: 'qr_code_scanner', label: 'QR & smart tags' },
-  { icon: 'chat_bubble_outline', label: 'Customer messaging' },
+  { icon: 'vemtap-chat', label: 'Customer messaging' },
   { icon: 'near_me', label: 'Hyper-local discovery' },
   { icon: 'insights', label: 'Business analytics' },
   { icon: 'loyalty', label: 'Loyalty & rewards' },

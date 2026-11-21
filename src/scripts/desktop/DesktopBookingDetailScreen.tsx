@@ -325,7 +325,7 @@ export function DesktopBookingDetailScreen({ onNav, onBack, bookingRef, onChat }
                       onClick={() => (onChat && appointment.branchId ? onChat(appointment.branchId) : onNav('messages'))}
                       type="button"
                     >
-                      <Icon name="chat" className="text-[18px]" />
+                      <Icon name="vemtap-chat-white" className="text-[18px]" />
                       <span>Message Business</span>
                     </button>
                     <a

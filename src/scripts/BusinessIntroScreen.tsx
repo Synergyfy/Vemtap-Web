@@ -55,7 +55,7 @@ const CORE_TOOLS: CoreTool[] = [
     title: 'Zero Commission Sales',
     badge: '0% Take Rate',
     badgeClass: 'text-badge-discount-text',
-    body: 'Direct consumer settlement. VEMTAP never taxes your in-store register sales or service appointments.',
+    body: 'Direct consumer settlement. VEMTAP never taxes your in-store register or product sales.',
   },
   {
     key: 'qr-passes',
@@ -77,7 +77,7 @@ const CORE_TOOLS: CoreTool[] = [
   },
   {
     key: 'chat',
-    icon: 'chat',
+    icon: 'vemtap-chat',
     iconBoxClass: 'bg-secondary-container text-on-secondary-container',
     title: 'Direct In-App Chat',
     badge: 'Real-Time',

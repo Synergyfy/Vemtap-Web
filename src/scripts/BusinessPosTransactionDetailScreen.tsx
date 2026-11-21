@@ -346,7 +346,7 @@ export function BusinessPosTransactionDetailScreen({ onBack }: BusinessPosTransa
               onClick={() => showToast(live ? 'WhatsApp / SMS receipts are coming soon' : 'Dispatch sent via SMS/WhatsApp')}
               className="h-10 bg-surface-container-high active:bg-surface-container-highest transition-colors rounded-xl flex items-center justify-center gap-space-2xs text-text-primary font-label-sm text-label-sm font-semibold"
             >
-              <Icon name="share" className="text-[17px] text-badge-discount-text" />
+              <Icon name="whatsapp" className="text-[17px] text-badge-discount-text" />
               <span>WhatsApp / SMS</span>
             </button>
             <button

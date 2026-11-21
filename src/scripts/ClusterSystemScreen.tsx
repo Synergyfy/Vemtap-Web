@@ -541,7 +541,7 @@ export function ClusterSystemScreen({
                         className="p-1.5 rounded-lg bg-surface-tint-blue text-primary text-[11px] font-semibold flex items-center gap-1"
                         title="In-App Chat"
                       >
-                        <Icon name="chat" className="text-[15px]" />
+                        <Icon name="vemtap-chat" className="text-[15px]" />
                         <span className="hidden sm:inline">Chat</span>
                       </button>
                     </div>
@@ -770,7 +770,7 @@ export function ClusterSystemScreen({
                           onClick={() => setSelectedMemberChat(b)}
                           className="py-1.5 px-3 rounded-xl bg-primary-container text-white text-[11px] font-semibold flex items-center gap-1 shadow-xs hover:opacity-95 transition-all"
                         >
-                          <Icon name="chat" className="text-[14px]" />
+                          <Icon name="vemtap-chat-white" className="text-[14px]" />
                           <span>In-App Chat</span>
                         </button>
                       )}

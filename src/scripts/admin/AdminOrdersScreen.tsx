@@ -352,7 +352,7 @@ export function AdminOrdersScreen({ onNavigate, subpage = 'live' }: AdminOrdersS
             }`}
           >
             <span className="material-symbols-outlined text-[16px]">receipt_long</span>
-            <span>Orders &amp; Bookings</span>
+            <span>Orders</span>
           </button>
           <button
             onClick={() => onNavigate('/admin/orders/transactions')}

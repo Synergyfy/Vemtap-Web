@@ -4,11 +4,11 @@ import { Logo } from './ui/Logo';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import {
   BUSINESS_SIDEBAR_SECTIONS,
-  filterSidebarSections,
   resolveSidebarActive,
   type BusinessSidebarSection,
   type BusinessSidebarSubItem,
 } from '../scripts/desktop/businessSidebarConfig';
+import { filterSidebarSectionsForUser, sessionRoleLabel } from '../scripts/staffPageAccess';
 import { UserAvatar } from './ui/UserAvatar';
 import { useProfile } from '../context/ProfileContext';
 import { useSessionUser } from '../hooks/useSessionUser';
@@ -38,8 +38,12 @@ export function BusinessMobileDrawer({
   const { branch, isLive } = useBusinessBranch();
   const { offerings, mode } = useBusinessOfferings();
   const { features } = useBusinessFeatures();
-  // Only the tools the business has switched on appear in the drawer.
-  const visibleSections = filterSidebarSections(BUSINESS_SIDEBAR_SECTIONS, (id) => Boolean(features[id]));
+  // Only switched-on tools and pages granted to this staff account appear.
+  const visibleSections = filterSidebarSectionsForUser(
+    BUSINESS_SIDEBAR_SECTIONS,
+    (id) => Boolean(features[id]),
+    session,
+  );
   // Follow the active entry into whichever group is actually on screen, so a
   // switched-off group (or a moved entry) never keeps the highlight.
   const resolved = resolveSidebarActive(active);
@@ -265,7 +269,7 @@ export function BusinessMobileDrawer({
             </div>
             <div className="flex flex-col leading-tight">
               <span className="font-label-sm text-label-sm font-semibold text-on-surface">{liveAccount ? profile.fullName || 'Your account' : 'Musa Danladi'}</span>
-              <span className="font-caption text-[11px] text-text-tertiary">{liveAccount ? session?.businessRole || session?.role || 'Business account' : 'Store Manager'}</span>
+              <span className="font-caption text-[11px] text-text-tertiary">{liveAccount ? sessionRoleLabel(session) : 'Store Manager'}</span>
             </div>
           </div>
           {onSignOut && (

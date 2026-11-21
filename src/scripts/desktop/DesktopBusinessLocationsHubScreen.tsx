@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
@@ -117,7 +118,8 @@ export function DesktopBusinessLocationsHubScreen({
   const counts = useBranchCatalogueCounts(liveList.map((branch) => branch.id));
   const tillsQuery = useQuery({ queryKey: ['pos', 'tills', 'all'], queryFn: () => posService.tills(null), enabled: live });
   const locations = useBusinessAnalytics('locations', 30);
-  const { branch: activeBranch } = useBusinessBranch();
+  const { branch: activeBranch, branches: allBranches, switchTo } = useBusinessBranch();
+  const [switcherOpen, setSwitcherOpen] = useState(false);
   const tillCount = (branchId: string) => (tillsQuery.data ?? []).filter((till) => till.branchId === branchId).length;
   const n = (value: number | null | undefined) => (value == null ? '—' : String(value));
   const cards: BranchCardData[] = live
@@ -237,15 +239,41 @@ export function DesktopBusinessLocationsHubScreen({
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-space-sm">
+        <div className="relative flex items-center gap-space-sm">
           <button
             type="button"
-            className="flex items-center gap-space-sm px-space-md py-space-xs rounded-lg bg-surface-container text-on-surface font-label-md text-label-md hover:bg-surface-container-high transition-colors"
+            onClick={() => setSwitcherOpen(!switcherOpen)}
+            className="flex items-center gap-space-sm px-space-md py-space-xs rounded-lg bg-surface-container text-on-surface font-label-md text-label-md hover:bg-surface-container-high transition-colors cursor-pointer"
           >
             <Icon name="swap_horiz" className="text-[18px] text-primary" />
             <span>Switch Operating View</span>
-            <Icon name="expand_more" className="text-[18px] text-text-secondary" />
+            <Icon name="expand_more" className={`text-[18px] text-text-secondary transition-transform ${switcherOpen ? 'rotate-180' : ''}`} />
           </button>
+          {switcherOpen && (
+            <div className="absolute right-0 top-full mt-2 w-72 rounded-xl bg-surface-canvas border border-border-subtle shadow-xl p-2 z-50 flex flex-col gap-1">
+              <span className="font-caption text-caption text-text-secondary px-2 py-1 font-semibold">Select Operating Branch</span>
+              {(allBranches ?? []).map((b) => (
+                <button
+                  key={b.key || b.id}
+                  type="button"
+                  onClick={() => {
+                    switchTo(b.key || b.id || '');
+                    setSwitcherOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-lg font-label-md text-label-md flex items-center justify-between transition-colors ${
+                    (b.key || b.id) === (activeBranch.key || activeBranch.id)
+                      ? 'bg-surface-tint-blue text-primary font-bold'
+                      : 'hover:bg-surface-container text-text-primary'
+                  }`}
+                >
+                  <span className="truncate">{b.name}</span>
+                  {(b.key || b.id) === (activeBranch.key || activeBranch.id) && (
+                    <Icon name="check" className="text-[16px] text-primary" />
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
           <button
             type="button"
             title="Branch Network Map Configuration"
@@ -481,21 +509,26 @@ export function DesktopBusinessLocationsHubScreen({
                   <button
                     type="button"
                     onClick={() => onOpenBranch?.(live ? branch.id : undefined)}
-                    className="px-space-md py-space-xs rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5"
+                    className="px-space-md py-space-xs rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5 cursor-pointer"
                   >
-                    <Icon name="edit_note" className="text-[18px]" />
-                    <span>Edit Branch Details</span>
+                    <Icon name="edit_location" className="text-[18px]" />
+                    <span>Edit Location</span>
                   </button>
                   <button
                     type="button"
-                    className="px-space-md py-space-xs rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5"
+                    onClick={() => {
+                      if (live && branch.id) switchTo(branch.id);
+                      onNav('pos-register');
+                    }}
+                    className="px-space-md py-space-xs rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5 cursor-pointer"
                   >
                     <Icon name="point_of_sale" className="text-[18px]" />
                     <span>{branch.registerLabel}</span>
                   </button>
                   <button
                     type="button"
-                    className="px-space-md py-space-xs rounded-xl bg-surface-tint-blue hover:bg-primary-fixed text-primary font-label-md text-label-md transition-colors flex items-center gap-1.5"
+                    onClick={() => onOpenBranch?.(live ? branch.id : undefined)}
+                    className="px-space-md py-space-xs rounded-xl bg-surface-tint-blue hover:bg-primary-fixed text-primary font-label-md text-label-md transition-colors flex items-center gap-1.5 cursor-pointer"
                   >
                     <Icon name="settings_input_antenna" className="text-[18px]" />
                     <span>Manage Geofence</span>
@@ -651,14 +684,16 @@ export function DesktopBusinessLocationsHubScreen({
               <div className="flex items-center gap-space-xs">
                 <button
                   type="button"
-                  className="px-space-md py-space-xs rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5"
+                  onClick={() => onOpenBranch?.(location.id)}
+                  className="px-space-md py-space-xs rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
-                  <Icon name="edit_note" className="text-[18px]" />
-                  <span>Edit Branch Details</span>
+                  <Icon name="edit_location" className="text-[18px]" />
+                  <span>Edit Location</span>
                 </button>
                 <button
                   type="button"
-                  className="px-space-md py-space-xs rounded-xl bg-surface-tint-blue hover:bg-primary-fixed text-primary font-label-md text-label-md transition-colors flex items-center gap-1.5"
+                  onClick={() => onOpenBranch?.(location.id)}
+                  className="px-space-md py-space-xs rounded-xl bg-surface-tint-blue hover:bg-primary-fixed text-primary font-label-md text-label-md transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <Icon name="settings_input_antenna" className="text-[18px]" />
                   <span>Manage Geofence</span>

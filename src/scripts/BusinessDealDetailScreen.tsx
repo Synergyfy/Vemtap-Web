@@ -97,17 +97,17 @@ const DEMO_VIEW: DealView = {
   window: 'Monday – Sunday · 12:00 PM – 5:00 PM',
   bundleCount: '2 Items Bundled',
   bundled: [
-    { img: RIBEYE_IMG, name: 'Woodfire Ribeye 250g', sub: 'Main · Kitchen Grill Section' },
+    { img: RIBEYE_IMG, name: 'Woodfire Ribeye 250g', sub: 'Main · Primary Offering' },
     { img: MOJITO_IMG, name: 'Passionfruit House Mojito', sub: 'Beverage · Craft Bar Stand' },
   ],
-  capLabel: 'Daily Kitchen Reservation',
-  capValue: '45 covers/day',
+  capLabel: 'Daily Redemption Allocation',
+  capValue: '45 claims/day',
   branchCount: '2 of 3 branches',
   branches: BRANCH_AVAILABILITY,
   description:
     'Indulge in our signature 250g woodfire grilled prime Angus ribeye paired with freshly muddled house passionfruit mojito. Exclusive VEMTAP weekend diners perk.',
   terms:
-    'Valid for dine-in only. One voucher per table/visit. Not combinable with happy hour promotions. Show active QR code to server before requesting bill.',
+    'Valid for in-store redemption only. One voucher per customer/visit. Not combinable with other promotions. Show active QR code to staff before requesting bill.',
   claimSteps: [
     'Present digital voucher QR on arrival.',
     'Staff verifies on Till 01.',

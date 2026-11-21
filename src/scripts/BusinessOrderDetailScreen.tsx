@@ -206,10 +206,10 @@ export function BusinessOrderDetailScreen({ orderId, onBack }: BusinessOrderDeta
           </div>
           <div className="flex items-center gap-space-xs shrink-0">
             <button
-              aria-label="Print Kitchen Receipt"
+              aria-label="Print Order Receipt"
               className="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-on-surface hover:bg-surface-container-highest active:scale-95 transition-all shadow-sm"
               type="button"
-              onClick={() => showToast('Printing thermal kitchen ticket...', 'print')}
+              onClick={() => showToast('Printing thermal order ticket...', 'print')}
             >
               <Icon name="receipt_long" className="text-[20px]" />
             </button>
@@ -260,8 +260,8 @@ export function BusinessOrderDetailScreen({ orderId, onBack }: BusinessOrderDeta
                     : live && status === 'ready'
                       ? 'Ready & Awaiting Handover'
                       : accepted
-                        ? 'Kitchen Accepted & Preparing'
-                        : 'Awaiting Kitchen Acceptance'}
+                        ? 'Order Accepted & Preparing'
+                        : 'Awaiting Order Acceptance'}
               </h2>
               <p className="font-body-md text-body-md text-text-secondary mt-1 flex items-center gap-1.5">
                 <Icon name="timer" className="text-[18px] text-primary" />
@@ -279,7 +279,7 @@ export function BusinessOrderDetailScreen({ orderId, onBack }: BusinessOrderDeta
                   onClick={() =>
                     live
                       ? setStatus('rejected', `Order ${ref} declined`, 'warning')
-                      : showToast('Decline modal opened: notify kitchen lead', 'warning', true)
+                      : showToast('Decline modal opened: notify fulfillment staff', 'warning', true)
                   }
                 >
                   <Icon name="close" className="text-[20px]" />
@@ -291,16 +291,16 @@ export function BusinessOrderDetailScreen({ orderId, onBack }: BusinessOrderDeta
                   disabled={statusMutation.isPending}
                   onClick={handleAccept}
                 >
-                  <Icon name="restaurant" className="text-[20px]" />
+                  <Icon name="check" className="text-[20px]" />
                   Accept Order
                 </button>
               </div>
             )}
-            {/* Kitchen Status Confirmation */}
+            {/* Fulfillment Status Confirmation */}
             {accepted && !closed && (
               <div className="mt-space-sm p-space-xs rounded-lg bg-badge-discount-bg text-badge-discount-text font-label-md text-label-md flex items-center gap-space-xs justify-center text-center">
                 <Icon name="check_circle" className="text-[18px]" />
-                <span>{v(`Status: ${status === 'processing' ? 'In preparation' : status}`, 'Ticket sent to Kitchen Display #2')}</span>
+                <span>{v(`Status: ${status === 'processing' ? 'In preparation' : status}`, 'Ticket sent to Preparation Station #2')}</span>
               </div>
             )}
           </div>
@@ -407,7 +407,7 @@ export function BusinessOrderDetailScreen({ orderId, onBack }: BusinessOrderDeta
                 type="button"
                 onClick={() => showToast(v(`Opening chat with ${customer}...`, 'Opening encrypted chat with Amina...'), 'chat')}
               >
-                <Icon name="chat" className="text-[18px]" />
+                <Icon name="vemtap-chat" className="text-[18px]" />
                 VEMTAP Chat
               </button>
             </div>
@@ -438,7 +438,7 @@ export function BusinessOrderDetailScreen({ orderId, onBack }: BusinessOrderDeta
                 <h3 className="font-heading-sm text-heading-sm text-text-primary truncate">{v(`Order Items (${items.length} items, ${quantity} qty)`, 'Order Items (3 items, 5 qty)')}</h3>
               </div>
               <span className="font-caption text-caption bg-surface-container px-space-xs py-0.5 rounded-full text-on-surface-variant font-medium shrink-0">
-                {v(status === 'ready' || status === 'completed' ? 'Kitchen Ready' : 'In Queue', 'Kitchen Ready')}
+                {v(status === 'ready' || status === 'completed' ? 'Order Ready' : 'In Queue', 'Order Ready')}
               </span>
             </div>
             {items.map((item, index) => (
@@ -601,7 +601,7 @@ export function BusinessOrderDetailScreen({ orderId, onBack }: BusinessOrderDeta
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <span className={`font-label-md text-label-md font-semibold ${accepted ? 'text-text-primary' : 'text-primary'}`}>
-                      {accepted ? 'Kitchen Accepted (Now in Prep)' : 'Kitchen Acceptance'}
+                      {accepted ? 'Order Accepted (Now in Prep)' : 'Order Acceptance'}
                     </span>
                     <span
                       className={`font-caption text-caption font-semibold ${accepted ? 'text-badge-discount-text' : 'text-primary'}`}
@@ -610,18 +610,18 @@ export function BusinessOrderDetailScreen({ orderId, onBack }: BusinessOrderDeta
                     </span>
                   </div>
                   <p className="font-caption text-caption text-text-secondary">
-                    {accepted ? 'Ticket routed to bistro kitchen display' : 'Pending acceptance from bistro kitchen lead'}
+                    {accepted ? 'Ticket routed to fulfillment station' : 'Pending acceptance from fulfillment staff'}
                   </p>
                 </div>
               </div>
               {/* Step 4 */}
               <div className={`flex items-start gap-space-sm relative ${live && rank >= 1 ? '' : 'opacity-60'}`}>
                 <div className="w-7 h-7 rounded-full bg-surface-container text-on-surface-variant flex items-center justify-center flex-shrink-0 z-10">
-                  <Icon name="skillet" className="text-[16px]" />
+                  <Icon name="inventory_2" className="text-[16px]" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <span className="font-label-md text-label-md font-medium text-text-primary">
-                    Preparation & Cooking
+                    Preparation & Fulfillment
                   </span>
                   <p className="font-caption text-caption text-text-secondary">{v('Target prep time —', 'Target prep time ~25 minutes')}</p>
                 </div>
@@ -670,7 +670,7 @@ export function BusinessOrderDetailScreen({ orderId, onBack }: BusinessOrderDeta
               <div className="bg-surface-container-low p-space-xs rounded-lg">
                 <span className="font-caption text-caption text-text-secondary block">Assigned Station</span>
                 <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                  {v(order?.attendedByUser ? personName(order.attendedByUser) : '—', 'Kitchen Counter #2')}
+                  {v(order?.attendedByUser ? personName(order.attendedByUser) : '—', 'Fulfillment Counter #2')}
                 </span>
               </div>
             </div>

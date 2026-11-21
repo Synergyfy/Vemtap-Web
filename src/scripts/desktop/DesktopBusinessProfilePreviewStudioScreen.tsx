@@ -1,12 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { CreateWithAiButton } from '../../components/CreateWithAiButton';
+import { SocialChannelPicker } from '../../components/SocialChannelPicker';
 import { useBusinessOfferings, type OfferingType } from '../../context/BusinessOfferingsContext';
 import { MerchantPortalChrome } from './MerchantPortalChrome';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { useBusinessProfileForm, type BusinessProfileForm } from '../../hooks/business/useBusinessProfileForm';
 import { useStorefrontPreview } from '../../hooks/business/useStorefrontPreview';
 import { apiErrorMessage } from '../../services/errorMessages';
+import { businessProfileUrl } from '../../utils/businessProfileLink';
+import {
+  channelsFromProfile,
+  socialFieldsFromChannels,
+  type ProfileChannel,
+} from '../../utils/businessProfileChannels';
+import {
+  CHANNEL_PLATFORMS,
+  CHANNEL_PLATFORM_BY_ID,
+  normalizeChannel,
+  type ChannelPlatformId,
+} from '../../utils/socialChannels';
 import type { AiPromptContext } from '../aiDesignAssistant';
 
 /** Neutral tile while the business has no cover / logo / item photo. */
@@ -18,11 +31,6 @@ interface DesktopBusinessProfilePreviewStudioScreenProps {
   onPreviewStorefront?: () => void;
 }
 
-interface Amenity {
-  icon: string;
-  label: string;
-}
-
 const DEMO_COVER =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuBXkpStKZGEaRSBhcdBylyfs1abZ2bDsUnGvuADtcSnD-qjIUZ51WfofWRXC3Upo7QEorP4ymqDYZP0xgUfrXNvljqX8KmO3BHwSV-yZqtvtIsGHEResllrRNckDeKMvXDaLXzp4ck64P7eEIvr_VCUBfUom7p2_UcJ-97BabQZ0Of6xxqB6PVPx2hLNsb7PfMw6j2PgSvxytV2jYVdZ3778iMYnx_rksJznfYqjKpDRBJjjR_d-OeitA';
 const DEMO_LOGO =
@@ -31,19 +39,6 @@ const DEMO_PREVIEW_COVER =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuBoSQapBR2K8RNL6ubyOFZFCnRUASULyUP4tANm20iuQCWCbGYFdo94ic8yeos0Mk-suIrpeNGmDXvu8sy3pKN1f8R3mkHBWbucl3rYrhkOoQZEjFdE4xJrukbxCSOoIH419BIXyxcFluZj5I8VirElnAmvtZVlTFoRzx6v68KfTF_o0_ZeHxp_LkKQX2vC91jih0fnXUDgzO0Bmc5I4A-sxopmRetuxhnajr7u7ZmhIPSCwNFYrl6HSg';
 const DEMO_PREVIEW_LOGO =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuDC3oLgxrQwsFgRl45ahVDnCs70FyaPg4llGt-MyzspCw8sTDzP7a1RxVDSikrSyPRFFEnLVTFXgSp_Kq96a7x9-8EW2fYmU1H8gGUXpD_ALp_vnnAGBkJflFO5bLg7XuQz31AjRYs9VMZTBwoTHHlwaLJ822x6hUpZhYO62hHTVXK9-ureACHeBcbFQFHRmaFPl13iiyUrf_n6S5t885IoFGJGvS9Izps5te4mTBYMfm4QHBAAMl2npQ';
-
-const AMENITIES: Amenity[] = [
-  { icon: 'restaurant', label: 'Dine-In' },
-  { icon: 'takeout_dining', label: 'Takeaway' },
-  { icon: 'moped', label: 'Delivery' },
-  { icon: 'wifi', label: 'Free Wi-Fi' },
-  { icon: 'local_parking', label: 'Valet Parking' },
-  { icon: 'accessible', label: 'Wheelchair Acc.' },
-  { icon: 'deck', label: 'Outdoor Patio' },
-  { icon: 'credit_card', label: 'POS Card' },
-  { icon: 'bolt', label: 'Instant Transfer' },
-  { icon: 'payments', label: 'Cash Accepted' },
-];
 
 const TRUST_ITEMS: Array<{ icon: string; label: string; value: string; note: string }> = [
   { icon: 'domain', label: 'Corporate Affairs Commission', value: 'RC-1849204 Verified', note: 'Active Registry' },
@@ -79,6 +74,8 @@ const PREVIEW_ITEMS: Array<{ image: string; alt: string; name: string; note: str
   },
 ];
 
+const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
 export function DesktopBusinessProfilePreviewStudioScreen({
   onNav,
   onPreviewStorefront,
@@ -90,13 +87,18 @@ export function DesktopBusinessProfilePreviewStudioScreen({
   const form = profile.form;
   const [offeringsDraft, setOfferingsDraft] = useState(offerings);
   const [confirmDisable, setConfirmDisable] = useState<OfferingType | null>(null);
-  const [activeAmenities, setActiveAmenities] = useState<string[]>(() =>
-    live ? AMENITIES.filter((amenity) => form.amenities.includes(amenity.label)).map((amenity) => amenity.label) : AMENITIES.map((a) => a.label),
-  );
+  const [amenities, setAmenities] = useState<string[]>(() => [...form.amenities]);
+  const [channels, setChannels] = useState<ProfileChannel[]>(() => channelsFromProfile(form));
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [newAmenity, setNewAmenity] = useState('');
+  const seededChannelsKey = useRef(JSON.stringify([form.amenities, form.socials, form.whatsappNumber]));
+  const channelSeq = useRef(0);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [editing, setEditing] = useState(false);
   const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Live: opens a local storefront URL, not the backend's production QR domain.
+  const publicProfileUrl = live ? businessProfileUrl(preview.storeCode ?? preview.publicUrl) : 'https://urbangrill.vem.store';
   // Live: the business record, verification and storefront figures; demo keeps the samples.
   const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
   const showToast = (message: string) => {
@@ -107,14 +109,6 @@ export function DesktopBusinessProfilePreviewStudioScreen({
   const field = (key: keyof Pick<BusinessProfileForm, 'name' | 'description' | 'phone' | 'officialEmail'>, demo: string) =>
     live
       ? { value: form[key], onChange: (event: { target: { value: string } }) => profile.set(key, event.target.value), readOnly: !editing }
-      : { defaultValue: demo, readOnly: !editing };
-  const socialField = (platform: string, demo: string) =>
-    live
-      ? {
-          value: (form.socials[platform] ?? '').replace(/^@/, ''),
-          onChange: (event: { target: { value: string } }) => profile.set('socials', { ...form.socials, [platform]: event.target.value }),
-          readOnly: !editing,
-        }
       : { defaultValue: demo, readOnly: !editing };
   const aiProfileContext: AiPromptContext = {
     businessName: live ? (profile.isLoading ? undefined : form.name) : 'Urban Grill & Bistro',
@@ -143,28 +137,39 @@ export function DesktopBusinessProfilePreviewStudioScreen({
     ? preview.featured.map((item) => ({ image: item.image ?? NO_IMAGE, alt: item.name, name: item.name, note: item.note, price: item.price }))
     : PREVIEW_ITEMS;
 
-  // Reflect the saved amenities once the profile loads (or after a save).
+  // Reflect the saved socials/amenities once they load (or after a save) without
+  // wiping edits made in other fields while editing.
   useEffect(() => {
-    if (!live || profile.isLoading) return;
-    setActiveAmenities(AMENITIES.map((a) => a.label).filter((label) => form.amenities.includes(label)));
+    if (profile.isLoading) return;
+    const key = JSON.stringify([form.amenities, form.socials, form.whatsappNumber]);
+    if (seededChannelsKey.current === key) return;
+    seededChannelsKey.current = key;
+    setAmenities([...form.amenities]);
+    setChannels(channelsFromProfile(form));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [live, profile.isLoading, form.amenities]);
+  }, [profile.isLoading, form.amenities, form.socials, form.whatsappNumber]);
 
   useEffect(() => {
     if (live && profile.loadError) showToast(apiErrorMessage(profile.loadError, 'Could not load your business profile.'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.loadError]);
 
+  const socialFields = socialFieldsFromChannels(channels, form);
   const hasChanges =
     !profile.isLoading &&
     (profile.dirty ||
-      AMENITIES.some((amenity) => activeAmenities.includes(amenity.label) !== form.amenities.includes(amenity.label)) ||
+      !sameJson(amenities, form.amenities) ||
+      !sameJson(socialFields.socials, form.socials) ||
+      socialFields.whatsappNumber !== form.whatsappNumber ||
       offeringsDraft.hasProducts !== offerings.hasProducts ||
       offeringsDraft.hasServices !== offerings.hasServices);
 
   const cancelEditing = () => {
     const saved = profile.reset();
-    setActiveAmenities(AMENITIES.filter((amenity) => saved.amenities.includes(amenity.label)).map((amenity) => amenity.label));
+    setAmenities([...saved.amenities]);
+    setChannels(channelsFromProfile(saved));
+    setPickerOpen(false);
+    setNewAmenity('');
     setOfferingsDraft(offerings);
     setConfirmDisable(null);
     setSaveState('idle');
@@ -205,8 +210,30 @@ export function DesktopBusinessProfilePreviewStudioScreen({
     showToast(`${type === 'products' ? 'Products' : 'Services'} disabled. Existing data remains safely preserved.`);
   };
 
-  const toggleAmenity = (label: string) =>
-    setActiveAmenities((prev) => (prev.includes(label) ? prev.filter((item) => item !== label) : [...prev, label]));
+  const addAmenity = () => {
+    const value = newAmenity.trim().replace(/\s+/g, ' ');
+    if (!value) return;
+    if (amenities.some((item) => item.toLowerCase() === value.toLowerCase())) {
+      showToast('That feature is already on your storefront.');
+      return;
+    }
+    setAmenities((prev) => [...prev, value]);
+    setNewAmenity('');
+  };
+
+  const removeAmenity = (label: string) => setAmenities((prev) => prev.filter((item) => item !== label));
+
+  const usedPlatforms = channels.map((channel) => channel.platform);
+  const setChannelValue = (id: string, value: string) =>
+    setChannels((prev) => prev.map((channel) => (channel.id === id ? { ...channel, value, touched: true } : channel)));
+  const markChannelTouched = (id: string) =>
+    setChannels((prev) => prev.map((channel) => (channel.id === id ? { ...channel, touched: true } : channel)));
+  const addChannel = (platform: ChannelPlatformId) => {
+    setPickerOpen(false);
+    if (usedPlatforms.includes(platform)) return;
+    setChannels((prev) => [...prev, { id: `${platform}-${channelSeq.current++}`, platform, value: '', touched: false }]);
+  };
+  const removeChannel = (id: string) => setChannels((prev) => prev.filter((channel) => channel.id !== id));
 
   /** Live: uploads a new logo / cover and saves it to the business right away. */
   const changeImage = (kind: 'logo' | 'cover') => {
@@ -222,7 +249,7 @@ export function DesktopBusinessProfilePreviewStudioScreen({
   const brandInitial = (form.name || 'B').charAt(0).toUpperCase();
 
   const copySubdomain = () => {
-    navigator.clipboard?.writeText(v(preview.publicUrl ?? '', 'https://urbangrill.vem.store'));
+    navigator.clipboard?.writeText(publicProfileUrl);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2200);
   };
@@ -230,12 +257,9 @@ export function DesktopBusinessProfilePreviewStudioScreen({
   const saveChanges = () => {
     if (saveState !== 'idle' || !editing || !hasChanges) return;
     if (live) {
-      // Keep amenities this screen doesn't list (e.g. set on mobile) untouched.
-      const listed = AMENITIES.map((a) => a.label);
-      const amenities = [...form.amenities.filter((label) => !listed.includes(label)), ...activeAmenities];
       setSaveState('saving');
       profile.save.mutate(
-        { ...form, amenities },
+        { ...form, amenities, ...socialFields },
         {
           onSuccess: () => {
             setOfferings(offeringsDraft);
@@ -517,7 +541,8 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                   </button>
                 </div>
 
-                {/* Services Toggle */}
+                {/* Services Toggle — hidden in product-only rollout */}
+                {false && (
                 <div className="bg-surface-subtle p-space-md rounded-xl flex items-start justify-between gap-space-sm border border-border-subtle">
                   <div className="flex items-start gap-space-sm min-w-0 pr-2">
                     <div
@@ -552,17 +577,12 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                     />
                   </button>
                 </div>
+                )}
               </div>
 
               <div className="flex items-center gap-2 pt-2 border-t border-border-subtle font-caption text-caption text-text-secondary">
                 <Icon name="info" className="text-primary text-[18px] shrink-0" />
-                <span>
-                  {offeringsDraft.hasProducts && offeringsDraft.hasServices
-                    ? 'Your dashboard includes both products and services.'
-                    : offeringsDraft.hasServices
-                    ? 'Your dashboard will focus on services.'
-                    : 'Your dashboard will focus on products.'}
-                </span>
+                <span>Your dashboard will focus on products.</span>
               </div>
             </div>
 
@@ -582,14 +602,24 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                     <span className="font-caption text-caption text-badge-discount-text font-medium">SSL Active • Fast CDN</span>
                   </div>
                   <div className="flex items-center gap-space-xs bg-surface-canvas px-space-sm py-2 rounded-lg shadow-sm">
-                    <Icon name="link" className="text-primary text-[18px]" />
-                    <span className="font-body-md text-body-md text-text-primary font-medium flex-grow truncate">
-                      {v((preview.publicUrl ?? '—').replace(/^https?:\/\//, ''), 'urbangrill.vem.store')}
-                    </span>
+                    <a
+                      href={publicProfileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Open your public storefront"
+                      className="flex items-center gap-space-xs min-w-0 flex-grow hover:text-primary transition-colors"
+                    >
+                      <Icon name="link" className="text-primary text-[18px] shrink-0" />
+                      <span className="font-body-md text-body-md text-text-primary font-medium truncate">
+                        {publicProfileUrl.replace(/^https?:\/\//, '') || 'Loading your public link…'}
+                      </span>
+                      <Icon name="open_in_new" className="text-primary text-[14px] shrink-0" />
+                    </a>
                     <button
                       type="button"
                       onClick={copySubdomain}
-                      className={`px-space-xs py-1 rounded-md font-caption text-caption font-semibold transition-colors flex items-center gap-1 ${
+                      disabled={!publicProfileUrl}
+                      className={`px-space-xs py-1 rounded-md font-caption text-caption font-semibold transition-colors flex items-center gap-1 disabled:opacity-50 ${
                         copied ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-tint-blue text-primary hover:bg-secondary-container'
                       }`}
                     >
@@ -618,22 +648,104 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-1">
-                  <label className="font-label-sm text-label-sm text-text-secondary" htmlFor="instagram-input">Instagram Profile</label>
-                  <div className="flex items-center gap-space-xs bg-surface-subtle px-space-sm py-2.5 rounded-xl">
-                    <Icon name="photo_camera" className="text-text-secondary text-[18px]" />
-                    <span className="font-label-sm text-label-sm text-text-tertiary">@</span>
-                    <input className="bg-transparent font-label-md text-label-md text-text-primary outline-none w-full" id="instagram-input" type="text" {...socialField('instagram', 'urbangrillbistro')} />
+                {/* Only the channels the business actually added are listed. */}
+                <div className="md:col-span-2 flex flex-col gap-space-xs pt-1 border-t border-border-subtle">
+                  <div className="flex items-center justify-between gap-space-sm">
+                    <div>
+                      <span className="font-label-sm text-label-sm text-text-primary font-semibold">Social Channels</span>
+                      <p className="font-caption text-caption text-text-tertiary">
+                        Add only the platforms you want customers to see.
+                      </p>
+                    </div>
+                    {editing && (
+                      <div className="relative shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setPickerOpen((open) => !open)}
+                          disabled={usedPlatforms.length >= CHANNEL_PLATFORMS.length}
+                          aria-haspopup="menu"
+                          aria-expanded={pickerOpen}
+                          className="flex items-center gap-1 px-space-sm py-1.5 rounded-lg bg-surface-tint-blue text-primary font-caption text-caption font-semibold hover:bg-secondary-container transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <Icon name="add" className="text-[16px]" />
+                          Add Channel
+                        </button>
+                        {pickerOpen ? (
+                          <SocialChannelPicker
+                            used={usedPlatforms}
+                            onSelect={addChannel}
+                            onClose={() => setPickerOpen(false)}
+                          />
+                        ) : null}
+                      </div>
+                    )}
                   </div>
-                </div>
 
-                <div className="flex flex-col gap-1">
-                  <label className="font-label-sm text-label-sm text-text-secondary" htmlFor="x-input">X (Formerly Twitter)</label>
-                  <div className="flex items-center gap-space-xs bg-surface-subtle px-space-sm py-2.5 rounded-xl">
-                    <Icon name="tag" className="text-text-secondary text-[18px]" />
-                    <span className="font-label-sm text-label-sm text-text-tertiary">@</span>
-                    <input className="bg-transparent font-label-md text-label-md text-text-primary outline-none w-full" id="x-input" type="text" {...socialField('x', 'urbangrill_ng')} />
-                  </div>
+                  {channels.length === 0 ? (
+                    <span className="font-caption text-caption text-text-tertiary">
+                      {editing ? 'No social channels yet — use “Add Channel” above.' : 'No social channels added yet.'}
+                    </span>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-xs">
+                      {channels.map((channel) => {
+                        const platform = CHANNEL_PLATFORM_BY_ID[channel.platform];
+                        const result = normalizeChannel(channel.platform, channel.value);
+                        const showError = channel.touched && channel.value.trim().length > 0 && !result.ok;
+                        return (
+                          <div key={channel.id} className="flex items-center gap-space-xs bg-surface-canvas p-space-xs rounded-xl shadow-sm">
+                            <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${platform.iconClass}`}>
+                              <Icon name={platform.icon} className="text-[18px]" />
+                            </span>
+                            <div className="min-w-0 flex-grow">
+                              <span className="flex items-center gap-1 font-caption text-caption text-text-secondary">
+                                {platform.label}
+                                {result.ok ? <Icon name="check_circle" className="text-badge-discount-text text-[13px]" filled /> : null}
+                              </span>
+                              {editing ? (
+                                <input
+                                  aria-label={`${platform.label} ${platform.kind === 'phone' ? 'phone number' : 'handle'}`}
+                                  aria-invalid={showError}
+                                  className="w-full bg-transparent font-label-sm text-label-sm text-text-primary outline-none p-0 placeholder:text-text-tertiary"
+                                  placeholder={platform.placeholder}
+                                  value={channel.value}
+                                  onBlur={() => markChannelTouched(channel.id)}
+                                  onChange={(event) => setChannelValue(channel.id, event.target.value)}
+                                />
+                              ) : result.ok ? (
+                                <a
+                                  href={result.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1 font-caption text-caption text-primary hover:underline min-w-0"
+                                >
+                                  <Icon name="link" className="text-[13px] shrink-0" />
+                                  <span className="truncate">{result.display}</span>
+                                </a>
+                              ) : (
+                                <span className="font-caption text-caption text-text-tertiary">{platform.hint}</span>
+                              )}
+                              {showError ? (
+                                <span className="flex items-center gap-1 font-caption text-caption text-error">
+                                  <Icon name="error" className="text-[13px]" />
+                                  {'error' in result ? result.error : ''}
+                                </span>
+                              ) : null}
+                            </div>
+                            {editing ? (
+                              <button
+                                type="button"
+                                aria-label={`Remove ${platform.label}`}
+                                onClick={() => removeChannel(channel.id)}
+                                className="p-1 rounded-lg text-text-tertiary hover:text-error hover:bg-surface-container transition-colors shrink-0"
+                              >
+                                <Icon name="delete" className="text-[16px]" />
+                              </button>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -645,32 +757,63 @@ export function DesktopBusinessProfilePreviewStudioScreen({
                   <Icon name="room_service" className="text-primary text-[22px]" />
                   <h2 className="font-heading-sm text-heading-sm text-text-primary">Storefront Amenities &amp; Features</h2>
                 </div>
-                <span className="font-caption text-caption text-text-tertiary">{activeAmenities.length} Configured Badges</span>
+                <span className="font-caption text-caption text-text-tertiary">{amenities.length} Configured Badges</span>
               </div>
               <p className="font-caption text-caption text-text-secondary">
-                Toggle customer-facing facilities. Verified tags enhance your ranking in hyper-local category filters.
+                Add the facilities you actually offer. Customers see these badges on your public storefront.
               </p>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-space-xs pt-space-2xs">
-                {AMENITIES.map((amenity) => {
-                  const active = activeAmenities.includes(amenity.label);
-                  return (
-                    <button
-                      key={amenity.label}
-                      type="button"
-                      disabled={!editing}
-                      onClick={() => toggleAmenity(amenity.label)}
-                      className={`group flex flex-col items-center justify-center p-space-sm rounded-xl transition-all shadow-sm text-center ${
-                        active ? 'bg-surface-tint-blue' : 'bg-surface-subtle opacity-60'
-                      } ${editing ? 'cursor-pointer' : 'cursor-default'}`}
+              {editing && (
+                <div className="flex items-center gap-space-xs">
+                  <input
+                    aria-label="New amenity or feature"
+                    className="flex-grow min-w-0 rounded-lg bg-surface-subtle px-space-sm py-2 font-label-md text-label-md text-text-primary outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-text-tertiary"
+                    placeholder="e.g. Rooftop seating, EV charging…"
+                    value={newAmenity}
+                    onChange={(event) => setNewAmenity(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        addAmenity();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={addAmenity}
+                    disabled={!newAmenity.trim()}
+                    className="flex items-center gap-1 px-space-sm py-2 rounded-lg bg-surface-tint-blue text-primary font-caption text-caption font-semibold hover:bg-secondary-container transition-colors disabled:opacity-50"
+                  >
+                    <Icon name="add" className="text-[16px]" />
+                    Add new
+                  </button>
+                </div>
+              )}
+              <div className="flex flex-wrap gap-space-xs pt-space-2xs">
+                {amenities.length === 0 ? (
+                  <span className="font-caption text-caption text-text-tertiary">
+                    {editing ? 'No features yet — type one above and click Add new.' : 'No features added yet.'}
+                  </span>
+                ) : (
+                  amenities.map((amenity) => (
+                    <span
+                      key={amenity}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-tint-blue text-primary font-label-sm text-label-sm font-medium"
                     >
-                      <Icon name={amenity.icon} className={`text-[22px] mb-1 ${active ? 'text-primary' : 'text-text-tertiary'}`} />
-                      <span className="font-label-sm text-label-sm text-text-primary font-medium">{amenity.label}</span>
-                      <span className={`font-caption text-caption font-semibold mt-0.5 ${active ? 'text-primary' : 'text-text-tertiary'}`}>
-                        {active ? 'Active' : 'Disabled'}
-                      </span>
-                    </button>
-                  );
-                })}
+                      <Icon name="check_circle" className="text-[14px]" filled />
+                      {amenity}
+                      {editing ? (
+                        <button
+                          type="button"
+                          aria-label={`Remove ${amenity}`}
+                          onClick={() => removeAmenity(amenity)}
+                          className="p-0.5 rounded-full hover:text-error transition-colors"
+                        >
+                          <Icon name="close" className="text-[14px]" />
+                        </button>
+                      ) : null}
+                    </span>
+                  ))
+                )}
               </div>
             </div>
           </div>

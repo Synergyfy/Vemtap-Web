@@ -489,7 +489,7 @@ export function DesktopAddServiceStep2Screen({
                 <div className="bg-surface-canvas rounded-2xl p-5 shadow-sm flex flex-col justify-between">
                   <div className="flex items-start gap-3 mb-3">
                     <div className="w-9 h-9 rounded-xl bg-badge-discount-bg text-badge-discount-text flex items-center justify-center shrink-0">
-                      <Icon name="chat" className="text-[20px]" />
+                      <Icon name="whatsapp" className="text-[20px]" />
                     </div>
                     <div>
                       <span className="font-label-md text-label-md font-bold text-on-surface block">

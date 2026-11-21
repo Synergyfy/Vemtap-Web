@@ -7,7 +7,6 @@ import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
 import { useLocation } from '../context/LocationContext';
 import { useOrders } from '../context/OrdersContext';
 import { useProfile } from '../context/ProfileContext';
-import { useBooking } from '../context/BookingContext';
 import { useCart } from '../context/CartContext';
 import { activeVouchers, useClaims, voucherExpiryLabel, type ClaimRecord } from '../context/ClaimsContext';
 import { hasApiConfig } from '../services/api/client';
@@ -171,7 +170,6 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onOpenDeal, onSta
   const [hero, setHero] = useState(0);
   const { fullName } = useProfile();
   const { orders } = useOrders();
-  const { appointments } = useBooking();
 
   const { count: cartCount } = useCart();
   const { claims } = useClaims();
@@ -215,19 +213,8 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onOpenDeal, onSta
       });
     });
 
-    appointments.slice(0, 2).forEach((appointment) => {
-      events.push({
-        id: `booking-${appointment.ref}`,
-        label: appointment.status === 'confirmed' ? 'Booking confirmed' : 'Booking updated',
-        subtitle: `${appointment.merchantName} • ${appointment.dateShort} ${appointment.time}`,
-        value: formatCurrency(appointment.payable),
-        icon: 'calendar_today',
-        tone: 'success',
-      });
-    });
-
     return events.slice(0, 3);
-  }, [orders, appointments]);
+  }, [orders]);
 
   const goToDestination = (slide: HeroSlide) => {
     const { destination, announcement } = slide;
@@ -390,13 +377,6 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onOpenDeal, onSta
               </div>
               <span className="font-heading-md text-heading-md text-text-primary font-bold">{orders.length}</span>
               <span className="font-caption text-caption text-text-secondary truncate">Orders</span>
-            </div>
-            <div className="flex flex-col p-space-sm rounded-xl bg-surface-canvas shadow-sm">
-              <div className="w-8 h-8 rounded-lg bg-badge-discount-bg flex items-center justify-center text-badge-discount-text mb-space-2xs">
-                <Icon name="calendar_today" className="text-[18px]" />
-              </div>
-              <span className="font-heading-md text-heading-md text-badge-discount-text font-bold">{appointments.length}</span>
-              <span className="font-caption text-caption text-text-secondary truncate">Bookings</span>
             </div>
           </div>
         </section>
@@ -616,7 +596,7 @@ export function DashboardScreen({ onTab, onNavigate, onShowQR, onOpenDeal, onSta
             </div>
           ) : (
             <div className="rounded-xl bg-surface-canvas p-space-md text-text-secondary shadow-sm">
-              No recent activity yet. Your orders and bookings will appear here.
+              No recent activity yet. Your orders will appear here.
             </div>
           )}
         </section>

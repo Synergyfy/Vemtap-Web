@@ -9,6 +9,8 @@ import { useMyBusiness } from '../hooks/business/useMyBusiness';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { liveServiceLocations, locationsToBranches, resolveSelectedLocations } from './serviceStudioShared';
 import { UserAvatar } from '../components/ui/UserAvatar';
+import { useLiveItemEditor } from '../hooks/business/useLiveItemEditor';
+import { apiErrorMessage } from '../services/errorMessages';
 
 interface BusinessAddServiceStep1ScreenProps {
   draft: ServiceDraft;
@@ -67,6 +69,27 @@ export function BusinessAddServiceStep1Screen({
   // The service inherits its classification from the business profile, so the
   // sector is derived from the draft rather than re-asked here.
   const sectorLabel = describeServiceSector([draft.primaryCategory], [draft.subCategory]);
+
+  // Live service category: choose or create one from the business's real catalogue.
+  const editor = useLiveItemEditor('service');
+  const [newCategory, setNewCategory] = useState('');
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const createCategory = async () => {
+    const name = newCategory.trim();
+    if (!name || creatingCategory) return;
+    setCreatingCategory(true);
+    setCategoryError(null);
+    try {
+      const created = await editor.createCategory(name, { kind: 'service' });
+      onDraftChange({ categoryId: created.id });
+      setNewCategory('');
+    } catch (error) {
+      setCategoryError(apiErrorMessage(error, 'Could not create the category. Try again.'));
+    } finally {
+      setCreatingCategory(false);
+    }
+  };
 
   const toggleHighlight = (index: number) => {
     onDraftChange({
@@ -134,6 +157,8 @@ export function BusinessAddServiceStep1Screen({
           <ServiceImageUploader
             currentImage={draft.image}
             onImageChange={(imageUrl) => onDraftChange({ image: imageUrl })}
+            videos={draft.videos}
+            onVideosChange={(videos) => onDraftChange({ videos })}
             aiContext={{
               itemName: draft.title,
               itemDescription: draft.description,
@@ -288,6 +313,52 @@ export function BusinessAddServiceStep1Screen({
                     </div>
                   </div>
                 )}
+                {editor.live && (
+                  <div className="mt-3 pt-3 border-t border-primary/10 flex flex-col gap-2">
+                    <span className="font-caption text-caption font-semibold text-text-primary">
+                      Catalogue category
+                    </span>
+                    <select
+                      aria-label="Catalogue category"
+                      className="w-full bg-surface-canvas text-text-primary border border-border-subtle rounded-lg px-space-sm py-2 font-label-sm text-label-sm outline-none focus:ring-2 focus:ring-primary/30"
+                      value={draft.categoryId ?? ''}
+                      onChange={(event) => onDraftChange({ categoryId: event.target.value || undefined })}
+                    >
+                      <option value="">No catalogue category</option>
+                      {editor.categories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="flex items-center gap-2">
+                      <input
+                        aria-label="New service category name"
+                        className="flex-1 min-w-0 bg-surface-canvas text-text-primary border border-border-subtle rounded-lg px-space-sm py-2 font-label-sm text-label-sm outline-none placeholder:text-text-tertiary focus:ring-2 focus:ring-primary/30"
+                        placeholder="New service category name"
+                        type="text"
+                        value={newCategory}
+                        onChange={(event) => setNewCategory(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') void createCategory();
+                        }}
+                      />
+                      <button
+                        className="px-space-sm py-2 rounded-lg bg-primary text-on-primary font-label-sm text-label-sm font-semibold disabled:opacity-50"
+                        disabled={!newCategory.trim() || creatingCategory}
+                        type="button"
+                        onClick={() => void createCategory()}
+                      >
+                        Add
+                      </button>
+                    </div>
+                    {categoryError && (
+                      <p role="alert" className="font-caption text-caption text-error">
+                        {categoryError}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex flex-col gap-space-xs pt-space-2xs">
@@ -342,7 +413,7 @@ export function BusinessAddServiceStep1Screen({
 
         <section className="px-margin mt-space-lg flex flex-col gap-space-sm">
           <div className="flex items-center justify-between">
-            <h2 className="font-heading-sm text-heading-sm text-on-surface">Description &amp; Highlights</h2>
+            <h2 className="font-heading-sm text-heading-sm text-on-surface">Service Description</h2>
             <div className="flex items-center gap-1 bg-surface-tint-blue px-2 py-0.5 rounded-full shadow-sm">
               <Icon name="auto_awesome" className="text-primary text-[14px]" />
               <span className="font-caption text-caption text-primary font-medium">AI Polish Ready</span>

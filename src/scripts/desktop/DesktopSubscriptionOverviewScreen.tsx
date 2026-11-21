@@ -497,8 +497,8 @@ export function DesktopSubscriptionOverviewScreen({
 
         <section className="rounded-xl bg-surface-tint-blue p-space-lg shadow-sm flex flex-col sm:flex-row items-center justify-between gap-space-md">
           <div className="flex items-center gap-space-sm">
-            <div className="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center">
-              <Icon name="support_agent" className="text-primary text-[22px]" />
+            <div className="w-10 h-10 rounded-full bg-badge-discount-bg flex items-center justify-center">
+              <Icon name="whatsapp" className="text-badge-discount-text text-[22px]" />
             </div>
             <div className="flex flex-col">
               <span className="font-label-md text-label-md text-text-primary font-semibold">Questions about pricing?</span>

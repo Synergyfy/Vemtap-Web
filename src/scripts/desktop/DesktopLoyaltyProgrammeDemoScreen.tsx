@@ -900,7 +900,7 @@ export function DesktopLoyaltyProgrammeDemoScreen({ onNav, onOpenRewards }: Desk
                 <div className="p-space-sm rounded-xl bg-surface-subtle flex items-start justify-between gap-space-sm">
                   <div className="flex flex-col gap-0.5">
                     <span className="font-label-sm text-label-sm font-semibold text-text-primary flex items-center gap-1">
-                      <Icon name="campaign" className="text-[16px] text-badge-discount-text" />
+                      <Icon name="whatsapp" className="text-[16px] text-badge-discount-text" />
                       Automated Expiry Push &amp; WhatsApp
                     </span>
                     <span className="font-caption text-caption text-text-secondary">
@@ -1099,9 +1099,8 @@ export function DesktopLoyaltyProgrammeDemoScreen({ onNav, onOpenRewards }: Desk
               {/* Type Filter & Bulk Assign Action */}
               <div className="flex items-center gap-2 flex-wrap">
                 {[
-                  { key: 'all' as const, label: 'All Items' },
+                  { key: 'all' as const, label: 'All Products' },
                   { key: 'product' as const, label: 'Products Only' },
-                  { key: 'service' as const, label: 'Services Only' },
                 ].map((tf) => (
                   <button
                     key={tf.key}
@@ -1522,9 +1521,8 @@ export function DesktopLoyaltyProgrammeDemoScreen({ onNav, onOpenRewards }: Desk
                 onChange={(e) => setBulkTarget(e.target.value as any)}
                 className="w-full h-10 px-3 rounded-xl border border-border bg-surface-canvas text-body-md text-text-primary focus:outline-hidden focus:border-primary"
               >
-                <option value="all">All Items (All Products &amp; Services)</option>
+                <option value="all">All Products</option>
                 <option value="product">Products Only</option>
-                <option value="service">Services Only</option>
               </select>
             </div>
 

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { ADMIN_CUSTOMERS, type AdminCustomer } from './adminData';
 import { AdminChatModal } from './AdminChatModal';
+import { Icon } from '../../components/ui/Icon';
 
 interface AdminCustomersScreenProps {
   onNavigate: (path: string) => void;
@@ -241,7 +242,7 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                 onClick={() => setIsChatOpen(true)}
                 className="bg-[#0055c4] hover:bg-[#066cf4] text-white px-3.5 py-1.5 rounded-lg text-[12px] font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
               >
-                <span className="material-symbols-outlined text-[16px]">chat</span>
+                <Icon name="vemtap-chat-white" className="text-[16px]" />
                 <span>Chat with Customer</span>
               </button>
 
@@ -1001,7 +1002,7 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
               <div className="bg-gradient-to-r from-blue-900 to-[#0055c4] rounded-2xl p-6 text-white shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[20px] text-blue-200">chat_bubble</span>
+                    <Icon name="vemtap-chat-white" className="text-[20px]" />
                     <h3 className="font-bold text-base">Direct Customer Inquiries & Real-Time Chat</h3>
                   </div>
                   <p className="text-[12px] text-blue-100 max-w-xl">
@@ -1012,7 +1013,7 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   onClick={() => setIsChatOpen(true)}
                   className="bg-white hover:bg-blue-50 text-[#0055c4] font-bold px-4 py-2 rounded-xl text-[12px] flex items-center gap-1.5 shadow-sm transition-all cursor-pointer shrink-0"
                 >
-                  <span className="material-symbols-outlined text-[16px]">chat</span>
+                  <Icon name="vemtap-chat" className="text-[16px]" />
                   <span>Launch Chat Session</span>
                 </button>
               </div>

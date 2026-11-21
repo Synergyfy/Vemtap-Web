@@ -125,7 +125,7 @@ export function OrderPlacedScreen({ order, onClose, onHome, onTrack }: OrderPlac
               onClick={onTrack}
               className="w-full h-10 rounded-lg bg-surface-tint-blue text-primary font-button-secondary text-button-secondary font-semibold flex items-center justify-center gap-1"
             >
-              <Icon name="forum" className="text-[18px]" />
+              <Icon name="vemtap-chat" className="text-[18px]" />
               Message {live.merchantName}
             </button>
           </section>
@@ -210,7 +210,7 @@ export function OrderPlacedScreen({ order, onClose, onHome, onTrack }: OrderPlac
                 onClick={onTrack}
                 className="flex flex-col items-center justify-center p-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container active:scale-95 transition-all text-center"
               >
-                <Icon name="chat" className="text-primary text-xl mb-1" />
+                <Icon name="vemtap-chat" className="text-primary text-xl mb-1" />
                 <span className="font-label-sm text-label-sm text-on-surface font-semibold">In-App Chat</span>
               </button>
               {merchantPhone ? (
@@ -220,7 +220,7 @@ export function OrderPlacedScreen({ order, onClose, onHome, onTrack }: OrderPlac
                 rel="noopener noreferrer"
                 target="_blank"
               >
-                <Icon name="forum" filled className="text-badge-discount-text text-xl mb-1" />
+                <Icon name="whatsapp" className="text-badge-discount-text text-xl mb-1" />
                 <span className="font-label-sm text-label-sm text-on-surface font-semibold">WhatsApp</span>
               </a>
 ) : null}
@@ -303,7 +303,7 @@ export function OrderPlacedScreen({ order, onClose, onHome, onTrack }: OrderPlac
               onClick={onTrack}
               className="w-full h-14 rounded-xl bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-space-xs shadow-lg active:scale-95 transition-all"
             >
-              <Icon name="forum" className="text-xl" />
+              <Icon name="vemtap-chat-white" className="text-xl" />
               <span>Track Status / Chat with Merchant</span>
             </button>
             <button

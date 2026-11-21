@@ -9,6 +9,7 @@ import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { isLowStock } from '../catalogueLive';
 import { naira, timeLabel, useLivePos } from '../posLive';
 import { useRegisterShift } from '../useRegisterShift';
+import { cleanPosBusinessName, drawerDateTime, drawerMoney } from '../posDrawerFormat';
 
 interface DesktopPosHomeScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -24,7 +25,7 @@ interface DesktopPosHomeScreenProps {
 const HOTKEYS: Array<{ keys: string; label: string }> = [
   { keys: 'F1', label: 'New Sale' },
   { keys: 'F2', label: 'Ledger' },
-  { keys: 'F3', label: "86'd Kitchen" },
+  { keys: 'F3', label: 'Sold Out' },
   { keys: 'F4', label: 'Patron VIP' },
   { keys: 'SPACE', label: 'Quick Pay' },
   { keys: 'ESC', label: 'Void / Abort' },
@@ -67,27 +68,6 @@ const TENDER_ROWS = [
   { dot: 'bg-primary-container', label: 'Card / NFC', value: '₦214,000', meta: '62.4% • 94 txns' },
   { dot: 'bg-badge-discount-text', label: 'Cash Tender', value: '₦92,400', meta: '26.9% • 36 txns' },
   { dot: 'bg-secondary', label: 'VEMTAP Direct QR / NIP', value: '₦36,450', meta: '10.7% • 12 txns' },
-];
-
-const FLEET = [
-  {
-    icon: 'print',
-    name: 'Sunmi V2 Kitchen Printer',
-    meta: 'Cloud Thermal 80mm Roll',
-    status: '82% Paper Ready',
-  },
-  {
-    icon: 'contactless',
-    name: 'Contactless NFC & Chip',
-    meta: 'PAX A920 Pro Linked (EMV L2)',
-    status: '100% Online • 98% Batt',
-  },
-  {
-    icon: 'barcode_scanner',
-    name: 'Optical Barcode Scanner',
-    meta: 'Zebra 2D Imager Wired',
-    status: 'Active & Ready',
-  },
 ];
 
 export function DesktopPosHomeScreen({
@@ -156,14 +136,20 @@ export function DesktopPosHomeScreen({
     setCountedCashInput,
     closeNotes,
     setCloseNotes,
+    drawerHistory,
     busy,
     confirmOpen,
     confirmClose,
   } = useRegisterShift(pos, showToast);
 
+  const [pendingSale, setPendingSale] = useState(false);
+  const [showDrawerHistory, setShowDrawerHistory] = useState(false);
+
   const startSale = () => {
-    if (live && !pos.isOpen) {
-      showToast('Open the register first (Till & Cash Drawer).');
+    if ((live && !pos.isOpen) || (!live && !registerOpen)) {
+      setPendingSale(true);
+      setOpenRegisterModal(true);
+      showToast('Set the initial drawer float to open the cash register.');
       return;
     }
     onNewSale();
@@ -236,7 +222,7 @@ export function DesktopPosHomeScreen({
             <div className="flex flex-col">
               <div className="flex flex-wrap items-center gap-space-xs">
                 <span className="font-heading-md text-heading-md text-text-primary tracking-tight">
-                  {v(`${pos.businessName} • ${pos.branchName}`, 'Urban Grill & Bistro • Wuse II Flagship #01')}
+                  {v(cleanPosBusinessName(pos.businessName, pos.branchName), 'Urban Grill & Bistro')}
                 </span>
                 <span className="inline-flex items-center gap-1.5 px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
                   <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text animate-pulse" />
@@ -246,7 +232,7 @@ export function DesktopPosHomeScreen({
               <div className="flex flex-wrap items-center gap-x-space-md gap-y-1 mt-1 text-text-secondary font-caption text-caption">
                 <span className="font-medium text-text-primary flex items-center gap-1">
                   <Icon name="point_of_sale" className="text-[15px] text-primary" />
-                  {v(pos.isOpen ? `${pos.tillName} Active` : 'No till open', 'Terminal #01 Active')}
+                  {v(pos.isOpen ? `${pos.tillName} Active` : 'No register open', 'Register #01 Active')}
                 </span>
                 <span className="text-outline-variant">•</span>
                 <span>
@@ -353,7 +339,7 @@ export function DesktopPosHomeScreen({
             </div>
           </div>
 
-          {/* F3 Catalog & 86'd Items */}
+          {/* F3 Catalog & Sold Out Items */}
           <div className="bg-surface-canvas rounded-xl p-space-lg flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow">
             <div>
               <div className="flex items-center justify-between mb-space-xs">
@@ -363,7 +349,7 @@ export function DesktopPosHomeScreen({
                 <Icon name="menu_book" className="text-text-tertiary text-[20px]" />
               </div>
               <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider font-semibold">
-                Catalog & 86'd Items
+                Catalog & Sold Out Items
               </span>
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="font-display-hero text-display-hero text-text-primary tracking-tight font-bold">{v(String(items.length), '184')}</span>
@@ -384,7 +370,7 @@ export function DesktopPosHomeScreen({
                   )
                 ) : (
                   <>
-                    2 kitchen items toggled 86'd (<strong className="text-tertiary font-medium">Oxtail</strong>,{' '}
+                    2 kitchen items marked sold out (<strong className="text-tertiary font-medium">Oxtail</strong>,{' '}
                     <strong className="text-tertiary font-medium">Tiger Prawns</strong>)
                   </>
                 )}
@@ -396,7 +382,7 @@ export function DesktopPosHomeScreen({
                 onClick={onOpenProducts}
                 className="font-button-secondary text-button-secondary text-primary hover:text-primary-container flex items-center gap-1 group font-medium"
               >
-                <span>Manage 86'd & modifications</span>
+                <span>Manage sold out & modifications</span>
                 <Icon name="arrow_forward" className="text-[16px] group-hover:translate-x-1 transition-transform" />
               </button>
             </div>
@@ -587,13 +573,13 @@ export function DesktopPosHomeScreen({
 
           {/* Right Column */}
           <div className="lg:col-span-5 flex flex-col gap-space-lg">
-            {/* Till & Cash Drawer */}
+            {/* Cash Register & Drawer */}
             <div className="bg-surface-canvas rounded-xl p-space-lg shadow-sm">
               <div className="flex items-center justify-between mb-space-md">
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="font-heading-sm text-heading-sm text-text-primary font-semibold tracking-tight">
-                      Till &amp; Cash Drawer
+                      Cash Register &amp; Drawer
                     </span>
                     <span className={`px-2 py-0.5 rounded-full text-caption font-semibold ${registerOpen ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary'}`}>
                       {registerOpen ? `${shiftLabel} Active` : 'Register Closed'}
@@ -676,41 +662,46 @@ export function DesktopPosHomeScreen({
                     <span className="block font-caption text-caption text-text-tertiary">{v('Counted at close', 'Next drop audit: 16:00')}</span>
                   </div>
                 </div>
-              </div>
-            </div>
-
-            {/* Hardware Fleet Telemetry */}
-            <div className="bg-surface-canvas rounded-xl p-space-lg shadow-sm">
-              <div className="flex items-center justify-between mb-space-md">
-                <div>
-                  <span className="font-heading-sm text-heading-sm text-text-primary font-semibold tracking-tight">
-                    Hardware Fleet Telemetry
-                  </span>
-                  <span className="block font-caption text-caption text-text-secondary">
-                    Active local USB & Bluetooth peripherals
-                  </span>
-                </div>
-                <span className="px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
-                  {v('—', '3/3 Connected')}
-                </span>
-              </div>
-              <div className="space-y-space-sm">
-                {(live ? FLEET.map((device) => ({ ...device, meta: '—', status: '—' })) : FLEET).map((device) => (
-                  <div key={device.name} className="p-space-sm rounded-lg bg-surface-subtle flex items-center justify-between">
-                    <div className="flex items-center gap-space-sm">
-                      <div className="w-8 h-8 rounded-lg bg-surface-canvas flex items-center justify-center text-primary-container shadow-sm">
-                        <Icon name={device.icon} className="text-[18px]" />
+                {live && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowDrawerHistory((current) => !current)}
+                      className="w-full flex items-center justify-between px-space-sm py-2 rounded-lg border border-border-subtle text-text-primary hover:bg-surface-container-low"
+                    >
+                      <span className="font-label-sm text-label-sm font-semibold flex items-center gap-1.5">
+                        <Icon name="history" className="text-[17px] text-primary" />
+                        Drawer Records
+                      </span>
+                      <Icon name={showDrawerHistory ? 'expand_less' : 'expand_more'} className="text-[18px] text-text-secondary" />
+                    </button>
+                    {showDrawerHistory && (
+                      <div className="mt-2 max-h-44 overflow-y-auto rounded-lg border border-border-subtle divide-y divide-border-subtle">
+                        {drawerHistory.data?.length ? (
+                          drawerHistory.data.map((record) => (
+                            <div key={record.id} className="px-space-sm py-2 flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <span className="block text-body-sm text-text-primary font-medium">
+                                  {record.cashierName} · {drawerDateTime(record.openedAt)}
+                                </span>
+                                <span className="block text-caption text-text-secondary">
+                                  Opened {drawerMoney(record.openingCash)} · Closed {record.countedCash != null ? drawerMoney(record.countedCash) : 'Not counted'}
+                                </span>
+                              </div>
+                              <span className={`text-caption font-semibold ${record.status === 'open' ? 'text-primary' : 'text-text-secondary'}`}>
+                                {record.status === 'open' ? 'Open' : 'Closed'}
+                              </span>
+                            </div>
+                          ))
+                        ) : (
+                          <p className="px-space-sm py-3 text-caption text-text-secondary">
+                            {drawerHistory.isLoading ? 'Loading drawer records…' : 'No drawer records yet.'}
+                          </p>
+                        )}
                       </div>
-                      <div className="flex flex-col">
-                        <span className="font-label-md text-label-md font-semibold text-text-primary">{device.name}</span>
-                        <span className="font-caption text-caption text-text-secondary">{device.meta}</span>
-                      </div>
-                    </div>
-                    <span className="font-caption text-caption font-medium px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text">
-                      {device.status}
-                    </span>
+                    )}
                   </div>
-                ))}
+                )}
               </div>
             </div>
 
@@ -725,7 +716,7 @@ export function DesktopPosHomeScreen({
                     Public Self-Ordering Kiosk Mode
                   </span>
                   <p className="font-caption text-caption text-text-secondary mt-0.5">
-                    Lock till into guest-facing self-ordering flow. Requires Manager Override PIN to exit.
+                    Lock register into guest-facing self-ordering flow. Requires Manager Override PIN to exit.
                   </p>
                 </div>
               </div>
@@ -799,6 +790,26 @@ export function DesktopPosHomeScreen({
               </button>
             </div>
 
+            {expectedCashInDrawer > 0 ? (
+              <div className="p-3.5 rounded-xl bg-surface-container-low border border-border-subtle flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Icon name="payments" className="text-primary text-[20px]" />
+                  <span className="font-label-md text-label-md text-text-secondary">Current Money in Drawer:</span>
+                </div>
+                <strong className="font-heading-sm text-heading-sm text-text-primary font-bold">₦{expectedCashInDrawer.toLocaleString()}</strong>
+              </div>
+            ) : (
+              <div className="p-3.5 rounded-xl bg-surface-tint-blue border border-primary/20 text-xs text-primary space-y-1">
+                <p className="font-semibold flex items-center gap-1.5 text-primary text-[13px]">
+                  <Icon name="info" className="text-[17px]" />
+                  <span>Set Starting Cash Drawer Float</span>
+                </p>
+                <p className="text-[12px] text-text-secondary leading-relaxed">
+                  Count the cash physically in your cash drawer and enter it below to set your opening float before starting shift transactions.
+                </p>
+              </div>
+            )}
+
             <div className="flex flex-col gap-2">
               <label className="font-label-sm text-label-sm font-semibold text-text-primary">Opening Cash Float Amount (₦)</label>
               <div className="relative">
@@ -819,14 +830,22 @@ export function DesktopPosHomeScreen({
             <div className="grid grid-cols-2 gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setOpenRegisterModal(false)}
+                onClick={() => {
+                  setOpenRegisterModal(false);
+                  setPendingSale(false);
+                }}
                 className="h-11 rounded-xl bg-surface-container text-text-secondary font-label-md font-semibold"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={() => void confirmOpen()}
+                onClick={() => void confirmOpen(() => {
+                  if (pendingSale) {
+                    setPendingSale(false);
+                    onNewSale();
+                  }
+                })}
                 disabled={busy}
                 className="h-11 rounded-xl bg-primary text-on-primary font-label-md font-semibold flex items-center justify-center gap-1.5 shadow-sm"
               >

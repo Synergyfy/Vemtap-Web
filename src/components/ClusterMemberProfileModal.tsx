@@ -61,7 +61,7 @@ export function ClusterMemberProfileModal({
               onClick={() => onOpenChat(member)}
               className="flex-1 py-2.5 px-4 rounded-xl bg-primary-container text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-md hover:opacity-95 transition-all"
             >
-              <Icon name="chat" className="text-[16px]" />
+              <Icon name="vemtap-chat-white" className="text-[16px]" />
               <span>In-App Chat Merchant</span>
             </button>
             <a

@@ -319,7 +319,7 @@ export function DesktopSpaStorefrontScreen({ onNav, onClaim }: DesktopSpaStorefr
                     type="button"
                     className="h-12 px-4 rounded-2xl bg-surface-subtle text-text-primary hover:bg-surface-container font-label-md text-label-md flex items-center gap-2 transition-colors"
                   >
-                    <Icon name="chat_bubble" className="text-primary text-[20px]" />
+                    <Icon name="vemtap-chat-white" className="text-[20px]" />
                     <span>Direct Chat</span>
                   </button>
                   <a
@@ -328,7 +328,7 @@ export function DesktopSpaStorefrontScreen({ onNav, onClaim }: DesktopSpaStorefr
                     rel="noopener noreferrer"
                     target="_blank"
                   >
-                    <Icon name="forum" className="text-[20px]" />
+                    <Icon name="whatsapp" className="text-[20px]" />
                     <span>WhatsApp</span>
                   </a>
                   <button

@@ -45,4 +45,4 @@ export const branchHoursLabel = (branch: Branch, now = new Date()) => {
 };
 
 export const branchAddressLabel = (branch: Branch) =>
-  [branch.address, branch.city, branch.state].filter(Boolean).join(', ') || '—';
+  [branch.address, branch.district, branch.city, branch.state].filter(Boolean).join(', ') || '—';

@@ -15,6 +15,7 @@ import { UserAvatar } from '../components/ui/UserAvatar';
 
 import { formatNaira, getLocationPricing } from './locationPricing';
 import { useBusinessOfferings, type OfferingsState } from '../context/BusinessOfferingsContext';
+import { STAFF_PAGE_DEFAULTS, toApiPermissions } from './teamLive';
 
 interface BusinessAddBranchScreenProps {
   onBack: () => void;
@@ -113,7 +114,7 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
       if (grantAccess && leadName && leadEmail) {
         const [firstName, ...rest] = leadName.split(/\s+/);
         await invite
-          .mutateAsync({ firstName, lastName: rest.join(' ') || firstName, email: leadEmail, phone: leadPhone, role: 'Manager', jobTitle: role, branchId: branch.id })
+          .mutateAsync({ firstName, lastName: rest.join(' ') || firstName, email: leadEmail, phone: leadPhone, role: 'Manager', jobTitle: role, permissions: toApiPermissions(STAFF_PAGE_DEFAULTS.manager), branchId: branch.id })
           .catch(() => showError('Branch saved, but the lead invite could not be sent. Invite them from Staff.'));
       }
       setStatus('success');
@@ -252,11 +253,7 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
                 <h3 className="font-heading-sm text-heading-sm text-text-primary">Branch Offerings</h3>
               </div>
               <span className="font-caption text-caption text-primary bg-surface-tint-blue px-2 py-0.5 rounded-full font-semibold">
-                {branchOfferings.hasProducts && branchOfferings.hasServices
-                  ? 'Products & Services'
-                  : branchOfferings.hasServices
-                  ? 'Services Only'
-                  : 'Products Only'}
+                Products Only
               </span>
             </div>
             <p className="font-caption text-caption text-text-secondary leading-relaxed -mt-1">
@@ -301,7 +298,8 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
                 </div>
               </div>
 
-              {/* Services Option */}
+              {/* Services Option — hidden in product-only rollout */}
+              {false && (
               <div
                 onClick={() => toggleBranchOffering('services')}
                 className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer flex flex-col gap-2 ${
@@ -337,16 +335,13 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
                   </p>
                 </div>
               </div>
+              )}
             </div>
 
-            {(!businessOfferings.hasProducts || !businessOfferings.hasServices) && (
+            {!businessOfferings.hasProducts && (
               <div className="p-2.5 rounded-lg bg-surface-subtle flex items-center gap-2 text-caption font-caption text-text-secondary">
                 <Icon name="info" className="text-[16px] text-primary shrink-0" />
-                <span>
-                  {!businessOfferings.hasServices
-                    ? 'Enable Services on your Business Profile to offer services at this branch.'
-                    : 'Enable Products on your Business Profile to sell products at this branch.'}
-                </span>
+                <span>Enable Products on your Business Profile to sell products at this branch.</span>
               </div>
             )}
           </div>
@@ -564,13 +559,16 @@ export function BusinessAddBranchScreen({ onBack, onSaved }: BusinessAddBranchSc
                   <span className="font-medium">+234</span>
                   <Icon name="keyboard_arrow_down" className="text-[18px] text-text-tertiary" />
                 </div>
-                <input
-                  className="flex-1 h-[52px] px-space-md rounded-[14px] bg-surface-subtle font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none focus:bg-surface-canvas"
-                  defaultValue={sample('803 762 9901')}
-                  id="lead-phone"
-                  placeholder="803 000 0000"
-                  type="tel"
-                />
+                <div className="relative flex-1">
+                  <input
+                    className="w-full h-[52px] px-space-md pr-space-xl rounded-[14px] bg-surface-subtle font-body-md text-body-md text-text-primary placeholder:text-text-tertiary focus:outline-none focus:bg-surface-canvas"
+                    defaultValue={sample('803 762 9901')}
+                    id="lead-phone"
+                    placeholder="803 000 0000"
+                    type="tel"
+                  />
+                  <Icon name="whatsapp" className="absolute right-space-md top-1/2 -translate-y-1/2 text-badge-discount-text text-[20px] pointer-events-none" />
+                </div>
               </div>
             </div>
             <div className="p-space-sm rounded-xl bg-surface-subtle flex items-center justify-between">

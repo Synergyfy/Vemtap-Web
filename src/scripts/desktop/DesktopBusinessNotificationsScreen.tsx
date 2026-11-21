@@ -37,13 +37,13 @@ const FEED: BusinessFeedItem[] = [
   },
   {
     id: 'bn2',
-    category: 'bookings',
+    category: 'orders',
     section: 'today',
-    icon: 'calendar_month',
+    icon: 'receipt_long',
     iconClass: 'bg-tertiary-container text-on-tertiary',
-    title: 'Booking confirmed for 7:00 PM',
+    title: 'New pickup order received',
     time: '18m ago',
-    body: 'Chidinma O. reserved a table for 4 guests. Confirmation SMS sent.',
+    body: 'Chidinma O. placed a pickup order for 4 items. Confirmation SMS sent.',
     unread: true,
   },
   {
@@ -117,7 +117,6 @@ const FEED: BusinessFeedItem[] = [
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'orders', label: 'Orders' },
-  { key: 'bookings', label: 'Bookings' },
   { key: 'payouts', label: 'Payouts' },
   { key: 'system', label: 'Account & System' },
 ];

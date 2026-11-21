@@ -5,6 +5,7 @@ export interface PosCartLine {
   member: number;
   qty: number;
   note?: string;
+  loyaltyPoints?: number;
 }
 
 export const SEED_POS_CART: PosCartLine[] = [

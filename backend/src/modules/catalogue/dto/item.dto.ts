@@ -60,6 +60,12 @@ export class CreateCatalogueItemDto {
   @IsString({ each: true })
   galleryImages?: string[];
 
+  @ApiPropertyOptional({ example: ['https://video.com/1.mp4'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  videos?: string[];
+
   @ApiPropertyOptional({ example: 'uuid-of-category' })
   @IsOptional()
   @IsUUID()
@@ -304,6 +310,12 @@ export class UpdateCatalogueItemDto {
   @IsArray()
   @IsString({ each: true })
   galleryImages?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  videos?: string[];
 
   @ApiPropertyOptional()
   @IsOptional()

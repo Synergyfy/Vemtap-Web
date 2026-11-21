@@ -5,6 +5,7 @@ import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ProductDraft } from './desktopProductDraft';
 import { draftImage, draftImageAlt } from './draftImage';
+import { useBusinessBranch } from '../../context/BusinessBranchContext';
 
 interface DesktopProductPricingConfigScreenProps {
   draft: ProductDraft;
@@ -28,11 +29,15 @@ export function DesktopProductPricingConfigScreen({
   onNav,
 }: DesktopProductPricingConfigScreenProps) {
   const Shell = onNav ? MerchantShell : BusinessSetupChrome;
+  const { branches } = useBusinessBranch();
   const [inStock, setInStock] = useState(true);
   const [wusePrice, setWusePrice] = useState('12,000');
   const [garkiPrice, setGarkiPrice] = useState('12,500');
 
-  const activeBranchCount = Object.values(draft.branches).filter(Boolean).length;
+  const activeBranchCount = branches.filter((branch) => {
+    const key = (branch.id || branch.key) as string;
+    return Boolean(draft.branches[key] ?? (branch.isMainBranch ? true : false));
+  }).length;
 
   const toggleBranch = (key: string, checked: boolean) => {
     onDraftChange({ branches: { ...draft.branches, [key]: checked } });
@@ -80,7 +85,7 @@ export function DesktopProductPricingConfigScreen({
             <div className="h-8 w-px bg-surface-container-high hidden md:block" />
             <div className="flex items-center gap-2 px-space-sm py-1.5 rounded-lg bg-surface-tint-blue text-primary font-label-sm text-label-sm">
               <Icon name="storefront" className="text-[18px]" />
-              <span>Abuja Territory (3 Branches)</span>
+              <span>{branches.length} Location{branches.length === 1 ? '' : 's'}</span>
             </div>
           </div>
         </section>
@@ -235,109 +240,63 @@ export function DesktopProductPricingConfigScreen({
                   </div>
                 </div>
                 <span className="inline-flex items-center px-space-sm py-1 rounded-full bg-surface-tint-blue text-primary font-label-sm text-label-sm">
-                  {activeBranchCount} of 3 Branches Active
+                  {activeBranchCount} of {branches.length} Location{branches.length === 1 ? '' : 's'} Active
                 </span>
               </div>
               <div className="flex flex-col gap-space-sm">
-                <label className="flex items-start gap-space-md p-space-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-colors cursor-pointer group">
-                  <div className="pt-0.5">
-                    <input
-                      className="w-5 h-5 rounded text-primary-container focus:ring-primary-container accent-primary-container cursor-pointer"
-                      type="checkbox"
-                      checked={Boolean(draft.branches.wuse)}
-                      onChange={(event) => toggleBranch('wuse', event.target.checked)}
-                    />
-                  </div>
-                  <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs">
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-space-xs">
-                        <span className="font-heading-sm text-[16px] text-text-primary">Wuse Branch</span>
-                        <span className="px-2 py-0.5 rounded-full bg-primary-container text-on-primary font-caption text-[11px] font-medium tracking-wide">
-                          PRIMARY KITCHEN
-                        </span>
+                {branches.length === 0 && (
+                  <p className="p-space-md rounded-xl bg-surface-container-low font-body-md text-text-secondary">
+                    No branches configured yet. Add your business locations in your business profile to assign them here.
+                  </p>
+                )}
+                {branches.map((branch) => {
+                  const key = (branch.id || branch.key) as string;
+                  const isChecked = Boolean(draft.branches[key] ?? (branch.isMainBranch ? true : false));
+                  return (
+                    <label
+                      key={key}
+                      className="flex items-start gap-space-md p-space-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-colors cursor-pointer group"
+                    >
+                      <div className="pt-0.5">
+                        <input
+                          className="w-5 h-5 rounded text-primary-container focus:ring-primary-container accent-primary-container cursor-pointer"
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={(event) => toggleBranch(key, event.target.checked)}
+                        />
                       </div>
-                      <span className="font-body-md text-[14px] text-text-secondary mt-0.5">
-                        Plot 1428 Adetokunbo Ademola Cres, Wuse II, Abuja
-                      </span>
-                      <div className="flex items-center gap-space-sm mt-1.5">
-                        <span className="font-caption text-caption text-badge-discount-text flex items-center gap-1 font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" /> Full Line Inventory
-                        </span>
-                        <span className="font-caption text-caption text-text-tertiary">• Instant Dispatch</span>
+                      <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs">
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-space-xs">
+                            <span className="font-heading-sm text-[16px] text-text-primary">{branch.name}</span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full font-caption text-[11px] font-medium tracking-wide ${
+                                branch.isMainBranch
+                                  ? 'bg-primary-container text-on-primary'
+                                  : 'bg-surface-container-highest text-on-surface-variant'
+                              }`}
+                            >
+                              {branch.isMainBranch ? 'MAIN LOCATION' : 'BRANCH'}
+                            </span>
+                          </div>
+                          <span className="font-body-md text-[14px] text-text-secondary mt-0.5">
+                            {branch.area || 'No address on file'}
+                          </span>
+                          <div className="flex items-center gap-space-sm mt-1.5">
+                            <span className="font-caption text-caption text-badge-discount-text flex items-center gap-1 font-medium">
+                              <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" /> Full Line Inventory
+                            </span>
+                            <span className="font-caption text-caption text-text-tertiary">• Ready for Orders</span>
+                          </div>
+                        </div>
+                        <div className="text-right flex sm:flex-col items-center sm:items-end justify-between">
+                          <span className="font-label-sm text-label-sm text-primary font-semibold">Ready for Sync</span>
+                          <span className="font-caption text-caption text-text-tertiary">Active Branch</span>
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-right flex sm:flex-col items-center sm:items-end justify-between">
-                      <span className="font-label-sm text-label-sm text-primary font-semibold">Ready for Sync</span>
-                      <span className="font-caption text-caption text-text-tertiary">Pos terminal #01</span>
-                    </div>
-                  </div>
-                </label>
-                <label className="flex items-start gap-space-md p-space-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-colors cursor-pointer group">
-                  <div className="pt-0.5">
-                    <input
-                      className="w-5 h-5 rounded text-primary-container focus:ring-primary-container accent-primary-container cursor-pointer"
-                      type="checkbox"
-                      checked={Boolean(draft.branches.garki)}
-                      onChange={(event) => toggleBranch('garki', event.target.checked)}
-                    />
-                  </div>
-                  <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs">
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-space-xs">
-                        <span className="font-heading-sm text-[16px] text-text-primary">Garki Branch</span>
-                        <span className="px-2 py-0.5 rounded-full bg-surface-container-highest text-on-surface-variant font-caption text-[11px] font-medium">
-                          HUB #2
-                        </span>
-                      </div>
-                      <span className="font-body-md text-[14px] text-text-secondary mt-0.5">
-                        Suite 4B, Garki Mall, Area 11, Garki, Abuja
-                      </span>
-                      <div className="flex items-center gap-space-sm mt-1.5">
-                        <span className="font-caption text-caption text-badge-discount-text flex items-center gap-1 font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" /> Woodfire Grill
-                          Station
-                        </span>
-                        <span className="font-caption text-caption text-tertiary font-medium">
-                          + Logistics Surcharge Applicable
-                        </span>
-                      </div>
-                    </div>
-                    <div className="text-right flex sm:flex-col items-center sm:items-end justify-between">
-                      <span className="font-label-sm text-label-sm text-primary font-semibold">Ready for Sync</span>
-                      <span className="font-caption text-caption text-text-tertiary">Pos terminal #04</span>
-                    </div>
-                  </div>
-                </label>
-                <label className="flex items-start gap-space-md p-space-md rounded-xl bg-surface-subtle opacity-70 hover:opacity-100 transition-all cursor-not-allowed group">
-                  <div className="pt-0.5">
-                    <input
-                      className="w-5 h-5 rounded text-primary-container focus:ring-primary-container accent-primary-container cursor-not-allowed"
-                      type="checkbox"
-                      disabled
-                      checked={Boolean(draft.branches.maitama)}
-                      onChange={() => toggleBranch('maitama', false)}
-                    />
-                  </div>
-                  <div className="flex-1 flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs">
-                    <div className="flex flex-col">
-                      <div className="flex items-center gap-space-xs">
-                        <span className="font-heading-sm text-[16px] text-text-primary">Maitama Branch</span>
-                        <span className="px-2 py-0.5 rounded-full bg-surface-container text-text-tertiary font-caption text-[11px] font-medium">
-                          COMING SOON
-                        </span>
-                      </div>
-                      <span className="font-body-md text-[14px] text-text-secondary mt-0.5">
-                        Transcorp Boulevard Walk, Maitama Phase 1, Abuja
-                      </span>
-                      <span className="font-caption text-caption text-text-tertiary mt-1">
-                        Currently fitting commercial kitchen extraction system
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <span className="font-caption text-caption text-outline font-medium">Deployment Q2 2025</span>
-                    </div>
-                  </div>
-                </label>
+                    </label>
+                  );
+                })}
               </div>
             </div>
 
@@ -504,7 +463,7 @@ export function DesktopProductPricingConfigScreen({
             <div className="bg-surface-container-lowest rounded-xl p-space-xl shadow-sm flex flex-col gap-space-md">
               <div className="flex items-center justify-between">
                 <h3 className="font-heading-sm text-[16px] text-text-primary">
-                  Regional Profit &amp; VAT Summary
+                  Regional Profit Summary
                 </h3>
                 <Icon name="info" className="text-text-tertiary text-[20px]" />
               </div>
@@ -512,10 +471,6 @@ export function DesktopProductPricingConfigScreen({
                 <div className="flex items-center justify-between font-caption text-caption text-text-secondary">
                   <span>Weighted Avg. Customer Price</span>
                   <span className="font-label-md text-label-md text-text-primary font-semibold">₦12,250.00</span>
-                </div>
-                <div className="flex items-center justify-between font-caption text-caption text-text-secondary">
-                  <span>Nigerian VAT (7.5% Included)</span>
-                  <span className="text-text-primary font-medium">₦854.65</span>
                 </div>
                 <div className="flex items-center justify-between font-caption text-caption text-text-secondary">
                   <span>Estimated Cost of Goods (COGS - Meat &amp; Truffle)</span>
@@ -532,10 +487,10 @@ export function DesktopProductPricingConfigScreen({
                       Projected Net Net Margin
                     </span>
                     <span className="font-caption text-caption text-badge-discount-text font-medium">
-                      ~60.09% Net Profit per Dish
+                      ~67.07% Net Profit per Dish
                     </span>
                   </div>
-                  <span className="font-heading-sm text-heading-sm text-primary font-bold">₦7,361.60</span>
+                  <span className="font-heading-sm text-heading-sm text-primary font-bold">₦8,216.25</span>
                 </div>
               </div>
               <div className="p-space-sm rounded-lg bg-surface-container flex items-center justify-between gap-space-md">
@@ -544,9 +499,13 @@ export function DesktopProductPricingConfigScreen({
                   <span className="font-caption text-caption text-text-secondary">Branch Margin Performance</span>
                 </div>
                 <div className="flex items-end gap-1.5 h-6">
-                  <div className="w-2.5 h-4 bg-primary rounded-t" title="Wuse: 68%" />
-                  <div className="w-2.5 h-5 bg-primary-container rounded-t" title="Garki: 71%" />
-                  <div className="w-2.5 h-2 bg-surface-container-highest rounded-t" title="Maitama: Inactive" />
+                  {branches.slice(0, 3).map((b, i) => (
+                    <div
+                      key={b.id || b.key}
+                      className={`w-2.5 rounded-t ${i === 0 ? 'h-4 bg-primary' : i === 1 ? 'h-5 bg-primary-container' : 'h-3 bg-surface-container-highest'}`}
+                      title={`${b.name}: Active`}
+                    />
+                  ))}
                 </div>
               </div>
               <div className="flex flex-col gap-space-sm pt-space-xs">

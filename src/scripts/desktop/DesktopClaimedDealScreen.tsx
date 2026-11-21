@@ -498,7 +498,7 @@ export function DesktopClaimedDealScreen({
                     onClick={onContact}
                     className="h-10 rounded-xl bg-surface-container-low text-text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 hover:bg-surface-container-high transition-colors"
                   >
-                    <Icon name="forum" className="text-[18px] text-primary" />
+                    <Icon name="vemtap-chat" className="text-[18px] text-primary" />
                     <span>In-App Chat</span>
                   </button>
                 </div>
@@ -531,7 +531,7 @@ export function DesktopClaimedDealScreen({
                     onClick={onContact}
                     className="h-11 rounded-xl bg-surface-container-low text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 hover:bg-surface-container-high transition-colors"
                   >
-                    <Icon name="chat" className="text-[18px]" />
+                    <Icon name="vemtap-chat-white" className="text-[18px]" />
                     <span>Direct Chat</span>
                   </button>
                   {directionsUrl ? (

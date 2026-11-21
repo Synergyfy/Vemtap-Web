@@ -130,7 +130,9 @@ export function DesktopPosPaymentScreen({
   // Live: the business's earn rule and rewards, not the demo rates.
   const pointsRate = useTillPointsRate();
   const liveRewards = useTillRewards(customer?.id);
-  const orderPoints = loyaltyEnabled ? (pointsRate ? pointsRate(due) : pointsForAmount(due)) : 0;
+  const attachedPoints = cart.reduce((sum, line) => sum + ((line.loyaltyPoints ?? 0) * (line.qty || 1)), 0);
+  const spendPoints = pointsRate ? pointsRate(due) : pointsForAmount(due);
+  const orderPoints = loyaltyEnabled ? (attachedPoints > 0 ? attachedPoints : spendPoints) : 0;
   const awardedHere = awardLedger.id === customer?.id ? awardLedger.total : 0;
   const previousPoints = customer ? customer.points - awardedHere : 0;
   const projectedTotal = customer ? customer.points + orderPoints : 0;

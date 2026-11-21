@@ -1,6 +1,6 @@
 import { api } from './api/client';
 import type { ComboProduct, DealStudioDraft } from '../scripts/deals/dealStudioShared';
-import { claimLimitPeriod, dealValidityRange, resolveDealPricing } from '../scripts/deals/dealStudioShared';
+import { claimLimitPeriod, dealValidityRange, isCurrentPriceDeal, resolveDealPricing } from '../scripts/deals/dealStudioShared';
 
 export type OfferPricingType = 'sum' | 'percentage_discount' | 'fixed_discount_price' | 'fixed_discount_amount';
 
@@ -204,6 +204,13 @@ export function studioToOfferInput(
   let minOrderAmount: number | undefined;
   let name = source.name;
   switch (studio.strategy) {
+    case 'current':
+      // No discount: publish the item's own price as a fixed deal price so the
+      // API's calculated price and the customer pay price stay identical.
+      pricingType = 'fixed_discount_price';
+      fixedPrice = Math.round(pricing.dealPrice);
+      name = source.name;
+      break;
     case 'fixed':
       pricingType = 'fixed_discount_amount';
       discountValue = studio.fixed.amountOff;
@@ -248,7 +255,7 @@ export function studioToOfferInput(
     ...(options.branchIds && options.branchIds.length > 1 ? { branchIds: options.branchIds } : {}),
     startDate: start.toISOString(),
     endDate: end?.toISOString(),
-    offerType: 'discount',
+    offerType: isCurrentPriceDeal(studio) ? 'Current price' : 'discount',
     terms: studio.terms.filter(Boolean),
     claimSteps: studio.claimSteps.filter(Boolean).slice(0, 10),
     maxClaimsPerCustomer: studio.claimOnce ? 1 : studio.unlimitedClaims ? undefined : studio.maxClaims,

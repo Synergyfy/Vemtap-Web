@@ -289,10 +289,10 @@ export function BusinessPosOrdersScreen({ onTab, onOpenOrder, onOpenDisplay, onO
                 </button>
               );
             })}
-          {live && chip === 'deals' && (
+          {chip === 'deals' && (
             <DealClaimsLedger title="Deal vouchers" limit={100} search={search} allowRedeem />
           )}
-          {!live && (
+          {!live && chip !== 'deals' && (
             <>
           {/* Card 1: POS Dine-In with Verified Deal */}
           <button

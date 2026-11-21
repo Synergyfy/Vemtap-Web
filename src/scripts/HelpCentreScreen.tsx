@@ -55,20 +55,6 @@ const FAQS: Faq[] = [
     ),
   },
   {
-    id: 'f3',
-    question: 'Can I cancel or reschedule an appointment?',
-    keywords: 'appointment booking salon reschedule cancel slot',
-    answer: (
-      <div className="pt-space-2xs flex flex-col gap-space-2xs">
-        <p>
-          Yes. You can reschedule or cancel free of charge up to{' '}
-          <strong className="text-text-primary">2 hours prior</strong> to your appointment slot directly in your Orders
-          &amp; Bookings dashboard, or by contacting the business directly via their profile button.
-        </p>
-      </div>
-    ),
-  },
-  {
     id: 'f4',
     question: 'How does "Claim for Someone Else" work?',
     keywords: 'gift claim someone else send recipient',
@@ -106,14 +92,6 @@ const TOPICS: Array<{ key: string; icon: string; iconClass: string; label: strin
     label: 'Deals & Claims',
     hint: 'Passes, timers & codes',
     query: 'deal claim voucher redeem',
-  },
-  {
-    key: 'bookings',
-    icon: 'calendar_today',
-    iconClass: 'bg-surface-tint-blue text-primary-container group-hover:bg-primary group-hover:text-on-primary',
-    label: 'Bookings & Salons',
-    hint: 'Slots & rescheduling',
-    query: 'appointment booking salon reschedule',
   },
   {
     key: 'orders',
@@ -366,7 +344,7 @@ export function HelpCentreScreen({ onBack, onStartChat, onOpenMerchant, onOpenTe
           >
             <div className="flex items-center gap-space-xs min-w-0">
               <div className="w-9 h-9 rounded-full bg-badge-discount-bg text-badge-discount-text flex items-center justify-center shrink-0">
-                <Icon name="chat" className="text-[20px]" />
+                <Icon name="whatsapp" className="text-[20px]" />
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="font-button-primary text-label-md text-text-primary truncate">

@@ -36,7 +36,7 @@ const PILLARS = [
     copy: 'Offline-ready digital passes valid across partner spots instantly.',
   },
   {
-    icon: 'forum',
+    icon: 'vemtap-chat',
     title: 'Real-time Merchant Chat',
     copy: 'Connect directly with store managers before claiming your deal.',
   },

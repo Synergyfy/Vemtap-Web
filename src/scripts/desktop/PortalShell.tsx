@@ -6,9 +6,7 @@ import { useProfile } from '../../context/ProfileContext';
 import { useSessionUser } from '../../hooks/useSessionUser';
 import { hasApiConfig } from '../../services/api/client';
 import { UserAvatar } from '../../components/ui/UserAvatar';
-
-/** "Owner" / "Manager" / "Staff" for the signed-in business account. */
-const accountRoleLabel = (role?: string | null, businessRole?: string | null) => businessRole || role || 'Business account';
+import { sessionRoleLabel } from '../staffPageAccess';
 
 
 // Re-exported here for existing desktop imports; the canonical constants live
@@ -59,7 +57,7 @@ const RAIL_TOP: Record<'16' | '20', string> = { '16': 'top-16', '20': 'top-20' }
 const RAIL_ICONS: Record<string, string> = {
   overview: 'space_dashboard',
   orders: 'receipt_long',
-  messages: 'forum',
+  messages: 'vemtap-chat',
   catalog: 'inventory_2',
   deals: 'local_offer',
   locations: 'location_on',
@@ -212,7 +210,7 @@ export function ShellAccountMenu({ onSelect, name: nameProp, role: roleProp }: S
   const profile = useProfile();
   const session = useSessionUser().data;
   const name = nameProp ?? (hasApiConfig() ? profile.fullName || 'Your account' : 'Musa Danladi');
-  const role = roleProp ?? (hasApiConfig() ? accountRoleLabel(session?.role, session?.businessRole) : 'Store Manager');
+  const role = roleProp ?? (hasApiConfig() ? sessionRoleLabel(session) : 'Store Manager');
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 

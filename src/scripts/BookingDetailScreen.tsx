@@ -261,7 +261,7 @@ export function BookingDetailScreen({ onBack, onBookAgain, onChat, bookingRef }:
                 onClick={() => onChat(appointment.branchId)}
                 className="h-11 rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.98] transition-all hover:bg-primary"
               >
-                <Icon name="chat" className="text-[18px]" />
+                <Icon name="vemtap-chat-white" className="text-[18px]" />
                 <span>Message Business</span>
               </button>
               <a

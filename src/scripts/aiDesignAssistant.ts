@@ -86,7 +86,7 @@ export function aiTriggerLabel(assetType: AiAssetType): string {
     case 'service':
       return 'Need a service image? Create one with AI.';
     case 'description':
-      return 'Write your description AI';
+      return 'Write your Description with AI';
   }
 }
 

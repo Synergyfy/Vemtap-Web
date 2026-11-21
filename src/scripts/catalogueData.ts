@@ -43,6 +43,7 @@ export interface CatalogueProduct {
   barcode?: string;
   desc: string;
   category: string; // Required link to CentralCategory id
+  itemType?: 'product' | 'service';
   price: number;
   was?: number;
   stock?: number;

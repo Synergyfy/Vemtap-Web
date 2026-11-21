@@ -16,12 +16,6 @@ interface BusinessDealStudioStep3ScreenProps {
   onSaveDraft: () => void;
 }
 
-const BRANCH_OPTIONS: Array<{ key: keyof DealStudioDraft['branches']; name: string; address: string }> = [
-  { key: 'wuseII', name: 'Wuse II Flagship', address: 'Aminu Kano Crescent, Abuja' },
-  { key: 'garkiII', name: 'Garki II Branch', address: 'Tafawa Balewa Way, Abuja' },
-  { key: 'maitama', name: 'Maitama Heights', address: 'Plot 702 Aguiyi Ironsi St, Maitama District, Abuja' },
-];
-
 const DAY_OPTIONS: Array<{ key: keyof DealStudioDraft['days']; label: string }> = [
   { key: 'mon', label: 'Mon' },
   { key: 'tue', label: 'Tue' },
@@ -65,9 +59,7 @@ const HOUR_OPTIONS = [
   '11:00 PM',
 ];
 
-const SUGGESTED_TERMS = ['Valid ID required', 'One per table', 'Not valid on public holidays'];
-/** Live: suggestions that fit any kind of business. */
-const LIVE_SUGGESTED_TERMS = ['Valid ID required', 'One per customer per visit', 'While stocks last'];
+const SUGGESTED_TERMS = ['Valid ID required', 'One per customer per visit', 'While stocks last'];
 
 interface BranchRow {
   rowKey: string;
@@ -91,28 +83,18 @@ export function BusinessDealStudioStep3Screen({
   const [durationOpen, setDurationOpen] = useState(false);
   const [newTerm, setNewTerm] = useState('');
 
-  // Live: the business's own branches (only those selling the item can be picked); demo keeps the samples.
+  // The business's own branches — only those selling the item can be picked.
   const dealBranches = useDealBranches(studio);
-  const live = dealBranches.live;
-  const branchOptions: BranchRow[] = live
-    ? dealBranches.options.map((option) => ({
-        rowKey: option.id,
-        name: option.name,
-        address: option.sellsItem ? option.area || 'No address on file' : 'Item not sold at this branch yet',
-        disabled: !option.sellsItem,
-        checked: dealBranches.selectedIds.includes(option.id),
-        onToggle: () => onStudioChange(dealBranches.toggle(option.id)),
-      }))
-    : BRANCH_OPTIONS.map((branch) => ({
-        rowKey: branch.key,
-        name: branch.name,
-        address: branch.address,
-        checked: studio.branches[branch.key],
-        onToggle: () => toggleBranch(branch.key),
-      }));
+  const branchOptions: BranchRow[] = dealBranches.options.map((option) => ({
+    rowKey: option.id,
+    name: option.name,
+    address: option.sellsItem ? option.area || 'No address on file' : 'Item not sold at this branch yet',
+    disabled: !option.sellsItem,
+    checked: dealBranches.selectedIds.includes(option.id),
+    onToggle: () => onStudioChange(dealBranches.toggle(option.id)),
+  }));
   const selectableCount = branchOptions.filter((branch) => !branch.disabled).length;
-  const selectedBranchCount = live ? dealBranches.selectedIds.length : Object.values(studio.branches).filter(Boolean).length;
-  const suggestedTerms = live ? LIVE_SUGGESTED_TERMS : SUGGESTED_TERMS;
+  const selectedBranchCount = dealBranches.selectedIds.length;
 
   const selectedDays = DAY_OPTIONS.filter((day) => studio.days[day.key]);
   const everyDay = selectedDays.length === DAY_OPTIONS.length;
@@ -136,9 +118,6 @@ export function BusinessDealStudioStep3Screen({
       onStudioChange({ days: { mon: true, tue: true, wed: true, thu: true, fri: true, sat: false, sun: false } });
     else onStudioChange({ days: { mon: false, tue: false, wed: false, thu: false, fri: false, sat: true, sun: true } });
   };
-
-  const toggleBranch = (key: keyof DealStudioDraft['branches']) =>
-    onStudioChange({ branches: { ...studio.branches, [key]: !studio.branches[key] } });
 
   const toggleDay = (key: keyof DealStudioDraft['days']) =>
     onStudioChange({ days: { ...studio.days, [key]: !studio.days[key] } });
@@ -347,7 +326,7 @@ export function BusinessDealStudioStep3Screen({
                     Quick-add suggested rules:
                   </span>
                   <div className="flex flex-wrap gap-1.5">
-                    {suggestedTerms.map((term) => (
+                    {SUGGESTED_TERMS.map((term) => (
                       <button
                         key={term}
                         className="font-caption text-caption bg-surface-container hover:bg-surface-tint-blue text-text-secondary hover:text-primary px-2.5 py-1 rounded-full transition-colors flex items-center gap-1"
@@ -399,9 +378,7 @@ export function BusinessDealStudioStep3Screen({
               <div className="flex flex-col">
                 <h2 className="font-heading-sm text-heading-sm text-on-surface">Participating Branches</h2>
                 <p className="font-caption text-caption text-text-secondary mt-0.5">
-                  {live
-                    ? 'Pick where customers can redeem this deal. Each branch gets its own copy.'
-                    : 'Toggle merchant outlets enabled for voucher code redemption.'}
+                  Pick where customers can redeem this deal. Each branch gets its own copy.
                 </p>
               </div>
               <button
@@ -409,19 +386,9 @@ export function BusinessDealStudioStep3Screen({
                 type="button"
                 onClick={() => {
                   const allSelected = selectedBranchCount === selectableCount;
-                  if (live) {
-                    // "Clear" keeps the current branch: a deal needs at least one.
-                    const sellable = dealBranches.options.filter((option) => option.sellsItem).map((option) => option.id);
-                    onStudioChange({ branchIds: allSelected ? sellable.slice(0, 1) : sellable });
-                    return;
-                  }
-                  onStudioChange({
-                    branches: {
-                      wuseII: !allSelected,
-                      garkiII: !allSelected,
-                      maitama: !allSelected,
-                    },
-                  });
+                  // "Clear" keeps the current branch: a deal needs at least one.
+                  const sellable = dealBranches.options.filter((option) => option.sellsItem).map((option) => option.id);
+                  onStudioChange({ branchIds: allSelected ? sellable.slice(0, 1) : sellable });
                 }}
               >
                 <Icon name="add_location_alt" className="text-[16px]" />
@@ -429,6 +396,11 @@ export function BusinessDealStudioStep3Screen({
               </button>
             </div>
             <div className="flex flex-col gap-space-xs">
+              {branchOptions.length === 0 && (
+                <p className="rounded-xl bg-surface-subtle p-space-sm font-caption text-caption text-text-secondary">
+                  No branches yet — add your business locations in your business profile.
+                </p>
+              )}
               {branchOptions.map((branch) => {
                 const isActive = branch.checked;
                 return (

@@ -569,7 +569,7 @@ export function DesktopMyDealsScreen({ onNav, onOpenBusiness, initialFilter = 'a
                       className="h-12 px-3 rounded-xl bg-surface-canvas hover:bg-surface-container text-text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-2 shadow-sm transition-all"
                       type="button"
                     >
-                      <Icon name="share" className="text-[20px] text-badge-discount-text" />
+                      <Icon name="whatsapp" className="text-[20px] text-badge-discount-text" />
                       <span>Share WhatsApp</span>
                     </button>
                     <button

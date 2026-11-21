@@ -345,14 +345,14 @@ export function BookingConfirmedScreen({ refCode, onBack, onHome, onChat }: Book
                 <span className="absolute top-1 right-2 bg-badge-discount-text text-on-error font-caption text-[10px] px-1.5 py-0.2 rounded-full font-bold">
                   Fast
                 </span>
-                <Icon name="chat_bubble" className="text-primary text-[22px] mb-1" />
+                <Icon name="vemtap-chat" className="text-primary text-[22px] mb-1" />
                 <span className="font-label-sm text-label-sm text-text-primary font-medium">In-App Chat</span>
               </button>
               <button
                 type="button"
                 className="flex flex-col items-center justify-center py-space-sm px-space-xs bg-badge-discount-bg rounded-xl active:scale-95 transition-transform hover:opacity-90"
               >
-                <Icon name="forum" className="text-badge-discount-text text-[22px] mb-1" />
+                <Icon name="whatsapp" className="text-badge-discount-text text-[22px] mb-1" />
                 <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold">WhatsApp</span>
               </button>
             </div>
@@ -405,7 +405,7 @@ export function BookingConfirmedScreen({ refCode, onBack, onHome, onChat }: Book
               onClick={onChat}
               className="w-full h-[52px] bg-primary-container text-on-primary rounded-xl font-button-primary text-button-primary shadow-md flex items-center justify-center gap-space-xs active:scale-[0.98] transition-transform"
             >
-              <Icon name="chat" className="text-[20px]" />
+              <Icon name="vemtap-chat-white" className="text-[20px]" />
               <span>Track &amp; Chat with Salon</span>
             </button>
             <div className="flex items-center justify-center">

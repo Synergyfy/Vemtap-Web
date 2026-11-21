@@ -259,8 +259,8 @@ export function BusinessMoreScreen({
       rows: [
         {
           key: 'support',
-          icon: 'support_agent',
-          iconClass: 'bg-surface-container text-on-surface-variant',
+          icon: 'whatsapp',
+          iconClass: 'bg-badge-discount-bg text-badge-discount-text',
           title: 'Support & Help Desk',
           sub: 'Live WhatsApp support & merchant guides',
           onClick: onOpenSupport,

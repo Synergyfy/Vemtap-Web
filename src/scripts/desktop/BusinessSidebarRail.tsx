@@ -3,13 +3,14 @@ import { Icon } from '../../components/ui/Icon';
 import { useNavBadges } from '../../hooks/business/useNavBadges';
 import {
   BUSINESS_SIDEBAR_SECTIONS,
-  filterSidebarSections,
   resolveSidebarActive,
   type BusinessSidebarSection,
   type BusinessSidebarSubItem,
 } from './businessSidebarConfig';
+import { filterSidebarSectionsForUser } from '../staffPageAccess';
 import { useBusinessOfferings } from '../../context/BusinessOfferingsContext';
 import { useBusinessFeatures } from '../../context/BusinessFeaturesContext';
+import { useSessionUser } from '../../hooks/useSessionUser';
 
 interface BusinessSidebarRailProps {
   active?: string;
@@ -36,6 +37,7 @@ export function BusinessSidebarRail({
   const badgeFor = useNavBadges();
   const { offerings, mode } = useBusinessOfferings();
   const { features } = useBusinessFeatures();
+  const session = useSessionUser().data;
 
   const getSubItemLabel = (subItem: BusinessSidebarSubItem) => {
     if (subItem.key === 'business-catalog') return 'My Products';
@@ -48,10 +50,13 @@ export function BusinessSidebarRail({
     return subItem.label;
   };
 
-  // Hide explicitly hidden sections and tools the business has switched off.
-  const visibleSections = filterSidebarSections(sections, (id) => Boolean(features[id])).filter(
-    (section) => !section.hidden
-  );
+  // Hide hidden sections, switched-off tools and pages this staff account was
+  // not granted. Owners/admins keep every page.
+  const visibleSections = filterSidebarSectionsForUser(
+    sections,
+    (id) => Boolean(features[id]),
+    session,
+  ).filter((section) => !section.hidden);
 
   // Highlight: if the resolved group is one the business has switched off (or
   // an entry moved groups, e.g. Bookings when POS is off), follow the entry to

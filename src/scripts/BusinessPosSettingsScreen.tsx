@@ -15,7 +15,7 @@ interface BusinessPosSettingsScreenProps {
 
 const SETTINGS_TABS = [
   { key: 'business', label: 'Business', icon: 'storefront' },
-  { key: 'tills', label: 'Registers & Tills', icon: 'point_of_sale' },
+  { key: 'tills', label: 'Cash Registers', icon: 'point_of_sale' },
   { key: 'receipt', label: 'Receipt', icon: 'receipt_long' },
   { key: 'tax', label: 'Tax & Pricing', icon: 'percent' },
   { key: 'alerts', label: 'Alerts', icon: 'notifications' },
@@ -233,8 +233,15 @@ export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenP
       taxRate: data.taxRate ?? prev.taxRate,
       taxLabel: data.taxLabel ?? prev.taxLabel,
       pricesIncludeTax: data.pricesIncludeTax ?? prev.pricesIncludeTax,
+      loyaltyEnabled: data.loyaltyEnabled ?? prev.loyaltyEnabled,
+      redemptionThreshold: data.loyaltyRedeemThreshold ?? prev.redemptionThreshold,
+      lowStockAlerts: data.lowStockAlerts ?? prev.lowStockAlerts,
+      dailySalesSummary: data.dailySalesSummary ?? prev.dailySalesSummary,
+      newOrderAlert: data.newOrderAlert ?? prev.newOrderAlert,
+      staffActivityAlerts: data.staffActivityAlerts ?? prev.staffActivityAlerts,
     }));
     if (typeof data.taxRate === 'number') setRateText(String(data.taxRate));
+    if (typeof data.loyaltyRedeemThreshold === 'number') setThresholdText(String(data.loyaltyRedeemThreshold));
     if (data.receiptAddress) s.setBusinessAddress(data.receiptAddress);
     if (data.receiptPhone) s.setBusinessPhone(data.receiptPhone);
     if (data.receiptHeader) s.setReceiptHeader(data.receiptHeader);
@@ -243,6 +250,12 @@ export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenP
     if (typeof data.showLogo === 'boolean') s.setShowBusinessLogo(data.showLogo);
     if (typeof data.taxRate === 'number') s.setTaxRate(data.taxRate);
     if (data.taxLabel) s.setTaxLabel(data.taxLabel);
+    if (typeof data.loyaltyEnabled === 'boolean') s.setLoyaltyEnabled(data.loyaltyEnabled);
+    if (typeof data.loyaltyRedeemThreshold === 'number') s.setRedemptionThreshold(data.loyaltyRedeemThreshold);
+    if (typeof data.lowStockAlerts === 'boolean') s.setLowStockAlerts(data.lowStockAlerts);
+    if (typeof data.dailySalesSummary === 'boolean') s.setDailySalesSummary(data.dailySalesSummary);
+    if (typeof data.newOrderAlert === 'boolean') s.setNewOrderAlert(data.newOrderAlert);
+    if (typeof data.staffActivityAlerts === 'boolean') s.setStaffActivityAlerts(data.staffActivityAlerts);
     // Tax flags go through the context's exclusive setters — enable-tax first,
     // then prices-include-tax, so the last writer wins as designed.
     if (typeof data.taxEnabled === 'boolean') s.setTaxEnabled(data.taxEnabled);
@@ -292,8 +305,7 @@ export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenP
 
   const save = () => {
     if (live) {
-      // Only the receipt/tax fields live on the API — PATCH those, and keep
-      // business identity, alerts and loyalty in the local till context.
+      // Persist all settings tabs to the live API
       updateMutation.mutate(
         {
           receiptHeader: draft.receiptHeader,
@@ -306,6 +318,12 @@ export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenP
           taxRate: draft.taxRate,
           taxLabel: draft.taxLabel,
           pricesIncludeTax: draft.pricesIncludeTax,
+          loyaltyEnabled: draft.loyaltyEnabled,
+          loyaltyRedeemThreshold: draft.redemptionThreshold,
+          lowStockAlerts: draft.lowStockAlerts,
+          dailySalesSummary: draft.dailySalesSummary,
+          newOrderAlert: draft.newOrderAlert,
+          staffActivityAlerts: draft.staffActivityAlerts,
         },
         {
           onSuccess: () => {
@@ -414,8 +432,8 @@ export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenP
             <Card>
               <div className="p-3 border-b border-border-subtle flex items-center justify-between">
                 <div className="flex flex-col">
-                  <span className="font-label-sm text-[13px] font-bold text-text-primary">Configured Branch Tills</span>
-                  <span className="font-caption text-[11px] text-text-secondary">Wuse II Branch • 3 Stations Setup</span>
+                  <span className="font-label-sm text-[13px] font-bold text-text-primary">Configured Cash Registers</span>
+                  <span className="font-caption text-[11px] text-text-secondary">Wuse II Branch • Checkout Stations Setup</span>
                 </div>
                 <button
                   type="button"
@@ -423,19 +441,19 @@ export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenP
                   className="px-2.5 py-1 rounded-lg bg-primary text-on-primary font-caption text-[11px] font-semibold flex items-center gap-1 shadow-xs hover:bg-primary-container active:scale-95 transition-all"
                 >
                   <Icon name={showAddTill ? 'close' : 'add'} className="text-[14px]" />
-                  <span>{showAddTill ? 'Cancel' : 'Add Till'}</span>
+                  <span>{showAddTill ? 'Cancel' : 'Add Cash Register'}</span>
                 </button>
               </div>
 
               {showAddTill && (
                 <div className="p-3 bg-surface-container-low flex flex-col gap-2.5 border-b border-border-subtle">
-                  <span className="font-label-sm text-[12px] font-bold text-text-primary">New Register / Till Setup</span>
+                  <span className="font-label-sm text-[12px] font-bold text-text-primary">New Cash Register Setup</span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
-                      <label className="font-caption text-[10px] text-text-secondary block mb-0.5">Till Identifier</label>
+                      <label className="font-caption text-[10px] text-text-secondary block mb-0.5">Cash Register Name</label>
                       <input
                         type="text"
-                        placeholder="e.g. Till 04, VIP Bar Till"
+                        placeholder="e.g. Register 01, Front Checkout"
                         value={newTillName}
                         onChange={(e) => setNewTillName(e.target.value)}
                         className="w-full h-8 px-2.5 rounded-lg border border-border-subtle text-[12px] bg-surface-canvas text-text-primary focus:outline-none focus:border-primary"
@@ -488,7 +506,7 @@ export function BusinessPosSettingsScreen({ onBack }: BusinessPosSettingsScreenP
                     }}
                     className="self-end px-3 py-1.5 rounded-lg bg-primary text-on-primary text-[11px] font-semibold"
                   >
-                    Save New Till
+                    Save Cash Register
                   </button>
                 </div>
               )}

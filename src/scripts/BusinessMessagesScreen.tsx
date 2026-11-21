@@ -7,7 +7,6 @@ import { BusinessNewMessageScreen } from './BusinessNewMessageScreen';
 import { BusinessComposeScreen } from './BusinessComposeScreen';
 import { BusinessChatGeneralScreen } from './BusinessChatGeneralScreen';
 import { BusinessChatDealScreen } from './BusinessChatDealScreen';
-import { BusinessChatBookingScreen } from './BusinessChatBookingScreen';
 import { BusinessChatOrderScreen } from './BusinessChatOrderScreen';
 import { DEFAULT_CHAT_CONTACTS, type BusinessChatContact } from './messagesContact';
 
@@ -37,8 +36,10 @@ export function BusinessMessagesScreen({
   const [contact, setContact] = useState<BusinessChatContact>(DEFAULT_CHAT_CONTACTS.general);
 
   const openConversation = (thread: 'deal' | 'order' | 'general' | 'booking', next?: BusinessChatContact) => {
-    setContact(next ?? DEFAULT_CHAT_CONTACTS[thread]);
-    setStep(`chat${thread.charAt(0).toUpperCase()}${thread.slice(1)}` as BusinessMessagesStep);
+    // Product-only rollout: booking threads open the general chat instead.
+    const visibleThread = thread === 'booking' ? 'general' : thread;
+    setContact(next ?? DEFAULT_CHAT_CONTACTS[visibleThread]);
+    setStep(`chat${visibleThread.charAt(0).toUpperCase()}${visibleThread.slice(1)}` as BusinessMessagesStep);
   };
 
   useEffect(() => {
@@ -97,7 +98,7 @@ export function BusinessMessagesScreen({
             onSent={(threadId) => {
               // Live: open the real thread the first message went to.
               if (threadId) openConversation('general', { name: contact.name, threadId, customerId: contact.customerId });
-              else setStep('chatBooking');
+              else setStep('chatOrder');
             }}
           />
         );
@@ -106,7 +107,8 @@ export function BusinessMessagesScreen({
       case 'chatDeal':
         return <BusinessChatDealScreen contact={contact} onBack={() => setStep('home')} />;
       case 'chatBooking':
-        return <BusinessChatBookingScreen contact={contact} onBack={() => setStep('home')} />;
+        // Product-only rollout: stale booking steps open the general chat.
+        return <BusinessChatGeneralScreen contact={contact} onBack={() => setStep('home')} />;
       case 'chatOrder':
         return <BusinessChatOrderScreen contact={contact} onBack={() => setStep('home')} onViewProfile={onViewCustomerProfile} />;
     }

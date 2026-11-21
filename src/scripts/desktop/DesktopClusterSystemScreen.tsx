@@ -832,7 +832,7 @@ export function DesktopClusterSystemScreen({
                           onClick={() => setSelectedMemberChat(b)}
                           className="py-1.5 px-3 rounded-xl bg-primary-container text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs hover:opacity-95 transition-all"
                         >
-                          <Icon name="chat" className="text-[15px]" />
+                          <Icon name="vemtap-chat-white" className="text-[15px]" />
                           <span>In-App Chat</span>
                         </button>
                       )}

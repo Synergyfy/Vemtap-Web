@@ -12,12 +12,15 @@ import { useHomeDealCategories } from '../hooks/useHomeDealCategories';
 import { matchesClientFilters, useDealFilters } from '../context/DealFiltersContext';
 import { useDealFeedControls, type DealSortBy } from '../hooks/useDealFeedControls';
 import { Skeleton, SkeletonGroup } from '../components/ui/Skeleton';
+import { BusinessChatBox } from '../components/BusinessChatBox';
+import { usePublicBusiness } from '../hooks/usePublicBusiness';
 import type { ClaimDealSummary } from '../components/desktop/dialogs/ClaimIdentityModal';
 import {
   isVerifiedOffer,
   offerEndsLabel,
   offerImage,
   offerLocationLabel,
+  offerMatchesBusiness,
   realOfferId,
 } from '../utils/homeOffer';
 import { UserAvatar } from '../components/ui/UserAvatar';
@@ -149,6 +152,8 @@ export interface DealsScreenProps {
   onOpenComments?: (deal: ClaimDealSummary) => void;
   /** Pre-fills the search (e.g. "See all deals for …" from the home search). */
   initialSearch?: string;
+  /** Business-specific "See All Deals": only this business's public offers are shown. */
+  businessCode?: string | null;
 }
 
 type DealCardModel = ReturnType<typeof toDealCardModel>;
@@ -415,6 +420,7 @@ export function DealsScreen({
   onHowToClaim,
   onOpenComments,
   initialSearch,
+  businessCode,
 }: DealsScreenProps) {
   const { live, count: unreadCount } = useUnreadNotifications();
   // Claimed only after the claim flow reports success for that deal.
@@ -447,6 +453,8 @@ export function DealsScreen({
   const [publicOffers, setPublicOffers] = useState<Record<string, unknown>[]>([]);
   const { district, city, radius, setLocation } = useLocation();
   const apiReady = hasApiConfig();
+  const businessProfile = usePublicBusiness(businessCode);
+  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -487,7 +495,10 @@ export function DealsScreen({
     return () => { ignore = true; };
   }, [feedParams, isLoadingMorePage, limit]);
 
-  const displayDeals = useMemo(() => publicOffers.filter(isUsableOffer).filter((offer) => matchesClientFilters(offer, dealFilters)), [publicOffers, dealFilters]);
+  const displayDeals = useMemo(
+    () => publicOffers.filter(isUsableOffer).filter((offer) => offerMatchesBusiness(offer, businessCode)).filter((offer) => matchesClientFilters(offer, dealFilters)),
+    [publicOffers, dealFilters, businessCode],
+  );
   const featuredDeal = displayDeals[0] ? toDealCardModel(displayDeals[0]) : null;
 
   // Live likes: GET /deals/:id/reaction-status to load, POST /deals/:id/reactions { type: 'like' } to toggle.
@@ -512,6 +523,20 @@ export function DealsScreen({
     );
   };
   const featuredLiked = Boolean(featuredDeal?.offerId && likes[featuredDeal.offerId]?.liked);
+  const businessChatBlock = businessCode && businessProfile.business ? (
+    <div className="px-margin pb-space-md">
+      <button
+        type="button"
+        aria-pressed={chatOpen}
+        onClick={() => setChatOpen((open) => !open)}
+        className="w-full h-10 rounded-xl border border-border-subtle text-primary font-label-md text-label-md font-semibold flex items-center justify-center gap-1.5"
+      >
+        <Icon name="vemtap-chat" className="text-[18px]" />
+        {chatOpen ? 'Hide chat' : `Chat with ${businessProfile.business.name}`}
+      </button>
+      {chatOpen ? <BusinessChatBox business={businessProfile.business} onClose={() => setChatOpen(false)} /> : null}
+    </div>
+  ) : null;
 
   const categoryChips = (
     <div className="px-margin mb-space-md -mt-1 overflow-x-auto no-scrollbar flex items-center gap-2 py-1">
@@ -637,6 +662,8 @@ export function DealsScreen({
           </div>
         </header>
 
+        {businessChatBlock}
+
         <main className="flex flex-col relative w-full pt-[92px] pb-24 bg-surface px-margin">
           <div className="w-full rounded-2xl border border-dashed border-outline-variant bg-surface-container-low p-space-xl text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary-fixed text-primary">
@@ -696,6 +723,8 @@ export function DealsScreen({
             </div>
           </div>
         </header>
+
+        {businessChatBlock}
 
         <main className="flex flex-col relative w-full pt-[92px] pb-24 bg-surface px-margin">
           <div className="w-full rounded-2xl border border-dashed border-outline-variant bg-surface-container-low p-space-xl text-center">
@@ -768,6 +797,8 @@ export function DealsScreen({
           onAccount={onAccount}
         />
       )}
+
+      {businessChatBlock}
 
       {view === 'grid' ? (
         <div className="flex flex-col relative w-full pt-[84px] pb-24 bg-surface">

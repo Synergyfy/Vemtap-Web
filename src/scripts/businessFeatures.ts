@@ -32,6 +32,16 @@ export type FeatureId =
 
 export type FeatureState = Record<FeatureId, boolean>;
 
+/**
+ * Product-only rollout: Services, Service Categories and Bookings are hidden
+ * everywhere in the UI while the underlying data/API stays intact for later.
+ * Shared booking reads used by Orders/Dashboard remain mounted separately.
+ */
+export const PRODUCT_ONLY_MODE = true;
+const PRODUCT_ONLY_HIDDEN_FEATURES: ReadonlySet<FeatureId> = new Set<FeatureId>(['services', 'bookings']);
+export const isProductOnlyHiddenFeature = (id: FeatureId) =>
+  PRODUCT_ONLY_MODE && PRODUCT_ONLY_HIDDEN_FEATURES.has(id);
+
 export interface BusinessFeature {
   id: FeatureId;
   /** Display name — matches the tool as it is labelled in the dashboard. */
@@ -57,7 +67,7 @@ export interface FeatureCategory {
  * owner switches on or off appear in the same arrangement as the pages they
  * open.
  */
-export const FEATURE_CATEGORIES: FeatureCategory[] = [
+const ALL_FEATURE_CATEGORIES: FeatureCategory[] = [
   {
     key: 'messages',
     label: 'Messages',
@@ -79,6 +89,12 @@ export const FEATURE_CATEGORIES: FeatureCategory[] = [
     features: ['cluster', 'analytics'],
   },
 ];
+
+/** Service/Booking tools are intentionally absent from every feature picker. */
+export const FEATURE_CATEGORIES: FeatureCategory[] = ALL_FEATURE_CATEGORIES.map((category) => ({
+  ...category,
+  features: category.features.filter((id) => !isProductOnlyHiddenFeature(id)),
+})).filter((category) => category.features.length > 0);
 
 export const BUSINESS_FEATURES: Record<FeatureId, BusinessFeature> = {
   pos: {
@@ -119,7 +135,7 @@ export const BUSINESS_FEATURES: Record<FeatureId, BusinessFeature> = {
   chat: {
     id: 'chat',
     name: 'VEMTAP Chat',
-    icon: 'forum',
+    icon: 'vemtap-chat',
     description: 'Communicate with customers.',
     navKey: 'messages-inapp',
   },
@@ -195,7 +211,8 @@ export const BUSINESS_FEATURES: Record<FeatureId, BusinessFeature> = {
   },
 };
 
-export const FEATURE_IDS: FeatureId[] = FEATURE_CATEGORIES.flatMap((category) => category.features);
+// Keep every id in the stored state shape even when its picker card is hidden.
+export const FEATURE_IDS: FeatureId[] = Object.keys(BUSINESS_FEATURES) as FeatureId[];
 
 /**
  * Pages the platform ships for every business and that an owner can never
@@ -252,7 +269,7 @@ export interface BusinessGoalOption {
   features: FeatureId[];
 }
 
-export const BUSINESS_GOAL_OPTIONS: BusinessGoalOption[] = [
+const ALL_BUSINESS_GOAL_OPTIONS: BusinessGoalOption[] = [
   {
     id: 'products',
     title: 'Sell Products & Manage Store Orders',
@@ -278,6 +295,11 @@ export const BUSINESS_GOAL_OPTIONS: BusinessGoalOption[] = [
     features: ['cluster', 'deals', 'loyalty', 'customers', 'referrals', 'analytics'],
   },
 ];
+
+/** The services goal is commented out of setup in product-only mode. */
+export const BUSINESS_GOAL_OPTIONS: BusinessGoalOption[] = ALL_BUSINESS_GOAL_OPTIONS.filter(
+  (goal) => goal.id !== 'services' || !PRODUCT_ONLY_MODE,
+);
 
 /**
  * Builds a FeatureState from a set of selected goal option ids.

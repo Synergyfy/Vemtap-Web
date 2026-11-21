@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import { useStoreOrdering } from '../../context/StoreOrderingContext';
@@ -6,6 +6,7 @@ import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { hasApiConfig } from '../../services/api/client';
 import {
   STORE_ORDER_STATUS_CONFIG,
+  completedByLabel,
   type StoreOrder,
 } from '../storeOrderingData';
 
@@ -68,13 +69,25 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
   } | null>(null);
   const [substituteName, setSubstituteName] = useState('');
   const [substitutePriceDiff, setSubstitutePriceDiff] = useState('0');
+  const enabledPaymentMethods = settings.paymentMethods.filter((method) => method.enabled);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  const toastTimer = useRef<number | null>(null);
   const showToast = (msg: string) => {
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     setToastMessage(msg);
-    window.setTimeout(() => setToastMessage(null), 3000);
+    toastTimer.current = window.setTimeout(() => {
+      setToastMessage(null);
+      toastTimer.current = null;
+    }, 3000);
   };
+  useEffect(
+    () => () => {
+      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    },
+    [],
+  );
 
   /**
    * Payment, handover and the POS hand-off all close an order, and an order is
@@ -82,7 +95,7 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
    * opens on the "Assigned Staff Member" picker instead of completing.
    */
   const requireCompleter = (order: StoreOrder) => {
-    if (order.assignedStaff) return true;
+    if (order.assignedStaff || order.assignedStaffId) return true;
     setSelectedOrderId(order.id);
     showToast(
       `Order ${order.orderRef}: assign the person completing this order under "Assigned Staff Member" first.`,
@@ -90,8 +103,7 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
     return false;
   };
 
-  const completedBy = (order: StoreOrder) =>
-    order.statusHistory.find((h) => h.status === 'completed')?.staffName || order.assignedStaff || '';
+  const completedBy = (order: StoreOrder) => completedByLabel(order);
 
   useEffect(() => {
     if (!lastError) return;
@@ -147,7 +159,7 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
       const res = updateOrderStatus(order.id, 'accepted', 'Order accepted by store staff');
       showToast(res.ok ? `Order ${order.id} accepted.` : res.message);
     } else if (action === 'start-prep') {
-      const res = updateOrderStatus(order.id, 'preparing', 'Preparation started in kitchen');
+      const res = updateOrderStatus(order.id, 'preparing', 'Preparation started');
       showToast(res.ok ? `Order ${order.id} is now preparing.` : res.message);
     } else if (action === 'mark-ready') {
       const res = updateOrderStatus(order.id, 'ready', 'Order ready for customer pickup');
@@ -159,7 +171,8 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
         showToast(`Proceeding to VEMTAP POS Register for Order ${order.orderRef}...`);
         onNav('pos-register');
       } else {
-        setPaymentRef(`STORE-${Math.floor(10000 + Math.random() * 89999)}`);
+        setPaymentMethod((enabledPaymentMethods[0]?.id as typeof paymentMethod) ?? paymentMethod);
+        setPaymentRef('');
         setConfirmAction({ type: 'payment', order });
       }
     } else if (action === 'collect') {
@@ -295,7 +308,7 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
             <div className="flex items-center justify-between mb-2">
               <span className="font-label-md text-label-md text-text-secondary">Preparing</span>
               <div className="w-9 h-9 rounded-xl bg-secondary-container/20 text-secondary flex items-center justify-center">
-                <Icon name="soup_kitchen" className="text-[20px]" />
+                <Icon name="inventory_2" className="text-[20px]" />
               </div>
             </div>
             <div className="text-heading-xl font-heading-xl text-on-surface font-bold">
@@ -303,7 +316,7 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
             </div>
             <div className="mt-1 flex items-center gap-1.5 text-caption text-text-tertiary">
               <span className="w-2 h-2 rounded-full bg-secondary" />
-              <span>In kitchen / Assembly</span>
+              <span>In Preparation / Assembly</span>
             </div>
           </button>
 
@@ -749,7 +762,7 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
                         className="p-2 rounded-lg text-primary hover:bg-surface-tint-blue transition-colors"
                         title="Open Chat"
                       >
-                        <Icon name="chat" className="text-[18px]" />
+                        <Icon name="vemtap-chat" className="text-[18px]" />
                       </button>
                     </div>
                   </div>
@@ -893,7 +906,7 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
                         ₦{selectedOrder.confirmedTotal.toLocaleString()}
                       </span>
                       <span className="text-[11px] text-badge-discount-text font-semibold uppercase">
-                        {selectedOrder.isTotalConfirmed ? 'Store-Confirmed Total' : 'Estimated Total (Subject to Kitchen Audit)'}
+                        {selectedOrder.isTotalConfirmed ? 'Store-Confirmed Total' : 'Estimated Total (Subject to Store Audit)'}
                       </span>
                     </div>
 
@@ -976,6 +989,7 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
                         {hist.staffName && (
                           <span className="text-text-tertiary text-[11px] block">
                             By {hist.staffName}
+                            {hist.staffRole ? ` (${hist.staffRole})` : ''}
                           </span>
                         )}
                       </div>
@@ -1034,7 +1048,8 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
                           type="button"
                           onClick={() => {
                             if (!requireCompleter(selectedOrder)) return;
-                            setPaymentRef(`STORE-${Math.floor(10000 + Math.random() * 89999)}`);
+                            setPaymentMethod((enabledPaymentMethods[0]?.id as typeof paymentMethod) ?? paymentMethod);
+                            setPaymentRef('');
                             setConfirmAction({ type: 'payment', order: selectedOrder });
                           }}
                           className="px-3 py-2.5 rounded-xl border border-border hover:bg-surface-subtle text-text-secondary text-caption font-semibold transition-colors"
@@ -1119,21 +1134,16 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
                       onChange={(e) => setPaymentMethod(e.target.value as any)}
                       className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border text-body-md"
                     >
-                      {settings?.paymentMethods && settings.paymentMethods.length > 0 ? (
-                        settings.paymentMethods
-                          .filter((m) => m.enabled)
-                          .map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.label}
-                            </option>
-                          ))
+                      {enabledPaymentMethods.length > 0 ? (
+                        enabledPaymentMethods.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.label}
+                          </option>
+                        ))
                       ) : (
-                        <>
-                          <option value="pos-terminal">POS Card Terminal</option>
-                          <option value="cash">Cash Tender</option>
-                          <option value="bank-transfer">Direct Bank Transfer</option>
-                          <option value="store-credit">Store Credit / Voucher</option>
-                        </>
+                        <option value="" disabled>
+                          No payment methods configured
+                        </option>
                       )}
                     </select>
                   </div>
@@ -1160,7 +1170,8 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
                     <button
                       type="button"
                       onClick={handleConfirmAction}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-label-md shadow-sm"
+                      disabled={enabledPaymentMethods.length === 0}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-label-md shadow-sm disabled:opacity-50"
                     >
                       Confirm Payment Recorded
                     </button>
@@ -1234,7 +1245,7 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
                       rows={2}
                       value={rejectReason}
                       onChange={(e) => setRejectReason(e.target.value)}
-                      placeholder="e.g. Kitchen overloaded / items sold out"
+                      placeholder="e.g. Station overloaded / items sold out"
                       className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border text-body-md"
                     />
                   </div>
@@ -1409,17 +1420,17 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
                       type="text"
                       value={retrievalInput}
                       onChange={(e) => setRetrievalInput(e.target.value)}
-                      placeholder="e.g. UG-8421 or customer phone / name"
+                      placeholder="Order reference, ID, phone or customer name"
                       className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-surface-subtle border border-border text-body-md text-text-primary focus:outline-hidden focus:border-primary font-mono"
                       autoFocus
                     />
                   </div>
                 </div>
 
-                {/* Quick Sample Lookups */}
+                {/* Recent live orders */}
                 <div className="space-y-1">
                   <span className="text-[11px] text-text-tertiary font-semibold uppercase tracking-wider block">
-                    Quick Sample Lookups:
+                    Recent Orders:
                   </span>
                   <div className="flex items-center gap-2 flex-wrap">
                     {orders.slice(0, 4).map((o) => (
@@ -1527,7 +1538,7 @@ export function DesktopStoreOrderingDashboard({ onNav }: DesktopStoreOrderingDas
 
         {/* Global Toast */}
         {toastMessage && (
-          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-on-surface text-surface px-4 py-3 rounded-xl shadow-xl font-label-md animate-in slide-in-from-bottom duration-200">
+          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-on-surface text-inverse-on-surface px-4 py-3 rounded-xl shadow-xl font-label-md animate-in slide-in-from-bottom duration-200">
             <Icon name="check_circle" className="text-badge-discount-text text-[20px]" />
             <span>{toastMessage}</span>
           </div>

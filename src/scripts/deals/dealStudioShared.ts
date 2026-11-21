@@ -7,9 +7,25 @@
  * apart. Keep all rules here; screens should only render and dispatch.
  */
 
-export type DealStrategy = 'percentage' | 'fixed' | 'combo' | 'tiered';
+/** `current` is a no-discount deal: the customer pays the item's listed price. */
+export type DealStrategy = 'current' | 'percentage' | 'fixed' | 'combo' | 'tiered';
+
+export type DealPriceChoice = 'current' | 'changed';
 
 export type DealDuration = '7-days' | '14-days' | '30-days' | '3-months' | '6-months' | 'forever';
+
+/** The pricing choice made before the discount-strategy step. */
+export const isCurrentPriceDeal = (studio: DealStudioDraft) => studio.strategy === 'current';
+
+export const dealPriceChoiceFor = (studio: DealStudioDraft): DealPriceChoice =>
+  isCurrentPriceDeal(studio) ? 'current' : 'changed';
+
+/** Apply a pricing choice without touching the rest of the deal configuration. */
+export const withDealPriceChoice = (studio: DealStudioDraft, choice: DealPriceChoice): DealStudioDraft => ({
+  ...studio,
+  strategy: choice === 'current' ? 'current' : null,
+});
+
 
 export const DEAL_DURATIONS: Array<{ id: DealDuration; label: string; hint: string }> = [
   { id: '7-days', label: '7 Days', hint: 'Quick flash promo' },
@@ -73,7 +89,7 @@ export const DEAL_TYPE_OPTIONS: DealTypeOption[] = [
 ];
 
 export const dealTypeTitle = (id: DealStrategy | null) =>
-  DEAL_TYPE_OPTIONS.find((option) => option.id === id)?.title ?? 'Discount Strategy';
+  id === 'current' ? 'Current Price' : DEAL_TYPE_OPTIONS.find((option) => option.id === id)?.title ?? 'Discount Strategy';
 
 /* ------------------------------------------------------------------ */
 /* Small numeric helpers                                               */
@@ -259,14 +275,14 @@ export const INITIAL_DEAL_STUDIO_DRAFT: DealStudioDraft = {
   redeemEnd: '5:00 PM',
   duration: '14-days',
   claimSteps: [
-    'Show your digital VEMTAP voucher pass at reception/counter',
-    'Enjoy your meal with the deal discount applied to eligible items',
-    'Settle remaining balance directly with restaurant via Card, Cash or Transfer',
+    'Show your digital VEMTAP voucher pass at checkout or counter',
+    'Enjoy your purchase with the deal discount applied to eligible items',
+    'Settle remaining balance directly with the business via Card, Cash or Transfer',
   ],
   terms: [
     'Show voucher code before placing order',
-    'Dine-in and pickup only. Not combinable with other promotions',
-    'Valid only during specified lunch hours (12:00 PM – 5:00 PM)',
+    'In-store and pickup only. Not combinable with other promotions',
+    'Valid only during specified operating hours (12:00 PM – 5:00 PM)',
   ],
 };
 
@@ -341,6 +357,8 @@ export const claimLimitPeriod = (studio: DealStudioDraft): 'lifetime' | 'month' 
 /** The headline badge customers see for this deal ("20% Off", "₦2,500 Off", …). */
 export function dealBadgeLabel(studio: DealStudioDraft, savingsPct?: number) {
   switch (studio.strategy) {
+    case 'current':
+      return 'Current Price';
     case 'fixed':
       return `₦${formatDealAmount(studio.fixed.amountOff)} Off`;
     case 'combo':
@@ -463,6 +481,14 @@ export function resolveDealPricing(
   catalog: ComboProduct[] = DEFAULT_BUNDLE_CATALOG,
 ): DealPricing {
   switch (studio.strategy ?? 'percentage') {
+    case 'current':
+      return {
+        originalTotal: basePrice,
+        dealPrice: basePrice,
+        savings: 0,
+        savingsPct: 0,
+        valid: basePrice > 0,
+      };
     case 'percentage': {
       const pct = clampNumber(studio.discountPct, 1, 90);
       const savings = Math.round((basePrice * pct) / 100);
@@ -575,6 +601,8 @@ export function validateDealConfiguration(
   catalog: ComboProduct[] = DEFAULT_BUNDLE_CATALOG,
 ): string[] {
   switch (studio.strategy ?? 'percentage') {
+    case 'current':
+      return basePrice > 0 ? [] : ['Set the item price before creating a current-price deal.'];
     case 'percentage':
       return validatePercentageDeal(studio.discountPct);
     case 'fixed':

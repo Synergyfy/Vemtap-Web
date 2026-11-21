@@ -46,7 +46,7 @@ const CONVERSATIONS: Conversation[] = [
     messages: [
       { id: 'm1', from: 'customer', text: 'Hi! I saw the Lunch Combo deal on your storefront 👋', time: '11:58 AM' },
       { id: 'm2', from: 'customer', text: 'Is the Truffle Fries deal still available for tonight?', time: '12:01 PM' },
-      { id: 'm3', from: 'merchant', text: 'Hey Sarah! Yes — Lunch Combo runs until 9 PM tonight. Want me to reserve a table for you?', time: '12:02 PM' },
+      { id: 'm3', from: 'merchant', text: 'Hey Sarah! Yes — Lunch Combo runs until 9 PM tonight. Want me to add it to your order?', time: '12:02 PM' },
     ],
   },
   {
@@ -66,22 +66,6 @@ const CONVERSATIONS: Conversation[] = [
     ],
   },
   {
-    id: 'c3',
-    name: 'Zainab Musa',
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCLSUdPB0S9q1mjfhwPgtg4379_cbmhTQFg9g9abp3Y6hG2OBaihf6eVIs9WhFWXmj7sBanzoKcIFtE35a10aZRZvTx_tIoYqKR8d6Q6dSwhC8hxyOlZ6lwrKmYFLaBP2xXaAOYf7DeQK0IqKpVu86oJpq1DUY9P3n6T5IypYxfPcPVqPnGoZHq64bl3oshzZ1EoLK8o0SGh3WHjBkhAX7vy434_GLxzZPGzF0D-HzL',
-    preview: 'Birthday booking confirmed for 2:15 PM — thank you!',
-    time: '1 hr',
-    unread: 0,
-    tags: ['Booking BK-2201'],
-    channel: 'bookings',
-    phone: '+234 806 112 3344',
-    orders: '5 lifetime orders',
-    lifetime: '₦92,000',
-    messages: [
-      { id: 'm1', from: 'customer', text: 'Birthday booking confirmed for 2:15 PM — thank you!', time: '11:04 AM' },
-    ],
-  },
-  {
     id: 'c4',
     name: 'Tunde Balogun',
     avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCta-AVcjCZDWInIcUOJAuZYV2oAQHyTKLW5eoRshVGRfv8UJJbZ9ZCzBn61chEDIfTHAGW1GJtmX2WtS91OqMMUuKu_rwDf5fhd87TDW44tR2GYusQ1Q0A_EdzsPpIuPe9Ka3jV_pnY_4A-0zbBoXeaXu8h257sUKg1LWCudIZeklCl2b_QS7i_d4Cq3p8rIm-xBCEHufzUuVhTBN4Z6tLGW_WUhyJZBbwR8YVUOYg',
@@ -96,22 +80,6 @@ const CONVERSATIONS: Conversation[] = [
     messages: [
       { id: 'm1', from: 'customer', text: 'Can you add extra pepper sauce to my delivery?', time: '10:15 AM' },
       { id: 'm2', from: 'merchant', text: 'Sure — noted on the KOT. Your rider will have it.', time: '10:16 AM' },
-    ],
-  },
-  {
-    id: 'c5',
-    name: 'Dr. Chidi Eze',
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuC_QV6uRZyyO54NZ_xP-h2bJ8ASlYYKyHrhcifuXhWq8-8e8k7vVjQp92ikYv3cH5MH1U3mE-cqvqgIrgvoTD-_3v0kflAwqqy8Epu7Gxy7JGLPfKzbysfHasIYlfBSpqOZTvvLMf7DdGcoLZHsJdXHYXPoe6YzKvM1VfQBm0hKUBoocqfb1jEx0XIwvHG3Cu3MbVVrfoRPKvM2x6jDPEgCeLL7VDkEoBDmTl5tggWL',
-    preview: 'Private dining for 8 at 7:30 PM — invoice to the firm.',
-    time: 'Yesterday',
-    unread: 0,
-    tags: ['Booking BK-2205', 'Corporate'],
-    channel: 'bookings',
-    phone: '+234 809 331 7788',
-    orders: '2 lifetime orders',
-    lifetime: '₦68,000',
-    messages: [
-      { id: 'm1', from: 'customer', text: 'Private dining for 8 at 7:30 PM — invoice to the firm.', time: 'Yesterday, 4:20 PM' },
     ],
   },
   {
@@ -136,11 +104,10 @@ const FILTERS: Array<{ key: ConvFilter; label: string }> = [
   { key: 'all', label: 'All' },
   { key: 'unread', label: 'Unread' },
   { key: 'orders', label: 'Orders' },
-  { key: 'bookings', label: 'Bookings' },
   { key: 'general', label: 'General' },
 ];
 
-const SMART_REPLIES = ['Yes, it is!', 'Reserved — see you soon', 'On its way', 'Table for 2 confirmed'];
+const SMART_REPLIES = ['Yes, it is!', 'Available now', 'On its way', 'Ready for pickup'];
 
 export function DesktopBusinessMessagesScreen({ onNav }: DesktopBusinessMessagesScreenProps) {
   const [selectedId, setSelectedId] = useState('c1');

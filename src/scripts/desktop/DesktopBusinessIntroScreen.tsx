@@ -72,12 +72,12 @@ const SUPERPOWERS: Superpower[] = [
     footer: 'Live Sync',
   },
   {
-    icon: 'chat_bubble',
+    icon: 'vemtap-chat',
     iconClass: 'bg-surface-tint-blue text-primary',
     title: 'Direct In-App Chat',
     badge: 'Customer Dialogue',
     badgeClass: 'bg-surface-container-high text-primary',
-    body: 'Answer customer inquiries, reserve tables, and confirm product sizes through zero-latency verified messaging.',
+    body: 'Answer customer inquiries, confirm orders, and share product updates through zero-latency verified messaging.',
     footer: 'Encrypted Chat',
   },
   {

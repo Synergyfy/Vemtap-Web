@@ -39,10 +39,8 @@ export function DesktopAddProductStep2Screen({
   const compare = parseNaira(draft.comparePrice);
   const discount = compare - base;
   const grossMargin = base > 0 ? Math.round(((base - cost) / base) * 100) : 0;
-  const vat = base * 0.075;
-  const net = base - cost - vat;
+  const net = base - cost;
   const costShare = base > 0 ? (cost / base) * 100 : 0;
-  const vatShare = base > 0 ? (vat / base) * 100 : 0;
   const netShare = base > 0 ? (net / base) * 100 : 0;
   const netMargin = netShare;
   const activeVariants = getActiveVariants(draft);
@@ -495,7 +493,7 @@ export function DesktopAddProductStep2Screen({
                     />
                   </div>
                   <div className="flex items-center gap-1.5 text-text-secondary font-caption text-caption">
-                    <Icon name="chat" className="text-[16px] text-badge-discount-text" />
+                    <Icon name="whatsapp" className="text-[16px] text-badge-discount-text" />
                     <span>Automated WhatsApp alert sent to branch manager when reached.</span>
                   </div>
                 </div>
@@ -591,14 +589,6 @@ export function DesktopAddProductStep2Screen({
                     strokeDashoffset={`-${costShare.toFixed(1)}`}
                     strokeWidth="3.5"
                   />
-                  <path
-                    className="text-primary stroke-current"
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none"
-                    strokeDasharray={`${vatShare.toFixed(1)}, 100`}
-                    strokeDashoffset={`-${(costShare + netShare).toFixed(1)}`}
-                    strokeWidth="3.5"
-                  />
                 </svg>
                 <div className="flex flex-col gap-0.5">
                   <span className="font-caption text-caption text-text-secondary">Expected Net Take-home</span>
@@ -606,7 +596,7 @@ export function DesktopAddProductStep2Screen({
                     {formatWhole(net)} / item
                   </span>
                   <span className="font-caption text-caption text-badge-discount-text font-medium">
-                    After VAT &amp; standard cost
+                    After standard cost
                   </span>
                 </div>
               </div>
@@ -628,20 +618,9 @@ export function DesktopAddProductStep2Screen({
                 </div>
                 <div className="w-full h-px bg-surface-container my-1" />
                 <div className="flex justify-between items-center text-text-secondary">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-primary" />
-                    Nigerian VAT (7.5%)
-                  </span>
-                  <span className="font-semibold text-text-primary">{formatNaira(vat)}</span>
-                </div>
-                <div className="flex justify-between items-center text-text-secondary">
                   <span>Estimated Net Margin</span>
                   <span className="font-bold text-text-primary">{netMargin.toFixed(1)}%</span>
                 </div>
-              </div>
-              <div className="p-2.5 bg-surface-container-low rounded-lg font-caption text-caption text-text-secondary">
-                <span className="font-semibold text-text-primary">FIRS Statutory Preview:</span> Invoices generated will
-                automatically separate the 7.5% VAT element for Nigerian tax clearance filing.
               </div>
             </div>
 

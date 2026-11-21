@@ -356,7 +356,7 @@ export function DesktopDealAnalyticsScreen({
               </div>
               <div className="flex flex-col gap-space-xs pt-space-xs">
                 <div className="flex items-center justify-between font-label-sm text-label-sm">
-                  <span className="font-semibold text-text-primary">{v('Voucher Cap Utilisation', 'Daily Kitchen Allocation Utilization')}</span>
+                  <span className="font-semibold text-text-primary">{v('Voucher Cap Utilisation', 'Daily Allocation Utilization')}</span>
                   <span className="text-primary font-bold">
                     {v(
                       stats?.quantity ? `${Math.round(((stats.quantity - (stats.remaining ?? 0)) / stats.quantity) * 100)}% Used (${redeemed} Redeemed)` : '—',
@@ -375,7 +375,7 @@ export function DesktopDealAnalyticsScreen({
                 <div className="flex justify-between items-center text-text-tertiary font-caption text-caption mt-1">
                   <span>{v('0', '0 (12:00 PM Service Open)')}</span>
                   <span>{v('', 'Safe Buffer Zone (60/100 threshold)')}</span>
-                  <span>{v(stats?.quantity ? `${stats.quantity} Max` : '—', '100 Max Kitchen Cap')}</span>
+                  <span>{v(stats?.quantity ? `${stats.quantity} Max` : '—', '100 Max Allocation Cap')}</span>
                 </div>
               </div>
               <div className="p-space-md rounded-xl bg-surface-subtle flex flex-col gap-space-xs">
@@ -433,7 +433,7 @@ export function DesktopDealAnalyticsScreen({
                 <div className="flex items-center gap-space-xs">
                   <Icon name="restaurant_menu" className="text-primary text-[20px]" />
                   <h3 className="font-heading-sm text-heading-sm text-text-primary font-semibold">
-                    Bundled Catalog Items & Kitchen Load
+                    Bundled Catalog Items & Operational Load
                   </h3>
                 </div>
                 <span className="font-caption text-caption text-text-secondary">
@@ -486,7 +486,7 @@ export function DesktopDealAnalyticsScreen({
                     </span>
                     <div className="flex items-center gap-space-2xs mt-2 text-badge-discount-text font-caption text-[11px] font-semibold">
                       <Icon name="check_circle" className="text-[14px]" />
-                      <span>Kitchen Inventory Stocked (142 cuts ready)</span>
+                      <span>Inventory Stocked (142 cuts ready)</span>
                     </div>
                   </div>
                 </div>
@@ -523,7 +523,7 @@ export function DesktopDealAnalyticsScreen({
                 <div className="flex items-center gap-space-xs">
                   <Icon name="lock_clock" className="text-outline text-[18px]" />
                   <span>
-                    <strong>{v('Voucher Cap:', 'Kitchen Cap Safeguard:')}</strong>{' '}
+                    <strong>{v('Voucher Cap:', 'Allocation Cap Safeguard:')}</strong>{' '}
                     {v(
                       offer?.quantity ? `New claims stop once all ${offer.quantity} vouchers are claimed.` : 'This deal has no voucher cap.',
                       'Automatically suspends new claims when 45 active reservations are reached within any single 60-minute window.',

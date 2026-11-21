@@ -104,7 +104,7 @@ export function AdminDashboardScreen({ currentPath, onNavigate }: AdminDashboard
       case '/admin/orders':
         return {
           content: <AdminOrdersScreen onNavigate={onNavigate} subpage="live" />,
-          breadcrumb: { module: 'Orders & POS', page: 'Orders & Bookings' },
+          breadcrumb: { module: 'Orders & POS', page: 'Orders' },
         };
 
       case '/admin/orders/transactions':

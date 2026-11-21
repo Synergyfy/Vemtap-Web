@@ -24,16 +24,20 @@ import { UserRole } from '../users/entities/user.entity';
 import { SkipSubscriptionCheck } from '../subscriptions/decorators/skip-subscription-check.decorator';
 import { UploadsService } from './uploads.service';
 
-// Vercel caps serverless request bodies at ~4.5MB, so anything larger is
-// rejected by the platform before multer ever sees it. 4MB keeps the in-code
-// limit under that cliff instead of advertising a size the deploy can't take.
-const MAX_UPLOAD_BYTES = 4 * 1024 * 1024; // 4MB, under the Vercel body cap
-const ALLOWED_MIME_TYPES = [
+// Photos are kept small so a crop is cheap to upload; videos get their own,
+// larger allowance. Multer is capped at the video limit and the handler applies
+// the tighter photo limit after it knows the MIME type.
+export const MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB
+export const MAX_VIDEO_UPLOAD_BYTES = 50 * 1024 * 1024; // 50MB
+const MAX_UPLOAD_BYTES = MAX_VIDEO_UPLOAD_BYTES;
+const ALLOWED_IMAGE_MIME_TYPES = [
   'image/jpeg',
   'image/png',
   'image/webp',
   'application/pdf',
 ];
+const ALLOWED_VIDEO_MIME_TYPES = ['video/mp4', 'video/webm', 'video/quicktime'];
+const ALLOWED_MIME_TYPES = [...ALLOWED_IMAGE_MIME_TYPES, ...ALLOWED_VIDEO_MIME_TYPES];
 
 /**
  * Cloudinary folders a caller may route to. The override exists so avatars,
@@ -78,7 +82,7 @@ export class UploadsController {
         if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
           callback(
             new BadRequestException(
-              'Only JPG, PNG, WebP or PDF images are allowed',
+              'Only JPG, PNG, WebP, PDF, MP4, WebM or MOV files are allowed',
             ),
             false,
           );
@@ -96,10 +100,10 @@ export class UploadsController {
     },
   })
   @ApiOperation({
-    summary: 'Upload an image (business logo/cover/gallery, or user avatar)',
+    summary: 'Upload an image or video (business media, gallery, or user avatar)',
     description:
-      'Accepts multipart/form-data `file` (JPG/PNG/WebP, max 4MB — kept under ' +
-      'the serverless body cap) and returns the hosted URL. Owners, managers ' +
+      'Accepts multipart/form-data `file`. Images (JPG/PNG/WebP/PDF) max 5MB; ' +
+      'videos (MP4/WebM/MOV) max 50MB. Returns the hosted URL. Owners, managers ' +
       'and admins land in `vemtap/businesses/{businessId}`; customers with no ' +
       'business context land in `vemtap/users/{userId}`, which is where the ' +
       'profile-picture flow puts avatars before PATCHing them onto the user.',
@@ -117,8 +121,23 @@ export class UploadsController {
       body?: { folderOverride?: string };
     },
   ) {
+    if (!file) throw new BadRequestException('No file provided');
+
     const user = req.user;
     const folderOverride = req.body?.folderOverride;
+
+    if (
+      ALLOWED_IMAGE_MIME_TYPES.includes(file.mimetype) &&
+      file.size > MAX_IMAGE_UPLOAD_BYTES
+    ) {
+      throw new BadRequestException('Images must be 5MB or smaller.');
+    }
+    if (
+      ALLOWED_VIDEO_MIME_TYPES.includes(file.mimetype) &&
+      file.size > MAX_VIDEO_UPLOAD_BYTES
+    ) {
+      throw new BadRequestException('Videos must be 50MB or smaller.');
+    }
 
     // Rejected here rather than in `fileFilter`: multer has not parsed the
     // non-file fields yet when the filter runs.

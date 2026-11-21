@@ -84,7 +84,7 @@ export function ContactBusinessModal({ open, onChat, onClose, code, businessName
 
       <div className="p-space-lg flex flex-col gap-space-xs overflow-y-auto">
         <ContactRow
-          icon="chat"
+          icon="vemtap-chat"
           iconClass="bg-primary/10 text-primary"
           title="In-App Chat"
           badge="Recommended"
@@ -94,7 +94,7 @@ export function ContactBusinessModal({ open, onChat, onClose, code, businessName
         {phone && (
           <>
             <ContactRow
-              icon="forum"
+              icon="whatsapp"
               iconClass="bg-badge-discount-bg text-badge-discount-text"
               title="Chat on WhatsApp"
               subtitle={phone}

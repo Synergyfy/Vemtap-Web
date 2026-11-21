@@ -1060,7 +1060,7 @@ export function DesktopAccountSettingsScreen({ onNav, onOpenAddresses }: Desktop
                     className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-container hover:bg-primary text-on-primary font-button-secondary text-button-secondary rounded-xl shadow-sm transition-colors"
                     type="button"
                   >
-                    <Icon name="chat" className="text-[18px]" />
+                    <Icon name="vemtap-chat-white" className="text-[18px]" />
                     <span>Chat with Support</span>
                   </button>
                   <button

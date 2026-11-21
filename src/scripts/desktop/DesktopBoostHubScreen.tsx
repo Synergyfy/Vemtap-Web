@@ -331,7 +331,7 @@ const CAMPAIGNS: HubCampaign[] = [
     barClass: 'bg-outline-variant',
     kpis: [
       { label: 'Reach', value: '—' },
-      { label: 'Bookings', value: '—' },
+      { label: 'Orders', value: '—' },
       { label: 'Conv.', value: '—' },
     ],
     manageLabel: 'Continue Draft',

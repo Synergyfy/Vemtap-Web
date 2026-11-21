@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import {
@@ -214,7 +214,7 @@ export function BusinessChatOrderScreen({ onBack, contact, onViewProfile }: Busi
                 <Icon name="contactless" className="text-[16px] text-text-tertiary" />
                 <span>{live ? (order ? statusLabel(order.paymentStatus ?? 'unpaid') : '—') : 'POS Terminal • Pay at Counter'}</span>
               </div>
-              <button className="font-label-sm text-label-sm text-primary font-semibold flex items-center gap-0.5" type="button" onClick={() => showToast(live ? (order ? `Order ${order.reference} is in Orders` : 'No order linked to this chat') : 'Opening kitchen ticket #VG-94021…')}>
+              <button className="font-label-sm text-label-sm text-primary font-semibold flex items-center gap-0.5" type="button" onClick={() => showToast(live ? (order ? `Order ${order.reference} is in Orders` : 'No order linked to this chat') : 'Opening order ticket #VG-94021…')}>
                 View Ticket <Icon name="arrow_forward" className="text-[14px]" />
               </button>
             </div>

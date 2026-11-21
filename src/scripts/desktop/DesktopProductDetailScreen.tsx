@@ -567,7 +567,7 @@ export function DesktopProductDetailScreen({ itemId, businessCode, onNav, onBack
                           }}
                           className="py-3 px-3 rounded-xl bg-surface-subtle hover:bg-surface-container font-label-sm text-label-sm text-on-surface font-semibold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50"
                         >
-                          <Icon name="chat" className="text-[18px] text-primary" />
+                          <Icon name="vemtap-chat" className="text-[18px] text-primary" />
                           <span>Chat with Business</span>
                         </button>
                         <button

@@ -33,30 +33,29 @@ type Status = 'idle' | 'saving';
 
 const CORE_PLATFORMS: ChannelPlatformId[] = ['instagram', 'whatsapp', 'x'];
 
-/** Core channels live in their own draft fields; every other picker channel lives in `draft.socials`. */
+/**
+ * Nothing is listed by default. A row appears only when the merchant picked it
+ * from the dropdown (recorded in `draft.socials`) or has a saved handle.
+ */
 const seedChannels = (draft: BusinessProfileDraft): ChannelDraft[] => {
   const socials = draft.socials ?? {};
-  return [
-    ...(['instagram', 'whatsapp', 'x'] as const).map((platform) => ({
+  const added = Object.entries(socials)
+    .filter(([platform]) => isChannelPlatform(platform))
+    .map(([platform, value]) => ({
+      id: platform,
+      platform: platform as ChannelPlatformId,
+      value: String(value ?? ''),
+      touched: false,
+    }));
+  const savedCore = (['instagram', 'whatsapp', 'x'] as const)
+    .filter((platform) => !(platform in socials) && Boolean(draft[platform]?.trim()))
+    .map((platform) => ({
       id: platform,
       platform,
       value: draft[platform] ?? '',
       touched: false,
-    })),
-    ...Object.entries(socials)
-      .filter(
-        ([platform, value]) =>
-          isChannelPlatform(platform) &&
-          !CORE_PLATFORMS.includes(platform) &&
-          Boolean(value?.trim()),
-      )
-      .map(([platform, value]) => ({
-        id: platform,
-        platform: platform as ChannelPlatformId,
-        value,
-        touched: false,
-      })),
-  ];
+    }));
+  return [...added, ...savedCore];
 };
 
 export function BusinessProfileContactScreen({
@@ -93,21 +92,18 @@ export function BusinessProfileContactScreen({
   }, [draft.socials, businessSocials, onChange]);
 
   // Channels added on another visit (or restored from the saved run) show up
-  // without remounting the step.
+  // without remounting the step. An empty value is still a valid "added" row.
   useEffect(() => {
     setChannels((prev) => {
       const missing = Object.entries(draft.socials ?? {})
         .filter(
-          ([platform, value]) =>
-            isChannelPlatform(platform) &&
-            !CORE_PLATFORMS.includes(platform) &&
-            Boolean(value?.trim()) &&
-            !prev.some((channel) => channel.platform === platform),
+          ([platform]) =>
+            isChannelPlatform(platform) && !prev.some((channel) => channel.platform === platform),
         )
         .map(([platform, value]) => ({
           id: platform,
           platform: platform as ChannelPlatformId,
-          value,
+          value: String(value ?? ''),
           touched: false,
         }));
       return missing.length > 0 ? [...prev, ...missing] : prev;
@@ -117,13 +113,16 @@ export function BusinessProfileContactScreen({
   const setChannelValue = (id: string, value: string) => {
     const channel = channels.find((item) => item.id === id);
     if (channel) {
+      // Every added channel round-trips through the draft so it survives
+      // reloads and is saved to the business on Next. Core channels also stay
+      // in their dedicated fields for the onboarding API payload.
+      const patch: Partial<BusinessProfileDraft> = {
+        socials: { ...(draft.socials ?? {}), [channel.platform]: value },
+      };
       if (CORE_PLATFORMS.includes(channel.platform)) {
-        onChange({ [channel.platform]: value });
-      } else {
-        // Every extra channel round-trips through the draft so it survives
-        // reloads and is saved to the business on Next.
-        onChange({ socials: { ...(draft.socials ?? {}), [channel.platform]: value } });
+        (patch as Record<string, unknown>)[channel.platform] = value;
       }
+      onChange(patch);
     }
     setChannels((prev) => prev.map((item) => (item.id === id ? { ...item, value, touched: true } : item)));
   };
@@ -135,15 +134,21 @@ export function BusinessProfileContactScreen({
     setPickerOpen(false);
     if (usedPlatforms.includes(platform)) return;
     const id = `${platform}-${channelSeq.current++}`;
-    // The value lands in `draft.socials` on the first keystroke (setChannelValue).
+    // An empty entry marks the channel as added even before a handle is typed.
+    onChange({ socials: { ...(draft.socials ?? {}), [platform]: '' } });
     setChannels((prev) => [...prev, { id, platform, value: '', touched: false }]);
   };
 
   const removeChannel = (id: string) => {
     const channel = channels.find((item) => item.id === id);
-    if (channel && !CORE_PLATFORMS.includes(channel.platform) && draft.socials) {
-      const { [channel.platform]: _removed, ...rest } = draft.socials;
-      onChange({ socials: rest });
+    if (channel) {
+      const socials = { ...(draft.socials ?? {}) };
+      delete socials[channel.platform];
+      const patch: Partial<BusinessProfileDraft> = { socials };
+      if (CORE_PLATFORMS.includes(channel.platform)) {
+        (patch as Record<string, unknown>)[channel.platform] = '';
+      }
+      onChange(patch);
     }
     setChannels((prev) => prev.filter((item) => item.id !== id));
   };
@@ -357,11 +362,15 @@ export function BusinessProfileContactScreen({
               </div>
             </div>
             <div className="flex flex-col gap-2.5 mt-3">
+              {channels.length === 0 ? (
+                <span className="font-caption text-caption text-text-tertiary">
+                  No social channels added yet — use the + button to add one.
+                </span>
+              ) : null}
               {channels.map((channel) => {
                 const platform = CHANNEL_PLATFORM_BY_ID[channel.platform];
                 const result = normalizeChannel(channel.platform, channel.value);
                 const showError = channel.touched && channel.value.trim().length > 0 && !result.ok;
-                const isCore = CORE_PLATFORMS.includes(channel.platform);
                 return (
                   <div key={channel.id} className="flex items-start justify-between gap-2 p-3 rounded-xl bg-surface-subtle">
                     <div className="flex items-start gap-3 min-w-0 flex-1">
@@ -411,8 +420,7 @@ export function BusinessProfileContactScreen({
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {!isCore ? (
-                        <button
+                      <button
                           aria-label={`Remove ${platform.label}`}
                           className="w-7 h-7 flex items-center justify-center text-text-tertiary hover:text-error transition-colors"
                           type="button"
@@ -420,7 +428,6 @@ export function BusinessProfileContactScreen({
                         >
                           <Icon name="delete" className="text-[16px]" />
                         </button>
-                      ) : null}
                       <button
                         aria-label={`Edit ${platform.label}`}
                         className="w-7 h-7 flex items-center justify-center text-text-tertiary hover:text-text-primary transition-colors"

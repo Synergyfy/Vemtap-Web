@@ -1,4 +1,3 @@
-import { hasApiConfig } from '../../services/api/client';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
@@ -15,65 +14,12 @@ interface DesktopAddProductStep3ScreenProps {
   onNav?: (key: BusinessPortalNavKey) => void;
 }
 
-const SNIPPET_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuCrseYLW3neMDq2sxhnRg33k0tYRKb1o81UQjqQpSVXZTYb_27mHPVNUqIkergjfADDorcB5ERx9tnBIaUHcsgyoAntmn-zsEAhLL02Ov_jAhtAHZ3_sHRr0lkmCAFVYJKEyE6qZy_ygunVHuRLmZ3c6a-aB-GsYNs5tsVct3HQYpuvyB48J0VMymizD_6VlcYN1zw4N1L0aVGjjahghGIH34nCc6Wb-gno4P_6TBGU';
-
-const SNIPPET_ALT =
-  'Close-up gourmet handcrafted artisan smash burger on toasted brioche bun with sharp cheddar cheese and crisp microgreens studio lighting on slate background';
-
-const COVERAGE_MAP_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBqWD43yLaKpE9TIGaFLtU_5aHMSk0PuSaxOgMb8TSVllg8vSBOiFZRtV_WLcRxA1WrdN51jmFq-09V4RuMV10PFE61dEue1dZvARrecwX8Ipd4lxejGCOQ-wahGuFAHUnxB5WrLBXHBzYi8HWcXEwCiou1dFWWuYICQhrRpyQhJY8N13GQWhZWSnkDY8p7KHET6kvdykYloEhP-eIlYjB4vVjAUC_fVk0Hd0MFG4ei';
-
-const COVERAGE_MAP_LABEL = 'Wuse 2, Abuja, Nigeria';
-
-const ACTIVE_BRANCHES: Array<{
-  key: string;
-  name: string;
-  badge: string;
-  badgeClass: string;
-  address: string;
-  units: string;
-  radius: string;
-  price: string;
-}> = [
-  {
-    key: 'wuse',
-    name: 'Wuse Branch (Flagship)',
-    badge: 'Primary Depot',
-    badgeClass: 'bg-badge-discount-bg text-badge-discount-text',
-    address: 'Plot 1428 Adetokunbo Ademola Cres, Wuse 2, Abuja',
-    units: '30 units available',
-    radius: 'Radius: 5.2 km',
-    price: '₦12,000',
-  },
-  {
-    key: 'garki',
-    name: 'Garki Branch',
-    badge: 'District 2',
-    badgeClass: 'bg-secondary-fixed text-on-secondary-fixed-variant',
-    address: 'Suite 4B, Garki Mall, Area 11, Abuja',
-    units: '18 units available',
-    radius: 'Radius: 3.8 km',
-    price: '₦12,500',
-  },
-];
-
-const PREP_WINDOWS: Array<{ value: string; hint: string }> = [
-  { value: '10 – 15 Mins', hint: 'Express / Ready to Grab' },
-  { value: '20 – 30 Mins', hint: 'Standard Fresh Made' },
-  { value: '45 – 60 Mins', hint: 'Custom Batch Preparation' },
-];
-
-const PEAK_BARS: Array<{ x: number; y: number; height: number; opacity: number }> = [
-  { x: 10, y: 20, height: 12, opacity: 0.3 },
-  { x: 30, y: 16, height: 16, opacity: 0.4 },
-  { x: 50, y: 10, height: 22, opacity: 0.6 },
-  { x: 70, y: 4, height: 28, opacity: 0.9 },
-  { x: 90, y: 8, height: 24, opacity: 0.7 },
-  { x: 110, y: 18, height: 14, opacity: 0.3 },
-  { x: 130, y: 14, height: 18, opacity: 0.5 },
-  { x: 150, y: 6, height: 26, opacity: 0.85 },
-  { x: 170, y: 2, height: 30, opacity: 1 },
+const PREP_WINDOWS: Array<{ value: string; label: string; hint: string }> = [
+  { value: 'Ready', label: 'Ready (Available immediately / On ground)', hint: 'Ready on ground for immediate customer pickup or dispatch' },
+  { value: 'Up to 10 mins', label: 'Up to 10 mins', hint: 'Fast turnaround / Express preparation' },
+  { value: 'Up to 30 mins', label: 'Up to 30 mins', hint: 'Standard preparation & packaging window' },
+  { value: 'Up to 1 hour', label: 'Up to 1 hour', hint: 'Custom crafting or assembled order' },
+  { value: 'More than 1 hour', label: 'More than 1 hour', hint: 'Made-to-order or extended fulfillment' },
 ];
 
 export function DesktopAddProductStep3Screen({
@@ -90,34 +36,38 @@ export function DesktopAddProductStep3Screen({
   const setFulfillment = (patch: Partial<{ pickup: boolean; delivery: boolean }>) =>
     onDraftChange({ fulfillment: { pickup, delivery, ...patch } });
 
-  // Live: the business's real branches, keyed by branch id; demo keeps the samples.
-  const live = hasApiConfig();
+  // The business's real branches, keyed by branch id. Demo branches have no id
+  // and are never shown here.
   const { branches: liveBranches } = useBusinessBranch();
-  const activeBranches = live
-    ? liveBranches
-        .filter((branch) => branch.id)
-        .map((branch) => ({
-          key: branch.id as string,
-          name: branch.name,
-          badge: branch.isMainBranch ? 'Main Branch' : 'Branch',
-          badgeClass: branch.isMainBranch ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary',
-          address: branch.area || '—',
-          units: '—',
-          radius: '—',
-          price: draft.basePrice ? `₦${draft.basePrice}` : '—',
-        }))
-    : ACTIVE_BRANCHES;
+  const activeBranches = liveBranches
+    .filter((branch) => branch.id)
+    .map((branch) => ({
+      key: branch.id as string,
+      name: branch.name,
+      badge: branch.isMainBranch ? 'Main' : 'Branch',
+      badgeClass: branch.isMainBranch
+        ? 'bg-badge-discount-bg text-badge-discount-text'
+        : 'bg-surface-container text-text-secondary',
+      address: branch.area || 'No address on file',
+      units: 'Available at this branch',
+      price: draft.basePrice ? `₦${draft.basePrice}` : 'Base price not set',
+    }));
+
+  const previewBranches = activeBranches
+    .filter((branch) => draft.branches[branch.key])
+    .map((branch) => ({ key: branch.key, name: branch.name, detail: branch.address, price: branch.price }));
+  const previewImage = draft.mainImage;
+  const previewTitle = draft.title || 'Untitled product';
+  const previewCategory = draft.primaryCategory || 'No category yet';
 
   const toggleBranch = (key: string, checked: boolean) => {
     onDraftChange({ branches: { ...draft.branches, [key]: checked } });
   };
 
   const selectAllActive = () => {
-    if (live) {
-      onDraftChange({ branches: { ...draft.branches, ...Object.fromEntries(activeBranches.map((branch) => [branch.key, true])) } });
-      return;
-    }
-    onDraftChange({ branches: { ...draft.branches, wuse: true, garki: true } });
+    onDraftChange({
+      branches: { ...draft.branches, ...Object.fromEntries(activeBranches.map((branch) => [branch.key, true])) },
+    });
   };
 
   return (
@@ -175,9 +125,15 @@ export function DesktopAddProductStep3Screen({
                   onClick={selectAllActive}
                   className="text-caption font-caption text-primary font-medium cursor-pointer hover:underline"
                 >
-                  Select All Active
+                  Select All Active ({activeBranches.length})
                 </button>
               </div>
+              {activeBranches.length === 0 && (
+                <p className="bg-surface-subtle rounded-xl p-space-md font-caption text-caption text-text-secondary">
+                  No branches yet — add your business locations in your business profile, then they will appear here for
+                  this product.
+                </p>
+              )}
               <div className="flex flex-col gap-space-sm">
                 {activeBranches.map((branch) => (
                   <label
@@ -210,8 +166,6 @@ export function DesktopAddProductStep3Screen({
                             <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text inline-block" />{' '}
                             {branch.units}
                           </span>
-                          <span className="text-text-tertiary text-caption font-caption">•</span>
-                          <span className="font-caption text-caption text-text-secondary">{branch.radius}</span>
                         </div>
                       </div>
                     </div>
@@ -231,37 +185,6 @@ export function DesktopAddProductStep3Screen({
                     </div>
                   </label>
                 ))}
-                <div className="relative flex flex-col sm:flex-row sm:items-center justify-between p-space-md rounded-xl bg-surface-container-low opacity-60 cursor-not-allowed">
-                  <div className="flex items-start gap-space-sm min-w-0">
-                    <input
-                      className="mt-1 w-4 h-4 rounded text-outline-variant cursor-not-allowed"
-                      disabled
-                      type="checkbox"
-                    />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-space-xs flex-wrap">
-                        <span className="font-label-md text-label-md text-text-secondary font-semibold">
-                          Maitama Branch
-                        </span>
-                        <span className="px-space-2xs py-0.5 rounded text-[11px] font-medium bg-tertiary-fixed text-on-tertiary-fixed">
-                          Opening Soon
-                        </span>
-                      </div>
-                      <p className="font-caption text-caption text-text-tertiary truncate mt-0.5">
-                        Plot 880 Shehu Shagari Way, Maitama, Abuja
-                      </p>
-                      <div className="flex items-center gap-space-xs mt-space-2xs">
-                        <span className="font-caption text-caption text-text-tertiary">
-                          Site under commercial inspection
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-space-sm sm:mt-0 flex items-center gap-space-xs self-end sm:self-center text-text-tertiary">
-                    <Icon name="lock" className="text-[18px]" />
-                    <span className="font-caption text-caption">Unavailable</span>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -295,7 +218,7 @@ export function DesktopAddProductStep3Screen({
                         Use same base price
                       </span>
                       <span className="font-caption text-caption text-text-secondary mt-1">
-                        Single standard checkout price (₦12,000) across all Abuja points of sale.
+                        Single standard checkout price across your selected branches.
                       </span>
                     </div>
                     <input
@@ -352,7 +275,9 @@ export function DesktopAddProductStep3Screen({
                     }`}
                   >
                     <Icon name="tune" className="text-[16px]" />
-                    <span>Active: 2 custom branch tiers</span>
+                    <span>
+                      Active: {activeBranches.filter((branch) => draft.branches[branch.key]).length} custom branch tiers
+                    </span>
                   </div>
                 </label>
               </div>
@@ -372,14 +297,6 @@ export function DesktopAddProductStep3Screen({
                       Enable immediate local pathways and 3rd-party logistics discovery.
                     </p>
                   </div>
-                </div>
-                <div className="flex items-center gap-space-2xs">
-                  <span className="px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                    Jumia Ready
-                  </span>
-                  <span className="px-space-xs py-0.5 rounded-full bg-surface-container-high text-primary font-caption text-caption font-semibold">
-                    Jiji Sync
-                  </span>
                 </div>
               </div>
               <div className="flex flex-col gap-space-sm">
@@ -431,29 +348,6 @@ export function DesktopAddProductStep3Screen({
                   </div>
                   <Icon name="two_wheeler" className="text-text-secondary text-[20px]" />
                 </label>
-                <div className="flex items-start justify-between p-space-md rounded-xl bg-surface-container-low opacity-60 cursor-not-allowed">
-                  <div className="flex items-start gap-space-sm">
-                    <input
-                      className="mt-1 w-4 h-4 rounded cursor-not-allowed text-outline-variant"
-                      disabled
-                      type="checkbox"
-                    />
-                    <div>
-                      <div className="flex items-center gap-space-xs">
-                        <span className="font-label-md text-label-md text-text-secondary font-semibold">
-                          Nationwide Interstate Waybill
-                        </span>
-                        <span className="px-space-2xs py-0.5 rounded text-[11px] font-medium bg-error-container text-on-error-container">
-                          Disabled • Perishable
-                        </span>
-                      </div>
-                      <p className="font-caption text-caption text-text-tertiary mt-0.5">
-                        Excluded because this product category is tagged as temperature-sensitive fresh food.
-                      </p>
-                    </div>
-                  </div>
-                  <Icon name="flight_takeoff" className="text-text-tertiary text-[20px]" />
-                </div>
               </div>
             </div>
 
@@ -465,38 +359,40 @@ export function DesktopAddProductStep3Screen({
                 <div>
                   <h2 className="font-heading-sm text-heading-sm text-text-primary">Handling &amp; Prep Window</h2>
                   <p className="font-caption text-caption text-text-secondary">
-                    Expected kitchen/fulfillment duration before rider hand-off.
+                    Expected preparation &amp; fulfillment duration before customer pickup or delivery hand-off.
                   </p>
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-space-sm">
-                {PREP_WINDOWS.map((window) => {
-                  const selected = draft.prepWindow === window.value;
-                  return (
-                    <label
-                      key={window.value}
-                      className={`p-space-md rounded-xl transition-colors cursor-pointer flex flex-col items-center text-center gap-space-2xs ${
-                        selected ? 'bg-surface-tint-blue' : 'bg-surface-subtle hover:bg-surface-container-high'
-                      }`}
-                    >
-                      <input
-                        className="w-4 h-4 text-primary accent-primary mb-1"
-                        name="prep_window"
-                        type="radio"
-                        checked={selected}
-                        onChange={() => onDraftChange({ prepWindow: window.value })}
-                      />
-                      <span
-                        className={`font-label-md text-label-md font-semibold ${
-                          selected ? 'text-primary' : 'text-text-primary'
-                        }`}
-                      >
-                        {window.value}
-                      </span>
-                      <span className="font-caption text-caption text-text-secondary">{window.hint}</span>
-                    </label>
-                  );
-                })}
+              <div className="flex flex-col gap-space-xs">
+                <label htmlFor="desktop-prep-window-select" className="font-label-md text-label-md text-text-primary font-medium">
+                  Preparation Duration
+                </label>
+                <div className="relative">
+                  <select
+                    id="desktop-prep-window-select"
+                    value={draft.prepWindow || 'Ready'}
+                    onChange={(e) => onDraftChange({ prepWindow: e.target.value })}
+                    className="w-full h-12 px-4 pr-10 rounded-xl border border-outline-variant/60 bg-surface-canvas text-text-primary font-body-md text-body-md focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all cursor-pointer appearance-none"
+                  >
+                    {PREP_WINDOWS.map((window) => (
+                      <option key={window.value} value={window.value}>
+                        {window.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-text-secondary">
+                    <Icon name="expand_more" className="text-[20px]" />
+                  </div>
+                </div>
+                {(() => {
+                  const currentWindow = PREP_WINDOWS.find((w) => w.value === (draft.prepWindow || 'Ready'));
+                  return currentWindow ? (
+                    <div className="flex items-center gap-1.5 text-caption font-caption text-text-secondary pt-0.5">
+                      <Icon name="info" className="text-[15px] text-primary shrink-0" />
+                      <span>{currentWindow.hint}</span>
+                    </div>
+                  ) : null;
+                })()}
               </div>
             </div>
           </div>
@@ -513,97 +409,44 @@ export function DesktopAddProductStep3Screen({
                 </span>
               </div>
               <div className="flex items-center gap-space-sm p-space-sm rounded-lg bg-surface-subtle">
-                <img className="w-14 h-14 rounded-lg object-cover" alt={SNIPPET_ALT} src={SNIPPET_IMAGE} />
+                {previewImage ? (
+                  <img className="w-14 h-14 rounded-lg object-cover" alt={previewTitle} src={previewImage} />
+                ) : (
+                  <div className="w-14 h-14 rounded-lg bg-surface-container flex items-center justify-center text-primary">
+                    <Icon name="inventory_2" className="text-[24px]" />
+                  </div>
+                )}
                 <div className="min-w-0">
-                  <span className="font-caption text-caption text-primary font-semibold block">Item #VEM-8402</span>
-                  <h4 className="font-label-md text-label-md text-text-primary font-semibold truncate">
-                    Smoked Angus Truffle Burger
-                  </h4>
-                  <span className="font-caption text-caption text-text-secondary">Category: Artisan Mains</span>
+                  {draft.sku && (
+                    <span className="font-caption text-caption text-primary font-semibold block">Item #{draft.sku}</span>
+                  )}
+                  <h4 className="font-label-md text-label-md text-text-primary font-semibold truncate">{previewTitle}</h4>
+                  <span className="font-caption text-caption text-text-secondary">Category: {previewCategory}</span>
                 </div>
               </div>
               <div className="space-y-space-xs">
-                <div className="p-space-sm rounded-lg bg-surface-subtle flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="font-label-md text-label-md text-text-primary font-semibold">Wuse 2</span>
-                    <span className="font-caption text-caption text-text-secondary">Inventory: 30 units</span>
+                {previewBranches.length === 0 && (
+                  <p className="p-space-sm rounded-lg bg-surface-subtle font-caption text-caption text-text-secondary">
+                    Select branches above to see them here.
+                  </p>
+                )}
+                {previewBranches.map((previewBranch) => (
+                  <div
+                    key={previewBranch.key}
+                    className="p-space-sm rounded-lg bg-surface-subtle flex items-center justify-between gap-space-sm"
+                  >
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-label-md text-label-md text-text-primary font-semibold truncate">
+                        {previewBranch.name}
+                      </span>
+                      <span className="font-caption text-caption text-text-secondary truncate">{previewBranch.detail}</span>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="font-label-md text-label-md text-text-primary font-semibold">{previewBranch.price}</span>
+                      <span className="font-caption text-caption text-primary block">Selected branch</span>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <span className="font-label-md text-label-md text-text-primary font-semibold">₦12,000</span>
-                    <span className="font-caption text-caption text-badge-discount-text block">
-                      High Demand (94%)
-                    </span>
-                  </div>
-                </div>
-                <div className="p-space-sm rounded-lg bg-surface-subtle flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="font-label-md text-label-md text-text-primary font-semibold">Garki Area 11</span>
-                    <span className="font-caption text-caption text-text-secondary">Inventory: 18 units</span>
-                  </div>
-                  <div className="text-right">
-                    <span className="font-label-md text-label-md text-text-primary font-semibold">₦12,500</span>
-                    <span className="font-caption text-caption text-primary block">Stable Demand (78%)</span>
-                  </div>
-                </div>
-              </div>
-              <div className="p-space-sm rounded-lg bg-surface-container-low flex flex-col gap-space-2xs">
-                <div className="flex justify-between items-center text-caption font-caption text-text-secondary">
-                  <span>Estimated Peak Hours Reach</span>
-                  <span className="font-semibold text-text-primary">12:30 PM • 7:00 PM</span>
-                </div>
-                <svg className="w-full h-8 text-primary" preserveAspectRatio="none" viewBox="0 0 200 32">
-                  {PEAK_BARS.map((bar) => (
-                    <rect
-                      key={bar.x}
-                      fill="currentColor"
-                      height={bar.height}
-                      opacity={bar.opacity}
-                      rx="2"
-                      width="12"
-                      x={bar.x}
-                      y={bar.y}
-                    />
-                  ))}
-                </svg>
-              </div>
-            </div>
-
-            <div className="bg-surface-canvas rounded-xl shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04),0_2px_6px_-1px_rgba(13,37,76,0.02)] p-space-lg flex flex-col gap-space-md">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-space-xs">
-                  <Icon name="near_me" className="text-primary text-[20px]" />
-                  <h3 className="font-heading-sm text-heading-sm text-text-primary">Delivery Coverage</h3>
-                </div>
-                <span className="font-caption text-caption text-text-secondary font-medium">3km Perimeter</span>
-              </div>
-              <div
-                role="img"
-                aria-label={COVERAGE_MAP_LABEL}
-                className="w-full h-36 bg-cover bg-center rounded-lg relative overflow-hidden flex items-end p-space-xs"
-                style={{ backgroundImage: `url('${COVERAGE_MAP_IMAGE}')` }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                <div className="relative z-10 flex items-center justify-between w-full text-surface-canvas text-caption font-caption">
-                  <span className="flex items-center gap-1 font-medium">
-                    <Icon name="radio_button_checked" className="text-[14px] text-badge-discount-text" /> Wuse &amp;
-                    Garki Corridors
-                  </span>
-                  <span className="bg-text-primary/70 backdrop-blur px-2 py-0.5 rounded text-[11px]">
-                    ~42,000 Consumers
-                  </span>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-space-sm text-center">
-                <div className="p-space-xs rounded-lg bg-surface-subtle">
-                  <span className="text-caption font-caption text-text-secondary block">Avg. Fulfillment</span>
-                  <span className="font-label-md text-label-md text-text-primary font-bold">24 Mins</span>
-                </div>
-                <div className="p-space-xs rounded-lg bg-surface-subtle">
-                  <span className="text-caption font-caption text-text-secondary block">Rider Density</span>
-                  <span className="font-label-md text-label-md text-badge-discount-text font-bold">
-                    High (38 nearby)
-                  </span>
-                </div>
+                ))}
               </div>
             </div>
 

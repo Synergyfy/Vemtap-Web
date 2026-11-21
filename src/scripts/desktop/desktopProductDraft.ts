@@ -4,6 +4,10 @@ export interface ProductDraft {
   title: string;
   /** Uploaded photo URL (live). */
   mainImage?: string;
+  /** Additional gallery photo URLs (up to 4 optional photos). */
+  galleryImages?: string[];
+  /** Uploaded video URLs (live), saved with the catalogue item. */
+  videos?: string[];
   producer: string;
   sku: string;
   unbranded: boolean;
@@ -36,7 +40,7 @@ export interface ProductDraft {
 
 export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
   title: 'Woodfire Aged Angus Ribeye Steak (400g)',
-  producer: 'Urban Grill Kitchen',
+  producer: '',
   sku: 'UGK-RIBEYE-400',
   unbranded: true,
   categoryId: undefined,
@@ -64,8 +68,9 @@ export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
   fulfillment: { pickup: true, delivery: true },
   tags: ['Halal certified', 'Medium Spicy'],
   stock: '',
-  prepWindow: '20 – 30 Mins',
+  prepWindow: 'Ready',
   loyaltyPoints: '50',
+  galleryImages: [],
 };
 
 /** Live catalogue starts from an empty product — the sample above is demo-only. */
@@ -80,6 +85,8 @@ export const BLANK_PRODUCT_DRAFT: ProductDraft = {
   basePrice: '',
   comparePrice: '',
   costPrice: '',
+  galleryImages: [],
+  prepWindow: 'Ready',
   variantsEnabled: false,
   variants: [],
   skuCode: '',

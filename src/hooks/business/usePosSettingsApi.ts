@@ -28,6 +28,12 @@ export function useUpdatePosSettings() {
       if (typeof saved.receiptFooter === 'string') pos.setReceiptFooter(saved.receiptFooter);
       if (typeof saved.autoPrintReceipt === 'boolean') pos.setAutoPrintReceipt(saved.autoPrintReceipt);
       if (typeof saved.showLogo === 'boolean') pos.setShowBusinessLogo(saved.showLogo);
+      if (typeof saved.loyaltyEnabled === 'boolean') pos.setLoyaltyEnabled(saved.loyaltyEnabled);
+      if (typeof saved.loyaltyRedeemThreshold === 'number') pos.setRedemptionThreshold(saved.loyaltyRedeemThreshold);
+      if (typeof saved.lowStockAlerts === 'boolean') pos.setLowStockAlerts(saved.lowStockAlerts);
+      if (typeof saved.dailySalesSummary === 'boolean') pos.setDailySalesSummary(saved.dailySalesSummary);
+      if (typeof saved.newOrderAlert === 'boolean') pos.setNewOrderAlert(saved.newOrderAlert);
+      if (typeof saved.staffActivityAlerts === 'boolean') pos.setStaffActivityAlerts(saved.staffActivityAlerts);
     },
   });
 }
