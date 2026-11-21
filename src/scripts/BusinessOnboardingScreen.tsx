@@ -46,6 +46,8 @@ import {
 } from './businessSetup';
 import { INITIAL_DEAL_STUDIO_DRAFT, LIVE_DEAL_STUDIO_DRAFT } from './dealStudio';
 import type { DealStudioDraft } from './dealStudio';
+import { DealPriceChoiceModal } from './deals/DealPriceChoiceModal';
+import { withDealPriceChoice, type DealPriceChoice } from './deals/dealStudioShared';
 import { BLANK_PRODUCT_DRAFT, INITIAL_PRODUCT_DRAFT } from './productDraft';
 import type { ProductDraft } from './productDraft';
 import { BLANK_SERVICE_DRAFT, INITIAL_SERVICE_DRAFT } from './serviceDraft';
@@ -219,6 +221,9 @@ export function BusinessOnboardingScreen({
   const [extraBranches] = useState<Record<string, unknown>[]>(
     () => (stored?.data.extraBranches as Record<string, unknown>[] | undefined) ?? [],
   );
+  const [location, setLocation] = useState<Record<string, unknown> | null>(
+    () => (stored?.data.location as Record<string, unknown> | undefined) ?? null,
+  );
   // Additional locations whose simulated checkout already succeeded in an
   // earlier run. Kept only so restoring an older saved draft still knows which
   // entries were already paid; nothing new can be added during sign-up.
@@ -234,6 +239,8 @@ export function BusinessOnboardingScreen({
   const [dealStudio, setDealStudio] = useState<DealStudioDraft>(
     () => (stored?.data.dealStudio as DealStudioDraft | undefined) ?? (hasApiConfig() ? LIVE_DEAL_STUDIO_DRAFT : INITIAL_DEAL_STUDIO_DRAFT),
   );
+  // Re-openable choice for "Edit Offer" / stepping back from the current-price path.
+  const [dealPriceModalOpen, setDealPriceModalOpen] = useState(false);
   const [verificationState, setVerificationState] = useState<VerificationSectionState>(
     () => stored?.verificationState ?? 'not-started',
   );
@@ -276,13 +283,14 @@ export function BusinessOnboardingScreen({
     saveBusinessSetupSnapshot(STEPS[stepIndex], {
       draft,
       extraBranches,
+      location,
       productDraft,
       dealDraft,
       serviceDraft,
       dealStudio,
       dealSource: liveDeal.source,
     });
-  }, [stepIndex, draft, extraBranches, productDraft, dealDraft, serviceDraft, dealStudio, liveDeal.source]);
+  }, [stepIndex, draft, extraBranches, location, productDraft, dealDraft, serviceDraft, dealStudio, liveDeal.source]);
 
   const startLiveDeal = (item: CatalogueItem) => {
     // A different item is a new deal: forget the one published for the last item.
@@ -339,6 +347,12 @@ export function BusinessOnboardingScreen({
 
   const updateDealStudio = (patch: Partial<DealStudioDraft>) => {
     setDealStudio((current) => ({ ...current, ...patch }));
+  };
+
+  const chooseDealPrice = (choice: DealPriceChoice) => {
+    setDealStudio((current) => withDealPriceChoice(current, choice));
+    setDealPriceModalOpen(false);
+    setStepIndex(choice === 'current' ? 21 : 20);
   };
 
   const step: BusinessOnboardingStep = STEPS[stepIndex];
@@ -401,7 +415,10 @@ export function BusinessOnboardingScreen({
         <BusinessLocationScreen
           draft={draft}
           onBack={() => setStepIndex(3)}
-          onNext={(location) => sync.saveLocation(location, () => setStepIndex(5))}
+          onNext={(confirmedLocation) => {
+            setLocation(confirmedLocation as unknown as Record<string, unknown>);
+            sync.saveLocation(confirmedLocation, () => setStepIndex(5));
+          }}
           onSaveDraft={onBack}
         />
       );
@@ -516,10 +533,10 @@ export function BusinessOnboardingScreen({
       return (
         <BusinessProductPublishedScreen
           draft={productDraft}
-          onMakeDeal={() => {
+          onMakeDeal={(choice) => {
             setDealDraft(productDraft);
             if (sync.lastPublished) startLiveDeal(sync.lastPublished);
-            setStepIndex(14);
+            chooseDealPrice(choice);
           }}
           onViewCatalog={() => setStepIndex(7)}
           onAddAnother={() => {
@@ -591,10 +608,10 @@ export function BusinessOnboardingScreen({
       return (
         <BusinessServicePublishedScreen
           draft={serviceDraft}
-          onMakeDeal={() => {
+          onMakeDeal={(choice) => {
             setDealDraft(serviceToDealDraft(serviceDraft));
             if (sync.lastPublished) startLiveDeal(sync.lastPublished);
-            setStepIndex(14);
+            chooseDealPrice(choice);
           }}
           onViewCatalog={() => setStepIndex(7)}
           onAddAnother={() => {
@@ -620,7 +637,7 @@ export function BusinessOnboardingScreen({
           draft={dealDraft}
           studio={dealStudio}
           onStudioChange={updateDealStudio}
-          onBack={() => setStepIndex(20)}
+          onBack={() => (dealStudio.strategy === 'current' ? setDealPriceModalOpen(true) : setStepIndex(20))}
           onNext={() => setStepIndex(22)}
           onSaveDraft={onBack}
         />
@@ -642,7 +659,7 @@ export function BusinessOnboardingScreen({
           draft={dealDraft}
           studio={dealStudio}
           onBack={() => setStepIndex(22)}
-          onEditOffer={() => setStepIndex(20)}
+          onEditOffer={() => (dealStudio.strategy === 'current' ? setDealPriceModalOpen(true) : setStepIndex(20))}
           onEditRules={() => setStepIndex(21)}
           onEditLocations={() => setStepIndex(22)}
           onPublish={() => setStepIndex(25)}
@@ -680,6 +697,13 @@ export function BusinessOnboardingScreen({
         </div>
       )}
       <DealSourceContext.Provider value={liveDeal.source}>{renderStep()}</DealSourceContext.Provider>
+      <DealPriceChoiceModal
+        open={dealPriceModalOpen}
+        itemName={dealDraft.title}
+        priceLabel={dealDraft.basePrice ? dealDraft.basePrice.replace(/[^0-9]/g, '') : undefined}
+        onClose={() => setDealPriceModalOpen(false)}
+        onChoose={chooseDealPrice}
+      />
     </div>
   );
 }

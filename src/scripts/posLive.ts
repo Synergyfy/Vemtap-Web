@@ -190,7 +190,7 @@ export function usePosProducts() {
       ([key, label]) => ({ key, label }),
     ),
   ];
-  const mobile: CatalogueProduct[] = items.map((item) => ({
+  const toMobile = (item: CatalogueItem): CatalogueProduct => ({
     id: item.id,
     name: item.name,
     sku: item.sku ?? undefined,
@@ -202,8 +202,9 @@ export function usePosProducts() {
     stock: tracksStock(item) ? (item.stockQuantity as number) : undefined,
     image: item.mainImage || NO_IMAGE,
     imageAlt: item.name,
-  }));
-  const desktop: PosCatalogItem[] = items.map((item) => {
+    itemType: item.itemType === 'service' ? 'service' : 'product',
+  });
+  const toDesktop = (item: CatalogueItem): PosCatalogItem => {
     const low = tracksStock(item) && isLowStock(item);
     const out = tracksStock(item) && (item.stockQuantity as number) <= 0;
     return {
@@ -219,9 +220,51 @@ export function usePosProducts() {
       badgeTone: out || low ? 'low' : itemWas(item) ? 'promo' : 'neutral',
       stock: tracksStock(item) ? `${item.stockQuantity} left` : 'Not tracked',
       stockTone: low || out ? 'low' : 'default',
+      itemType: item.itemType === 'service' ? 'service' : 'product',
     };
-  });
-  return { items, mobile, desktop, categories, loading: catalogue.isLoading, error: catalogue.error };
+  };
+
+  const productItems = items.filter((item) => item.itemType !== 'service');
+  const serviceItems = items.filter((item) => item.itemType === 'service');
+  const hasProducts = productItems.length > 0;
+  const hasServices = serviceItems.length > 0;
+
+  const buildCategories = (sourceItems: CatalogueItem[]) => [
+    { key: 'all', label: 'All' },
+    ...Array.from(new Map(sourceItems.filter((item) => item.category).map((item) => [item.category!.id, item.category!.name])).entries()).map(
+      ([key, label]) => ({ key, label }),
+    ),
+  ];
+
+  const productCategories = buildCategories(productItems);
+  const serviceCategories = buildCategories(serviceItems);
+
+  const mobile: CatalogueProduct[] = items.map(toMobile);
+  const desktop: PosCatalogItem[] = items.map(toDesktop);
+
+  const productsMobile = productItems.map(toMobile);
+  const servicesMobile = serviceItems.map(toMobile);
+  const productsDesktop = productItems.map(toDesktop);
+  const servicesDesktop = serviceItems.map(toDesktop);
+
+  return {
+    items,
+    mobile,
+    desktop,
+    categories,
+    hasProducts,
+    hasServices,
+    productItems,
+    serviceItems,
+    productCategories,
+    serviceCategories,
+    productsMobile,
+    servicesMobile,
+    productsDesktop,
+    servicesDesktop,
+    loading: catalogue.isLoading,
+    error: catalogue.error,
+  };
 }
 
 /** A register line in its simplest form; both cart shapes carry these fields. */
@@ -686,9 +729,9 @@ export function useLiveStock() {
   };
 }
 
-/** Stock chip text for a live row: "In stock · 18", "Low · 5 left", "86’d". */
+/** Stock chip text for a live row: "In stock · 18", "Low · 5 left", "Sold Out". */
 export const stockLabel = (availability: StockAvailability, quantity: number | null) =>
-  availability === 'out' ? '86’d' : availability === 'low' ? `Low · ${quantity ?? 0} left` : quantity === null ? 'In stock' : `In stock · ${quantity}`;
+  availability === 'out' ? 'Sold Out' : availability === 'low' ? `Low · ${quantity ?? 0} left` : quantity === null ? 'In stock' : `In stock · ${quantity}`;
 
 /* The product a stock row opened in the product shift screen. */
 let shiftProductId: string | null = null;
@@ -769,7 +812,7 @@ export function useLiveDisplay() {
     loading: state.isLoading,
     error: state.error,
     venueName: display?.venue.name ?? businessName,
-    whereLine: `${display?.venue.branchName ?? branchName} · ${display?.till.name ?? (session ? 'Till' : 'No till open')}`,
+    whereLine: `${display?.venue.branchName ?? branchName} · ${display?.till.name ?? (session ? 'Register' : 'No register open')}`,
     customerName: ticket?.customerName ?? null,
     ticket,
     lines: (ticket?.lines ?? []).map((line) => ({

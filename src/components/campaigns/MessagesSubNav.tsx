@@ -14,7 +14,7 @@ interface MessagesSubNavProps {
  * separate top-level destination.
  */
 const CHANNELS: Array<{ key: MessagesChannelKey; label: string; icon: string }> = [
-  { key: 'chat', label: 'In-App Chat', icon: 'chat' },
+  { key: 'chat', label: 'In-App Chat', icon: 'vemtap-chat' },
   { key: 'sms', label: 'SMS', icon: 'sms' },
   { key: 'email', label: 'Email', icon: 'mail' },
 ];

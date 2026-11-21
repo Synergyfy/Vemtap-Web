@@ -20,7 +20,10 @@ export interface CatalogueCategory {
 
 /** The business's own catalogue categories — `/catalogue/categories` (bare arrays). */
 export const categoriesService = {
-  list: () => api.get<CatalogueCategory[]>('/catalogue/categories'),
+  list: (kind?: 'product' | 'service') =>
+    api.get<CatalogueCategory[]>(
+      kind ? `/catalogue/categories?kind=${encodeURIComponent(kind)}` : '/catalogue/categories',
+    ),
 
   create: (name: string, details: CategoryDetails = {}) =>
     api.post<CatalogueCategory>('/catalogue/categories', { name, ...details }),

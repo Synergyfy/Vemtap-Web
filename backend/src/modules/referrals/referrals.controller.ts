@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   Request,
   UseGuards,
@@ -14,6 +15,7 @@ import { ClaimReferralDto } from './dto/claim-referral.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { Public } from '../../common/decorators/public.decorator';
 
 /** The request as the JWT guard leaves it. */
 interface ReferralRequest {
@@ -31,6 +33,13 @@ export class ReferralsController {
   @Get('me')
   async me(@Request() req: ReferralRequest) {
     return this.referralsService.getMe(req.user.id);
+  }
+
+  /** Look up referral code owner details (first and last name) publicly. */
+  @Public()
+  @Get('lookup/:code')
+  async lookup(@Param('code') code: string) {
+    return this.referralsService.lookup(code);
   }
 
   /** Apply one referral code on the signed-in, freshly created account. */

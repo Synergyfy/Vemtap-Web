@@ -20,10 +20,10 @@ interface PrepStep {
 }
 
 const STEPS: PrepStep[] = [
-  { title: 'Order Received', meta: 'Ticket sent to POS & Kitchen Stream', time: '14:32', state: 'done', icon: 'check' },
-  { title: 'Accepted & In Queue', meta: 'Confirmed by Cashier Emeka O.', time: '14:33', state: 'active', icon: 'soup_kitchen' },
-  { title: 'Preparing in Kitchen', meta: 'Line chef is grilling and plating', state: 'upcoming', icon: 'local_dining' },
-  { title: 'Ready & Served', meta: 'Food being brought to Table 04', state: 'upcoming', icon: 'room_service' },
+  { title: 'Order Received', meta: 'Ticket received and queued', time: '14:32', state: 'done', icon: 'check' },
+  { title: 'Accepted & In Queue', meta: 'Confirmed by staff', time: '14:33', state: 'active', icon: 'storefront' },
+  { title: 'In Preparation', meta: 'Order is being prepared and packed', state: 'upcoming', icon: 'inventory_2' },
+  { title: 'Ready & Handed Over', meta: 'Order is ready for customer', state: 'upcoming', icon: 'task_alt' },
 ];
 
 export function DesktopPublicPosTrackingScreen({ cart, onBack, onReopenMenu }: DesktopPublicPosTrackingScreenProps) {
@@ -117,7 +117,7 @@ export function DesktopPublicPosTrackingScreen({ cart, onBack, onReopenMenu }: D
             </span>
             <span className="inline-flex items-center gap-space-2xs px-space-sm py-1.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold">
               <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
-              <span>Kitchen Live</span>
+              <span>Order Live</span>
             </span>
           </div>
         </div>
@@ -150,7 +150,7 @@ export function DesktopPublicPosTrackingScreen({ cart, onBack, onReopenMenu }: D
             </span>
             <div className="min-w-0">
               <h3 className="font-heading-md text-heading-md text-text-primary">
-                {live && order?.status === 'ready' ? 'Your Order is Ready!' : live && order?.status === 'completed' ? 'Enjoy Your Meal!' : 'Order Sent to Kitchen!'}
+                {live && order?.status === 'ready' ? 'Your Order is Ready!' : live && order?.status === 'completed' ? 'Order Completed!' : 'Order In Preparation!'}
               </h3>
               <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
                 {venue} has received your ticket for{' '}
@@ -286,7 +286,7 @@ export function DesktopPublicPosTrackingScreen({ cart, onBack, onReopenMenu }: D
                       </span>
                     </div>
                     <p className="font-caption text-caption text-text-secondary truncate">
-                      {line.note ?? 'Standard kitchen prep'}
+                      {line.note ?? 'Standard prep'}
                     </p>
                   </div>
                 </div>

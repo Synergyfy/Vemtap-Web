@@ -71,7 +71,7 @@ const FEATURES = [
     copy: 'Claim exclusive merchant vouchers without hidden surcharges.',
   },
   {
-    icon: 'forum',
+    icon: 'vemtap-chat',
     title: 'Real-time direct merchant chat',
     copy: 'Ask questions, reserve seats, and verify inventory in one tap.',
   },

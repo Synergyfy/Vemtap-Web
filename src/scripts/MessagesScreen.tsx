@@ -21,7 +21,7 @@ const INBOX_CHIPS: { key: InboxChipKey; label: string; icon?: string; pulse?: bo
   { key: 'all', label: 'All' },
   { key: 'unread', label: 'Unread', pulse: true },
   { key: 'deals', label: 'Deals', icon: 'local_offer' },
-  { key: 'bookings', label: 'Bookings & Orders', icon: 'receipt_long' },
+  { key: 'bookings', label: 'Orders', icon: 'receipt_long' },
 ];
 
 function matchesFilter(thread: MessageThread, filter: InboxChipKey): boolean {
@@ -205,12 +205,12 @@ export function MessagesScreen({ onTab, onOpen, onOpenSettings, onNewChat }: Mes
         <div className="flex flex-col px-space-xs mt-space-2xs space-y-1">
           {loading ? (
             <div className="flex flex-col items-center text-center gap-space-xs py-space-xl">
-              <Icon name="forum" className="text-[36px] text-outline-variant" />
+              <Icon name="vemtap-chat" className="text-[36px] text-outline-variant" />
               <p className="font-label-md text-label-md text-text-secondary">Loading conversations…</p>
             </div>
           ) : visibleConversations.length === 0 ? (
             <div className="flex flex-col items-center text-center gap-space-xs py-space-xl px-space-md">
-              <Icon name="forum" className="text-[36px] text-outline-variant" />
+              <Icon name="vemtap-chat" className="text-[36px] text-outline-variant" />
               <p className="font-heading-sm text-heading-sm text-on-surface">No messages yet</p>
               <p className="font-body-md text-body-md text-text-secondary max-w-[280px]">
                 Start a chat from any business profile and your conversations will appear here.

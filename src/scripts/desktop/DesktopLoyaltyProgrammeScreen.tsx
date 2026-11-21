@@ -4,18 +4,25 @@ import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { EnterpriseShell } from './EnterpriseShell';
 import { hasApiConfig } from '../../services/api/client';
 import { apiErrorMessage } from '../../services/errorMessages';
+import type { LoyaltyRulesPatch } from '../../services/loyaltyService';
 import { useMyBusiness } from '../../hooks/business/useMyBusiness';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { useLoyaltyMutations, useLoyaltyRewards, useLoyaltyRules, useLoyaltyStats } from '../../hooks/business/useLoyalty';
 import {
+  birthdayRuleLabel,
   DEFAULT_BONUS,
+  EDITABLE_RULE_FIELDS,
   earnsOnSpend,
   earnsOnVisit,
+  referralRuleLabel,
   rewardStatus,
+  ruleEditValues,
+  rulePatchFromValues,
   ruleTypeFor,
   spendRuleLabel,
   statChange,
   statValue,
+  type EarningRuleKey,
 } from '../loyaltyLive';
 import {
   LOYALTY_TIERS,
@@ -30,8 +37,11 @@ interface DesktopLoyaltyProgrammeScreenProps {
   onOpenRewards?: () => void;
 }
 
-const EARNING_RULES = [
+type RuleKey = EarningRuleKey | 'deal';
+
+const EARNING_RULES: { key: RuleKey; icon: string; iconBox: string; title: string; badge: string; badgeClass: string; formula: string; formulaClass: string; note: string }[] = [
   {
+    key: 'spend',
     icon: 'payments',
     iconBox: 'bg-surface-tint-blue text-primary',
     title: 'Points on Purchases (Spend)',
@@ -42,6 +52,7 @@ const EARNING_RULES = [
     note: 'Qualifying basket min. spend: ₦500 • Excludes VAT/Service charge',
   },
   {
+    key: 'visit',
     icon: 'pin_drop',
     iconBox: 'bg-secondary-container text-on-secondary-container',
     title: 'Check-in / Walk-in (Visit)',
@@ -52,6 +63,7 @@ const EARNING_RULES = [
     note: 'Requires on-premise NFC Tap or QR • Max 1 check-in per 12 hours',
   },
   {
+    key: 'deal',
     icon: 'local_offer',
     iconBox: 'bg-tertiary-fixed text-on-tertiary-fixed',
     title: 'Deal Claim Bonus (Deals)',
@@ -62,6 +74,7 @@ const EARNING_RULES = [
     note: 'Applies to all active promotional deals configured in Catalog',
   },
   {
+    key: 'birthday',
     icon: 'cake',
     iconBox: 'bg-surface-container-high text-primary',
     title: 'Birthday Surprise Bonus',
@@ -77,8 +90,10 @@ const BAR_WIDTHS = ['w-1', 'w-2', 'w-0.5', 'w-1.5', 'w-3', 'w-1', 'w-0.5', 'w-2'
 
 export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopLoyaltyProgrammeScreenProps) {
   const [activeTab, setActiveTab] = useState<'picker' | 'give-points' | 'programme' | 'products' | 'activity'>('picker');
-  const [enabled, setEnabled] = useState(true);
-  const [ruleToggles, setRuleToggles] = useState<boolean[]>([true, true, true, true]);
+  const [demoEnabled, setDemoEnabled] = useState(true);
+  const [demoRuleToggles, setDemoRuleToggles] = useState<boolean[]>([true, true, true, true]);
+  const [editingRule, setEditingRule] = useState<EarningRuleKey | null>(null);
+  const [ruleDraft, setRuleDraft] = useState<Record<string, number>>({});
   const [branchScope, setBranchScope] = useState<'all' | 'selected'>('all');
   const [expiryNotice, setExpiryNotice] = useState(true);
   const [passModalOpen, setPassModalOpen] = useState(false);
@@ -95,18 +110,17 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
   const data = liveRules.data;
   const loadError = liveRules.error ?? stats.error;
   const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
+  const enabled = live ? data?.isActive ?? false : demoEnabled;
+  const ruleToggles = live
+    ? data
+      ? [earnsOnSpend(data), earnsOnVisit(data), data.birthdayBonus > 0, data.referralBonus > 0]
+      : [false, false, false, false]
+    : demoRuleToggles;
 
   const showToast = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(null), 2600);
   };
-
-  useEffect(() => {
-    if (!data) return;
-    setEnabled(data.isActive);
-    // Spend, visit, deal claims (no backend rule) and birthday, in card order.
-    setRuleToggles([earnsOnSpend(data), earnsOnVisit(data), false, data.birthdayBonus > 0]);
-  }, [data]);
 
   useEffect(() => {
     if (loadError) showToast(apiErrorMessage(loadError, 'Could not load your loyalty programme.'));
@@ -121,29 +135,43 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
       .map((word) => word[0]?.toUpperCase())
       .join('') || '—';
   const activeRewards = (rewards.data ?? []).filter((reward) => rewardStatus(reward) === 'active').length;
-  const earningRules =
-    live && data
-      ? [
-          { ...EARNING_RULES[0], formula: spendRuleLabel(data), note: 'Credited on every settled order' },
-          {
-            ...EARNING_RULES[1],
-            formula: `+${data.visitPoints} Bonus Points per Visit`,
-            note: `Max 1 check-in per ${data.visitCooldownHours} hours`,
-          },
-          { ...EARNING_RULES[2], formula: '—', note: 'Deal claim bonuses are coming soon' },
-          {
-            ...EARNING_RULES[3],
-            formula: `+${(data.birthdayBonus || DEFAULT_BONUS.birthdayBonus).toLocaleString('en-US')} Points on customer birthday week`,
-            note: 'Credited during the member birthday week',
-          },
-        ]
-      : EARNING_RULES;
+  // Live rules come only from GET /loyalty/rules. While it loads the rows are
+  // empty (handled in the list below) — no sample formulas are ever rendered.
+  const liveEarningRules = data
+    ? [
+        { ...EARNING_RULES[0], key: 'spend' as const, formula: spendRuleLabel(data), note: 'Credited on every settled order' },
+        {
+          ...EARNING_RULES[1],
+          key: 'visit' as const,
+          formula: `+${data.visitPoints} Bonus Points per Visit`,
+          note: `Max 1 check-in per ${data.visitCooldownHours} hours`,
+        },
+        {
+          ...EARNING_RULES[3],
+          key: 'birthday' as const,
+          formula: birthdayRuleLabel(data),
+          note: 'Credited during the member birthday week',
+        },
+        {
+          ...EARNING_RULES[2],
+          key: 'referral' as const,
+          icon: 'people',
+          iconBox: 'bg-tertiary-fixed text-on-tertiary-fixed',
+          title: 'Referral Bonus',
+          badge: 'Growth Loop',
+          formula: referralRuleLabel(data),
+          note: 'Credited when a referred guest places a first order',
+        },
+      ]
+    : [];
+  const earningRules = live ? liveEarningRules : EARNING_RULES;
 
   const toggleEnabled = () => {
     if (!live) {
-      setEnabled((value) => !value);
+      setDemoEnabled((value) => !value);
       return;
     }
+    if (!data || updateRules.isPending) return;
     updateRules.mutate(
       { isActive: !enabled },
       {
@@ -291,21 +319,32 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
     }, 600);
   };
 
+  const saveRulePatch = (patch: LoyaltyRulesPatch, message = 'Earning rule updated') =>
+    updateRules.mutate(patch, {
+      onSuccess: () => showToast(message),
+      onError: (error) => showToast(apiErrorMessage(error, 'Could not save your loyalty settings.')),
+    });
+
   const handleSave = () => {
     if (saveState !== 'idle') return;
     if (live) {
-      if (!data) return;
-      const ruleType = ruleTypeFor(ruleToggles[0], ruleToggles[1]);
-      if (!ruleType) {
-        showToast('Keep points on purchases or visits switched on.');
-        return;
-      }
+      if (!data || updateRules.isPending) return;
       setSaveState('saving');
       updateRules.mutate(
-        { ruleType, birthdayBonus: ruleToggles[3] ? data.birthdayBonus || DEFAULT_BONUS.birthdayBonus : 0 },
+        {
+          isActive: data.isActive,
+          ruleType: data.ruleType,
+          spendingBaseAmount: data.spendingBaseAmount,
+          spendingBasePoints: data.spendingBasePoints,
+          visitPoints: data.visitPoints,
+          visitCooldownHours: data.visitCooldownHours,
+          birthdayBonus: data.birthdayBonus,
+          referralBonus: data.referralBonus,
+        },
         {
           onSuccess: () => {
             setSaveState('saved');
+            showToast('Programme settings saved.');
             window.setTimeout(() => setSaveState('idle'), 2200);
           },
           onError: (error) => {
@@ -324,11 +363,48 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
   };
 
   const toggleRule = (index: number) => {
-    if (live && index === 2) {
-      showToast('Deal claim bonuses are coming soon.');
+    if (!live) {
+      setDemoRuleToggles((prev) => prev.map((value, i) => (i === index ? !value : value)));
       return;
     }
-    setRuleToggles((prev) => prev.map((value, i) => (i === index ? !value : value)));
+    if (!data || updateRules.isPending) return;
+    const key = earningRules[index]?.key;
+    const on = ruleToggles[index] ?? false;
+
+    if (key === 'spend' || key === 'visit') {
+      const ruleType = ruleTypeFor(
+        key === 'spend' ? !on : earnsOnSpend(data),
+        key === 'visit' ? !on : earnsOnVisit(data),
+      );
+      if (!ruleType) {
+        showToast('Keep points on purchases or visits switched on.');
+        return;
+      }
+      saveRulePatch({ ruleType });
+      return;
+    }
+    if (key === 'birthday' || key === 'referral') {
+      const field = key === 'birthday' ? 'birthdayBonus' : 'referralBonus';
+      saveRulePatch({ [field]: on ? 0 : data[field] || DEFAULT_BONUS[field] });
+      return;
+    }
+    showToast('This earning rule is not available in live mode.');
+  };
+
+  const startRuleEdit = (key: RuleKey) => {
+    if (!live || key === 'deal') {
+      showToast(live ? 'This earning rule is not available in live mode.' : 'Rule editing is available in live mode.');
+      return;
+    }
+    if (!data || updateRules.isPending) return;
+    setEditingRule(key);
+    setRuleDraft(ruleEditValues(data, key));
+  };
+
+  const saveRuleEdit = (key: EarningRuleKey) => {
+    if (!data || updateRules.isPending) return;
+    saveRulePatch(rulePatchFromValues(key, ruleDraft), `${EDITABLE_RULE_FIELDS[key].map((f) => f.label).join(' & ')} updated`);
+    setEditingRule(null);
   };
 
   return (
@@ -772,7 +848,9 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                   <input
                     type="checkbox"
                     className="sr-only peer"
+                    aria-label="Loyalty programme toggle"
                     checked={enabled}
+                    disabled={live && (!data || updateRules.isPending)}
                     onChange={toggleEnabled}
                   />
                   <div className="w-14 h-8 bg-surface-container peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-surface-canvas after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-surface-canvas after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-primary-container shadow-inner" />
@@ -835,55 +913,102 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                 </span>
               </div>
               <div className="flex flex-col gap-space-sm">
+                {live && !data && (
+                  <p className="p-space-md rounded-xl bg-surface-subtle font-caption text-caption text-text-tertiary">
+                    {liveRules.isLoading ? 'Loading earning rules…' : 'Earning rules are unavailable right now.'}
+                  </p>
+                )}
                 {earningRules.map((rule, index) => (
                   <div
                     key={rule.title}
-                    className="bg-surface-canvas rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.03)] p-space-md flex flex-col sm:flex-row sm:items-center justify-between gap-space-md hover:shadow-md transition-shadow"
+                    className="bg-surface-canvas rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.03)] p-space-md flex flex-col hover:shadow-md transition-shadow"
                   >
-                    <div className="flex items-start gap-space-md">
-                      <div
-                        className={`w-11 h-11 rounded-lg flex items-center justify-center shrink-0 ${rule.iconBox}`}
-                      >
-                        <Icon name={rule.icon} className="text-[24px]" />
-                      </div>
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center gap-space-xs">
-                          <span className="font-label-md text-label-md font-semibold text-text-primary">{rule.title}</span>
-                          <span
-                            className={`px-2 py-0.5 rounded-full font-caption text-[11px] font-semibold ${rule.badgeClass}`}
-                          >
-                            {rule.badge}
-                          </span>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-md">
+                      <div className="flex items-start gap-space-md">
+                        <div
+                          className={`w-11 h-11 rounded-lg flex items-center justify-center shrink-0 ${rule.iconBox}`}
+                        >
+                          <Icon name={rule.icon} className="text-[24px]" />
                         </div>
-                        <p className={`font-heading-sm text-heading-sm font-bold ${rule.formulaClass}`}>
-                          {rule.formula}
-                        </p>
-                        <span className="font-caption text-caption text-text-secondary">{rule.note}</span>
+                        <div className="flex flex-col gap-0.5">
+                          <div className="flex items-center gap-space-xs">
+                            <span className="font-label-md text-label-md font-semibold text-text-primary">{rule.title}</span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full font-caption text-[11px] font-semibold ${rule.badgeClass}`}
+                            >
+                              {rule.badge}
+                            </span>
+                          </div>
+                          <p className={`font-heading-sm text-heading-sm font-bold ${rule.formulaClass}`}>
+                            {rule.formula}
+                          </p>
+                          <span className="font-caption text-caption text-text-secondary">{rule.note}</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-space-md self-end sm:self-auto shrink-0">
+                        <label className="relative inline-flex items-center cursor-pointer">
+                          <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            aria-label={`${rule.title} toggle`}
+                            checked={ruleToggles[index]}
+                            disabled={live && (!data || updateRules.isPending)}
+                            onChange={() => toggleRule(index)}
+                          />
+                          <div className="w-11 h-6 bg-surface-container rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-surface-canvas after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-surface-canvas after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-container peer-disabled:opacity-60" />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => startRuleEdit(rule.key)}
+                          disabled={live && (!data || updateRules.isPending)}
+                          className="px-space-sm py-1.5 rounded-lg bg-surface-subtle hover:bg-surface-container text-text-primary font-label-sm text-label-sm font-medium transition-colors flex items-center gap-1 disabled:opacity-60"
+                        >
+                          <Icon name="edit" className="text-[15px]" />
+                          Edit Rule
+                        </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-space-md self-end sm:self-auto shrink-0">
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="sr-only peer"
-                          checked={ruleToggles[index]}
-                          onChange={() => toggleRule(index)}
-                        />
-                        <div className="w-11 h-6 bg-surface-container rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-surface-canvas after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-surface-canvas after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-container" />
-                      </label>
-                      <button
-                        type="button"
-                        className="px-space-sm py-1.5 rounded-lg bg-surface-subtle hover:bg-surface-container text-text-primary font-label-sm text-label-sm font-medium transition-colors flex items-center gap-1"
-                      >
-                        <Icon name="edit" className="text-[15px]" />
-                        Edit Rule
-                      </button>
-                    </div>
+                    {live && data && editingRule === rule.key && (
+                      <div className="mt-space-md pt-space-md border-t border-border-subtle grid grid-cols-1 sm:grid-cols-2 gap-space-sm">
+                        {EDITABLE_RULE_FIELDS[rule.key as EarningRuleKey].map((field) => (
+                          <label key={field.field} className="flex flex-col gap-1">
+                            <span className="font-caption text-caption font-semibold text-text-secondary">{field.label}</span>
+                            <input
+                              type="number"
+                              min={field.min}
+                              value={ruleDraft[field.field] ?? field.min}
+                              onChange={(event) =>
+                                setRuleDraft((prev) => ({ ...prev, [field.field]: Number(event.target.value) }))
+                              }
+                              className="w-full px-space-sm py-2 rounded-lg bg-surface-subtle border border-border text-body-md text-text-primary focus:outline-none focus:border-primary"
+                            />
+                          </label>
+                        ))}
+                        <div className="sm:col-span-2 flex items-center justify-end gap-space-xs">
+                          <button
+                            type="button"
+                            onClick={() => setEditingRule(null)}
+                            className="px-space-sm py-1.5 rounded-lg border border-border text-text-secondary font-label-sm text-label-sm"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={updateRules.isPending}
+                            onClick={() => saveRuleEdit(rule.key as EarningRuleKey)}
+                            className="px-space-sm py-1.5 rounded-lg bg-primary text-on-primary font-label-sm text-label-sm font-semibold disabled:opacity-60"
+                          >
+                            Save Rule
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
               <button
                 type="button"
+                onClick={() => showToast('Custom earning rules are not available yet. Edit the live rules above instead.')}
                 className="w-full py-3.5 rounded-xl bg-surface-canvas hover:bg-surface-subtle text-primary font-label-md text-label-md font-semibold flex items-center justify-center gap-space-xs transition-colors shadow-sm"
               >
                 <Icon name="add_circle" className="text-[20px]" />
@@ -1019,7 +1144,7 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                 <div className="p-space-sm rounded-xl bg-surface-subtle flex items-start justify-between gap-space-sm">
                   <div className="flex flex-col gap-0.5">
                     <span className="font-label-sm text-label-sm font-semibold text-text-primary flex items-center gap-1">
-                      <Icon name="campaign" className="text-[16px] text-badge-discount-text" />
+                      <Icon name="whatsapp" className="text-[16px] text-badge-discount-text" />
                       Automated Expiry Push &amp; WhatsApp
                     </span>
                     <span className="font-caption text-caption text-text-secondary">
@@ -1220,9 +1345,8 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
               {/* Type Filter & Bulk Assign Action */}
               <div className="flex items-center gap-2 flex-wrap">
                 {[
-                  { key: 'all' as const, label: 'All Items' },
+                  { key: 'all' as const, label: 'All Products' },
                   { key: 'product' as const, label: 'Products Only' },
-                  { key: 'service' as const, label: 'Services Only' },
                 ].map((tf) => (
                   <button
                     key={tf.key}
@@ -1658,9 +1782,8 @@ export function DesktopLoyaltyProgrammeScreen({ onNav, onOpenRewards }: DesktopL
                 onChange={(e) => setBulkTarget(e.target.value as any)}
                 className="w-full h-10 px-3 rounded-xl border border-border bg-surface-canvas text-body-md text-text-primary focus:outline-hidden focus:border-primary"
               >
-                <option value="all">All Items (All Products &amp; Services)</option>
+                <option value="all">All Products</option>
                 <option value="product">Products Only</option>
-                <option value="service">Services Only</option>
               </select>
             </div>
 

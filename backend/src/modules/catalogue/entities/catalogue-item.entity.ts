@@ -123,6 +123,13 @@ export class CatalogueItem extends AbstractBaseEntity {
   @Column({ type: 'jsonb', nullable: true })
   galleryImages?: string[] | null;
 
+  @ApiProperty({
+    example: ['https://video.com/1.mp4'],
+    nullable: true,
+  })
+  @Column({ type: 'jsonb', nullable: true })
+  videos?: string[] | null;
+
   @ManyToOne(() => Business, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'businessId' })
   business: Business;

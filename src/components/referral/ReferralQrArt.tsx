@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import { Icon } from '../ui/Icon';
+import vemtapLogo from '../../hooks/VEMTAP LOGO NEW PNG.png';
 
 /**
  * Real, scannable QR code for a referral link, generated client-side with the
@@ -21,7 +21,7 @@ export function ReferralQrArt({ link, caption, size = 168, className = '' }: Ref
 
   useEffect(() => {
     let cancelled = false;
-    QRCode.toDataURL(link, { margin: 1, width: size * 2 })
+    QRCode.toDataURL(link, { margin: 1, width: size * 2, errorCorrectionLevel: 'M' })
       .then((url) => {
         if (!cancelled) setDataUrl(url);
       })
@@ -49,8 +49,8 @@ export function ReferralQrArt({ link, caption, size = 168, className = '' }: Ref
         />
         {dataUrl && (
           <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <span className="w-10 h-10 rounded-xl bg-primary text-on-primary border-2 border-white shadow-md flex items-center justify-center">
-              <Icon name="card_giftcard" className="text-[20px]" />
+            <span className="w-10 h-10 rounded-xl bg-white border-2 border-white shadow-md flex items-center justify-center p-1.5 overflow-hidden">
+              <img src={vemtapLogo} alt="Vemtap" className="w-full h-full object-contain" />
             </span>
           </span>
         )}

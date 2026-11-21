@@ -80,8 +80,8 @@ export function DesktopOrderDetailScreen({ orderRef, onNav, onBack, onChat }: De
   const steps = [
     { label: 'Order Received', meta: formatOrderTime(order.submittedAt) },
     {
-      label: order.status === 'payment-pending' ? 'Awaiting Payment' : 'In the Kitchen',
-      meta: order.status === 'payment-pending' ? 'Payment not verified yet' : `${order.merchantName} is on it`,
+      label: order.status === 'payment-pending' ? 'Awaiting Payment' : 'In Preparation',
+      meta: order.status === 'payment-pending' ? 'Payment not verified yet' : `${order.merchantName} is preparing your order`,
     },
     { label: 'Ready for Pickup', meta: `Estimated by ${readyByLabel}` },
     { label: order.fulfillment === 'delivery' ? 'Delivered' : 'Picked Up', meta: 'Show your code at the counter' },
@@ -101,7 +101,7 @@ export function DesktopOrderDetailScreen({ orderRef, onNav, onBack, onChat }: De
               </li>
               <li className="flex items-center gap-1">
                 <button className="hover:text-primary transition-colors" onClick={onBack} type="button">
-                  Orders &amp; Bookings
+                  Orders
                 </button>
                 <Icon name="chevron_right" className="text-[14px]" />
               </li>
@@ -364,7 +364,7 @@ export function DesktopOrderDetailScreen({ orderRef, onNav, onBack, onChat }: De
                     onClick={() => (onChat ? onChat(order.merchantId) : onNav('messages'))}
                     type="button"
                   >
-                    <Icon name="chat" className="text-[16px]" />
+                    <Icon name="vemtap-chat" className="text-[16px]" />
                     <span>Chat</span>
                   </button>
                   {directionsUrl ? (

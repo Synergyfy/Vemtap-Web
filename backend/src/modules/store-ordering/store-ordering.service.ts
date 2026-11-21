@@ -104,7 +104,10 @@ function lagosMidnight(now = new Date()): Date {
 }
 
 const fullName = (user?: User | null) =>
-  user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() : undefined;
+  user ? `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email || undefined : undefined;
+
+const staffRoleLabel = (user?: User | null) =>
+  user ? user.roleTag || user.jobTitle || user.role : undefined;
 
 /**
  * Store ordering: scan, pick and pay at the counter. A store order is a
@@ -224,6 +227,7 @@ export class StoreOrderingService {
         timestamp: entry.at,
         note: entry.note,
         staffName: entry.staffName,
+        staffRole: entry.staffRole,
       })),
       payment: {
         status: order.paymentStatus,
@@ -279,9 +283,25 @@ export class StoreOrderingService {
   }
 
   /**
+   * A store order can only be closed by a named person. The assigned member is
+   * that person (owners included, once selected in the dropdown); the signed-in
+   * account records the action but cannot close an unassigned order.
+   */
+  private completionStaff(order: CatalogueOrder): User {
+    if (!order.attendedById || !order.attendedByUser) {
+      throw new BadRequestException(
+        'Assign the person completing this order before marking it complete',
+      );
+    }
+    return order.attendedByUser;
+  }
+
+  /**
    * Moves the order to a store stage: the catalogue status follows through
    * `CatalogueOrderService.updateStatus` (stock, loyalty, notifications), then
-   * the stage and a history entry are saved.
+   * the stage and a history entry are saved. `historyStaff` is the assigned
+   * completer on closure, so the audit entry names that person even when a
+   * different account recorded the payment.
    */
   private async moveTo(
     order: CatalogueOrder,
@@ -291,6 +311,7 @@ export class StoreOrderingService {
     extra: Partial<
       Pick<CatalogueOrder, 'totalAmount' | 'payment' | 'paymentStatus'>
     > = {},
+    historyStaff: User = staff,
   ) {
     const target = CATALOGUE_STATUS[stage];
     if (
@@ -319,7 +340,9 @@ export class StoreOrderingService {
         status: stage,
         at: new Date().toISOString(),
         note,
-        staffName: fullName(staff),
+        staffName: fullName(historyStaff),
+        staffId: historyStaff.id,
+        staffRole: staffRoleLabel(historyStaff),
       },
       ...(order.storeHistory ?? []),
     ];
@@ -353,11 +376,14 @@ export class StoreOrderingService {
         'Record the payment before completing the order',
       );
     }
+    const completer = dto.status === 'completed' ? this.completionStaff(order) : staff;
     return this.moveTo(
       order,
       dto.status,
       staff,
       dto.note || `Status updated to ${dto.status}`,
+      {},
+      completer,
     );
   }
 
@@ -522,6 +548,7 @@ export class StoreOrderingService {
       : dto.markCompleted
         ? 'completed'
         : 'paid';
+    const completer = nextStage === 'completed' ? this.completionStaff(order) : staff;
     if (
       nextStage === 'completed' &&
       !['ready', 'awaiting-payment', 'paid'].includes(stage)
@@ -531,15 +558,21 @@ export class StoreOrderingService {
       await this.moveTo(order, 'ready', staff, 'Order ready');
       order = await this.load(businessId, id);
     }
+    const paymentNote = `Payment of ₦${thisPayment.toLocaleString('en-NG')} recorded via ${dto.method}${dto.notes ? ` (${dto.notes})` : ''}`;
+    const historyNote =
+      nextStage === 'completed' && !dto.notes?.toLowerCase().includes('completed by')
+        ? `${paymentNote} — completed by ${fullName(completer) || 'assigned staff'}`
+        : paymentNote;
     return this.moveTo(
       order,
       nextStage,
       staff,
-      `Payment of ₦${thisPayment.toLocaleString('en-NG')} recorded via ${dto.method}${dto.notes ? ` (${dto.notes})` : ''}`,
+      historyNote,
       {
         payment,
         paymentStatus: full ? 'paid-in-store' : 'partially-paid',
       },
+      completer,
     );
   }
 
@@ -551,11 +584,14 @@ export class StoreOrderingService {
       );
     }
     if (this.stageOf(order) === 'completed') return this.view(order);
+    const completer = this.completionStaff(order);
     return this.moveTo(
       order,
       'completed',
       staff,
-      'Customer collected the order',
+      `Customer collected the order — completed by ${fullName(completer) || 'assigned staff'}`,
+      {},
+      completer,
     );
   }
 
@@ -574,6 +610,7 @@ export class StoreOrderingService {
       [dto.posSaleId, businessId],
     );
     if (!sale) throw new NotFoundException('POS sale not found');
+    const completer = this.completionStaff(order);
     const due = Number(order.totalAmount);
     if (!['ready', 'awaiting-payment', 'paid'].includes(this.stageOf(order))) {
       await this.moveTo(order, 'ready', staff, 'Order ready');
@@ -583,7 +620,7 @@ export class StoreOrderingService {
       order,
       'completed',
       staff,
-      `Paid on VEMTAP POS (${dto.tender})`,
+      `Paid on VEMTAP POS (${dto.tender}) — completed by ${fullName(completer) || 'assigned staff'}`,
       {
         payment: this.paymentRecord(
           staff,
@@ -596,6 +633,7 @@ export class StoreOrderingService {
         ),
         paymentStatus: 'paid-pos',
       },
+      completer,
     );
   }
 

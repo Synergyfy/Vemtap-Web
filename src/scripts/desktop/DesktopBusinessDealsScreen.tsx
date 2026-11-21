@@ -562,7 +562,7 @@ export function DesktopBusinessDealsScreen({ onNav, onOpenAnalytics, onCreateDea
           )}
         </div>
 
-        <DealClaimsLedger title="Recent deal claims" limit={30} />
+        <DealClaimsLedger title="Recent deal claims" limit={30} allowRedeem />
 
         {!live && <section className="rounded-2xl bg-surface-canvas p-space-lg shadow-sm flex flex-col lg:flex-row items-center justify-between gap-space-lg">
           <div className="flex items-center gap-space-md">

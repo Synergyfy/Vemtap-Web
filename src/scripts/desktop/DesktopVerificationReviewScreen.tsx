@@ -390,14 +390,14 @@ export function DesktopVerificationReviewScreen({
                   className="flex-1 min-w-[140px] px-space-md py-space-xs rounded-lg bg-surface-subtle hover:bg-surface-tint-blue text-text-primary hover:text-primary font-label-sm text-label-sm font-semibold transition-colors flex items-center justify-center gap-space-xs shadow-sm"
                   type="button"
                 >
-                  <Icon name="chat" className="text-[18px] text-badge-discount-text" />
+                  <Icon name="whatsapp" className="text-[18px] text-badge-discount-text" />
                   <span>WhatsApp Desk</span>
                 </button>
                 <button
                   className="flex-1 min-w-[140px] px-space-md py-space-xs rounded-lg bg-surface-subtle hover:bg-surface-tint-blue text-text-primary hover:text-primary font-label-sm text-label-sm font-semibold transition-colors flex items-center justify-center gap-space-xs shadow-sm"
                   type="button"
                 >
-                  <Icon name="forum" className="text-[18px]" />
+                  <Icon name="vemtap-chat" className="text-[18px]" />
                   <span>In-Portal Chat</span>
                 </button>
               </div>

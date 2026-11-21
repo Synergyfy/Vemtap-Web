@@ -663,7 +663,7 @@ export function DesktopBusinessSettingsScreen({ onNav, onOpenFeatures, onSignOut
                 }
               />
               <SettingRow
-                icon="forum"
+                icon="whatsapp"
                 iconClass="bg-badge-discount-bg text-badge-discount-text"
                 title="WhatsApp Business"
                 desc="Order and booking pings to your business WhatsApp"

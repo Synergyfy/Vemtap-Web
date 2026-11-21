@@ -144,7 +144,7 @@ const OUTLETS: Outlet[] = [
       <div className="flex items-center gap-2 p-space-xs bg-error-container/40 rounded-lg text-text-secondary font-caption text-caption">
         <Icon name="build" className="text-error text-[18px]" />
         <span>
-          <strong>Maintenance Note:</strong> Kitchen maintenance until next Monday. Deal paused.
+          <strong>Maintenance Note:</strong> Branch facility maintenance until next Monday. Deal paused.
         </span>
       </div>
     ),
@@ -183,7 +183,7 @@ const AUDIT_LOG: AuditEntry[] = [
   {
     dotClass: 'bg-error',
     title: 'Garki Area 11 participation paused',
-    detail: 'Kitchen maintenance trigger applied.',
+    detail: 'Branch maintenance trigger applied.',
     time: 'Yesterday, 04:15 PM WAT',
   },
   {
@@ -798,7 +798,7 @@ export function DesktopDealLocationPricingScreen({
                 </span>
               </div>
               <p className="font-caption text-caption text-text-secondary">
-                Aggregate redemption volume cap across all active branches to maintain kitchen operational buffer.
+                Aggregate redemption volume cap across all active branches to maintain operational buffer.
               </p>
               <div className="flex flex-col gap-1.5 mt-space-xs">
                 <div className="h-4 w-full bg-surface-variant rounded-full overflow-hidden flex shadow-inner">

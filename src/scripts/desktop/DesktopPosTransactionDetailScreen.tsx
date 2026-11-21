@@ -159,7 +159,7 @@ export function DesktopPosTransactionDetailScreen({ onNav, onBack }: DesktopPosT
               onClick={() => showToast(live ? 'WhatsApp / SMS receipts are coming soon' : 'Dispatch sent via SMS/WhatsApp')}
               className="h-11 px-space-md rounded-lg bg-surface-tint-blue text-primary font-button-secondary text-button-secondary font-semibold flex items-center gap-1.5 hover:bg-surface-container-high transition-colors"
             >
-              <Icon name="share" className="text-[18px]" />
+              <Icon name="whatsapp" className="text-[18px] text-badge-discount-text" />
               <span>WhatsApp / SMS</span>
             </button>
             <button

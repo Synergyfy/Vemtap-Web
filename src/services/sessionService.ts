@@ -20,6 +20,8 @@ export interface SessionUser {
   /** The shell a dual-role account last used. */
   lastActiveShell?: 'customer' | 'business' | null;
   roleTag?: string | null;
+  /** Owner-assigned staff label, when the account is a team member. */
+  jobTitle?: string | null;
   permissions?: string[] | null;
   status?: string;
   businessId?: string | null;
@@ -34,6 +36,13 @@ export interface SessionUser {
 const BUSINESS_ROLES: UserRole[] = ['Owner', 'Manager', 'Staff'];
 
 export const isBusinessRole = (role?: string | null) => Boolean(role && BUSINESS_ROLES.includes(role as UserRole));
+
+/**
+ * The account's business designation makes the business its only operating
+ * shell: these accounts never act as consumers.
+ */
+export const isBusinessDesignated = (user?: SessionUser | null): boolean =>
+  Boolean(user && (user.businessRole || user.hasBusiness || (isBusinessRole(user.role) && user.businessId)));
 
 /** Owners and admins pass every permission check; others need the permission string. */
 export const hasPermission = (user: SessionUser | undefined, permission: string) =>

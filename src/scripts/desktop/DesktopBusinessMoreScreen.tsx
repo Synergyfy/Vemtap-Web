@@ -51,6 +51,7 @@ const LOGO_SRC =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuC2EiFZ1ls_xBxJJcrDj3qw0AC5jyu4f_R0K_rl_7aHafVCy_scGPJPVFD3zbfkLzbyasgUlVbewPilY0NbFEWncb0rqpRCUMK_1nYw-SfnxanH8nrzAtQT1DyFavq_aWGc8LGggveoK9u4F_5uEE68-d9ZrOxkg8PvV4ky_flx3H_6yeWcF8eq-dMrnpb_kSXbf4ghdvOJVfZEcxM82Q0BwA4X6tAMU2GiIN7vHwG-Y2Td-ZMMeNJyQw';
 
 const GREEN_BADGE = 'bg-badge-discount-bg text-badge-discount-text';
+const GREEN_ICON = GREEN_BADGE;
 const ERROR_BADGE = 'bg-error-container text-error';
 const NEUTRAL_ICON = 'bg-surface-container-low text-on-surface-variant';
 
@@ -265,8 +266,8 @@ export function DesktopBusinessMoreScreen({
         },
         {
           key: 'support',
-          icon: 'support_agent',
-          iconClass: NEUTRAL_ICON,
+          icon: 'whatsapp',
+          iconClass: GREEN_ICON,
           title: 'Support & Help Desk',
           sub: 'Live WhatsApp support & merchant guides',
           onClick: onOpenSupport,

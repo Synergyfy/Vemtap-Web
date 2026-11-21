@@ -2,9 +2,20 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { useBusinessProfileForm } from '../hooks/business/useBusinessProfileForm';
-import { hasApiConfig } from '../services/api/client';
 import { useStorefrontPreview } from '../hooks/business/useStorefrontPreview';
-import { CHANNEL_PLATFORMS, CHANNEL_PLATFORM_BY_ID, isChannelPlatform } from '../utils/socialChannels';
+import { SocialChannelPicker } from '../components/SocialChannelPicker';
+import { businessProfileUrl } from '../utils/businessProfileLink';
+import {
+  channelsFromProfile,
+  socialFieldsFromChannels,
+  type ProfileChannel,
+} from '../utils/businessProfileChannels';
+import {
+  CHANNEL_PLATFORMS,
+  CHANNEL_PLATFORM_BY_ID,
+  normalizeChannel,
+  type ChannelPlatformId,
+} from '../utils/socialChannels';
 import { apiErrorMessage } from '../services/errorMessages';
 import { CreateWithAiButton } from '../components/CreateWithAiButton';
 import type { AiPromptContext } from './aiDesignAssistant';
@@ -31,32 +42,26 @@ const BRAND_CATEGORY = 'Restaurant & Grill • Casual Dining';
 const BRAND_BIO =
   'Premium casual dining and woodfire grill serving Lagos and Abuja. Famous for dry-aged steaks, artisan burgers, and handcrafted mocktails.';
 
-const AMENITIES = [
-  { key: 'dine-in', icon: 'restaurant', label: 'Dine-In' },
-  { key: 'takeaway', icon: 'takeout_dining', label: 'Takeaway' },
-  { key: 'delivery', icon: 'delivery_dining', label: 'Delivery' },
-  { key: 'wifi', icon: 'wifi', label: 'Free Wi-Fi' },
-  { key: 'valet', icon: 'local_parking', label: 'Valet Parking' },
-  { key: 'wheelchair', icon: 'accessible', label: 'Wheelchair Accessible' },
-  { key: 'outdoor', icon: 'deck', label: 'Outdoor Seating' },
-  { key: 'pos', icon: 'credit_card', label: 'POS Card Payment' },
-  { key: 'transfer', icon: 'sync_alt', label: 'Instant Transfer' },
-  { key: 'cash', icon: 'payments', label: 'Cash Accepted' },
-];
+const sameJson = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: BusinessProfileManageScreenProps) {
   const { offerings, setOfferings } = useBusinessOfferings();
-  const [offeringsDraft, setOfferingsDraft] = useState(offerings);
-  const [confirmDisable, setConfirmDisable] = useState<OfferingType | null>(null);
-
-  const [amenityState, setAmenityState] = useState<Record<string, boolean>>(
-    Object.fromEntries(AMENITIES.map((amenity) => [amenity.key, true])),
-  );
-  const [toast, setToast] = useState<string | null>(null);
-  const toastTimer = useRef<number | null>(null);
   const profile = useBusinessProfileForm();
   const preview = useStorefrontPreview();
   const live = preview.live;
+
+  const [offeringsDraft, setOfferingsDraft] = useState(offerings);
+  const [confirmDisable, setConfirmDisable] = useState<OfferingType | null>(null);
+  const [amenities, setAmenities] = useState<string[]>(() => [...profile.form.amenities]);
+  const [channels, setChannels] = useState<ProfileChannel[]>(() => channelsFromProfile(profile.form));
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [newAmenity, setNewAmenity] = useState('');
+  const seededChannelsKey = useRef(
+    JSON.stringify([profile.form.amenities, profile.form.socials, profile.form.whatsappNumber]),
+  );
+  const channelSeq = useRef(0);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
   const brandName = profile.form.name || (live ? 'Your business' : BRAND_NAME);
   const brandCategory = live ? profile.category || 'Add a category' : BRAND_CATEGORY;
   const brandBio = live ? profile.form.description || 'Add a short description so shoppers know what you offer.' : BRAND_BIO;
@@ -64,25 +69,33 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
   const logoImg = live ? preview.logoUrl : LOGO_IMG;
   const verified = live ? preview.verified : true;
   const storeCode = live ? preview.storeCode : '4082';
-  const publicUrl = live ? preview.publicUrl : 'https://urbangrill.vem.store';
-  const socialChips = live
-    ? Object.entries(profile.form.socials)
-        .filter(([platform, handle]) => handle && isChannelPlatform(platform))
-        .map(([platform, handle]) => ({
-          key: platform,
-          icon: isChannelPlatform(platform) ? CHANNEL_PLATFORM_BY_ID[platform].icon : 'link',
-          label: handle.startsWith('@') || handle.includes('/') ? handle : `@${handle}`,
-        }))
-    : [
-        { key: 'instagram', icon: 'photo_camera', label: '@urbangrillbistro' },
-        { key: 'x', icon: 'tag', label: '@urbangrill_ng' },
-      ];
+  // Live: host-relative /b/<code> link that opens this business on the app the merchant is using.
+  const publicUrl = live ? businessProfileUrl(preview.storeCode ?? preview.publicUrl) : 'https://urbangrill.vem.store';
+  const socialFields = socialFieldsFromChannels(channels, profile.form);
+  const socialChips = channels
+    .map((channel) => {
+      const platform = CHANNEL_PLATFORM_BY_ID[channel.platform];
+      const result = normalizeChannel(channel.platform, channel.value);
+      return {
+        key: channel.id,
+        icon: platform.icon,
+        label: result.ok ? result.display : channel.value,
+        href: result.ok ? result.url : '',
+      };
+    })
+    .filter((chip) => Boolean(chip.label));
 
-  // Reflect the saved amenities once the profile loads (or after a save).
+  // Reflect the saved socials/amenities once they load (or after a save) without
+  // wiping edits made in other fields while editing.
   useEffect(() => {
-    if (profile.isLoading || !hasApiConfig()) return;
-    setAmenityState(Object.fromEntries(AMENITIES.map((amenity) => [amenity.key, profile.form.amenities.includes(amenity.label)])));
-  }, [profile.isLoading, profile.form.amenities]);
+    if (profile.isLoading) return;
+    const key = JSON.stringify([profile.form.amenities, profile.form.socials, profile.form.whatsappNumber]);
+    if (seededChannelsKey.current === key) return;
+    seededChannelsKey.current = key;
+    setAmenities([...profile.form.amenities]);
+    setChannels(channelsFromProfile(profile.form));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile.isLoading, profile.form.amenities, profile.form.socials, profile.form.whatsappNumber]);
 
   useEffect(
     () => () => {
@@ -129,8 +142,6 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
     showToast(`${type === 'products' ? 'Products' : 'Services'} disabled. Existing data remains safely preserved.`);
   };
 
-  const activeCount = AMENITIES.filter((amenity) => amenityState[amenity.key]).length;
-
   /** Brand facts shown above — reused by the contextual AI prompts. */
   const aiProfileContext: AiPromptContext = {
     businessName: live ? (profile.isLoading ? undefined : profile.form.name) : BRAND_NAME,
@@ -138,19 +149,22 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
     description: live ? (profile.isLoading ? undefined : profile.form.description) : BRAND_BIO,
   };
 
-  /** Live: Edit Profile / Manage turn the name, bio, contacts and handles into fields; Save writes them. */
+  /** Live: Edit Profile / Manage turn the name, bio, contacts and channels into fields; Save writes them. */
   const [editing, setEditing] = useState(false);
   const hasChanges =
     !profile.isLoading &&
     (profile.dirty ||
-      AMENITIES.some((amenity) => amenityState[amenity.key] !== profile.form.amenities.includes(amenity.label)) ||
+      !sameJson(amenities, profile.form.amenities) ||
+      !sameJson(socialFields.socials, profile.form.socials) ||
+      socialFields.whatsappNumber !== profile.form.whatsappNumber ||
       offeringsDraft.hasProducts !== offerings.hasProducts ||
       offeringsDraft.hasServices !== offerings.hasServices);
   const cancelEditing = () => {
     const saved = profile.reset();
-    setAmenityState(
-      Object.fromEntries(AMENITIES.map((amenity) => [amenity.key, saved.amenities.includes(amenity.label)])),
-    );
+    setAmenities([...saved.amenities]);
+    setChannels(channelsFromProfile(saved));
+    setPickerOpen(false);
+    setNewAmenity('');
     setOfferingsDraft(offerings);
     setEditing(false);
   };
@@ -175,24 +189,42 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
   const uploadingKind = profile.uploadImage.isPending ? profile.uploadImage.variables : null;
 
   const handleSave = () => {
-    // Keep amenities this screen doesn't list (e.g. set on desktop) untouched.
-    const listed = AMENITIES.map((amenity) => amenity.label);
-    const amenities = [
-      ...profile.form.amenities.filter((label) => !listed.includes(label)),
-      ...AMENITIES.filter((amenity) => amenityState[amenity.key]).map((amenity) => amenity.label),
-    ];
     profile.save.mutate(
-      { ...profile.form, amenities },
+      { ...profile.form, amenities, ...socialFields },
       {
         onSuccess: () => {
           setOfferings(offeringsDraft);
           setEditing(false);
-          showToast('Profile & amenities updated successfully!');
+          showToast('Profile, channels & amenities updated successfully!');
         },
         onError: (error) => showToast(`Could not save: ${apiErrorMessage(error)}`),
       },
     );
   };
+
+  const addAmenity = () => {
+    const value = newAmenity.trim().replace(/\s+/g, ' ');
+    if (!value) return;
+    if (amenities.some((item) => item.toLowerCase() === value.toLowerCase())) {
+      showToast('That feature is already on your storefront.');
+      return;
+    }
+    setAmenities((current) => [...current, value]);
+    setNewAmenity('');
+  };
+  const removeAmenity = (label: string) => setAmenities((current) => current.filter((item) => item !== label));
+
+  const usedPlatforms = channels.map((channel) => channel.platform);
+  const setChannelValue = (id: string, value: string) =>
+    setChannels((current) => current.map((channel) => (channel.id === id ? { ...channel, value, touched: true } : channel)));
+  const markChannelTouched = (id: string) =>
+    setChannels((current) => current.map((channel) => (channel.id === id ? { ...channel, touched: true } : channel)));
+  const addChannel = (platform: ChannelPlatformId) => {
+    setPickerOpen(false);
+    if (usedPlatforms.includes(platform)) return;
+    setChannels((current) => [...current, { id: `${platform}-${channelSeq.current++}`, platform, value: '', touched: false }]);
+  };
+  const removeChannel = (id: string) => setChannels((current) => current.filter((channel) => channel.id !== id));
 
   return (
     <AppScreen>
@@ -337,15 +369,30 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
             <span>{brandCategory}</span>
           </div>
           {editing ? (
-            <textarea
-              aria-label="Storefront bio"
-              className={`${inputClass} mt-1 resize-none`}
-              maxLength={250}
-              placeholder="Tell shoppers what you offer"
-              rows={3}
-              value={profile.form.description}
-              onChange={(event) => profile.set('description', event.target.value)}
-            />
+            <div className="mt-1 flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-caption text-caption text-text-tertiary">
+                  {profile.form.description.length} / 250
+                </span>
+                <CreateWithAiButton
+                  assetType="description"
+                  context={{
+                    businessName: brandName,
+                    category: brandCategory,
+                  }}
+                  label="Write your Description with AI"
+                />
+              </div>
+              <textarea
+                aria-label="Storefront bio"
+                className={`${inputClass} resize-none`}
+                maxLength={250}
+                placeholder="Tell shoppers what you offer"
+                rows={3}
+                value={profile.form.description}
+                onChange={(event) => profile.set('description', event.target.value)}
+              />
+            </div>
           ) : (
             <p className="font-body-md text-body-md text-text-secondary mt-1">
               {brandBio}
@@ -488,7 +535,8 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
                 </button>
               </div>
 
-              {/* Services Toggle */}
+              {/* Services Toggle — hidden in product-only rollout */}
+              {false && (
               <div className="flex items-center justify-between p-3 rounded-xl bg-surface-container-low/60 hover:bg-surface-container-low transition-colors">
                 <div className="flex items-start gap-3 min-w-0 pr-2">
                   <div
@@ -523,18 +571,13 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
                   />
                 </button>
               </div>
+              )}
             </div>
 
             {/* Dynamic Status Indicator */}
             <div className="pt-2 border-t border-border-subtle flex items-center gap-2 text-caption font-caption text-text-secondary">
               <Icon name="info" className="text-[16px] text-primary shrink-0" />
-              <span>
-                {offeringsDraft.hasProducts && offeringsDraft.hasServices
-                  ? 'Your dashboard includes both products and services.'
-                  : offeringsDraft.hasServices
-                  ? 'Your dashboard will focus on services.'
-                  : 'Your dashboard will focus on products.'}
-              </span>
+              <span>Your dashboard will focus on products.</span>
             </div>
           </div>
         </div>
@@ -601,21 +644,29 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
               <Icon name="chevron_right" className="text-text-tertiary text-[18px]" />
             </div>
             <div className="flex items-center justify-between p-space-xs rounded-lg hover:bg-surface-container-low transition-colors">
-              <div className="flex items-center gap-space-sm min-w-0">
+              <a
+                href={publicUrl || undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                title="Open your public storefront"
+                className={`flex items-center gap-space-sm min-w-0 ${publicUrl ? 'hover:text-primary transition-colors' : ''}`}
+              >
                 <div className="w-9 h-9 rounded-full bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
                   <Icon name="language" className="text-[18px]" />
                 </div>
                 <div className="flex flex-col min-w-0">
                   <span className="font-caption text-caption text-text-tertiary">{live ? 'Public Link' : 'VEMTAP Subdomain'}</span>
-                  <span className="font-body-md text-body-md text-primary font-medium truncate">
+                  <span className="flex items-center gap-1 font-body-md text-body-md text-primary font-medium truncate">
                     {publicUrl ? publicUrl.replace(/^https?:\/\//, '') : 'Loading…'}
+                    {publicUrl ? <Icon name="open_in_new" className="text-[13px] shrink-0" /> : null}
                   </span>
                 </div>
-              </div>
+              </a>
               <button
-                className="p-1 text-text-secondary hover:text-primary active:scale-95"
+                className="p-1 text-text-secondary hover:text-primary active:scale-95 disabled:opacity-50"
                 title="Copy link"
                 type="button"
+                disabled={!publicUrl}
                 onClick={() => {
                   if (publicUrl) navigator.clipboard?.writeText(publicUrl).catch(() => {});
                 }}
@@ -623,42 +674,107 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
                 <Icon name="content_copy" className="text-[18px]" />
               </button>
             </div>
-            {editing && (
-              <div className="mt-space-xs pt-space-xs flex flex-col gap-space-xs px-1">
-                {CHANNEL_PLATFORMS.map((platform) => (
-                  <label key={platform.id} className="flex items-center gap-space-xs">
-                    <Icon name={platform.icon} className="text-[18px] text-primary shrink-0" />
-                    <input
-                      aria-label={platform.label}
-                      className={inputClass}
-                      placeholder={`${platform.label} — ${platform.placeholder}`}
-                      value={platform.id === 'whatsapp' ? profile.form.whatsappNumber : (profile.form.socials[platform.id] ?? '')}
-                      onChange={(event) =>
-                        platform.id === 'whatsapp'
-                          ? profile.set('whatsappNumber', event.target.value)
-                          : profile.set('socials', { ...profile.form.socials, [platform.id]: event.target.value })
-                      }
-                    />
-                  </label>
-                ))}
-              </div>
-            )}
-            <div className={`mt-space-xs pt-space-xs items-center gap-2 px-1 ${editing ? 'hidden' : 'flex'}`}>
-              <div className="flex items-center gap-2 flex-wrap">
-                {socialChips.length === 0 && (
-                  <span className="font-caption text-caption text-text-tertiary">No social handles yet</span>
+            <div className="mt-space-xs pt-space-xs px-1 flex flex-col gap-space-xs">
+              <div className="flex items-center justify-between gap-space-sm">
+                <div>
+                  <span className="font-label-sm text-label-sm text-text-primary font-semibold">Social Channels</span>
+                  <p className="font-caption text-caption text-text-tertiary">
+                    Only channels you add will be shown to customers.
+                  </p>
+                </div>
+                {editing && (
+                  <div className="relative shrink-0">
+                    <button
+                      aria-label="Add social channel"
+                      aria-haspopup="menu"
+                      aria-expanded={pickerOpen}
+                      className="w-9 h-9 rounded-full bg-surface-tint-blue text-primary flex items-center justify-center active:scale-95 disabled:opacity-50"
+                      type="button"
+                      disabled={usedPlatforms.length >= CHANNEL_PLATFORMS.length}
+                      onClick={() => setPickerOpen((open) => !open)}
+                    >
+                      <Icon name="add" className="text-[18px]" />
+                    </button>
+                    {pickerOpen ? (
+                      <SocialChannelPicker
+                        used={usedPlatforms}
+                        onSelect={addChannel}
+                        onClose={() => setPickerOpen(false)}
+                      />
+                    ) : null}
+                  </div>
                 )}
-                {socialChips.map((chip) => (
-                  <button
-                    key={chip.key}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors"
-                    type="button"
-                  >
-                    <Icon name={chip.icon} className="text-[16px] text-primary" />
-                    <span className="font-caption text-caption font-medium">{chip.label}</span>
-                  </button>
-                ))}
               </div>
+
+              {editing ? (
+                channels.length === 0 ? (
+                  <span className="font-caption text-caption text-text-tertiary">
+                    No social channels yet — tap “+” to add one.
+                  </span>
+                ) : (
+                  channels.map((channel) => {
+                    const platform = CHANNEL_PLATFORM_BY_ID[channel.platform];
+                    const result = normalizeChannel(channel.platform, channel.value);
+                    const showError = channel.touched && channel.value.trim().length > 0 && !result.ok;
+                    return (
+                      <div key={channel.id} className="flex items-start gap-space-xs p-space-xs rounded-xl bg-surface-container-low">
+                        <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${platform.iconClass}`}>
+                          <Icon name={platform.icon} className="text-[18px]" />
+                        </span>
+                        <div className="min-w-0 flex-grow">
+                          <span className="flex items-center gap-1 font-caption text-caption text-text-secondary">
+                            {platform.label}
+                            {result.ok ? <Icon name="check_circle" className="text-badge-discount-text text-[13px]" filled /> : null}
+                          </span>
+                          <input
+                            aria-label={`${platform.label} ${platform.kind === 'phone' ? 'phone number' : 'handle'}`}
+                            aria-invalid={showError}
+                            className="w-full bg-transparent font-label-sm text-label-sm text-text-primary outline-none p-0 placeholder:text-text-tertiary"
+                            placeholder={platform.placeholder}
+                            value={channel.value}
+                            onBlur={() => markChannelTouched(channel.id)}
+                            onChange={(event) => setChannelValue(channel.id, event.target.value)}
+                          />
+                          {showError ? (
+                            <span className="flex items-center gap-1 font-caption text-caption text-error">
+                              <Icon name="error" className="text-[13px]" />
+                              {'error' in result ? result.error : ''}
+                            </span>
+                          ) : null}
+                        </div>
+                        <button
+                          aria-label={`Remove ${platform.label}`}
+                          className="p-1 rounded-lg text-text-tertiary hover:text-error transition-colors shrink-0"
+                          type="button"
+                          onClick={() => removeChannel(channel.id)}
+                        >
+                          <Icon name="delete" className="text-[16px]" />
+                        </button>
+                      </div>
+                    );
+                  })
+                )
+              ) : (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {socialChips.length === 0 && (
+                    <span className="font-caption text-caption text-text-tertiary">No social channels added yet</span>
+                  )}
+                  {socialChips.map((chip) => {
+                    const className = 'flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-container text-on-surface hover:bg-surface-container-high transition-colors';
+                    return chip.href ? (
+                      <a key={chip.key} href={chip.href} target="_blank" rel="noopener noreferrer" className={className}>
+                        <Icon name={chip.icon} className="text-[16px] text-primary" />
+                        <span className="font-caption text-caption font-medium">{chip.label}</span>
+                      </a>
+                    ) : (
+                      <span key={chip.key} className={className}>
+                        <Icon name={chip.icon} className="text-[16px] text-primary" />
+                        <span className="font-caption text-caption font-medium">{chip.label}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -669,32 +785,66 @@ export function BusinessProfileManageScreen({ onBack, onPreviewStorefront }: Bus
             <div>
               <h3 className="font-heading-sm text-heading-sm text-text-primary">Amenities & Features</h3>
               <p className="font-caption text-caption text-text-secondary">
-                Tap features to toggle availability on your storefront
+                Add the features your customers can actually enjoy
               </p>
             </div>
             <span className="font-label-sm text-label-sm px-2.5 py-1 rounded-full bg-surface-tint-blue text-primary font-semibold shrink-0">
-              {activeCount} Active
+              {amenities.length} Added
             </span>
           </div>
-          <div className="flex flex-wrap gap-2.5 pt-1">
-            {AMENITIES.map((amenity) => {
-              const active = amenityState[amenity.key];
-              return (
-                <button
-                  key={amenity.key}
-                  type="button"
-                  disabled={!editing}
-                  onClick={() => setAmenityState((current) => ({ ...current, [amenity.key]: !current[amenity.key] }))}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full font-label-md text-label-md transition-all ${
-                    active ? 'bg-surface-tint-blue text-primary shadow-sm' : 'bg-surface-container text-text-secondary'
-                  } ${editing ? 'active:scale-95' : 'cursor-default'}`}
+          {editing && (
+            <div className="flex items-center gap-space-xs pt-1">
+              <input
+                aria-label="New amenity or feature"
+                className={inputClass}
+                placeholder="e.g. Rooftop seating, EV charging…"
+                value={newAmenity}
+                onChange={(event) => setNewAmenity(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    addAmenity();
+                  }
+                }}
+              />
+              <button
+                aria-label="Add amenity"
+                className="h-10 px-space-sm rounded-xl bg-primary text-on-primary flex items-center justify-center gap-1 font-label-sm text-label-sm shrink-0 active:scale-95 disabled:opacity-50"
+                type="button"
+                disabled={!newAmenity.trim()}
+                onClick={addAmenity}
+              >
+                <Icon name="add" className="text-[16px]" />
+                Add new
+              </button>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2.5 pt-2">
+            {amenities.length === 0 ? (
+              <span className="font-caption text-caption text-text-tertiary">
+                {editing ? 'No features yet — type one above and tap Add new.' : 'No features added yet.'}
+              </span>
+            ) : (
+              amenities.map((amenity) => (
+                <span
+                  key={amenity}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-surface-tint-blue text-primary font-label-md text-label-md"
                 >
-                  <Icon name={amenity.icon} className="text-[16px]" />
-                  <span>{amenity.label}</span>
-                  <Icon name={active ? 'check_circle' : 'add_circle_outline'} filled={active} className="text-[16px]" />
-                </button>
-              );
-            })}
+                  <Icon name="check_circle" className="text-[16px]" filled />
+                  {amenity}
+                  {editing ? (
+                    <button
+                      aria-label={`Remove ${amenity}`}
+                      className="p-0.5 rounded-full hover:text-error transition-colors"
+                      type="button"
+                      onClick={() => removeAmenity(amenity)}
+                    >
+                      <Icon name="close" className="text-[14px]" />
+                    </button>
+                  ) : null}
+                </span>
+              ))
+            )}
           </div>
         </div>
       </div>

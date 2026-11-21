@@ -16,7 +16,6 @@ type AudienceChipKey = 'recent' | 'orders' | 'bookings' | 'deals' | 'all';
 const AUDIENCE_CHIPS: { key: AudienceChipKey; label: string }[] = [
   { key: 'recent', label: 'Recent Customers' },
   { key: 'orders', label: 'Active Orders' },
-  { key: 'bookings', label: 'Bookings' },
   { key: 'deals', label: 'Deal Claimers' },
   { key: 'all', label: 'All Contacts' },
 ];
@@ -390,7 +389,7 @@ export function BusinessNewMessageScreen({ onBack, onRecipientSelected }: Busine
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 max-w-[340px] w-full px-4 z-50">
           <div className="bg-inverse-surface text-inverse-on-surface py-3 px-4 rounded-xl shadow-xl flex items-center gap-3">
-            <Icon name="chat" className="text-primary-fixed text-[20px] shrink-0" />
+            <Icon name="vemtap-chat-white" className="text-[20px] shrink-0" />
             <p className="font-label-sm text-label-sm text-inverse-on-surface truncate flex-1">{toast}</p>
           </div>
         </div>

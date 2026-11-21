@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import { useStoreOrdering } from '../../context/StoreOrderingContext';
@@ -12,11 +12,12 @@ interface DesktopStoreOrderingSettingsScreenProps {
 }
 
 export function DesktopStoreOrderingSettingsScreen({ onNav }: DesktopStoreOrderingSettingsScreenProps) {
-  const { settings, updateSettings, lastError, clearLastError } = useStoreOrdering();
+  const { settings, settingsLoading, settingsSaving, updateSettings, lastError, clearLastError } = useStoreOrdering();
 
   // Local form state
   const [enabled, setEnabled] = useState(settings.enabled);
   const [usePosForCompletion, setUsePosForCompletion] = useState(settings.usePosForCompletion);
+  const [paymentMethods, setPaymentMethods] = useState(settings.paymentMethods);
   const [activeBranches, setActiveBranches] = useState(settings.activeBranches);
   const [immediatePickup, setImmediatePickup] = useState(settings.immediatePickup);
   const [scheduledPreOrder, setScheduledPreOrder] = useState(settings.scheduledPreOrder);
@@ -36,6 +37,7 @@ export function DesktopStoreOrderingSettingsScreen({ onNav }: DesktopStoreOrderi
     const apply = (s: StoreOrderingSettings) => {
       setEnabled(s.enabled);
       setUsePosForCompletion(s.usePosForCompletion);
+      setPaymentMethods(s.paymentMethods);
       setActiveBranches(s.activeBranches);
       setImmediatePickup(s.immediatePickup);
       setScheduledPreOrder(s.scheduledPreOrder);
@@ -76,10 +78,21 @@ export function DesktopStoreOrderingSettingsScreen({ onNav }: DesktopStoreOrderi
       );
   const isBranchActive = (key: string) => (live ? activeBranches[key] !== false : Boolean(activeBranches[key]));
 
+  const toastTimer = useRef<number | null>(null);
   const showToast = (msg: string) => {
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     setToastMessage(msg);
-    window.setTimeout(() => setToastMessage(null), 3000);
+    toastTimer.current = window.setTimeout(() => {
+      setToastMessage(null);
+      toastTimer.current = null;
+    }, 3000);
   };
+  useEffect(
+    () => () => {
+      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!lastError) return;
@@ -94,19 +107,21 @@ export function DesktopStoreOrderingSettingsScreen({ onNav }: DesktopStoreOrderi
     }));
   };
 
-  const handleStaffToggle = (staffMember: string) => {
-    setNotifiedStaff((prev) =>
-      prev.includes(staffMember)
-        ? prev.filter((s) => s !== staffMember)
-        : [...prev, staffMember]
+  const handlePaymentMethodToggle = (methodId: string) => {
+    setPaymentMethods((prev) =>
+      prev.map((method) =>
+        method.id === methodId ? { ...method, enabled: !method.enabled } : method,
+      ),
     );
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    updateSettings({
+    if (settingsLoading || settingsSaving) return;
+    const result = await updateSettings({
       enabled,
       usePosForCompletion,
+      paymentMethods,
       activeBranches,
       immediatePickup,
       scheduledPreOrder,
@@ -119,7 +134,7 @@ export function DesktopStoreOrderingSettingsScreen({ onNav }: DesktopStoreOrderi
       autoNotifyCustomerWhatsApp,
       notifiedStaff,
     });
-    showToast('Store Ordering settings saved successfully.');
+    showToast(result.message);
   };
 
   return (
@@ -158,7 +173,8 @@ export function DesktopStoreOrderingSettingsScreen({ onNav }: DesktopStoreOrderi
             </button>
             <button
               type="submit"
-              className="px-space-lg py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-on-primary font-label-md text-label-md flex items-center gap-2 shadow-sm transition-all"
+              disabled={settingsLoading || settingsSaving}
+              className="px-space-lg py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-on-primary font-label-md text-label-md flex items-center gap-2 shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Icon name="save" className="text-[18px]" />
               <span>Save Changes</span>
@@ -252,6 +268,40 @@ export function DesktopStoreOrderingSettingsScreen({ onNav }: DesktopStoreOrderi
           </div>
         </div>
 
+        {/* Section 1c: Counter Payment Methods */}
+        <div className="p-space-xl rounded-2xl bg-surface-canvas border border-border-subtle shadow-xs space-y-space-md">
+          <div className="flex flex-col">
+            <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary">
+              Accepted Counter Payment Methods
+            </h3>
+            <p className="text-body-sm text-text-secondary">
+              These are the live tender options shown when staff record payment for a store order.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
+            {paymentMethods.map((method) => (
+              <label
+                key={method.id}
+                className="flex items-center justify-between p-3 rounded-xl border border-border-subtle bg-surface-subtle cursor-pointer"
+              >
+                <span className="text-body-sm font-medium text-text-primary">{method.label}</span>
+                <input
+                  type="checkbox"
+                  checked={method.enabled}
+                  onChange={() => handlePaymentMethodToggle(method.id)}
+                  className="w-4 h-4 text-primary rounded-md border-border cursor-pointer"
+                />
+              </label>
+            ))}
+            {paymentMethods.length === 0 && (
+              <p className="text-caption text-text-secondary">
+                No payment methods are configured for this business yet.
+              </p>
+            )}
+          </div>
+        </div>
+
         {/* Section 2: Participating Branches */}
         <div className="p-space-xl rounded-2xl bg-surface-canvas border border-border-subtle shadow-xs space-y-space-md">
           <div className="flex flex-col">
@@ -293,34 +343,17 @@ export function DesktopStoreOrderingSettingsScreen({ onNav }: DesktopStoreOrderi
           </div>
         </div>
 
-        {/* Section 3: Fulfillment & Preparation Time */}
+        {/* Section 3: Fulfillment & Ordering Options */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-space-lg">
-          {/* Preparation Lead Time */}
+          {/* Ordering Options */}
           <div className="p-space-xl rounded-2xl bg-surface-canvas border border-border-subtle shadow-xs space-y-space-md">
             <div className="flex flex-col">
               <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary">
-                Default Preparation Lead Time
+                Pickup &amp; Ordering Preferences
               </h3>
               <p className="text-body-sm text-text-secondary">
-                Standard window displayed to customers on their order confirmation screen.
+                Configure pickup queue timing and guest checkout permissions for this store.
               </p>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {[15, 20, 30, 45].map((mins) => (
-                <button
-                  key={mins}
-                  type="button"
-                  onClick={() => setDefaultPrepMinutes(mins)}
-                  className={`py-3 px-2 rounded-xl text-center border font-label-md transition-all ${
-                    defaultPrepMinutes === mins
-                      ? 'bg-primary text-on-primary font-bold border-primary shadow-xs'
-                      : 'bg-surface-subtle border-border text-text-secondary hover:text-on-surface'
-                  }`}
-                >
-                  {mins} Mins
-                </button>
-              ))}
             </div>
 
             <div className="space-y-3 pt-2">
@@ -396,109 +429,51 @@ export function DesktopStoreOrderingSettingsScreen({ onNav }: DesktopStoreOrderi
             <div className="p-3 rounded-xl bg-surface-subtle text-caption text-text-secondary space-y-1">
               <span className="font-bold text-text-primary block">Payment Notice to Customers:</span>
               <span>
-                Customers are explicitly notified that payment will be confirmed and processed at the physical store counter via Card / POS / Cash upon pickup.
+                {usePosForCompletion
+                  ? 'Customers are told that payment is processed in VEMTAP POS when the order is ready, with the order reference pre-loaded at the register.'
+                  : 'Customers are told that payment is confirmed and collected at the physical store counter upon pickup.'}
               </span>
             </div>
-
-            <label className="flex items-center gap-3 cursor-pointer pt-1">
-              <input
-                type="checkbox"
-                checked={allowSubstitutions}
-                onChange={(e) => setAllowSubstitutions(e.target.checked)}
-                className="w-4 h-4 text-primary rounded-md border-border"
-              />
-              <span className="text-body-sm text-text-primary">
-                Allow staff to propose item substitutions if products sell out
-              </span>
-            </label>
           </div>
         </div>
 
-        {/* Section 4: Staff Notifications & Customer Alerts */}
+        {/* Section 4: Staff Notifications */}
         <div className="p-space-xl rounded-2xl bg-surface-canvas border border-border-subtle shadow-xs space-y-space-md">
           <div className="flex flex-col">
             <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary">
-              Order Alert Routing &amp; Notifications
+              Order Alert Routing
             </h3>
             <p className="text-body-sm text-text-secondary">
-              Select team members who receive incoming order alerts and configure customer update channels.
+              Select the staff member or team designated to receive incoming store order notifications.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-space-lg pt-2">
-            {/* Staff recipients */}
-            <div className="space-y-2">
-              <span className="font-label-md text-label-md font-semibold text-text-primary block">
-                Staff Order Alert Recipients
-              </span>
-              {live && team.isSuccess && staffOptions.length === 0 && (
-                <p className="text-caption text-text-secondary">Invite staff from Team &amp; Access to choose alert recipients.</p>
-              )}
-              {staffOptions.map((staff) => {
-                const isSelected = notifiedStaff.includes(staff.key);
-                return (
-                  <label
-                    key={staff.key}
-                    className="flex items-center justify-between p-3 rounded-xl border border-border-subtle bg-surface-subtle hover:bg-surface-container transition-colors cursor-pointer"
-                  >
-                    <span className="text-body-sm font-medium text-text-primary">{staff.label}</span>
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => handleStaffToggle(staff.key)}
-                      className="w-4 h-4 text-primary rounded-md border-border cursor-pointer"
-                    />
-                  </label>
-                );
-              })}
-            </div>
-
-            {/* Customer notification channels */}
-            <div className="space-y-3">
-              <span className="font-label-md text-label-md font-semibold text-text-primary block">
-                Customer Status Update Channels
-              </span>
-
-              <label className="flex items-start gap-3 p-3 rounded-xl border border-border-subtle bg-surface-subtle cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={autoNotifyCustomerWhatsApp}
-                  onChange={(e) => setAutoNotifyCustomerWhatsApp(e.target.checked)}
-                  className="w-4 h-4 text-primary rounded-md border-border mt-0.5"
-                />
-                <div className="flex flex-col">
-                  <span className="font-semibold text-text-primary text-[14px]">
-                    WhatsApp Instant Updates
-                  </span>
-                  <span className="text-caption text-text-secondary">
-                    Send order reference, preparation notice, and pickup ready alert via WhatsApp.
-                  </span>
-                </div>
-              </label>
-
-              <label className="flex items-start gap-3 p-3 rounded-xl border border-border-subtle bg-surface-subtle cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={autoNotifyCustomerSms}
-                  onChange={(e) => setAutoNotifyCustomerSms(e.target.checked)}
-                  className="w-4 h-4 text-primary rounded-md border-border mt-0.5"
-                />
-                <div className="flex flex-col">
-                  <span className="font-semibold text-text-primary text-[14px]">
-                    SMS Text Alerts
-                  </span>
-                  <span className="text-caption text-text-secondary">
-                    Send automated SMS dispatch alert when kitchen marks order Ready.
-                  </span>
-                </div>
-              </label>
-            </div>
+          <div className="max-w-md pt-2 space-y-2">
+            <label htmlFor="staff-alert-recipient" className="font-label-md text-label-md font-semibold text-text-primary block">
+              Staff Order Alert Recipient
+            </label>
+            <select
+              id="staff-alert-recipient"
+              value={notifiedStaff[0] || 'all'}
+              onChange={(e) => setNotifiedStaff(e.target.value === 'all' ? ['all'] : [e.target.value])}
+              className="w-full px-3.5 py-3 rounded-xl bg-surface-subtle border border-border text-body-md text-text-primary focus:outline-hidden focus:border-primary font-medium"
+            >
+              <option value="all">All Staff Members (Storewide Alert)</option>
+              {staffOptions.map((staff) => (
+                <option key={staff.key} value={staff.key}>
+                  {staff.label}
+                </option>
+              ))}
+            </select>
+            {live && team.isSuccess && staffOptions.length === 0 && (
+              <p className="text-caption text-text-secondary">Invite staff from Team &amp; Access to choose alert recipients.</p>
+            )}
           </div>
         </div>
 
         {/* Global Toast */}
         {toastMessage && (
-          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-on-surface text-surface px-4 py-3 rounded-xl shadow-xl font-label-md animate-in slide-in-from-bottom duration-200">
+          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-on-surface text-inverse-on-surface px-4 py-3 rounded-xl shadow-xl font-label-md animate-in slide-in-from-bottom duration-200">
             <Icon name="check_circle" className="text-badge-discount-text text-[20px]" />
             <span>{toastMessage}</span>
           </div>

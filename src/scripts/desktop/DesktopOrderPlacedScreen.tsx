@@ -183,7 +183,7 @@ export function DesktopOrderPlacedScreen({
                     onClick={onTrack}
                     className="flex flex-col items-center justify-center p-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container-high active:scale-95 transition-all text-center"
                   >
-                    <Icon name="chat" className="text-primary text-xl mb-1" />
+                    <Icon name="vemtap-chat" className="text-primary text-xl mb-1" />
                     <span className="font-label-sm text-label-sm text-text-primary font-semibold">In-App Chat</span>
                   </button>
                   {merchantPhone ? (
@@ -193,7 +193,7 @@ export function DesktopOrderPlacedScreen({
                     rel="noopener noreferrer"
                     target="_blank"
                   >
-                    <Icon name="forum" filled className="text-badge-discount-text text-xl mb-1" />
+                    <Icon name="whatsapp" className="text-badge-discount-text text-xl mb-1" />
                     <span className="font-label-sm text-label-sm text-text-primary font-semibold">WhatsApp</span>
                   </a>
 ) : null}
@@ -324,7 +324,7 @@ export function DesktopOrderPlacedScreen({
                   onClick={onTrack}
                   className="w-full h-12 rounded-xl bg-primary-container hover:bg-primary text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-space-xs shadow-[0_8px_24px_-4px_rgba(6,108,244,0.3)] active:scale-95 transition-all"
                 >
-                  <Icon name="forum" className="text-xl" />
+                  <Icon name="vemtap-chat-white" className="text-xl" />
                   <span>Track Status / Chat with Merchant</span>
                 </button>
                 <button

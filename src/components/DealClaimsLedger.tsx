@@ -9,6 +9,7 @@ import { toAmount } from '../services/dealLedgerService';
 import { formatNaira } from '../utils/format';
 import { apiErrorMessage } from '../services/errorMessages';
 import { Icon } from './ui/Icon';
+import type { DealLedgerRow } from '../services/dealLedgerService';
 
 interface DealClaimsLedgerProps {
   title?: string;
@@ -16,6 +17,7 @@ interface DealClaimsLedgerProps {
   branchId?: string | null;
   search?: string;
   allowRedeem?: boolean;
+  onProcessInPos?: (row: DealLedgerRow) => void;
 }
 
 const statusLabel = (status: string) => status.charAt(0).toUpperCase() + status.slice(1);
@@ -31,6 +33,7 @@ export function DealClaimsLedger({
   branchId,
   search = '',
   allowRedeem = false,
+  onProcessInPos,
 }: DealClaimsLedgerProps) {
   const { activeBranchId } = useBusinessBranch();
   const queryBranchId = branchId === undefined ? activeBranchId : branchId ?? undefined;
@@ -46,6 +49,11 @@ export function DealClaimsLedger({
   const redeem = async (id: string, code: string) => {
     setRedeemingId(id);
     setMessage(null);
+    if (!hasApiConfig()) {
+      setMessage({ kind: 'success', text: `Voucher ${code} verified & redeemed.` });
+      setRedeemingId(null);
+      return;
+    }
     try {
       await claimsService.redeemVoucher(code);
       await Promise.all([
@@ -116,7 +124,17 @@ export function DealClaimsLedger({
                 <span className="font-label-md text-label-md font-semibold text-on-surface">
                   {formatNaira(toAmount(row.amount))}
                 </span>
-                {allowRedeem && hasApiConfig() && row.status === 'claimed' && (
+                {onProcessInPos && row.status === 'claimed' && (
+                  <button
+                    type="button"
+                    onClick={() => onProcessInPos(row)}
+                    className="inline-flex h-9 items-center gap-1 rounded-lg bg-surface-tint-blue px-space-sm font-label-sm text-label-sm font-semibold text-primary hover:bg-primary hover:text-on-primary transition-colors"
+                  >
+                    <Icon name="point_of_sale" className="text-[16px]" />
+                    <span>Process in POS</span>
+                  </button>
+                )}
+                {allowRedeem && row.status === 'claimed' && (
                   <button
                     type="button"
                     disabled={redeemingId !== null}

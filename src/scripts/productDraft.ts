@@ -4,6 +4,10 @@ export interface ProductDraft {
   title: string;
   /** Uploaded photo URL (live). */
   mainImage?: string;
+  /** Additional gallery photo URLs (up to 4 optional photos). */
+  galleryImages?: string[];
+  /** Uploaded video URLs (live), saved with the catalogue item. */
+  videos?: string[];
   /** Live: the business's catalogue category. */
   categoryId?: string;
   producer: string;
@@ -36,7 +40,7 @@ export interface ProductDraft {
 
 export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
   title: 'Woodfire Aged Angus Ribeye Steak (400g)',
-  producer: 'Urban Grill Kitchen',
+  producer: '',
   unbranded: false,
   primaryCategory: '',
   subCategory: '',
@@ -62,8 +66,9 @@ export const INITIAL_PRODUCT_DRAFT: ProductDraft = {
   fulfillment: { pickup: true, delivery: true },
   tags: ['Halal certified', 'Medium Spicy'],
   stock: '',
-  prepWindow: '20-30',
+  prepWindow: 'Ready',
   loyaltyPoints: '50',
+  galleryImages: [],
 };
 
 /** Live setup starts from an empty product — the sample above is demo-only. */
@@ -84,4 +89,6 @@ export const BLANK_PRODUCT_DRAFT: ProductDraft = {
   branches: {},
   pricingMode: 'uniform',
   tags: [],
+  galleryImages: [],
+  prepWindow: 'Ready',
 };

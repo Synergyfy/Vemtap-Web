@@ -20,7 +20,7 @@ export interface ReferralShareRowProps {
 }
 
 const CHANNELS = [
-  { key: 'whatsapp', label: 'WhatsApp', icon: 'chat' },
+  { key: 'whatsapp', label: 'WhatsApp', icon: 'whatsapp' },
   { key: 'x', label: 'X', icon: 'tag' },
   { key: 'instagram', label: 'Instagram', icon: 'photo_camera' },
   { key: 'copy', label: 'Copy Link', icon: 'content_copy' },

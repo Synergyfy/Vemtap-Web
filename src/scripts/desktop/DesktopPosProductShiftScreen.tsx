@@ -39,7 +39,7 @@ const STOCK_STATES: {
   {
     key: 'out',
     label: 'Out of Stock',
-    hint: '86’d for this shift',
+    hint: 'Sold out for this shift',
     chip: 'bg-surface-container-high text-text-secondary',
     active: 'bg-text-secondary text-white border-text-secondary',
   },

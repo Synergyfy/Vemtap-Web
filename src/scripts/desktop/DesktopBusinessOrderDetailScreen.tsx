@@ -82,7 +82,7 @@ export function DesktopBusinessOrderDetailScreen({
       state: isAccepted ? 'done' : 'current',
     },
     {
-      label: 'Kitchen Preparation',
+      label: 'Order Preparation',
       meta: `Est. prep: ~${currentOrder.estimatedPrepMins || 20} mins`,
       state:
         currentOrder.status === 'preparing'
@@ -111,7 +111,7 @@ export function DesktopBusinessOrderDetailScreen({
   const handleAccept = () => {
     const res = updateOrderStatus(currentOrder.id, 'accepted', 'Order accepted by store staff', 'Store Staff');
     onAccept?.();
-    showToast(res.ok ? `Order #${currentOrder.orderRef} accepted and sent to kitchen` : res.message);
+    showToast(res.ok ? `Order #${currentOrder.orderRef} accepted and sent to preparation` : res.message);
   };
 
   const handleStartPrep = () => {
@@ -221,7 +221,7 @@ export function DesktopBusinessOrderDetailScreen({
                       : currentOrder.status === 'accepted'
                         ? 'ACCEPTED'
                         : currentOrder.status === 'preparing'
-                          ? 'IN KITCHEN'
+                          ? 'IN PREPARATION'
                           : currentOrder.status === 'ready'
                             ? 'READY FOR PICKUP'
                             : currentOrder.status === 'completed'
@@ -274,8 +274,8 @@ export function DesktopBusinessOrderDetailScreen({
                     onClick={handleStartPrep}
                     className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-label-md text-label-md hover:bg-primary/90 shadow-sm flex items-center gap-space-xs transition-all font-semibold"
                   >
-                    <Icon name="restaurant" className="text-[18px]" />
-                    <span>Start Kitchen Preparation</span>
+                    <Icon name="inventory_2" className="text-[18px]" />
+                    <span>Start Order Preparation</span>
                   </button>
                 )}
 
@@ -372,7 +372,7 @@ export function DesktopBusinessOrderDetailScreen({
                         onClick={() => onNav('messages')}
                         className="flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-lg border border-border font-label-sm text-label-sm text-primary hover:bg-surface-tint-blue transition-colors"
                       >
-                        <Icon name="chat" className="text-[14px]" /> Chat
+                        <Icon name="vemtap-chat" className="text-[14px]" /> Chat
                       </button>
                     </div>
                   </div>
@@ -693,7 +693,7 @@ export function DesktopBusinessOrderDetailScreen({
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="relative w-full max-w-sm bg-white text-zinc-900 rounded-2xl shadow-2xl p-6 border border-zinc-200 font-mono text-[12px] space-y-3">
             <div className="text-center pb-2 border-b-2 border-zinc-900">
-              <h2 className="font-bold text-[18px] tracking-wider uppercase">** KITCHEN TICKET **</h2>
+              <h2 className="font-bold text-[18px] tracking-wider uppercase">** ORDER TICKET **</h2>
               <p className="font-bold text-[15px]">TICKET #{currentOrder.orderRef}</p>
               <p className="text-[11px] text-zinc-600">Origin: {currentOrder.origin} {currentOrder.placementDetails ? `(${currentOrder.placementDetails})` : ''}</p>
               <p className="text-[10px] text-zinc-500">{new Date().toLocaleTimeString()}</p>

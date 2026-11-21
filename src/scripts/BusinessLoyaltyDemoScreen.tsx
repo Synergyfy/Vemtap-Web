@@ -1009,9 +1009,8 @@ export function BusinessLoyaltyDemoScreen({ onTab, onOpenRewards }: BusinessLoya
                 onChange={(e) => setBulkTarget(e.target.value as any)}
                 className="w-full h-8 px-2.5 rounded-xl border border-border bg-surface-container-lowest text-[11px] text-on-surface focus:outline-hidden focus:border-primary"
               >
-                <option value="all">All Items (Products &amp; Services)</option>
+                <option value="all">All Products</option>
                 <option value="product">Products Only</option>
-                <option value="service">Services Only</option>
               </select>
             </div>
 

@@ -175,7 +175,7 @@ export function MessagesSelectRecipientModal({ onClose, onStartChat }: MessagesS
               }}
               className="h-11 px-space-md rounded-xl bg-primary text-on-primary font-label-md text-label-md hover:opacity-90 shadow-sm flex items-center gap-space-2xs"
             >
-              <Icon name="chat_bubble" className="text-[18px]" />
+              <Icon name="vemtap-chat-white" className="text-[18px]" />
               {selected ? `Message ${selected.name}` : 'Start Blank Message'}
             </button>
           </div>

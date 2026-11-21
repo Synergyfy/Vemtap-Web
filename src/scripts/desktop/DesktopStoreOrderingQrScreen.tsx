@@ -1,14 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import { useStoreOrdering } from '../../context/StoreOrderingContext';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { hasApiConfig } from '../../services/api/client';
 import { useBusinessQr } from '../../hooks/business/useBusinessQr';
-import { useCatalogueCategories } from '../../hooks/business/useCatalogueCategories';
-import { useCatalogueItems } from '../../hooks/business/useCatalogueItems';
-import { toPrice } from '../../services/catalogueItemsService';
-import { getCentralCategories, URBAN_PRODUCTS } from '../catalogueData';
+import { usePrimaryStoreQrLinks } from '../../hooks/business/usePrimaryStoreQrLinks';
+import { URBAN_PRODUCTS } from '../catalogueData';
 import { OrderQrArt } from '../../components/ui/OrderQrArt';
 
 interface DesktopStoreOrderingQrScreenProps {
@@ -34,40 +32,7 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
       ];
   // Live: the business's own storefront link, categories and products; demo keeps the samples.
   const businessQr = useBusinessQr();
-  const liveCategories = useCatalogueCategories();
-  const liveProducts = useCatalogueItems('product');
-  const storeBase = live && businessQr.url
-    ? /^https?:\/\//i.test(businessQr.url)
-      ? businessQr.url
-      : businessQr.url.startsWith('/')
-        ? new URL(businessQr.url, window.location.origin).toString()
-        : `https://${businessQr.url}`
-    : live
-      ? ''
-      : 'https://vemtap.com/business/urban-grill-bistro-104/products';
-  const withParams = (params: string) => (storeBase ? `${storeBase}${storeBase.includes('?') ? '&' : '?'}${params}` : '');
-  const storeName = live ? businessQr.name ?? 'Your business' : 'Urban Grill & Bistro';
-  const storeUrl = withParams('src=store-qr');
-  const categories = live
-    ? (liveCategories.data ?? []).map((category) => ({
-        id: category.id,
-        name: category.name,
-        icon: category.icon ?? 'category',
-        description: category.description ?? '',
-        // No per-category QR scan/order data yet: shown as "—".
-        stats: null as null | { scans: number; ordersCount: number; totalRevenue: number },
-      }))
-    : getCentralCategories('product');
-  const products = live
-    ? (liveProducts.data ?? []).map((item) => ({
-        id: item.id,
-        name: item.name,
-        image: item.mainImage || '',
-        imageAlt: item.name,
-        price: toPrice(item.price ?? undefined) ?? 0,
-        category: item.category?.name ?? 'Product',
-      }))
-    : URBAN_PRODUCTS;
+  const { withParams, storeName, storeUrl, categoryUrl, productUrl, categories, products } = usePrimaryStoreQrLinks();
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [primaryQrTab, setPrimaryQrTab] = useState<'store' | 'category' | 'product'>('store');
@@ -87,10 +52,21 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
   const [newTargetLabel, setNewTargetLabel] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  const toastTimer = useRef<number | null>(null);
   const showToast = (msg: string) => {
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     setToastMessage(msg);
-    window.setTimeout(() => setToastMessage(null), 3000);
+    toastTimer.current = window.setTimeout(() => {
+      setToastMessage(null);
+      toastTimer.current = null;
+    }, 3000);
   };
+  useEffect(
+    () => () => {
+      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    },
+    [],
+  );
   const renderQr = (url: string, alt: string) =>
     url ? (
       <OrderQrArt value={url} alt={alt} size={140} />
@@ -120,14 +96,10 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
     const branchName = branchOptions.find((option) => option.value === newBranch)?.label ?? 'Branch';
 
     // QR destinations open the storefront directly: store & custom codes land on
-    // the full catalogue page, product codes land on the product detail page.
-    let defaultUrl = live
-      ? withParams(`src=${newType}-qr&branch=${newBranch}`)
-      : `https://vemtap.com/business/urban-grill-bistro-104/products?src=${newType}-qr&branch=${newBranch}`;
+    // the store's short link, product codes land on the product detail page.
+    let defaultUrl = withParams(`src=${newType}-qr&branch=${newBranch}`);
     if (newType === 'product' && products[0]) {
-      defaultUrl = live
-        ? withParams(`product=${products[0].id}&src=product-qr&branch=${newBranch}`)
-        : `https://vemtap.com/business/urban-grill-bistro-104/products/${products[0].id}?src=product-qr&branch=${newBranch}`;
+      defaultUrl = productUrl(products[0].id);
     }
     if (newDestination.trim()) {
       defaultUrl = newDestination.trim();
@@ -292,7 +264,7 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                 {(() => {
                   const cat = categories.find(c => c.id === selectedCategoryId);
                   if (!cat) return null;
-                  const catUrl = withParams(`category=${cat.id}&src=cat-qr`);
+                  const catUrl = categoryUrl(cat.id);
                   return (
                     <div className="flex flex-col md:flex-row items-center gap-space-xl">
                       <div className="flex flex-col items-center gap-3 shrink-0">
@@ -356,9 +328,7 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
                 {(() => {
                   const prod = products.find(p => p.id === selectedProductId);
                   if (!prod) return null;
-                  const prodUrl = live
-                    ? withParams(`product=${prod.id}&src=prod-qr`)
-                    : `https://vemtap.com/business/urban-grill-bistro-104/products/${prod.id}?src=prod-qr`;
+                  const prodUrl = productUrl(prod.id);
                   return (
                     <div className="flex flex-col md:flex-row items-center gap-space-xl">
                       <div className="flex flex-col items-center gap-3 shrink-0">
@@ -532,7 +502,7 @@ export function DesktopStoreOrderingQrScreen({ onNav }: DesktopStoreOrderingQrSc
 
         {/* Global Toast */}
         {toastMessage && (
-          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-on-surface text-surface px-4 py-3 rounded-xl shadow-xl font-label-md animate-in slide-in-from-bottom duration-200">
+          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 bg-on-surface text-inverse-on-surface px-4 py-3 rounded-xl shadow-xl font-label-md animate-in slide-in-from-bottom duration-200">
             <Icon name="check_circle" className="text-badge-discount-text text-[20px]" />
             <span>{toastMessage}</span>
           </div>

@@ -54,6 +54,8 @@ export interface StoreOrderStatusEvent {
   timestamp: string;
   note?: string;
   staffName?: string;
+  /** Live role label of the person in `staffName` (owner/staff label from the team page). */
+  staffRole?: string;
 }
 
 export interface StoreOrderPayment {
@@ -114,6 +116,13 @@ export interface StoreOrder {
   payment: StoreOrderPayment;
 }
 
+/** Completion entry from the live audit history, with the recorded role when present. */
+export const completedByLabel = (order: StoreOrder): string => {
+  const entry = order.statusHistory.find((event) => event.status === 'completed');
+  if (!entry?.staffName) return order.assignedStaff || '';
+  return entry.staffRole ? `${entry.staffName} (${entry.staffRole})` : entry.staffName;
+};
+
 export interface StoreQrRecord {
   id: string;
   name: string;
@@ -153,7 +162,6 @@ export const INITIAL_ORDERING_SETTINGS: StoreOrderingSettings = {
     { id: 'cash', label: 'Cash at Counter', enabled: true },
     { id: 'pos-terminal', label: 'External Card Terminal', enabled: true },
     { id: 'bank-transfer', label: 'Direct Bank Transfer', enabled: true },
-    { id: 'ussd', label: 'USSD / Quick Code', enabled: true },
   ],
   activeBranches: {
     'wuse-2': true,

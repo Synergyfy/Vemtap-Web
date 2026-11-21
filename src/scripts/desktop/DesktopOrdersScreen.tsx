@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { Skeleton, SkeletonGroup } from '../../components/ui/Skeleton';
-import { useBooking, type SpaAppointment } from '../../context/BookingContext';
 import { useOrders, type SubmittedOrder } from '../../context/OrdersContext';
 import { useTotalSaved } from '../../hooks/useCustomerDashboard';
 import { NO_IMAGE } from '../../utils/homeOffer';
@@ -13,12 +12,10 @@ import { printKvTable, printReport } from '../../utils/printReport';
 interface DesktopOrdersScreenProps {
   onNav: (key: DesktopNavKey) => void;
   onOpenOrder?: (ref: string) => void;
-  onOpenBooking?: (ref: string) => void;
 }
 
 const TABS = [
   { label: 'All Activity', type: 'active' },
-  { label: 'Upcoming Appointments', type: 'upcoming' },
   { label: 'Past Orders & Dine-in', type: 'past' },
   { label: 'Cancelled', type: 'cancelled' },
 ] as const;
@@ -83,38 +80,17 @@ const orderRow = (order: SubmittedOrder): OrderRow => {
   };
 };
 
-const bookingRow = (booking: SpaAppointment): OrderRow => ({
-  kind: 'booking',
-  ref: booking.ref,
-  merchant: booking.merchantName,
-  orderId: `#${booking.ref}`,
-  type: 'Appointment',
-  typeIcon: 'calendar_today',
-  typeClass: 'bg-badge-discount-bg text-badge-discount-text',
-  specifics: booking.serviceNames.join(' & '),
-  date: booking.dateShort,
-  time: booking.time,
-  amount: booking.payable > 0 ? money(booking.payable) : '—',
-  method: 'Pay at the business',
-  methodIcon: 'storefront',
-  methodIconClass: 'text-text-tertiary',
-  status: booking.status === 'confirmed' ? 'Upcoming' : booking.status === 'completed' ? 'Completed' : 'Cancelled',
-  image: booking.merchantImage || NO_IMAGE,
-  group: booking.status === 'confirmed' ? 'upcoming' : booking.status === 'completed' ? 'past' : 'cancelled',
-  timestamp: new Date(`${booking.dateISO.slice(0, 10)}T00:00:00`).getTime() || booking.createdAt,
-});
-
-export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: DesktopOrdersScreenProps) {
+export function DesktopOrdersScreen({ onNav, onOpenOrder }: DesktopOrdersScreenProps) {
   const [activeTab, setActiveTab] = useState<TabType>('active');
   const [range, setRange] = useState(0);
   const [page, setPage] = useState(1);
   const { orders, ordersLoading } = useOrders();
-  const { appointments, appointmentsLoading } = useBooking();
   const totalSaved = useTotalSaved();
-  const loading = ordersLoading || appointmentsLoading;
+  const loading = ordersLoading;
+  // Product-only rollout: only product orders appear in the activity table.
   const ROWS = useMemo(
-    () => [...orders.map(orderRow), ...appointments.map(bookingRow)].sort((a, b) => b.timestamp - a.timestamp),
-    [orders, appointments],
+    () => orders.map(orderRow).sort((a, b) => b.timestamp - a.timestamp),
+    [orders],
   );
   const [searchQuery, setSearchQuery] = useState('');
   const [merchant, setMerchant] = useState('all');
@@ -134,7 +110,6 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: Deskt
   /** Merchant select and search both have to agree before a row shows. */
   const inTab = (row: OrderRow, tab: TabType) =>
     tab === 'active' ||
-    (tab === 'upcoming' && row.group === 'upcoming') ||
     (tab === 'past' && (row.group === 'past' || row.group === 'open')) ||
     (tab === 'cancelled' && row.group === 'cancelled');
   const rangeStart = range ? Date.now() - range * 24 * 60 * 60 * 1000 : 0;
@@ -151,7 +126,7 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: Deskt
   const pageCount = Math.max(1, Math.ceil(matchingRows.length / PAGE_SIZE));
   useEffect(() => setPage(1), [activeTab, range, merchant, query]);
   const visibleRows = matchingRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const openRow = (row: OrderRow) => (row.kind === 'order' ? onOpenOrder?.(row.ref) : onOpenBooking?.(row.ref));
+  const openRow = (row: OrderRow) => onOpenOrder?.(row.ref);
 
   const downloadStatement = () => {
     downloadCsv(
@@ -210,10 +185,10 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: Deskt
                   <span>Verified Activity Ledger</span>
                 </div>
                 <h1 className="font-display-hero text-display-hero text-text-primary tracking-tight">
-                  Orders &amp; Bookings
+                  Orders
                 </h1>
                 <p className="font-body-md text-body-md text-text-secondary max-w-2xl">
-                  Review your direct merchant purchases, upcoming service appointments, and receipts.
+                  Review your direct merchant purchases and receipts.
                 </p>
               </div>
               <div className="flex items-center gap-3">
@@ -245,10 +220,10 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: Deskt
                     <Icon name="receipt_long" className="text-[30px]" />
                   </div>
                   <h2 className="font-heading-lg text-heading-lg text-text-primary tracking-tight mb-2">
-                    No orders or bookings yet
+                    No orders yet
                   </h2>
                   <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-                    When you place an order or reserve a service, it will appear here with live status and receipts.
+                    When you place an order, it will appear here with live status and receipts.
                   </p>
                 </div>
               </div>
@@ -366,7 +341,7 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: Deskt
               </div>
 
               {loading ? (
-                <SkeletonGroup label="Loading your orders and bookings" className="space-y-3 mt-4">
+                <SkeletonGroup label="Loading your orders" className="space-y-3 mt-4">
                   {[0, 1, 2, 3].map((key) => (
                     <Skeleton key={key} className="h-16 w-full rounded-xl" />
                   ))}
@@ -534,14 +509,14 @@ export function DesktopOrdersScreen({ onNav, onOpenOrder, onOpenBooking }: Deskt
               </div>
               <div className="space-y-1">
                 <h3 className="font-heading-sm text-heading-sm text-text-primary font-bold">
-                  Need help with an order or booking?
+                  Need help with an order?
                 </h3>
                 <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-                  Our support team can chase receipts, reschedule visits, or resolve disputes.
+                  Our support team can chase receipts or resolve disputes.
                 </p>
                 <a
                   className="inline-flex items-center gap-1.5 pt-1 font-label-sm text-label-sm text-primary font-semibold hover:underline"
-                  href="mailto:support@vemtap.ng?subject=Help%20with%20an%20order%20or%20booking"
+                  href="mailto:support@vemtap.ng?subject=Help%20with%20an%20order"
                 >
                   <span>Contact support</span>
                   <Icon name="arrow_forward" className="text-[14px]" />

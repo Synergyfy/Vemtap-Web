@@ -1,14 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { EnterpriseShell } from './EnterpriseShell';
 import { useBranches, useTeamMutations } from '../../hooks/business/useBranchesAndTeam';
 import { useMyBusiness } from '../../hooks/business/useMyBusiness';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
+import { useProgressiveAccordion } from '../../hooks/useProgressiveAccordion';
 import { hasApiConfig } from '../../services/api/client';
 import { apiErrorMessage } from '../../services/errorMessages';
 import { planErrorMessage } from '../../services/planErrors';
-import { inviteRole, toApiPermissions } from '../teamLive';
+import {
+  ALL_STAFF_PAGE_IDS,
+  STAFF_PAGE_DEFAULTS,
+  STAFF_PAGE_TREE,
+  inviteRole,
+  toApiPermissions,
+  toPermissionMap,
+} from '../teamLive';
 
 interface DesktopStaffInviteScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
@@ -21,62 +29,6 @@ type SubmitState = 'idle' | 'sending' | 'sent';
 
 /** Single-use invite link the staff member taps to join this business. */
 const INVITE_LINK = 'https://vemtap.com/join/urban-grill-bistro-104?invite=VT48Q2K';
-
-/** Dashboard pages the owner can grant — mirrors the mobile invite flow. */
-const PERMISSION_GROUPS: { group: string; items: { id: string; label: string; icon: string }[] }[] = [
-  {
-    group: 'Operations',
-    items: [
-      { id: 'overview', label: 'Overview & Dashboard', icon: 'dashboard' },
-      { id: 'orders', label: 'Orders', icon: 'receipt_long' },
-      { id: 'pos', label: 'POS & Customer Display', icon: 'point_of_sale' },
-      { id: 'messages', label: 'Messages', icon: 'chat_bubble' },
-    ],
-  },
-  {
-    group: 'Sales & catalogue',
-    items: [
-      { id: 'catalog', label: 'Products & Services', icon: 'inventory_2' },
-      { id: 'deals', label: 'Deals & Promotions', icon: 'local_offer' },
-      { id: 'loyalty', label: 'Loyalty & Rewards', icon: 'card_membership' },
-      { id: 'boost', label: 'Boost Campaigns', icon: 'campaign' },
-    ],
-  },
-  {
-    group: 'Customers & team',
-    items: [
-      { id: 'customers', label: 'Customers CRM', icon: 'groups' },
-      { id: 'staff', label: 'Staff & Team Access', icon: 'badge' },
-      { id: 'locations', label: 'Locations & Branches', icon: 'location_on' },
-      { id: 'profile', label: 'Business Profile', icon: 'storefront' },
-    ],
-  },
-  {
-    group: 'Insights & account',
-    items: [
-      { id: 'analytics', label: 'Analytics & Reports', icon: 'insights' },
-      { id: 'subscription', label: 'Subscription & Add-ons', icon: 'receipt' },
-      { id: 'verification', label: 'Verification & Compliance', icon: 'verified_user' },
-      { id: 'more', label: 'More & Settings', icon: 'tune' },
-    ],
-  },
-];
-
-const ALL_PERMISSION_IDS = PERMISSION_GROUPS.flatMap((group) => group.items.map((item) => item.id));
-
-/** Pages granted by default for each role preset. */
-const ROLE_PERMISSIONS: Record<RolePreset, string[]> = {
-  manager: [
-    'overview', 'orders', 'pos', 'messages', 'catalog', 'deals', 'loyalty',
-    'customers', 'locations', 'profile', 'analytics',
-  ],
-  cashier: ['overview', 'orders', 'pos', 'messages'],
-  service: ['overview', 'orders', 'messages', 'customers', 'locations'],
-  custom: ['overview'],
-};
-
-const toPermissionMap = (ids: string[]) =>
-  Object.fromEntries(ALL_PERMISSION_IDS.map((id) => [id, ids.includes(id)])) as Record<string, boolean>;
 
 const ROLE_OPTIONS: Array<{
   key: RolePreset;
@@ -103,14 +55,6 @@ const ROLE_OPTIONS: Array<{
     note: { label: 'Most Common', labelClass: 'bg-primary-container text-on-primary-container font-semibold' },
     body: 'Process orders at POS terminals, accept customer payments, and scan/redeem VEMTAP vouchers.',
     bodyClass: 'font-body-md text-body-md text-text-secondary mt-1 text-sm leading-normal',
-  },
-  {
-    key: 'service',
-    title: 'Service Staff',
-    badge: 'Front Desk',
-    badgeClass: 'bg-surface-container text-on-surface-variant font-medium',
-    body: 'Manage appointment schedules, client services, customer intake queues, and check-ins.',
-    bodyClass: 'font-caption text-caption text-text-secondary mt-1 leading-normal',
   },
   {
     key: 'custom',
@@ -156,6 +100,39 @@ const PRESET_BADGES: Record<RolePreset, string> = {
   custom: 'Custom',
 };
 
+const INVITE_SECTIONS = [
+  {
+    title: '1. Contact Identity & Channel',
+    subtitle: 'Basic credentials to issue credentials and passkeys',
+    icon: 'badge',
+  },
+  {
+    title: '2. Role Preset & Authority Tier',
+    subtitle: 'Determines till permissions, scanner scope, and access levels',
+    icon: 'admin_panel_settings',
+  },
+  {
+    title: '3. Page Access Permissions',
+    subtitle: 'Choose the dashboard pages this staff member can open',
+    icon: 'admin_panel_settings',
+  },
+  {
+    title: '4. Operating Branch Assignment',
+    subtitle: 'Ties till sessions and audit logs to a physical location',
+    icon: 'store',
+  },
+  {
+    title: '5. Staff Security',
+    subtitle: 'Create the 6-digit PIN they will sign in with',
+    icon: 'lock',
+  },
+  {
+    title: '6. Send Invitation',
+    subtitle: 'Review the pre-filled invite message and deliver it',
+    icon: 'send',
+  },
+] as const;
+
 export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteScreenProps) {
   // Live: a blank form, the real branches, and the invite emailed with the PIN set here.
   const live = hasApiConfig();
@@ -169,7 +146,7 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
 
   // Page permissions the owner grants to this staff member.
   const [permissions, setPermissions] = useState<Record<string, boolean>>(() =>
-    toPermissionMap(ROLE_PERMISSIONS.cashier),
+    toPermissionMap(STAFF_PAGE_DEFAULTS.cashier),
   );
   // Preset 6-digit PIN created on the staff member's behalf — emailed to them.
   const [pin, setPin] = useState(live ? '' : '482913');
@@ -207,7 +184,7 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live, branchList.data, activeBranchId]);
 
-  const enabledCount = Object.values(permissions).filter(Boolean).length;
+  const enabledCount = ALL_STAFF_PAGE_IDS.filter((id) => permissions[id]).length;
   const firstName = fullName.trim().split(/\s+/)[0] ?? '';
   const roleLabel =
     rolePreset === 'custom' && customRoleName.trim() ? customRoleName.trim() : PRESET_BADGES[rolePreset];
@@ -226,8 +203,40 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fullName, workEmail, roleLabel, messageEdited]);
 
+  const emailOk = /^\S+@\S+\.\S+$/.test(workEmail.trim());
+  const lastName = fullName.trim().split(/\s+/).slice(1).join(' ');
+  const contactComplete = Boolean(firstName && lastName && emailOk);
+  const roleComplete = rolePreset !== 'custom' || Boolean(customRoleName.trim());
+  const permissionsComplete = enabledCount > 0;
+  const branchComplete = Boolean(branchOptions[branchIndex]);
+  const securityComplete = pinOk;
+  const inviteComplete = message.trim().length > 10;
+  const completedSections = [
+    contactComplete,
+    roleComplete,
+    permissionsComplete,
+    branchComplete,
+    securityComplete,
+    inviteComplete,
+  ];
+  const { activeIndex, highestAvailable, reveal } = useProgressiveAccordion(completedSections);
+
+  const continueTo = (index: number) => reveal(index);
+
   const togglePermission = (id: string) => {
     setPermissions((current) => ({ ...current, [id]: !current[id] }));
+    reveal(3);
+  };
+
+  const toggleSection = (ids: string[], allGranted: boolean) => {
+    setPermissions((current) => {
+      const next = { ...current };
+      ids.forEach((id) => {
+        next[id] = !allGranted;
+      });
+      return next;
+    });
+    reveal(3);
   };
 
   const selectRolePreset = (key: RolePreset) => {
@@ -238,7 +247,8 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
       return;
     }
     setRolePreset(key);
-    setPermissions(toPermissionMap(ROLE_PERMISSIONS[key]));
+    setPermissions(toPermissionMap(STAFF_PAGE_DEFAULTS[key]));
+    reveal(2);
   };
 
   const confirmCustomRole = () => {
@@ -246,12 +256,13 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
     if (name.length < 2) return;
     setCustomRoleName(name);
     setRolePreset('custom');
-    setPermissions(toPermissionMap(ROLE_PERMISSIONS.custom));
+    setPermissions(toPermissionMap(STAFF_PAGE_DEFAULTS.custom));
     setCustomRoleOpen(false);
+    reveal(2);
   };
 
   const triggerInvite = () => {
-    if (submitState !== 'idle') return;
+    if (submitState !== 'idle' || !completedSections.every(Boolean)) return;
     if (live) {
       const [first, ...rest] = fullName.trim().split(/\s+/);
       const branch = liveBranches[branchIndex];
@@ -269,7 +280,7 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
           phone: phone.trim() || undefined,
           role: inviteRole(rolePreset, roleLabel),
           jobTitle: rolePreset === 'custom' ? roleLabel : undefined,
-          permissions: toApiPermissions(Object.keys(permissions).filter((id) => permissions[id])),
+          permissions: toApiPermissions(ALL_STAFF_PAGE_IDS.filter((id) => permissions[id])),
           branchId: branch.id,
           pin,
         },
@@ -296,6 +307,66 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
   const submitLabel =
     submitState === 'idle' ? 'Send Invitation' : submitState === 'sending' ? 'Transmitting Token...' : 'Invitation Dispatched!';
   const submitIcon = submitState === 'idle' ? 'send' : submitState === 'sending' ? 'sync' : 'check_circle';
+
+  const renderSectionHeader = (index: number, trailing?: ReactNode) => {
+    const section = INVITE_SECTIONS[index];
+    const open = activeIndex === index;
+    const locked = index > highestAvailable;
+    const done = completedSections[index];
+    return (
+      <button
+        aria-controls={`invite-section-${index}`}
+        aria-expanded={open}
+        className={`flex w-full items-center justify-between gap-space-sm rounded-xl p-space-sm text-left transition-all ${
+          open
+            ? 'bg-surface-tint-blue'
+            : done
+              ? 'bg-surface-container-low hover:bg-surface-container'
+              : 'bg-surface-subtle hover:bg-surface-container-low'
+        } ${locked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+        disabled={locked}
+        onClick={() => reveal(index)}
+        type="button"
+      >
+        <span className="flex min-w-0 items-center gap-space-sm">
+          <span
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+              open || done ? 'bg-primary-container text-on-primary' : 'bg-surface-container text-text-secondary'
+            }`}
+          >
+            <Icon name={section.icon} className="text-[20px]" />
+          </span>
+          <span className="min-w-0">
+            <span className="block font-heading-sm text-heading-sm text-text-primary">{section.title}</span>
+            <span className="block font-caption text-caption text-text-secondary">{section.subtitle}</span>
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-space-xs">
+          {trailing}
+          <span
+            className={`flex h-7 w-7 items-center justify-center rounded-full ${
+              done ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary'
+            }`}
+            aria-label={done ? 'Section complete' : locked ? 'Section locked' : 'Section in progress'}
+          >
+            <Icon name={done ? 'check_circle' : locked ? 'lock' : 'expand_more'} className="text-[16px]" />
+          </span>
+        </span>
+      </button>
+    );
+  };
+
+  const renderContinue = (index: number, label: string) => (
+    <button
+      className="self-start inline-flex h-10 items-center justify-center gap-space-2xs rounded-xl bg-primary-container px-space-md text-on-primary font-label-md text-label-md font-semibold transition-all enabled:hover:bg-primary enabled:hover:text-on-primary disabled:cursor-not-allowed disabled:bg-surface-container disabled:text-text-tertiary"
+      disabled={!completedSections[index]}
+      onClick={() => continueTo(index + 1)}
+      type="button"
+    >
+      <span>{label}</span>
+      <Icon name="arrow_forward" className="text-[16px]" />
+    </button>
+  );
 
   return (
     <EnterpriseShell activeNav="business-staff" onNav={onNav}>
@@ -341,50 +412,47 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                 <Icon name="arrow_back" className="text-[18px] text-text-secondary" />
                 <span>Cancel &amp; Return to Directory</span>
               </button>
-              <button
-                type="button"
-                onClick={triggerInvite}
-                className={`h-[48px] px-space-xl rounded-xl font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.3)] hover:scale-[1.01] active:scale-[0.98] transition-all flex items-center gap-space-xs ${
-                  submitState === 'sent'
-                    ? 'bg-badge-discount-text text-on-primary'
-                    : 'bg-primary hover:bg-primary-container text-on-primary'
-                } ${submitState === 'sending' ? 'opacity-90 pointer-events-none' : ''}`}
-              >
-                <span>{submitLabel}</span>
-                <Icon name={submitIcon} className={`text-[18px] ${submitState === 'sending' ? 'animate-spin' : ''}`} />
-              </button>
+              {activeIndex === 5 && (
+                <button
+                  type="button"
+                  onClick={triggerInvite}
+                  disabled={!completedSections.every(Boolean) || submitState !== 'idle'}
+                  className={`h-[48px] px-space-xl rounded-xl font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.3)] hover:scale-[1.01] active:scale-[0.98] transition-all flex items-center gap-space-xs disabled:cursor-not-allowed disabled:opacity-60 ${
+                    submitState === 'sent'
+                      ? 'bg-badge-discount-text text-on-primary'
+                      : 'bg-primary hover:bg-primary-container text-on-primary'
+                  } ${submitState === 'sending' ? 'opacity-90 pointer-events-none' : ''}`}
+                >
+                  <span>{submitLabel}</span>
+                  <Icon name={submitIcon} className={`text-[18px] ${submitState === 'sending' ? 'animate-spin' : ''}`} />
+                </button>
+              )}
             </div>
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-xl items-start">
             <div className="lg:col-span-7 flex flex-col gap-space-xl">
               <div className="bg-surface-canvas rounded-2xl shadow-[0_4px_20px_-2px_rgba(13,37,76,0.05)] p-space-xl flex flex-col gap-space-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-space-sm">
-                    <div className="w-10 h-10 rounded-xl bg-surface-tint-blue flex items-center justify-center text-primary">
-                      <Icon name="badge" className="text-[22px]" />
-                    </div>
-                    <div>
-                      <h2 className="font-heading-sm text-heading-sm text-text-primary">
-                        1. Contact Identity &amp; Channel
-                      </h2>
-                      <p className="font-caption text-caption text-text-secondary">
-                        Basic credentials to issue credentials and passkeys
-                      </p>
-                    </div>
-                  </div>
-                  <span className="px-space-xs py-1 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                    Tier-1 Enrolled
-                  </span>
-                </div>
+                {renderSectionHeader(
+                  0,
+                  !live ? (
+                    <span className="px-space-xs py-1 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
+                      Tier-1 Enrolled
+                    </span>
+                  ) : undefined,
+                )}
 
+                {activeIndex === 0 && (
+                  <div className="flex flex-col gap-space-lg" id="invite-section-0">
                 <div className="flex flex-col gap-space-2xs">
                   <label className="font-label-md text-label-md text-text-primary font-semibold flex items-center justify-between">
                     <span>Full Legal Name</span>
-                    <span className="text-primary font-caption text-caption font-medium flex items-center gap-1">
-                      <Icon name="verified" className="text-[14px]" />
-                      Verified ID check
-                    </span>
+                    {!live && (
+                      <span className="text-primary font-caption text-caption font-medium flex items-center gap-1">
+                        <Icon name="verified" className="text-[14px]" />
+                        Verified ID check
+                      </span>
+                    )}
                   </label>
                   <div className="relative flex items-center">
                     <input
@@ -395,7 +463,7 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                       onChange={(event) => setFullName(event.target.value)}
                     />
                     <Icon name="person" className="absolute left-3.5 text-text-tertiary text-[20px]" />
-                    <Icon name="check_circle" className="absolute right-3.5 text-badge-discount-text text-[20px]" />
+                    {!live && <Icon name="check_circle" className="absolute right-3.5 text-badge-discount-text text-[20px]" />}
                   </div>
                 </div>
 
@@ -426,7 +494,7 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                           : 'flex items-center justify-center gap-space-2xs py-2.5 rounded-lg text-text-secondary hover:text-text-primary font-label-md text-label-md font-medium transition-all'
                       }
                     >
-                      <Icon name="chat" className="text-[18px]" />
+                      <Icon name="whatsapp" className="text-[18px]" />
                       <span>WhatsApp</span>
                     </button>
                   </div>
@@ -479,26 +547,20 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                     </div>
                   </div>
                 </div>
+
+                  {renderContinue(0, 'Continue to role')}
+                  </div>
+                )}
               </div>
 
               <div className="bg-surface-canvas rounded-2xl shadow-[0_4px_20px_-2px_rgba(13,37,76,0.05)] p-space-xl flex flex-col gap-space-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-space-sm">
-                    <div className="w-10 h-10 rounded-xl bg-surface-container flex items-center justify-center text-primary">
-                      <Icon name="admin_panel_settings" className="text-[22px]" />
-                    </div>
-                    <div>
-                      <h2 className="font-heading-sm text-heading-sm text-text-primary">
-                        2. Role Preset &amp; Authority Tier
-                      </h2>
-                      <p className="font-caption text-caption text-text-secondary">
-                        Determines till permissions, scanner scope, and access levels
-                      </p>
-                    </div>
-                  </div>
-                  <span className="font-caption text-caption text-text-tertiary">4 Presets Available</span>
-                </div>
+                {renderSectionHeader(
+                  1,
+                  <span className="font-caption text-caption text-text-tertiary">4 Presets Available</span>,
+                )}
 
+                {activeIndex === 1 && (
+                  <div className="flex flex-col gap-space-lg" id="invite-section-1">
                 <div className="flex flex-col gap-space-sm">
                   {ROLE_OPTIONS.map((option) => {
                     const selected = rolePreset === option.key;
@@ -565,103 +627,130 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                     );
                   })}
                 </div>
+
+                  {renderContinue(1, 'Continue to permissions')}
+                  </div>
+                )}
               </div>
 
               {/* 3. Page permissions — the owner picks which dashboard pages this staff can open */}
               <div className="bg-surface-canvas rounded-2xl shadow-[0_4px_20px_-2px_rgba(13,37,76,0.05)] p-space-xl flex flex-col gap-space-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-space-sm">
-                    <div className="w-10 h-10 rounded-xl bg-surface-container flex items-center justify-center text-primary">
-                      <Icon name="admin_panel_settings" className="text-[22px]" />
-                    </div>
-                    <div>
-                      <h2 className="font-heading-sm text-heading-sm text-text-primary">
-                        3. Page Access Permissions
-                      </h2>
-                      <p className="font-caption text-caption text-text-secondary">
-                        Choose the dashboard pages this staff member can open
-                      </p>
-                    </div>
-                  </div>
+                {renderSectionHeader(
+                  2,
                   <span className="px-space-xs py-1 rounded bg-surface-container-high text-on-surface-variant font-caption text-caption font-semibold">
-                    {enabledCount} of {ALL_PERMISSION_IDS.length} pages
-                  </span>
+                    {enabledCount} of {ALL_STAFF_PAGE_IDS.length} pages
+                  </span>,
+                )}
+
+                {activeIndex === 2 && (
+                  <div className="flex flex-col gap-space-lg" id="invite-section-2">
+                <div className="flex flex-col gap-space-md">
+                  {STAFF_PAGE_TREE.map((section) => {
+                    const childIds = section.children.map((child) => child.id);
+                    const allGranted = section.children.length
+                      ? childIds.every((id) => permissions[id])
+                      : Boolean(permissions[section.id]);
+                    const someGranted = section.children.length
+                      ? childIds.some((id) => permissions[id])
+                      : allGranted;
+                    const toggleIds = childIds.length ? childIds : [section.id];
+                    return (
+                      <div key={section.id} className="flex flex-col gap-space-xs">
+                        <button
+                          type="button"
+                          onClick={() => toggleSection(toggleIds, allGranted)}
+                          className={`flex items-center gap-space-sm p-space-sm rounded-xl text-left transition-all ${
+                            allGranted
+                              ? 'bg-surface-tint-blue shadow-sm'
+                              : someGranted
+                                ? 'bg-surface-tint-blue/50'
+                                : 'bg-surface-subtle opacity-80 hover:opacity-100'
+                          }`}
+                        >
+                          <span
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                              allGranted ? 'bg-primary-container text-on-primary' : 'bg-surface-container text-text-tertiary'
+                            }`}
+                          >
+                            <Icon name={section.icon ?? 'folder'} className="text-[16px]" />
+                          </span>
+                          <span className="min-w-0 flex-1 font-label-md text-label-md text-text-primary font-semibold">
+                            {section.label}
+                          </span>
+                          <span
+                            className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                              allGranted ? 'border-primary bg-primary' : 'border-outline-variant'
+                            }`}
+                          >
+                            {allGranted && <Icon name="check" className="text-[12px] text-on-primary" />}
+                            {!allGranted && someGranted && <span className="w-2 h-0.5 rounded bg-primary" />}
+                          </span>
+                        </button>
+                        {section.children.length > 0 && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-space-xs pl-space-md">
+                            {section.children.map((item) => {
+                              const granted = Boolean(permissions[item.id]);
+                              return (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  onClick={() => togglePermission(item.id)}
+                                  className={`flex items-center gap-space-sm p-space-sm rounded-xl text-left transition-all ${
+                                    granted
+                                      ? 'bg-surface-tint-blue shadow-sm'
+                                      : 'bg-surface-subtle opacity-70 hover:opacity-100'
+                                  }`}
+                                >
+                                  <span
+                                    className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                                      granted ? 'bg-primary-container text-on-primary' : 'bg-surface-container text-text-tertiary'
+                                    }`}
+                                  >
+                                    <Icon name={item.icon ?? 'chevron_right'} className="text-[14px]" />
+                                  </span>
+                                  <span className="min-w-0 flex-1 truncate font-label-sm text-label-sm text-text-primary font-medium">
+                                    {item.label}
+                                  </span>
+                                  <span
+                                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                                      granted ? 'border-primary bg-primary' : 'border-outline-variant'
+                                    }`}
+                                  >
+                                    {granted && <Icon name="check" className="text-[12px] text-on-primary" />}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
 
-                <div className="flex flex-col gap-space-md">
-                  {PERMISSION_GROUPS.map((group) => (
-                    <div key={group.group} className="flex flex-col gap-space-xs">
-                      <span className="font-label-sm text-label-sm text-text-tertiary font-semibold uppercase tracking-wider">
-                        {group.group}
-                      </span>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-space-xs">
-                        {group.items.map((item) => {
-                          const granted = permissions[item.id];
-                          return (
-                            <button
-                              key={item.id}
-                              type="button"
-                              onClick={() => togglePermission(item.id)}
-                              className={`flex items-center gap-space-sm p-space-sm rounded-xl text-left transition-all ${
-                                granted
-                                  ? 'bg-surface-tint-blue shadow-sm'
-                                  : 'bg-surface-subtle opacity-70 hover:opacity-100'
-                              }`}
-                            >
-                              <span
-                                className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                                  granted ? 'bg-primary-container text-on-primary' : 'bg-surface-container text-text-tertiary'
-                                }`}
-                              >
-                                <Icon name={item.icon} className="text-[16px]" />
-                              </span>
-                              <span className="min-w-0 flex-1 truncate font-label-sm text-label-sm text-text-primary font-medium">
-                                {item.label}
-                              </span>
-                              <span
-                                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                                  granted ? 'border-primary bg-primary' : 'border-outline-variant'
-                                }`}
-                              >
-                                {granted && <Icon name="check" className="text-[12px] text-on-primary" />}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                  {renderContinue(2, 'Continue to branch')}
+                  </div>
+                )}
               </div>
 
               <div className="bg-surface-canvas rounded-2xl shadow-[0_4px_20px_-2px_rgba(13,37,76,0.05)] p-space-xl flex flex-col gap-space-lg">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-space-sm">
-                    <div className="w-10 h-10 rounded-xl bg-surface-container-high flex items-center justify-center text-primary">
-                      <Icon name="store" className="text-[22px]" />
-                    </div>
-                    <div>
-                      <h2 className="font-heading-sm text-heading-sm text-text-primary">
-                        4. Operating Branch Assignment
-                      </h2>
-                      <p className="font-caption text-caption text-text-secondary">
-                        Ties till sessions and audit logs to a physical location
-                      </p>
-                    </div>
-                  </div>
-                  <Icon name="my_location" className="text-text-tertiary" />
-                </div>
+                {renderSectionHeader(3, <Icon name="my_location" className="text-text-tertiary" />)}
 
+                {activeIndex === 3 && (
+                  <div className="flex flex-col gap-space-lg" id="invite-section-3">
                 <div className="flex flex-col gap-space-2xs">
                   <label className="font-label-md text-label-md text-text-primary font-semibold">
-                    Primary Retail Station
+                    Operating branch
                   </label>
                   <div className="relative flex items-center">
                     <Icon name="location_on" className="absolute left-3.5 text-primary text-[20px]" />
                     <select
                       className="w-full h-[52px] pl-11 pr-10 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md outline-none focus:ring-2 focus:ring-primary/20 appearance-none cursor-pointer"
                       value={branchIndex}
-                      onChange={(event) => setBranchIndex(Number(event.target.value))}
+                      onChange={(event) => {
+                        setBranchIndex(Number(event.target.value));
+                        reveal(4);
+                      }}
                     >
                       {branchOptions.map((option, index) => (
                         <option key={option} value={index}>
@@ -685,7 +774,10 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                       <button
                         key={preset}
                         type="button"
-                        onClick={() => setBranchIndex(index)}
+                        onClick={() => {
+                          setBranchIndex(index);
+                          reveal(4);
+                        }}
                         className={
                           branchIndex === index
                             ? 'h-9 px-space-md rounded-full bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold flex items-center gap-1 shadow-sm'
@@ -698,25 +790,26 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                     ))}
                   </div>
                 </div>
+
+                  {renderContinue(3, 'Continue to security')}
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="lg:col-span-5 flex flex-col gap-space-xl">
               {/* 5. Preset 6-digit PIN — created on the staff member's behalf, emailed to them */}
               <div className="bg-surface-canvas rounded-2xl shadow-[0_4px_24px_-2px_rgba(13,37,76,0.06)] p-space-xl flex flex-col gap-space-lg">
-                <div className="flex items-center justify-between pb-space-xs">
-                  <div className="flex flex-col">
-                    <span className="font-caption text-caption text-primary font-bold uppercase tracking-wider">
-                      Staff Security
-                    </span>
-                    <h3 className="font-heading-sm text-heading-sm text-text-primary">Set 6-Digit PIN</h3>
-                  </div>
-                  <div className="px-space-xs py-1 rounded-lg bg-surface-container text-on-surface-variant font-caption text-caption font-semibold">
+                {renderSectionHeader(
+                  4,
+                  <span className="px-space-xs py-1 rounded-lg bg-surface-container text-on-surface-variant font-caption text-caption font-semibold">
                     {pinOk ? 'PINs match' : 'Both fields required'}
-                  </div>
-                </div>
+                  </span>,
+                )}
 
-                <p className="font-caption text-caption text-text-secondary leading-relaxed -mt-space-sm">
+                {activeIndex === 4 && (
+                  <div className="flex flex-col gap-space-lg" id="invite-section-4">
+                <p className="font-caption text-caption text-text-secondary leading-relaxed">
                   As the owner, you create the 6-digit PIN on their behalf. It is delivered to{' '}
                   <span className="text-text-primary font-semibold">
                     {workEmail.trim() || 'their registered email'}
@@ -774,17 +867,22 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                   <Icon name={showPin ? 'visibility_off' : 'visibility'} className="text-[15px]" />
                   <span>{showPin ? 'Hide PIN' : 'Show PIN'}</span>
                 </button>
+
+                  {renderContinue(4, 'Review invitation')}
+                  </div>
+                )}
               </div>
 
               {/* 6. Preset invite message — link + PIN instructions, editable before sending */}
               <div className="bg-surface-canvas rounded-2xl shadow-[0_4px_20px_-2px_rgba(13,37,76,0.05)] p-space-xl flex flex-col gap-space-md">
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="font-caption text-caption text-primary font-bold uppercase tracking-wider">
-                      Invite Message
-                    </span>
-                    <h3 className="font-heading-sm text-heading-sm text-text-primary">Preset message &amp; link</h3>
-                  </div>
+                {renderSectionHeader(
+                  5,
+                  <span className="font-caption text-caption text-text-tertiary">Pre-filled</span>,
+                )}
+
+                {activeIndex === 5 && (
+                  <div className="flex flex-col gap-space-md" id="invite-section-5">
+                <div className="flex justify-end">
                   <button
                     className="font-label-sm text-label-sm text-primary font-semibold hover:underline active:scale-95 transition-transform"
                     type="button"
@@ -793,7 +891,7 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                       setMessageEdited(false);
                     }}
                   >
-                    Reset
+                    Reset message
                   </button>
                 </div>
 
@@ -833,56 +931,64 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                   pre-filled with the join link and PIN instructions, tap to edit before sending via{' '}
                   <span className="text-text-primary font-semibold">{channel === 'email' ? 'Email' : 'WhatsApp'}</span>.
                 </p>
+                  </div>
+                )}
               </div>
 
-              <div className="rounded-2xl p-space-lg bg-surface-tint-blue flex items-start gap-space-md shadow-[0_4px_16px_-2px_rgba(6,108,244,0.08)]">
-                <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center shrink-0 shadow-md">
-                  <Icon name="verified_user" className="text-[24px]" />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <h4 className="font-label-md text-label-md text-primary font-bold">
-                    Institutional Safeguard Guaranteed
-                  </h4>
-                  <p className="font-caption text-caption text-text-secondary leading-relaxed">
-                    Employees open the invite link to access this business account and sign in with their private
-                    6-digit PIN (sent to their email). Staff cannot access your personal banking, settlement
-                    schedules, or payout settings.
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-surface-canvas rounded-2xl shadow-[0_4px_20px_-2px_rgba(13,37,76,0.05)] p-space-xl flex flex-col gap-space-md">
-                <h4 className="font-heading-sm text-heading-sm text-text-primary">Activation Lifecycle</h4>
-                <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-surface-container-high">
-                  {ROADMAP_STEPS.map((step) => (
-                    <div key={step.title} className="relative flex items-start gap-space-sm">
-                      <div
-                        className={
-                          step.active
-                            ? 'absolute -left-6 top-0.5 w-4 h-4 rounded-full bg-primary flex items-center justify-center ring-4 ring-surface-canvas'
-                            : 'absolute -left-6 top-0.5 w-4 h-4 rounded-full bg-surface-container text-on-surface-variant flex items-center justify-center ring-4 ring-surface-canvas'
-                        }
-                      >
-                        <span
-                          className={
-                            step.active ? 'w-1.5 h-1.5 rounded-full bg-on-primary' : 'w-1.5 h-1.5 rounded-full bg-text-tertiary'
-                          }
-                        />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="font-label-sm text-label-sm text-text-primary font-semibold">{step.title}</span>
-                        <p className="font-caption text-caption text-text-secondary">{step.body}</p>
-                      </div>
+              {!live && (
+                <>
+                  <div className="rounded-2xl p-space-lg bg-surface-tint-blue flex items-start gap-space-md shadow-[0_4px_16px_-2px_rgba(6,108,244,0.08)]">
+                    <div className="w-10 h-10 rounded-xl bg-primary text-on-primary flex items-center justify-center shrink-0 shadow-md">
+                      <Icon name="verified_user" className="text-[24px]" />
                     </div>
-                  ))}
-                </div>
-              </div>
+                    <div className="flex flex-col gap-1">
+                      <h4 className="font-label-md text-label-md text-primary font-bold">
+                        Institutional Safeguard Guaranteed
+                      </h4>
+                      <p className="font-caption text-caption text-text-secondary leading-relaxed">
+                        Employees open the invite link to access this business account and sign in with their private
+                        6-digit PIN (sent to their email). Staff cannot access your personal banking, settlement
+                        schedules, or payout settings.
+                      </p>
+                    </div>
+                  </div>
 
+                  <div className="bg-surface-canvas rounded-2xl shadow-[0_4px_20px_-2px_rgba(13,37,76,0.05)] p-space-xl flex flex-col gap-space-md">
+                    <h4 className="font-heading-sm text-heading-sm text-text-primary">Activation Lifecycle</h4>
+                    <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-surface-container-high">
+                      {ROADMAP_STEPS.map((step) => (
+                        <div key={step.title} className="relative flex items-start gap-space-sm">
+                          <div
+                            className={
+                              step.active
+                                ? 'absolute -left-6 top-0.5 w-4 h-4 rounded-full bg-primary flex items-center justify-center ring-4 ring-surface-canvas'
+                                : 'absolute -left-6 top-0.5 w-4 h-4 rounded-full bg-surface-container text-on-surface-variant flex items-center justify-center ring-4 ring-surface-canvas'
+                            }
+                          >
+                            <span
+                              className={
+                                step.active ? 'w-1.5 h-1.5 rounded-full bg-on-primary' : 'w-1.5 h-1.5 rounded-full bg-text-tertiary'
+                              }
+                            />
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-label-sm text-label-sm text-text-primary font-semibold">{step.title}</span>
+                            <p className="font-caption text-caption text-text-secondary">{step.body}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {activeIndex === 5 && (
               <div className="bg-surface-canvas rounded-2xl shadow-[0_8px_24px_-4px_rgba(13,37,76,0.06)] p-space-lg flex flex-col gap-space-sm">
                 <button
                   type="button"
                   onClick={triggerInvite}
-                  className={`w-full h-[54px] rounded-2xl font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.3)] hover:scale-[1.01] active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs ${
+                  disabled={!completedSections.every(Boolean) || submitState !== 'idle'}
+                  className={`w-full h-[54px] rounded-2xl font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.3)] hover:scale-[1.01] active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs disabled:cursor-not-allowed disabled:opacity-60 ${
                     submitState === 'sent'
                       ? 'bg-badge-discount-text text-on-primary'
                       : 'bg-primary hover:bg-primary-container text-on-primary'
@@ -901,10 +1007,13 @@ export function DesktopStaffInviteScreen({ onNav, onBack }: DesktopStaffInviteSc
                   <Icon name="bookmark_border" className="text-[18px]" />
                   <span>Save Draft</span>
                 </button>
-                <p className="font-caption text-caption text-center text-text-tertiary pt-1">
-                  Protected by NDPR and Enterprise Merchant Operating Security standards.
-                </p>
+                {!live && (
+                  <p className="font-caption text-caption text-center text-text-tertiary pt-1">
+                    Protected by NDPR and Enterprise Merchant Operating Security standards.
+                  </p>
+                )}
               </div>
+              )}
             </div>
           </div>
         </div>

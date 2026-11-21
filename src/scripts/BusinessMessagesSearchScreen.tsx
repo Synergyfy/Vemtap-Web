@@ -161,7 +161,7 @@ export function BusinessMessagesSearchScreen({
           orderSuffix: row.chipLabel,
           messagePrefix: '',
           message: row.preview,
-          metaIcon: row.unread ? 'mark_chat_unread' : 'chat',
+          metaIcon: 'vemtap-chat',
           metaIconClass: row.unread ? 'text-primary' : 'text-text-tertiary',
           metaLabel: row.unread ? `${row.unreadCount} unread` : 'Read',
           metaItem: row.phone ?? '',

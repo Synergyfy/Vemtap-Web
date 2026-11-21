@@ -728,7 +728,7 @@ export function DesktopSegmentsHubScreen({
                 }}
               >
                 <div className="w-11 h-11 rounded-xl bg-badge-discount-bg flex items-center justify-center text-badge-discount-text shrink-0">
-                  <Icon name="mark_chat_unread" className="text-[24px]" />
+                  <Icon name="vemtap-chat" className="text-[24px]" />
                 </div>
                 <div className="flex flex-col min-w-0 flex-1">
                   <span className="text-body-md font-button-primary text-text-primary font-semibold">

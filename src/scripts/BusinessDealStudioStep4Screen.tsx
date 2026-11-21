@@ -7,9 +7,11 @@ import { dealDurationLabel, formatDealValidity } from './dealStudio';
 import {
   DEAL_TYPE_OPTIONS,
   claimLimitLabel,
+  dealBadgeLabel,
   dealTypeTitle,
   describeComboRules,
   formatFlashValidity,
+  isCurrentPriceDeal,
   resolveDealPricing,
   validateDealConfiguration,
 } from './deals/dealStudioShared';
@@ -36,17 +38,6 @@ const HERO_IMAGE = {
   src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB3zk8H_VVFT_7YsSAEfRslYg_o-9CPBE1oNObjdBBoEPq726Ajh14wQjrdHZDIfHquWuYaJ57IRfi4ewZAuR-wK6ryANgZTN0vJdXrIsxml-SdNyMr2K19Q3D5NBNGa8CeOSQFmZpQYt4uMfS4DsdwSTUNtLubw9qloAP_2NiIn_4cUBRWqXURxptZWQtGsP09QHtSNJhj0KaNJj81tJjRQ3D_CFHMRSXK7Nc6nMqb',
   alt: 'A juicy, charcoal-grilled woodfire aged ribeye steak served on a rustic dark slate board with melted rosemary herb butter, coarse sea salt flakes, and tender roasted baby tomatoes. Warm ambient restaurant lighting with rich deep tones and high-end culinary photography.',
 };
-
-const MAP_IMAGE = {
-  src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAWtUvHLIcbqcTqjm7Kx_93XfJ_fHBLr7QmFDcmIVAABkhYXEXSspRFsRgxjOCsEPgtYtQ28EK0yQWUuVXy5cy5za0PMZF5WAMIYnKg4gw9ML3glWMn4EmyvyEKGpnzxU1zKRS-akWkk7GGyVGMoHdo6JfOJCYzajOjjnX5icjnTygV1VVPm4zhcxadKg-Z1UkVG8YxFNpXvGKsTQ0TXoPvgNbl96fMziRslo72aL1M',
-  alt: 'Map coverage zone around Wuse 2, Abuja, Nigeria',
-};
-
-const BRANCH_DETAILS: Array<{ key: keyof DealStudioDraft['branches']; name: string; address: string }> = [
-  { key: 'wuseII', name: 'Wuse II Flagship', address: 'Aminu Kano Crescent, Abuja' },
-  { key: 'garkiII', name: 'Garki II Branch', address: 'Tafawa Balewa Way, Abuja' },
-  { key: 'maitama', name: 'Maitama Heights', address: 'Plot 702 Aguiyi Ironsi St, Maitama District, Abuja' },
-];
 
 const DAY_ORDER: Array<keyof DealStudioDraft['days']> = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
@@ -83,18 +74,21 @@ export function BusinessDealStudioStep4Screen({
   const baseAmount = parseAmount(regularVariant?.price ?? draft.basePrice);
   const pct = studio.discountPct;
   const bundleCatalog = useDealBundleCatalog(draft.title, baseAmount);
-  // Live: the business's branches picked in step 3; demo keeps the sample outlets.
+  // The business's branches picked in step 3.
   const dealBranches = useDealBranches(studio);
-  const live = dealBranches.live;
   const pricing = resolveDealPricing(studio, baseAmount, bundleCatalog);
   const savings = pricing.savings;
   const dealAmount = pricing.dealPrice;
   const savingsPct = pricing.savingsPct;
+  const isCurrent = isCurrentPriceDeal(studio);
   const strategyTitle = dealTypeTitle(studio.strategy);
-  const strategyIcon = DEAL_TYPE_OPTIONS.find((option) => option.id === studio.strategy)?.icon ?? 'percent';
+  const strategyIcon = isCurrent
+    ? 'payments'
+    : DEAL_TYPE_OPTIONS.find((option) => option.id === studio.strategy)?.icon ?? 'percent';
   const comboRules = studio.strategy === 'combo' ? describeComboRules(studio.combo, baseAmount, bundleCatalog) : [];
-  const strategyDetail =
-    studio.strategy === 'fixed'
+  const strategyDetail = isCurrent
+    ? 'Current Price (no discount — customers pay the listed price)'
+    : studio.strategy === 'fixed'
       ? `Fixed Amount Off (₦${formatAmount(studio.fixed.amountOff)} off${
           studio.fixed.minSpend > 0 ? ` • min spend ₦${formatAmount(studio.fixed.minSpend)}` : ''
         })`
@@ -103,9 +97,11 @@ export function BusinessDealStudioStep4Screen({
         : studio.strategy === 'combo'
           ? (comboRules[0] ?? 'Combo & Bundle Deal')
           : `Percentage Discount (${pct}% Off)`;
-  const activeBranches = live
-    ? dealBranches.selected.map((branch) => ({ key: branch.id, name: branch.name, address: branch.area }))
-    : BRANCH_DETAILS.filter((branch) => studio.branches[branch.key]);
+  const activeBranches = dealBranches.selected.map((branch) => ({
+    key: branch.id,
+    name: branch.name,
+    address: branch.area,
+  }));
   const activeDayKeys = DAY_ORDER.filter((key) => studio.days[key]);
   const weekdayCount = (['mon', 'tue', 'wed', 'thu', 'fri'] as Array<keyof DealStudioDraft['days']>).filter(
     (key) => studio.days[key],
@@ -123,7 +119,7 @@ export function BusinessDealStudioStep4Screen({
     ...(studio.claimSteps.length === 0 ? ['Add at least one “how to claim” instruction.'] : []),
     ...(studio.terms.length === 0 ? ['Add at least one term & condition.'] : []),
     ...(activeBranches.length === 0
-      ? [live ? 'This item isn’t sold at any of your branches yet — add it to a branch first.' : 'Select at least one participating branch.']
+      ? ['Select at least one participating branch in Step 3.']
       : []),
     ...(activeDayKeys.length === 0 ? ['Select at least one redemption day.'] : []),
   ];
@@ -236,7 +232,7 @@ export function BusinessDealStudioStep4Screen({
             <div className="relative w-24 h-24 rounded-xl overflow-hidden shrink-0 bg-surface-container">
               <img className="w-full h-full object-cover" alt={draftImageAlt(draft.title, HERO_IMAGE.alt)} src={draftImage(draft.mainImage, HERO_IMAGE.src)} />
               <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold shadow-sm">
-                {savingsPct}% OFF
+                {dealBadgeLabel(studio, savingsPct)}
               </div>
             </div>
             <div className="flex flex-col min-w-0 flex-1">
@@ -252,24 +248,28 @@ export function BusinessDealStudioStep4Screen({
                 {studio.strategy === 'percentage' ? `${pct}% Off ${draft.title}` : `${strategyTitle}: ${draft.title}`}
               </h2>
               <p className="font-body-md text-body-md text-text-secondary line-clamp-1 mt-0.5">
-                {live ? draft.description || draft.title : 'Signature dry-aged prime beef cut with truffle glaze.'}
+                {draft.description || draft.title}
               </p>
             </div>
           </div>
           <div className="rounded-xl bg-surface-subtle p-space-sm flex flex-col gap-space-xs">
             <div className="flex items-baseline justify-between">
-              <span className="font-body-md text-body-md text-text-secondary">Original Price</span>
-              <span className="font-body-md text-body-md text-text-tertiary line-through">
+              <span className="font-body-md text-body-md text-text-secondary">
+                {isCurrent ? 'Sales Price' : 'Original Price'}
+              </span>
+              <span
+                className={`font-body-md text-body-md ${isCurrent ? 'text-text-primary' : 'text-text-tertiary line-through'}`}
+              >
                 ₦{formatAmount(baseAmount)}
               </span>
             </div>
             <div className="flex items-baseline justify-between pt-1">
               <div className="flex flex-col">
                 <span className="font-heading-sm text-heading-sm font-semibold text-text-primary">
-                  Member Pay Price
+                  {isCurrent ? 'Deal Price' : 'Member Pay Price'}
                 </span>
                 <span className="font-caption text-caption text-badge-discount-text font-medium">
-                  Instant savings of ₦{formatAmount(savings)}
+                  {isCurrent ? 'Same as your listed price — no discount' : `Instant savings of ₦${formatAmount(savings)}`}
                 </span>
               </div>
               <span className="font-heading-lg text-heading-lg font-bold text-primary">
@@ -326,16 +326,6 @@ export function BusinessDealStudioStep4Screen({
               </span>
               <span className="font-caption text-caption text-text-tertiary mt-0.5">Per customer</span>
             </div>
-            {/* Not stored by the API yet — demo only. */}
-            {!live && (
-              <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-col">
-                <span className="font-caption text-caption text-text-secondary">Max Per Order</span>
-                <span className="font-heading-sm text-heading-sm text-text-primary font-semibold mt-0.5">
-                  {studio.maxUnitsPerOrder} Units
-                </span>
-                <span className="font-caption text-caption text-text-tertiary mt-0.5">Per single order</span>
-              </div>
-            )}
           </div>
           <div className="flex flex-col space-y-2.5 mt-2">
             {studio.gifting && (
@@ -383,20 +373,6 @@ export function BusinessDealStudioStep4Screen({
                 </div>
               </div>
             </div>
-            {/* No advance-notice setting exists yet — sample only. */}
-            {!live && studio.reservation && (
-              <div className="flex items-start gap-space-xs">
-                <div className="w-7 h-7 rounded-full bg-surface-container flex items-center justify-center shrink-0 mt-0.5">
-                  <Icon name="hourglass_top" className="text-secondary text-[16px]" />
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <span className="font-label-md text-label-md text-text-primary font-medium">Advance Notice</span>
-                  <span className="font-caption text-caption text-text-secondary">
-                    1 hour advance table or prep reservation required prior to redemption.
-                  </span>
-                </div>
-              </div>
-            )}
           </div>
         </article>
 
@@ -448,7 +424,7 @@ export function BusinessDealStudioStep4Screen({
                 {studio.duration === 'forever' ? 'Always On' : `${dealDurationLabel(studio.duration)} Window`}
               </span>
               <span className="font-caption text-caption text-text-secondary">
-                {studio.duration === 'forever' ? 'No fixed end date' : live ? formatDealValidity(studio) : 'Oct 19 – Nov 2, 2024'}
+                {studio.duration === 'forever' ? 'No fixed end date' : formatDealValidity(studio)}
               </span>
             </div>
           </div>
@@ -518,8 +494,7 @@ export function BusinessDealStudioStep4Screen({
           </article>
         )}
 
-        {live ? (
-          <article className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-sm">
+        <article className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-sm">
             <div className="flex items-center gap-2">
               <Icon name="rocket_launch" className="text-primary text-[20px]" />
               <h3 className="font-heading-sm text-heading-sm text-text-primary">Launch Summary</h3>
@@ -549,62 +524,6 @@ export function BusinessDealStudioStep4Screen({
               </div>
             )}
           </article>
-        ) : (
-          <article className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-md">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Icon name="radar" className="text-primary text-[20px]" />
-                <h3 className="font-heading-sm text-heading-sm text-text-primary">Audience Reach &amp; Forecast</h3>
-              </div>
-              <span className="px-2.5 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
-                Hyperlocal Live
-              </span>
-            </div>
-            <div className="p-space-sm rounded-xl bg-surface-tint-blue flex items-center gap-space-sm">
-              <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center shrink-0 shadow-[0_4px_16px_rgba(6,108,244,0.3)]">
-                <Icon name="notifications_active" className="text-on-primary text-[24px]" />
-              </div>
-              <div className="flex flex-col min-w-0">
-                <div className="flex items-baseline gap-1">
-                  <span className="font-heading-lg text-heading-lg font-bold text-text-primary">~1,420</span>
-                  <span className="font-label-sm text-label-sm text-primary font-medium">foodies</span>
-                </div>
-                <p className="font-caption text-caption text-text-secondary leading-snug">
-                  Within 3.5km of your {activeBranches.length} locations will receive a tap broadcast upon publish.
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-col space-y-2">
-              <div className="flex items-center gap-2.5">
-                <Icon name="push_pin" className="text-primary text-[18px]" />
-                <span className="font-body-md text-body-md text-text-primary">
-                  Pinned to top of <strong className="font-semibold">Apo/Wuse</strong> local deals feed
-                </span>
-              </div>
-              <div className="flex items-center gap-2.5">
-                <Icon name="verified_user" className="text-badge-discount-text text-[18px]" />
-                <span className="font-body-md text-body-md text-text-primary">
-                  <strong className="font-semibold text-badge-discount-text">0% Commission:</strong> Customers pay ₦
-                  {formatAmount(dealAmount)} directly to you.
-                </span>
-              </div>
-            </div>
-            <div
-              className="w-full h-28 rounded-xl bg-cover bg-center relative overflow-hidden shadow-inner"
-              data-location="Wuse 2, Abuja, Nigeria"
-              style={{ backgroundImage: `url('${MAP_IMAGE.src}')` }}
-              role="img"
-              aria-label={MAP_IMAGE.alt}
-            >
-              <div className="absolute inset-0 bg-gradient-to-t from-on-background/70 via-transparent to-transparent flex items-end p-2.5">
-                <div className="flex items-center gap-1.5 text-on-primary font-caption text-caption">
-                  <Icon name="my_location" className="text-[14px]" />
-                  <span>Coverage Zone: 3.5km Radius Active</span>
-                </div>
-              </div>
-            </div>
-          </article>
-        )}
       </div>
 
       <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-surface/95 backdrop-blur-xl px-margin pt-space-xs pb-safe flex flex-col gap-space-xs shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">

@@ -49,6 +49,7 @@ import { adWalletService } from '../services';
 import { apiErrorMessage } from '../services/errorMessages';
 import { planErrorMessage } from '../services/planErrors';
 import { useLiveClusterBoost } from './clusterLive';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
 
 interface ClusterBoostFlowProps {
   onBack: () => void;
@@ -124,9 +125,17 @@ export function ClusterBoostFlow({
   const live = hasApiConfig();
   const paymentMode = usePaymentMode();
   const liveBoost = useLiveClusterBoost();
+  const myBusiness = useMyBusiness();
+  const business = myBusiness.data;
   const clusterState = useMemo(() => getClusterState(), []);
   const cluster = live ? liveBoost.cluster : clusterState.currentCluster;
   const hasActiveBoost = live ? liveBoost.hasActiveBoostForItem : hasActiveBoostForItem;
+  const profileItem = clusterState.showcaseItems.find((i) => i.entityType === 'profile');
+  const businessName = business?.name ?? (profileItem?.businessName || 'Urban Grill & Bistro');
+  const businessLogo = business?.logoUrl ?? null;
+  const businessCategory = business?.subcategory?.name ?? business?.category?.name ?? 'Artisan Smokehouse & Grill';
+  const businessLocation = [business?.address, business?.city].filter(Boolean).join(', ') || 'Maitama, Abuja';
+  const businessVerified = business?.isVerified ?? true;
 
   const localEligible = useMemo(() => getBoostEligibleItems(), []);
   const eligibleItems = live ? liveBoost.eligibleItems : localEligible;
@@ -398,28 +407,55 @@ export function ClusterBoostFlow({
     </header>
   );
 
+  const isProfile = selectedItem?.entityType === 'profile';
+
   const itemSummaryCard = selectedItem && (
-    <div className="p-3 rounded-2xl bg-surface-subtle border border-border-subtle flex items-center gap-3">
-      <img
-        src={selectedItem.image}
-        alt={selectedItem.title}
-        className="w-14 h-14 rounded-xl object-cover border border-border-subtle shrink-0"
-      />
+    <div className="p-3.5 rounded-2xl bg-surface-subtle border border-border-subtle flex items-start gap-3.5">
+      {isProfile ? (
+        <div className="w-16 h-16 rounded-xl bg-surface-canvas border border-border-subtle p-1 flex items-center justify-center shrink-0 overflow-hidden shadow-xs">
+          {businessLogo ? (
+            <img src={businessLogo} alt={businessName} className="w-full h-full object-cover rounded-lg" />
+          ) : (
+            <div className="w-full h-full bg-primary-container rounded-lg flex items-center justify-center font-bold text-on-primary text-[20px]">
+              {businessName.charAt(0).toUpperCase() || 'V'}
+            </div>
+          )}
+        </div>
+      ) : (
+        <img
+          src={selectedItem.image}
+          alt={selectedItem.title}
+          className="w-14 h-14 rounded-xl object-cover border border-border-subtle shrink-0"
+        />
+      )}
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-surface-canvas text-text-secondary border border-border-subtle">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-surface-canvas text-primary border border-border-subtle">
             {CATEGORY_LABELS[selectedItem.entityType]}
           </span>
-          {!selectedItem.showInCluster && (
+          {isProfile ? (
+            <span className="inline-flex items-center gap-1 text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">
+              <Icon name="verified" className="text-[11px]" />
+              Verified Storefront
+            </span>
+          ) : !selectedItem.showInCluster ? (
             <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
               Hidden from rotator
             </span>
-          )}
+          ) : null}
         </div>
-        <p className="text-sm font-semibold text-text-primary truncate mt-0.5">
-          {selectedItem.title}
+        <p className="text-sm font-bold text-text-primary truncate mt-1">
+          {isProfile ? businessName : selectedItem.title}
         </p>
-        <p className="text-[11px] text-text-secondary truncate">{selectedItem.businessName}</p>
+        <p className="text-[11px] text-text-secondary truncate">
+          {isProfile ? `${businessCategory} • ${businessLocation}` : selectedItem.businessName}
+        </p>
+        {isProfile && (
+          <div className="flex items-center gap-space-2xs text-[11px] text-text-tertiary mt-1">
+            <Icon name="location_on" className="text-[13px] text-primary" />
+            <span className="truncate">{businessLocation}</span>
+          </div>
+        )}
       </div>
       {phase !== 'select' && !preselected && (
         <button
@@ -429,7 +465,7 @@ export function ClusterBoostFlow({
             setCategory(null);
             setPhase('select');
           }}
-          className="text-[11px] font-semibold text-primary shrink-0"
+          className="text-[11px] font-semibold text-primary shrink-0 hover:underline"
         >
           Change
         </button>
@@ -763,24 +799,49 @@ export function ClusterBoostFlow({
                           : 'bg-surface-subtle border-border-subtle hover:border-primary/30'
                     }`}
                   >
-                    <img
-                      src={item.image}
-                      alt={item.title}
-                      className="w-14 h-14 rounded-xl object-cover border border-border-subtle shrink-0"
-                    />
+                    {item.entityType === 'profile' ? (
+                      <div className="w-14 h-14 rounded-xl bg-surface-canvas border border-border-subtle p-1 flex items-center justify-center shrink-0 overflow-hidden shadow-xs">
+                        {businessLogo ? (
+                          <img src={businessLogo} alt={businessName} className="w-full h-full object-cover rounded-lg" />
+                        ) : (
+                          <div className="w-full h-full bg-primary-container rounded-lg flex items-center justify-center font-bold text-on-primary text-[18px]">
+                            {businessName.charAt(0).toUpperCase() || 'V'}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <img
+                        src={item.image}
+                        alt={item.title}
+                        className="w-14 h-14 rounded-xl object-cover border border-border-subtle shrink-0"
+                      />
+                    )}
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-text-primary truncate">
-                        {item.title}
-                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-semibold text-text-primary truncate">
+                          {item.entityType === 'profile' ? businessName : item.title}
+                        </p>
+                        {item.entityType === 'profile' && businessVerified && (
+                          <Icon name="verified" className="text-[15px] text-badge-discount-text shrink-0" />
+                        )}
+                      </div>
                       <p className="text-[11px] text-text-secondary truncate">
-                        {isProfileExtend
-                          ? 'Live boost — extend days or raise priority'
-                          : alreadyBoosted
-                            ? 'Already has a live cluster boost'
-                            : item.showInCluster
-                              ? 'In the rotator now'
-                              : 'Hidden from the rotator'}
+                        {item.entityType === 'profile'
+                          ? `${businessCategory} • ${businessLocation}`
+                          : isProfileExtend
+                            ? 'Live boost — extend days or raise priority'
+                            : alreadyBoosted
+                              ? 'Already has a live cluster boost'
+                              : item.showInCluster
+                                ? 'In the rotator now'
+                                : 'Hidden from the rotator'}
                       </p>
+                      {item.entityType === 'profile' && (
+                        <span className="inline-flex items-center gap-1 text-[10px] text-primary font-medium mt-0.5">
+                          <Icon name="storefront" className="text-[12px]" />
+                          <span>Official Storefront Profile Spotlight</span>
+                        </span>
+                      )}
                     </div>
                     {alreadyBoosted && !isProfileExtend ? (
                       <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary shrink-0">

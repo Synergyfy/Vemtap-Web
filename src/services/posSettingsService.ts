@@ -35,6 +35,12 @@ export interface PosSettings {
   reprintRequiresPin?: boolean | null;
   drawerOpenRequiresPin?: boolean | null;
   discountOverrideRequiresPin?: boolean | null;
+  loyaltyEnabled?: boolean | null;
+  loyaltyRedeemThreshold?: number | null;
+  lowStockAlerts?: boolean | null;
+  dailySalesSummary?: boolean | null;
+  newOrderAlert?: boolean | null;
+  staffActivityAlerts?: boolean | null;
 }
 
 /** Partial update body; the server merges field by field. */

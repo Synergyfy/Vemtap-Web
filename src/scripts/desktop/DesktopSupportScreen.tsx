@@ -11,7 +11,6 @@ interface DesktopSupportScreenProps {
 const TOPICS = [
   { id: 'deals', icon: 'local_offer', label: 'Deals & Claims' },
   { id: 'orders', icon: 'shopping_bag', label: 'Orders & Delivery' },
-  { id: 'bookings', icon: 'calendar_today', label: 'Bookings' },
   { id: 'account', icon: 'person', label: 'Account & Login' },
   { id: 'payments', icon: 'account_balance', label: 'Payments' },
   { id: 'other', icon: 'help', label: 'Something Else' },
@@ -20,7 +19,7 @@ const TOPICS = [
 const CHANNELS: Array<{ href: string; icon: string; iconClass: string; label: string; sub: string }> = [
   {
     href: 'https://wa.me/2348000000000',
-    icon: 'chat',
+    icon: 'whatsapp',
     iconClass: 'bg-badge-discount-bg text-badge-discount-text',
     label: 'WhatsApp Desk',
     sub: 'Fastest outside chat hours',

@@ -247,7 +247,7 @@ export function DesktopVerificationIdReviewScreen({
             <div className="bg-surface-canvas rounded-xl p-space-lg shadow-sm flex flex-col gap-space-md">
               <div className="flex items-center gap-space-sm">
                 <div className="w-10 h-10 rounded-full bg-badge-discount-bg text-badge-discount-text flex items-center justify-center flex-shrink-0">
-                  <Icon name="chat" className="text-[22px]" />
+                  <Icon name="whatsapp" className="text-[22px]" />
                 </div>
                 <div>
                   <h4 className="font-heading-sm text-heading-sm text-on-surface">Instant Live Assistance</h4>
@@ -264,7 +264,7 @@ export function DesktopVerificationIdReviewScreen({
                 className="w-full bg-badge-discount-bg hover:bg-badge-discount-text/20 text-badge-discount-text py-space-sm px-space-md rounded-lg font-button-secondary text-button-secondary transition-colors flex items-center justify-center gap-space-xs"
                 type="button"
               >
-                <Icon name="forum" className="text-[20px]" />
+                <Icon name="whatsapp" className="text-[20px]" />
                 <span>Chat with Verification Desk on WhatsApp</span>
               </button>
             </div>

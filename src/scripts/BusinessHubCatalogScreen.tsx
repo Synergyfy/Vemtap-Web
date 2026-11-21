@@ -49,6 +49,12 @@ const PLACEHOLDER_IMG =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Crect width='80' height='80' fill='%23e5e7eb'/%3E%3Ctext x='40' y='44' font-size='9' text-anchor='middle' fill='%239ca3af'%3Eno image%3C/text%3E%3C/svg%3E";
 
 interface BusinessHubCatalogScreenProps {
+  /** Products and Services are separate pages; this screen renders one of them. */
+  mode?: 'products' | 'services';
+  /** Route mode: open the new-product wizard straight away. */
+  startWithNewProduct?: boolean;
+  /** Route mode: open the new-service wizard straight away. */
+  startWithNewService?: boolean;
   onTab: (tab: BusinessTabKey) => void;
   onOpenAssignment: (itemName: string) => void;
   onBoost: (itemName: string) => void;
@@ -252,20 +258,32 @@ function liveToItem(item: LiveCatalogueItem, offers: BusinessOffer[], branchCoun
   };
 }
 
-export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onMakeDeal, notice }: BusinessHubCatalogScreenProps) {
+export function BusinessHubCatalogScreen({
+  mode = 'products',
+  startWithNewProduct = false,
+  startWithNewService = false,
+  onTab,
+  onOpenAssignment,
+  onBoost,
+  onMakeDeal,
+  notice,
+}: BusinessHubCatalogScreenProps) {
+  // Product-only rollout: service mode and the service wizard stay inactive.
+  void mode;
   // Live: the active branch's real catalogue; demo keeps the sample cards.
   const live = hasApiConfig();
   const itemsQuery = useCatalogueItems();
-  const categoriesQuery = useCatalogueCategories();
+  const categoriesQuery = useCatalogueCategories('product');
   const offersQuery = useOffers();
   const { branches } = useBusinessBranch();
   const { create, update } = useCatalogueItemMutations();
   const sync = useOnboardingSync();
   const liveItems = itemsQuery.data ?? [];
-  const categoryRows = live ? categoriesQuery.data ?? [] : getCentralCategories();
+  // Product-only rollout: both sources are already filtered to product categories.
+  const categoryRows = live ? categoriesQuery.data ?? [] : getCentralCategories('product');
   const liveById = new Map(liveItems.map((item) => [item.id, item]));
   const [addOpen, setAddOpen] = useState(false);
-  const [tab, setTab] = useState<'products' | 'services' | 'categories'>('products');
+  const [tab, setTab] = useState<'products' | 'categories'>('products');
   const [chip, setChip] = useState('All Status');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
@@ -283,16 +301,22 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
   const [toast, setToast] = useState<string | null>(null);
 
   // Manual add-product flow: reuses the same onboarding wizard steps.
-  const [manualStep, setManualStep] = useState<0 | 1 | 2 | 3 | 4 | 5>(0);
-  const [manualDraft, setManualDraft] = useState<ProductDraft>({ ...INITIAL_PRODUCT_DRAFT });
+  const [manualStep, setManualStep] = useState<0 | 1 | 2 | 3 | 4 | 5>(startWithNewProduct ? 1 : 0);
+  const [manualDraft, setManualDraft] = useState<ProductDraft>({
+    ...(startWithNewProduct && live ? BLANK_PRODUCT_DRAFT : INITIAL_PRODUCT_DRAFT),
+  });
   // Add / edit a service: the same four steps as onboarding, published into the catalogue.
+  // Product-only rollout: the service wizard is never entered.
   const [serviceStep, setServiceStep] = useState<0 | 1 | 2 | 3 | 4>(0);
-  const [serviceDraft, setServiceDraft] = useState<ServiceDraft>({ ...INITIAL_SERVICE_DRAFT });
+  const [serviceDraft, setServiceDraft] = useState<ServiceDraft>({
+    ...(startWithNewService && live ? BLANK_SERVICE_DRAFT : INITIAL_SERVICE_DRAFT),
+  });
   const startService = () => {
     setAddOpen(false);
     setServiceDraft({ ...(live ? BLANK_SERVICE_DRAFT : INITIAL_SERVICE_DRAFT) });
     setServiceStep(1);
   };
+  void startService;
   /** Live: open a saved item in the form that created it; publishing then updates it. */
   const editLiveItem = (item: LiveCatalogueItem) => {
     if (item.itemType === 'service') {
@@ -308,12 +332,16 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
   const importedKeys = new Set(importedProducts.map((product) => product.id));
   const catalogItems = live
     ? liveItems
-        .filter((item) => (tab === 'services' ? item.itemType === 'service' : item.itemType !== 'service'))
+        .filter((item) => item.itemType !== 'service')
         .map((item) => liveToItem(item, offersQuery.data ?? [], branches.filter((branch) => branch.id).length))
-    : CATALOG_ITEMS;
+    : CATALOG_ITEMS.filter((item) => !item.sku.startsWith('SRV-'));
   const allItems = live ? catalogItems : [...importedItems, ...catalogItems];
   const liveCount = (type: 'product' | 'service') =>
-    liveItems.filter((item) => (type === 'service' ? item.itemType === 'service' : item.itemType !== 'service')).length;
+    live
+      ? liveItems.filter((item) => (type === 'service' ? item.itemType === 'service' : item.itemType !== 'service')).length
+      : type === 'product'
+      ? catalogItems.length
+      : 0;
   const liveDealCount = (offersQuery.data ?? []).filter((offer) => offer.status === 'active').length;
   const filterChips = live
     ? ['All Status', `Active Deals (${liveDealCount})`, 'Low Stock', 'Dine-In & Takeaway']
@@ -629,6 +657,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
             </button>
             {addOpen && (
               <div className="absolute right-0 top-full mt-1 w-44 bg-surface-canvas rounded-xl shadow-lg z-40 p-1 border border-border-subtle flex flex-col gap-0.5">
+                {/* Product-only rollout: the service add action is hidden. */}
                 <button
                   className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-surface-container text-text-primary text-[12px] font-medium flex items-center gap-2"
                   type="button"
@@ -640,14 +669,6 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
                   <Icon name="inventory_2" className="text-primary text-[16px]" />
                   <span>+ Add Product</span>
                 </button>
-                <button
-                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-surface-container text-text-primary text-[12px] font-medium flex items-center gap-2"
-                  type="button"
-                  onClick={startService}
-                >
-                  <Icon name="room_service" className="text-tertiary-container text-[16px]" />
-                  <span>+ Add Service</span>
-                </button>
               </div>
             )}
           </div>
@@ -657,8 +678,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
         <div className="px-margin mb-space-xs">
           <div className="flex items-center bg-surface-container-high p-0.5 rounded-lg">
             {[
-              { key: 'products' as const, label: live ? `Products (${liveCount('product')})` : 'Products (28)' },
-              { key: 'services' as const, label: live ? `Services (${liveCount('service')})` : 'Services (14)' },
+              { key: 'products' as const, label: `Products (${liveCount('product')})` },
               { key: 'categories' as const, label: `Categories (${categoryRows.length})` },
             ].map((catalogTab) => {
               const active = tab === catalogTab.key;
@@ -722,7 +742,6 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
               </div>
             ) : (
               categoryRows.map((entry) => {
-                const type = 'type' in entry ? entry.type : entry.kind ?? 'product';
                 const linkedItems = liveItems.filter(
                   (item) => item.categoryId === entry.id || item.category?.id === entry.id,
                 ).length;
@@ -732,12 +751,12 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
                     className="bg-surface-canvas rounded-xl p-3 shadow-xs border border-border-subtle/50 flex items-center gap-3"
                   >
                     <div className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
-                      <Icon name={entry.icon || (type === 'service' ? 'spa' : 'category')} className="text-[20px]" />
+                      <Icon name={entry.icon || 'category'} className="text-[20px]" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <span className="block font-label-md text-label-md font-semibold text-text-primary truncate">{entry.name}</span>
                       <span className="font-caption text-caption text-text-secondary">
-                        {type === 'service' ? 'Service' : 'Product'} · {linkedItems} {type === 'service' ? 'services' : 'products'}
+                        Product · {linkedItems} products
                       </span>
                     </div>
                   </div>
@@ -1057,6 +1076,7 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
       {/* Floating Quick-Action Deck */}
       <div className="fixed bottom-24 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-margin z-40 flex items-center justify-center gap-space-xs pointer-events-none">
         <div className="pointer-events-auto bg-surface-canvas/95 backdrop-blur-md p-1.5 rounded-full shadow-xl flex items-center gap-space-2xs">
+          {/* Product-only rollout: only the product add action is shown. */}
           <button
             className="flex items-center gap-1.5 px-space-sm py-2 rounded-full bg-primary-container text-on-primary-container font-label-md text-label-md font-semibold shadow-md active:scale-95 transition-all"
             type="button"
@@ -1064,14 +1084,6 @@ export function BusinessHubCatalogScreen({ onTab, onOpenAssignment, onBoost, onM
           >
             <Icon name="add_circle" className="text-[18px]" />
             <span>+ Add Product</span>
-          </button>
-          <button
-            className="flex items-center gap-1.5 px-space-sm py-2 rounded-full bg-surface-container-high text-on-surface font-label-md text-label-md font-semibold hover:bg-surface-container-highest active:scale-95 transition-all"
-            type="button"
-            onClick={startService}
-          >
-            <Icon name="design_services" className="text-[18px] text-tertiary-container" />
-            <span>+ Add Service</span>
           </button>
         </div>
       </div>

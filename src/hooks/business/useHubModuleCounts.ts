@@ -43,9 +43,9 @@ export function useHubModuleCounts(): Partial<Record<HubModuleCountKey, string>>
   const counts: Partial<Record<HubModuleCountKey, string>> = {};
   if (deals.data) counts.deals = `${Number(deals.data.activeDeals ?? 0)} Active`;
   if (items.data) {
-    const services = items.data.filter((item) => item.itemType === 'service').length;
-    const products = items.data.length - services;
-    counts.catalog = `${products} ${products === 1 ? 'Item' : 'Items'} • ${services} ${services === 1 ? 'Service' : 'Services'}`;
+    // Product-only rollout: service catalogue items are not counted in the hub.
+    const products = items.data.filter((item) => item.itemType !== 'service').length;
+    counts.catalog = `${products} ${products === 1 ? 'Item' : 'Items'}`;
   }
   if (customers.data) counts.customers = `${customers.data.total ?? 0} Customers`;
   if (team.data) counts.team = `${team.data.length} Staff`;

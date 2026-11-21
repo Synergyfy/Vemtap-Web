@@ -300,6 +300,8 @@ export function BusinessOrdersHubScreen({
   onSwitchBookings,
   onOpenOrder,
 }: BusinessOrdersHubScreenProps) {
+  // Product-only rollout: the bookings switcher stays hidden.
+  void onSwitchBookings;
   const [statusChip, setStatusChip] = useState<StatusChipKey>('all');
   const [channel, setChannel] = useState<ChannelKey>('all');
   const [payment, setPayment] = useState<PaymentKey>('all');
@@ -343,6 +345,7 @@ export function BusinessOrdersHubScreen({
   const openBookings = live
     ? String((bookingsQuery.data ?? []).filter((b) => ['booked', 'confirmed'].includes(bookingStatus(b))).length)
     : '3';
+  void openBookings;
   const toAction = live ? countFor('new') : 3;
 
   useEffect(() => {
@@ -402,6 +405,7 @@ export function BusinessOrdersHubScreen({
                 {openOrders}
               </span>
             </button>
+            {/* Product-only rollout: the Bookings tab is hidden.
             <button
               className="flex-1 py-2 rounded-lg text-text-secondary hover:text-on-surface font-button-secondary text-button-secondary flex items-center justify-center gap-space-xs transition-all"
               type="button"
@@ -412,6 +416,7 @@ export function BusinessOrdersHubScreen({
                 {openBookings}
               </span>
             </button>
+            */}
           </div>
           {/* Channel and status */}
           <div className="flex items-center gap-space-xs">
@@ -501,7 +506,7 @@ export function BusinessOrdersHubScreen({
               </button>
             ))}
           </div>
-          <DealClaimsLedger title="Deal claims and vouchers" search={search} />
+          <DealClaimsLedger title="Deal claims and vouchers" search={search} allowRedeem />
           <div className="h-4" />
         </div>
       </div>

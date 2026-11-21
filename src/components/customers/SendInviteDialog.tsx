@@ -159,11 +159,6 @@ function InviteBody({ onClose, onPreviewInvite }: Omit<SendInviteDialogProps, 'o
               </button>
             </div>
 
-            <span className="flex items-center gap-space-2xs font-caption text-caption text-text-tertiary">
-              <Icon name="info" className="text-[13px]" />
-              Development placeholder link — pending backend invite service.
-            </span>
-
             <div className="flex justify-center pt-space-2xs">
               <CustomerInviteQrCode url={state.invite.url} businessName={state.invite.businessName} />
             </div>
@@ -187,7 +182,7 @@ function InviteBody({ onClose, onPreviewInvite }: Omit<SendInviteDialogProps, 'o
                   rel="noopener noreferrer"
                   className="flex-1 h-10 rounded-xl bg-surface-subtle hover:bg-surface-container text-text-primary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-space-2xs transition-colors"
                 >
-                  <Icon name="chat" className="text-[16px] text-[#128C7E]" />
+                  <Icon name="whatsapp" className="text-[16px] text-[#128C7E]" />
                   <span>WhatsApp</span>
                 </a>
                 {onPreviewInvite && (

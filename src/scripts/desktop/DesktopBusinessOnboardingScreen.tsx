@@ -30,6 +30,8 @@ import { DesktopServicePublishedScreen } from './DesktopServicePublishedScreen';
 import { BLANK_PRODUCT_DRAFT, INITIAL_PRODUCT_DRAFT, type ProductDraft } from './desktopProductDraft';
 import { BLANK_SERVICE_DRAFT, INITIAL_SERVICE_DRAFT, type ServiceDraft } from './desktopServiceDraft';
 import { INITIAL_DEAL_STUDIO_DRAFT, LIVE_DEAL_STUDIO_DRAFT, type DealStudioDraft } from './desktopDealStudio';
+import { DealPriceChoiceModal } from '../deals/DealPriceChoiceModal';
+import { withDealPriceChoice, type DealPriceChoice } from '../deals/dealStudioShared';
 import { DesktopDealStudioStep1Screen } from './DesktopDealStudioStep1Screen';
 import { DesktopDealStudioStep2Screen } from './DesktopDealStudioStep2Screen';
 import { DesktopDealStudioStep3Screen } from './DesktopDealStudioStep3Screen';
@@ -275,11 +277,16 @@ export function DesktopBusinessOnboardingScreen({
   const [dealStudio, setDealStudio] = useState<DealStudioDraft>(
     () => (stored?.data.dealStudio as DealStudioDraft | undefined) ?? (hasApiConfig() ? LIVE_DEAL_STUDIO_DRAFT : INITIAL_DEAL_STUDIO_DRAFT),
   );
+  // Re-openable choice for "Edit Offer" / stepping back from the current-price path.
+  const [dealPriceModalOpen, setDealPriceModalOpen] = useState(false);
   // Branches added during setup are part of the run's data: keep them in the
   // shared snapshot so they survive step changes, auth and verification
   // round-trips (mobile parity).
   const [extraBranches] = useState<Record<string, unknown>[]>(
     () => (stored?.data.extraBranches as Record<string, unknown>[] | undefined) ?? [],
+  );
+  const [location, setLocation] = useState<Record<string, unknown> | null>(
+    () => (stored?.data.location as Record<string, unknown> | undefined) ?? null,
   );
   // Additional locations whose simulated checkout already succeeded in an
   // earlier run. Kept only so restoring an older saved draft still knows which
@@ -321,8 +328,8 @@ export function DesktopBusinessOnboardingScreen({
   );
   // Saved after the deal hook so the picked item survives a reload too.
   useEffect(() => {
-    saveBusinessSetupSnapshot(step, { draft, productDraft, serviceDraft, dealDraft, dealStudio, extraBranches, dealSource: liveDeal.source });
-  }, [step, draft, productDraft, serviceDraft, dealDraft, dealStudio, extraBranches, liveDeal.source]);
+    saveBusinessSetupSnapshot(step, { draft, productDraft, serviceDraft, dealDraft, dealStudio, extraBranches, location, dealSource: liveDeal.source });
+  }, [step, draft, productDraft, serviceDraft, dealDraft, dealStudio, extraBranches, location, liveDeal.source]);
 
   const startLiveDeal = (item: CatalogueItem) => {
     // A different item is a new deal: forget the one published for the last item.
@@ -390,6 +397,12 @@ export function DesktopBusinessOnboardingScreen({
     setDealStudio((prev) => ({ ...prev, ...patch }));
   };
 
+  const chooseDealPrice = (choice: DealPriceChoice) => {
+    setDealStudio((current) => withDealPriceChoice(current, choice));
+    setDealPriceModalOpen(false);
+    setStep(choice === 'current' ? 'dealStudio2' : 'dealStudio1');
+  };
+
   const renderStep = () => {
     switch (step) {
     case 'intro':
@@ -430,7 +443,10 @@ export function DesktopBusinessOnboardingScreen({
         <DesktopBusinessLocationScreen
           draft={draft}
           onBack={() => setStep('contact')}
-          onComplete={(location) => sync.saveLocation(location, () => setStep('branches'))}
+          onComplete={(confirmedLocation) => {
+            setLocation(confirmedLocation as unknown as Record<string, unknown>);
+            sync.saveLocation(confirmedLocation, () => setStep('branches'));
+          }}
           onSaveDraft={onBack}
         />
       );
@@ -546,10 +562,10 @@ export function DesktopBusinessOnboardingScreen({
       return (
         <DesktopProductPublishedScreen
           draft={productDraft}
-          onMakeDeal={() => {
+          onMakeDeal={(choice) => {
             setDealDraft(productDraft);
             if (sync.lastPublished) startLiveDeal(sync.lastPublished);
-            setStep('productDeal');
+            chooseDealPrice(choice);
           }}
           onViewCatalog={() => setStep('catalog')}
           onAddAnother={startAnotherProduct}
@@ -627,10 +643,10 @@ export function DesktopBusinessOnboardingScreen({
       return (
         <DesktopServicePublishedScreen
           draft={serviceDraft}
-          onMakeDeal={() => {
+          onMakeDeal={(choice) => {
             setDealDraft(serviceToDealDraft(serviceDraft));
             if (sync.lastPublished) startLiveDeal(sync.lastPublished);
-            setStep('productDeal');
+            chooseDealPrice(choice);
           }}
           onViewCatalog={() => setStep('catalog')}
           onAddAnother={startAnotherService}
@@ -653,7 +669,7 @@ export function DesktopBusinessOnboardingScreen({
           draft={dealDraft}
           studio={dealStudio}
           onStudioChange={updateDealStudio}
-          onBack={() => setStep('dealStudio1')}
+          onBack={() => (dealStudio.strategy === 'current' ? setDealPriceModalOpen(true) : setStep('dealStudio1'))}
           onNext={() => setStep('dealStudio3')}
           onSaveDraft={onBack}
         />
@@ -675,7 +691,7 @@ export function DesktopBusinessOnboardingScreen({
         draft={dealDraft}
         studio={dealStudio}
         onBack={() => setStep('dealStudio3')}
-        onEditOffer={() => setStep('dealStudio1')}
+        onEditOffer={() => (dealStudio.strategy === 'current' ? setDealPriceModalOpen(true) : setStep('dealStudio1'))}
         onEditRules={() => setStep('dealStudio2')}
         onEditLocations={() => setStep('dealStudio3')}
         onPublish={() => setStep('businessQr')}
@@ -732,6 +748,13 @@ export function DesktopBusinessOnboardingScreen({
         </div>
       )}
       <DealSourceContext.Provider value={liveDeal.source}>{renderStep()}</DealSourceContext.Provider>
+      <DealPriceChoiceModal
+        open={dealPriceModalOpen}
+        itemName={dealDraft.title}
+        priceLabel={dealDraft.basePrice ? dealDraft.basePrice.replace(/[^0-9]/g, '') : undefined}
+        onClose={() => setDealPriceModalOpen(false)}
+        onChoose={chooseDealPrice}
+      />
     </BusinessSetupNavContext.Provider>
   );
 }

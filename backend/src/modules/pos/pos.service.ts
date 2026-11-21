@@ -429,14 +429,9 @@ export class PosService {
             for (const item of items) {
               if (item.productId) {
                 const product = productsById.get(item.productId);
-                if (
-                  product?.enableLoyaltyPoints &&
-                  product.loyaltyPointsValue
-                ) {
-                  totalPoints += product.loyaltyPointsValue * item.quantity;
-                } else if (product?.loyaltyPoints) {
-                  // Fallback to legacy loyaltyPoints field
-                  totalPoints += product.loyaltyPoints * item.quantity;
+                const productPoints = Number(product?.loyaltyPointsValue ?? product?.loyaltyPoints) || 0;
+                if (productPoints > 0) {
+                  totalPoints += productPoints * item.quantity;
                 }
                 if (product?.price) {
                   totalSpent += product.price * item.quantity;
@@ -1543,9 +1538,14 @@ export class PosService {
     const cashSales = todaySales.filter(
       (s) => s.paymentMethod === PaymentMethod.CASH,
     );
+    const cashDrops = await this.cashDropRepository.find({
+      where: { registerSessionId: session.id },
+    });
+    const cashDropped = cashDrops.reduce((acc, drop) => acc + Number(drop.amount), 0);
     const expectedCash =
       Number(session.openingCash) +
-      cashSales.reduce((acc, s) => acc + Number(s.amountPaid), 0);
+      cashSales.reduce((acc, s) => acc + Number(s.amountPaid), 0) -
+      cashDropped;
     const totalSales = todaySales.reduce((acc, s) => acc + Number(s.total), 0);
 
     session.expectedCash = expectedCash;
@@ -1692,11 +1692,16 @@ export class PosService {
     };
   }
 
-  async getRegisterHistory(businessId: string, query: RegisterHistoryQueryDto) {
+  async getRegisterHistory(businessId: string, query: RegisterHistoryQueryDto, requester?: User) {
     const { page = 1, limit = 10, dateFrom, dateTo } = query;
     const skip = (page - 1) * limit;
 
-    const where: any = { businessId };
+    // Cashiers see the drawer records they actually opened/closed; owners and
+    // managers see every session in the business.
+    const where: any =
+      requester?.role === UserRole.STAFF
+        ? { businessId, cashierId: requester.id }
+        : { businessId };
     if (dateFrom || dateTo) {
       const start = dateFrom ? new Date(dateFrom) : new Date(0);
       const end = dateTo ? new Date(dateTo) : new Date();
@@ -1706,13 +1711,40 @@ export class PosService {
 
     const [data, total] = await this.registerSessionRepository.findAndCount({
       where,
-      relations: ['cashier', 'branch'],
+      relations: ['cashier', 'branch', 'till'],
       order: { openedAt: 'DESC' },
       skip,
       take: limit,
     });
 
-    return { data, total, page, limit };
+    const cashierName = (cashier?: User | null) =>
+      [cashier?.firstName, cashier?.lastName].filter(Boolean).join(' ') ||
+      cashier?.email ||
+      'Cashier';
+
+    return {
+      data: data.map((session) => ({
+        id: session.id,
+        branchId: session.branchId,
+        branchName: session.branch?.name ?? null,
+        tillId: session.tillId ?? null,
+        tillName: session.till?.name ?? null,
+        cashierId: session.cashierId,
+        cashierName: cashierName(session.cashier),
+        openedAt: session.openedAt,
+        closedAt: session.closedAt ?? null,
+        openingCash: Number(session.openingCash ?? 0),
+        expectedCash: Number(session.expectedCash ?? 0),
+        countedCash: session.countedCash != null ? Number(session.countedCash) : null,
+        variance: session.variance != null ? Number(session.variance) : null,
+        totalSales: Number(session.totalSales ?? 0),
+        transactionCount: session.transactionCount ?? 0,
+        status: session.status,
+      })),
+      total,
+      page,
+      limit,
+    };
   }
 
   async getDashboard(businessId: string, branchId?: string) {

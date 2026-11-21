@@ -362,6 +362,74 @@ const apiMessage = (error: unknown, fallback: string) => (error instanceof Error
 
 const ClaimsContext = createContext<ClaimsContextValue | null>(null);
 
+function syncClaimToStoreOrder(claim: ClaimRecord, input: ClaimInput) {
+  if (typeof window === 'undefined') return;
+  try {
+    const rawPrice = input.dealPrice ?? '0';
+    const numPrice = typeof rawPrice === 'string' ? Number(rawPrice.replace(/[^\d.]/g, '')) || 0 : Number(rawPrice) || 0;
+    const now = new Date();
+    const claimCode = claim.code || claim.ref;
+    const customer = input.recipient?.name || input.sender?.name || 'Customer';
+    const phone = input.recipient?.phone || input.sender?.phone || '+234 •••• •• 0000';
+    const email = input.email || input.recipient?.email || input.sender?.email || '';
+
+    const newOrder = {
+      id: `deal-order-${claim.id || claimCode}`,
+      orderRef: claimCode,
+      customerName: customer,
+      customerPhone: phone,
+      customerEmail: email,
+      createdAt: now.toISOString(),
+      time: now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }),
+      date: now.toISOString().split('T')[0],
+      branchId: input.branchId || 'main',
+      branchName: input.dealLocation || 'Main Branch',
+      origin: 'Deal',
+      sourceRef: claimCode,
+      placementDetails: `Deal Voucher: ${input.dealTitle || 'Special Deal'}`,
+      items: [
+        {
+          id: `item-${claimCode}`,
+          productId: input.offerId || 'deal-item',
+          name: input.dealTitle || 'Special Deal',
+          qty: 1,
+          unitPrice: numPrice,
+          totalPrice: numPrice,
+          image: input.dealImage || '',
+          available: true,
+          type: 'deal',
+          dealDiscount: input.discountLabel,
+        },
+      ],
+      estimatedTotal: numPrice,
+      confirmedTotal: numPrice,
+      isTotalConfirmed: true,
+      status: 'new',
+      pickupInstructions: `Present voucher ${claimCode} to cashier for verification`,
+      estimatedPrepMins: 5,
+      statusHistory: [
+        {
+          status: 'new',
+          timestamp: now.toISOString(),
+          note: `Deal claimed: ${input.dealTitle || 'Special Deal'} (${claimCode})`,
+        },
+      ],
+      payment: {
+        status: 'unpaid',
+      },
+    };
+
+    const existingJson = window.localStorage.getItem('vemtap_store_orders_v1');
+    const existingOrders = existingJson ? JSON.parse(existingJson) : [];
+    if (!existingOrders.some((o: { id?: string; orderRef?: string }) => o.id === newOrder.id || o.orderRef === newOrder.orderRef)) {
+      const updated = [newOrder, ...existingOrders];
+      window.localStorage.setItem('vemtap_store_orders_v1', JSON.stringify(updated));
+    }
+  } catch {
+    // ignore
+  }
+}
+
 export function ClaimsProvider({ children }: { children: ReactNode }) {
   const [claims, setClaims] = useState<ClaimRecord[]>(readClaims);
   // `/me/claims` and `/me/gifts` are customer-only: business accounts and
@@ -521,6 +589,7 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
           return next;
         });
 
+        syncClaimToStoreOrder(persisted, input);
         return persisted;
       }
 
@@ -537,6 +606,7 @@ export function ClaimsProvider({ children }: { children: ReactNode }) {
         return next;
       });
 
+      syncClaimToStoreOrder(record, input);
       return record;
     },
     [claims],

@@ -10,7 +10,16 @@ import { hasApiConfig } from '../services/api/client';
 import type { TeamMember } from '../services/teamService';
 import { apiErrorMessage } from '../services/errorMessages';
 import { formatRelativeTime } from '../utils/format';
-import { isOwnerMember, isPendingMember, memberName, memberRoleGroup, memberRoleLabel } from './teamLive';
+import {
+  ALL_STAFF_PAGE_IDS,
+  grantedPageLabels,
+  isOwnerMember,
+  isPendingMember,
+  memberName,
+  memberRoleGroup,
+  memberRoleLabel,
+  STAFF_PAGE_NODE_BY_ID,
+} from './teamLive';
 import { TeamMemberActionDialog, type TeamMemberAction } from './TeamMemberActionDialog';
 
 interface BusinessStaffScreenProps {
@@ -28,13 +37,8 @@ const ROLE_FILTERS: { key: RoleFilterKey; label: string }[] = [
   { key: 'cashier', label: 'Cashier' },
 ];
 
-const PERMISSION_LIST = [
-  'Orders & POS',
-  'Catalog & Deals',
-  'Bookings & Events',
-  'Analytics & Reports',
-  'Team & Payroll',
-];
+/** The same side-menu pages the invite screen grants, in the same order. */
+const PERMISSION_LIST = ALL_STAFF_PAGE_IDS.map((id) => STAFF_PAGE_NODE_BY_ID[id]?.label ?? id);
 
 interface StaffMember {
   key: string;
@@ -74,13 +78,13 @@ const STAFF: StaffMember[] = [
     role: 'Manager',
     roleKey: 'manager',
     roleClass: 'bg-primary-container text-on-primary',
-    scope: 'Orders, bookings, catalog and team scheduling.',
+    scope: 'Orders, catalog and team scheduling.',
     branches: 'Wuse 2, Maitama',
     lastActive: 'Active 1 hour ago',
     email: 'chidi.okafor@urbanugrill.com',
     phone: '+234 812 443 0912',
     joined: 'Mar 19, 2024',
-    access: ['Orders & POS', 'Catalog & Deals', 'Bookings & Events', 'Analytics & Reports'],
+    access: ['Orders', 'My Products', 'Analytics'],
   },
   {
     key: 'amaka',
@@ -88,13 +92,13 @@ const STAFF: StaffMember[] = [
     role: 'Manager',
     roleKey: 'manager',
     roleClass: 'bg-primary-container text-on-primary',
-    scope: 'Events, large bookings and guest relations only.',
+    scope: 'Events and guest relations only.',
     branches: 'Maitama',
     lastActive: 'Active yesterday',
     email: 'amaka.nwosu@urbanugrill.com',
     phone: '+234 805 771 4410',
     joined: 'Jun 02, 2024',
-    access: ['Bookings & Events', 'Analytics & Reports'],
+    access: ['Orders', 'Analytics'],
   },
   {
     key: 'tunde',
@@ -108,7 +112,7 @@ const STAFF: StaffMember[] = [
     email: 'tunde.bello@urbanugrill.com',
     phone: '+234 806 332 7781',
     joined: 'Aug 11, 2024',
-    access: ['Orders & POS'],
+    access: ['Orders'],
   },
   {
     key: 'ngozi',
@@ -122,7 +126,7 @@ const STAFF: StaffMember[] = [
     email: 'ngozi.eze@urbanugrill.com',
     phone: '+234 809 215 6640',
     joined: 'Sep 27, 2024',
-    access: ['Orders & POS', 'Analytics & Reports'],
+    access: ['Orders', 'Analytics'],
   },
 ];
 
@@ -130,7 +134,6 @@ const DETAILS: { label: string; value: (member: StaffMember) => string; icon: st
   { label: 'Role', value: (member) => member.role, icon: 'badge' },
   { label: 'Branch access', value: (member) => member.branches, icon: 'location_on' },
   { label: 'Last active', value: (member) => member.lastActive, icon: 'schedule' },
-  { label: 'Staff PIN', value: () => 'Set by owner', icon: 'pin' },
   { label: 'Email', value: (member) => member.email, icon: 'mail' },
   { label: 'Phone', value: (member) => member.phone, icon: 'call' },
   { label: 'Joined', value: (member) => member.joined, icon: 'event' },
@@ -144,15 +147,6 @@ const ACTIONS: { key: string; label: string; hint: string; icon: string; danger?
   { key: 'permissions', label: 'Permissions', hint: 'Pages and actions they can use', icon: 'lock' },
   { key: 'pin', label: 'Reset PIN', hint: 'Send a new PIN to their email', icon: 'pin' },
 ];
-
-/** Backend permissions behind each summary row of the permission list. */
-const PERMISSION_SOURCES: Record<string, string[]> = {
-  'Orders & POS': ['pos', 'pos:orders'],
-  'Catalog & Deals': ['inventory', 'marketing'],
-  'Bookings & Events': ['visitors'],
-  'Analytics & Reports': ['analytics'],
-  'Team & Payroll': ['staff'],
-};
 
 const ROLE_CLASS: Record<Exclude<RoleFilterKey, 'all'>, string> = {
   owner: 'bg-surface-tint-blue text-primary',
@@ -174,7 +168,6 @@ type StaffToast = { message: string; tone: 'success' | 'error' | 'info' };
 const liveStaffMember = (member: TeamMember, branchName: (id?: string | null) => string): StaffMember => {
   const group = memberRoleGroup(member);
   const roleKey = group === 'owners' ? 'owner' : group === 'managers' ? 'manager' : group === 'cashiers' ? 'cashier' : 'staff';
-  const granted = new Set(member.permissions ?? []);
   return {
     key: member.id,
     name: memberName(member),
@@ -195,9 +188,7 @@ const liveStaffMember = (member: TeamMember, branchName: (id?: string | null) =>
     joined: member.createdAt
       ? new Date(member.createdAt).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
       : '—',
-    access: isOwnerMember(member)
-      ? PERMISSION_LIST
-      : PERMISSION_LIST.filter((label) => PERMISSION_SOURCES[label].some((permission) => granted.has(permission))),
+    access: isOwnerMember(member) ? PERMISSION_LIST : grantedPageLabels(member.permissions),
     member,
   };
 };

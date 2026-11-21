@@ -7,7 +7,6 @@ import { MessageTicks } from '../../components/ui/MessageTicks';
 import { useOrders } from '../../context/OrdersContext';
 import { todayHours, usePublicBusiness } from '../../hooks/usePublicBusiness';
 import { currentVoucher, useClaims } from '../../context/ClaimsContext';
-import { useBooking } from '../../context/BookingContext';
 import { useChatThread } from '../../hooks/useChatThread';
 import { messageService, type MessageThread } from '../../services/messageService';
 
@@ -182,7 +181,6 @@ export function DesktopMessagesScreen({ onNav, initialThread, onNewChat }: Deskt
   const [editingId, setEditingId] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const { claims } = useClaims();
-  const { appointments } = useBooking();
   const [sendError, setSendError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -267,17 +265,11 @@ export function DesktopMessagesScreen({ onNav, initialThread, onNewChat }: Deskt
     void sendMessage(draft);
   };
 
-  const quickAttach = (kind: 'voucher' | 'booking' | 'location') => {
+  const quickAttach = (kind: 'voucher' | 'location') => {
     if (kind === 'voucher') {
       const voucher = currentVoucher(claims);
       if (voucher?.code) void sendMessage(`Attached Deal Pass ${voucher.code} (${voucher.dealTitle}).`);
       else setSendError('You have no voucher to attach.');
-      return;
-    }
-    if (kind === 'booking') {
-      const booking = appointments.find((item) => item.status === 'confirmed');
-      if (booking) void sendMessage(`Booking reference ${booking.ref} (${[booking.dateShort, booking.time].filter(Boolean).join(' ')}).`);
-      else setSendError('You have no upcoming booking to share.');
       return;
     }
     navigator.geolocation?.getCurrentPosition(
@@ -291,7 +283,7 @@ export function DesktopMessagesScreen({ onNav, initialThread, onNewChat }: Deskt
       <DesktopPage withHeader withFooter onNav={onNav} activeNav="messages" withCustomerRail>
         <div className="w-full bg-background p-space-xl">
           <div className="mx-auto max-w-xl rounded-2xl border border-border bg-surface p-space-lg text-center shadow-sm">
-            <Icon name="forum" className="mx-auto mb-space-sm text-[42px] text-text-tertiary" />
+            <Icon name="vemtap-chat" className="mx-auto mb-space-sm text-[42px] text-text-tertiary" />
             <h1 className="font-heading-lg text-heading-lg text-on-surface">No messages yet</h1>
             <p className="mt-space-sm font-body-md text-body-md text-on-surface-variant">
               Start a chat from any business profile and your conversations will appear here.
@@ -751,15 +743,6 @@ export function DesktopMessagesScreen({ onNav, initialThread, onNewChat }: Deskt
                       title="Attach Voucher"
                     >
                       <Icon name="redeem" className="text-[18px]" />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="Reference Booking"
-                      onClick={() => quickAttach('booking')}
-                      className="w-9 h-9 rounded-xl flex items-center justify-center text-on-surface-variant hover:bg-surface-subtle hover:text-on-surface transition-colors"
-                      title="Reference Booking"
-                    >
-                      <Icon name="receipt_long" className="text-[18px]" />
                     </button>
                     <button
                       type="button"

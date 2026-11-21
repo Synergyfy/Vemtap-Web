@@ -19,6 +19,10 @@ import { PosOfflineBar } from '../../components/ui/PosOfflineBar';
 import { hasApiConfig } from '../../services/api/client';
 import { apiErrorMessage } from '../../services/errorMessages';
 import { useHeldTicket, useLivePos, usePosCartMirror, usePosProducts } from '../posLive';
+import { useRegisterHistory } from '../../hooks/business/usePos';
+import { drawerDateTime, drawerMoney } from '../posDrawerFormat';
+import { DealClaimsLedger } from '../../components/DealClaimsLedger';
+import { toAmount, type DealLedgerRow } from '../../services/dealLedgerService';
 
 interface DesktopPosRegisterScreenProps {
   onNav: (key: PosTerminalNavKey) => void;
@@ -95,6 +99,7 @@ export function DesktopPosRegisterScreen({
   const [modifiersFor, setModifiersFor] = useState<PosTerminalLine | null>(null);
   const [customerModalOpen, setCustomerModalOpen] = useState(false);
   const [ordersPanelOpen, setOrdersPanelOpen] = useState(false);
+  const [ordersTab, setOrdersTab] = useState<'orders' | 'deals'>('orders');
   const searchRef = useRef<HTMLInputElement>(null);
   const live = hasApiConfig();
   const pos = useLivePos();
@@ -102,18 +107,111 @@ export function DesktopPosRegisterScreen({
   const heldTicket = useHeldTicket();
   usePosCartMirror(cart, customer?.name);
   const [search, setSearch] = useState('');
+  const [catalogTab] = useState<'product' | 'service'>('product');
+
+  const liveFloat = Number(pos.zReport?.openingCash ?? 0);
+  const liveExpected = Number(pos.zReport?.expectedCash ?? liveFloat);
+  const expectedCashInDrawer = live
+    ? (pos.isOpen ? liveExpected : 0)
+    : 142400;
+
+  const drawerHistory = useRegisterHistory(live);
+  const [drawerModalOpen, setDrawerModalOpen] = useState(false);
+  const [floatInput, setFloatInput] = useState(live ? '' : '50,000');
+  const [closingCashInput, setClosingCashInput] = useState('');
+  const [openingBusy, setOpeningBusy] = useState(false);
+  const [closingBusy, setClosingBusy] = useState(false);
+  const promptedRef = useRef(false);
+
+  useEffect(() => {
+    // If live and register has not been opened yet, prompt user immediately upon opening the register
+    if (live && pos.tillsLoaded && !pos.isOpen && !promptedRef.current) {
+      promptedRef.current = true;
+      setDrawerModalOpen(true);
+    }
+  }, [live, pos.tillsLoaded, pos.isOpen]);
+
+  const handleConfirmFloat = async () => {
+    const floatAmount = Number(floatInput.replace(/[^\d.]/g, '')) || 0;
+    if (!live) {
+      setDrawerModalOpen(false);
+      flash(`Shift started! Opening float: ₦${(floatAmount || 50000).toLocaleString()}`);
+      return;
+    }
+    setOpeningBusy(true);
+    try {
+      await pos.openOnTill(undefined, floatAmount);
+      setDrawerModalOpen(false);
+      flash(`Register opened! Float set to ₦${floatAmount.toLocaleString()}`);
+    } catch (err) {
+      flash(apiErrorMessage(err, 'Could not open cash drawer.'));
+    } finally {
+      setOpeningBusy(false);
+    }
+  };
+
+  const handleRecordClosing = async () => {
+    const counted = Number(closingCashInput.replace(/[^\d.]/g, '')) || expectedCashInDrawer;
+    setClosingBusy(true);
+    try {
+      await pos.mutations.closeRegister.mutateAsync({ countedCash: counted });
+      setDrawerModalOpen(false);
+      setClosingCashInput('');
+      flash(`Drawer closed and counted at ${drawerMoney(counted)}.`);
+    } catch (err) {
+      flash(apiErrorMessage(err, 'Could not record the closing drawer count.'));
+    } finally {
+      setClosingBusy(false);
+    }
+  };
+
+  // Product-only rollout: never switch to the service catalogue.
+  // useEffect(() => {
+  //   if (live && !catalogue.hasProducts && catalogue.hasServices) {
+  //     setCatalogTab('service');
+  //   }
+  // }, [live, catalogue.hasProducts, catalogue.hasServices]);
+
+  // Product-only rollout: never show or fall back to the service catalogue.
+  const showBothTabs = false;
+
+  const currentDesktopList = useMemo(() => {
+    if (!live) return POS_CATALOG;
+    if (showBothTabs) {
+      return catalogTab === 'service' ? catalogue.servicesDesktop : catalogue.productsDesktop;
+    }
+    return catalogue.productsDesktop.length > 0 ? catalogue.productsDesktop : catalogue.desktop;
+  }, [live, showBothTabs, catalogTab, catalogue.servicesDesktop, catalogue.productsDesktop, catalogue.desktop, catalogue.hasProducts, catalogue.hasServices]);
+
+  const currentSourceItems = useMemo(() => {
+    if (!live) return catalogue.items;
+    if (showBothTabs) {
+      return catalogTab === 'service' ? catalogue.serviceItems : catalogue.productItems;
+    }
+    return catalogue.productItems.length > 0 ? catalogue.productItems : catalogue.items;
+  }, [live, showBothTabs, catalogTab, catalogue.serviceItems, catalogue.productItems, catalogue.items, catalogue.hasProducts, catalogue.hasServices]);
+
+  const activeCategories = useMemo(() => {
+    if (!live) return catalogue.categories;
+    if (showBothTabs) {
+      return catalogTab === 'service' ? catalogue.serviceCategories : catalogue.productCategories;
+    }
+    return catalogue.productCategories.length > 0 ? catalogue.productCategories : catalogue.categories;
+  }, [live, showBothTabs, catalogTab, catalogue.serviceCategories, catalogue.productCategories, catalogue.categories, catalogue.hasProducts, catalogue.hasServices]);
+
   const categoryList = live
-    ? catalogue.categories.map((entry) => {
-        const n = entry.key === 'all' ? catalogue.items.length : catalogue.items.filter((item) => item.category?.id === entry.key).length;
+    ? activeCategories.map((entry) => {
+        const n = entry.key === 'all' ? currentSourceItems.length : currentSourceItems.filter((item) => item.category?.id === entry.key).length;
         return `${entry.key === 'all' ? 'All Items' : entry.label} (${n})`;
       })
     : CATEGORIES;
+
   const products = useMemo(() => {
     if (!live) return POS_CATALOG;
-    const key = catalogue.categories[category]?.key ?? 'all';
+    const key = activeCategories[category]?.key ?? 'all';
     const q = search.trim().toLowerCase();
-    return catalogue.desktop.filter((item, index) => {
-      const source = catalogue.items[index];
+    return currentDesktopList.filter((item, index) => {
+      const source = currentSourceItems[index];
       const inCategory = key === 'all' || source?.category?.id === key;
       const matches =
         !q ||
@@ -122,7 +220,7 @@ export function DesktopPosRegisterScreen({
         (source?.barcode ?? '').toLowerCase().includes(q);
       return inCategory && matches;
     });
-  }, [live, catalogue.desktop, catalogue.items, catalogue.categories, category, search]);
+  }, [live, currentDesktopList, currentSourceItems, activeCategories, category, search]);
 
   const flash = (message: string) => {
     setHandoffToast(message);
@@ -285,6 +383,35 @@ export function DesktopPosRegisterScreen({
     window.setTimeout(() => setHandoffToast(null), 3000);
   };
 
+  const handleProcessDealInPos = (voucher: DealLedgerRow) => {
+    const amt = toAmount(voucher.amount);
+    const lineId = `deal-voucher-${voucher.claimCode}-${Date.now()}`;
+    const newLine: PosTerminalLine = {
+      id: lineId,
+      name: `${voucher.dealName} (${voucher.claimCode})`,
+      mods: `Deal Voucher · Discount given: ${formatNaira(toAmount(voucher.discountGiven))}`,
+      unit: amt,
+      qty: 1,
+      sourceOrderRef: voucher.claimCode,
+    };
+    onCartChange([...cart, newLine]);
+    if (customer === null && voucher.customerName) {
+      onCustomerChange({
+        id: `voucher-${voucher.claimCode}`,
+        name: voucher.customerName,
+        phone: voucher.contact ?? '',
+        onVemtap: true,
+        tier: 'Member',
+        tierClass: 'bg-surface-tint-blue text-primary font-bold',
+        points: 0,
+        spend: amt,
+        visits: 1,
+      });
+    }
+    setOrdersPanelOpen(false);
+    flash(`Voucher ${voucher.claimCode} added to ticket.`);
+  };
+
   /** Scan simulation: match a barcode/QR to a catalogue item or a store order. */
   const simulateScan = () => {
     if (live) {
@@ -371,22 +498,37 @@ export function DesktopPosRegisterScreen({
       <section className="w-full bg-surface-canvas shadow-sm">
         <div className="w-full py-2.5 flex flex-wrap items-center justify-between gap-space-md">
           <div className="flex items-center gap-space-md flex-wrap">
-            <div className="flex items-center gap-space-xs px-space-sm py-1 rounded-lg bg-surface-container text-text-primary">
-              <Icon name="table_restaurant" className="text-primary text-[18px]" />
-              <span className="font-label-md text-label-md font-semibold">Floor: Main Dining Room • Zone B</span>
-            </div>
-            <div className="flex items-center gap-space-xs px-space-sm py-1 rounded-lg bg-badge-discount-bg text-badge-discount-text">
-              <Icon name="barcode_scanner" className="text-[17px]" />
-              <span className="font-label-sm text-label-sm font-semibold tracking-tight">
-                {live ? 'BARCODE SCAN: Scan into search to add a product' : 'DEMO SCANNER: Ready'}
+            {/* Branch is selected in the top header — no location repeated here. */}
+
+            {/* Cash in Drawer badge */}
+            <button
+              type="button"
+              onClick={() => setDrawerModalOpen(true)}
+              className={`flex items-center gap-space-xs px-space-sm py-1 rounded-lg transition-colors cursor-pointer ${
+                (live ? pos.isOpen : true)
+                  ? 'bg-surface-container hover:bg-surface-container-high text-text-primary'
+                  : 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 animate-pulse'
+              }`}
+              title="Click to view or set cash drawer float"
+            >
+              <Icon name="payments" className="text-primary text-[18px]" />
+              <span className="font-label-md text-label-md font-semibold">
+                Cash in Drawer: ₦{(live ? (pos.isOpen ? expectedCashInDrawer : 0) : expectedCashInDrawer).toLocaleString()}
               </span>
-              <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-ping ml-1" />
-            </div>
+              {live && !pos.isOpen && (
+                <span className="text-[11px] font-bold text-amber-800 bg-amber-200 px-1.5 py-0.5 rounded">
+                  Set Float
+                </span>
+              )}
+            </button>
 
             {/* Orders with live pending count — opens the pending-orders picker. */}
             <button
               type="button"
-              onClick={() => setOrdersPanelOpen(true)}
+              onClick={() => {
+                setOrdersTab('orders');
+                setOrdersPanelOpen(true);
+              }}
               title="Pending orders"
               className="relative flex items-center gap-space-xs px-space-sm py-1 rounded-lg bg-surface-tint-blue text-primary hover:bg-primary hover:text-on-primary transition-colors shrink-0"
             >
@@ -397,6 +539,20 @@ export function DesktopPosRegisterScreen({
                   {pendingCount}
                 </span>
               )}
+            </button>
+
+            {/* Deal vouchers button */}
+            <button
+              type="button"
+              onClick={() => {
+                setOrdersTab('deals');
+                setOrdersPanelOpen(true);
+              }}
+              title="Process deal vouchers in POS"
+              className="relative flex items-center gap-space-xs px-space-sm py-1 rounded-lg bg-badge-discount-bg text-badge-discount-text hover:bg-surface-tint-blue hover:text-primary transition-colors shrink-0"
+            >
+              <Icon name="local_offer" className="text-[17px]" />
+              <span className="font-label-sm text-label-sm font-semibold tracking-tight">Deals &amp; Vouchers</span>
             </button>
           </div>
 
@@ -563,6 +719,43 @@ export function DesktopPosRegisterScreen({
               </div>
             </div>
 
+            {/* Product-only rollout: the product/service switcher is hidden.
+            {showBothTabs && (
+              <div className="flex items-center gap-space-sm pb-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCatalogTab('product');
+                    setCategory(0);
+                  }}
+                  className={`px-space-md py-2 rounded-xl text-label-md font-semibold transition-all flex items-center gap-2 shadow-xs ${
+                    catalogTab === 'product'
+                      ? 'bg-primary text-on-primary shadow-sm'
+                      : 'bg-surface-canvas text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  <Icon name="inventory_2" className="text-[18px]" />
+                  <span>Products ({catalogue.productsDesktop.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCatalogTab('service');
+                    setCategory(0);
+                  }}
+                  className={`px-space-md py-2 rounded-xl text-label-md font-semibold transition-all flex items-center gap-2 shadow-xs ${
+                    catalogTab === 'service'
+                      ? 'bg-primary text-on-primary shadow-sm'
+                      : 'bg-surface-canvas text-text-secondary hover:text-text-primary'
+                  }`}
+                >
+                  <Icon name="design_services" className="text-[18px]" />
+                  <span>Services ({catalogue.servicesDesktop.length})</span>
+                </button>
+              </div>
+            )}
+            */}
+
             {/* Category Filter Pills */}
             <div className="flex items-center gap-space-xs overflow-x-auto pb-1">
               {categoryList.map((label, index) => (
@@ -658,12 +851,6 @@ export function DesktopPosRegisterScreen({
                   <span>Order Notes</span>
                 </button>
               </div>
-              <div className="flex items-center gap-2 text-text-secondary font-caption text-caption">
-                <span className="inline-block w-2 h-2 rounded-full bg-badge-discount-text" />
-                <span>
-                  Cloud Sync Latency: <strong className="text-text-primary font-semibold">14ms</strong> (Abuja Edge Node)
-                </span>
-              </div>
             </div>
           </section>
 
@@ -674,14 +861,11 @@ export function DesktopPosRegisterScreen({
               <div className="flex items-start justify-between pb-space-md">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded bg-primary text-on-primary font-label-sm text-label-sm font-bold uppercase tracking-wider">
-                      Dine-In
-                    </span>
                     <h3 className="font-heading-md text-heading-md text-text-primary tracking-tight">{live ? 'New Ticket' : 'Ticket #TK-108'}</h3>
                   </div>
                   <p className="font-caption text-caption text-text-tertiary mt-1">
                     {live
-                      ? `${pos.isOpen ? pos.tillName : 'No till open'} • ${customer?.name ?? 'Walk-in Guest'}`
+                      ? `${pos.isOpen ? pos.tillName : 'No register open'} • ${customer?.name ?? 'Walk-in Guest'}`
                       : `Table 04 • ${customer?.name ?? 'Walk-in Guest'} • 13:42:09 WAT`}
                   </p>
                 </div>
@@ -947,17 +1131,43 @@ export function DesktopPosRegisterScreen({
         </div>
       </div>
 
-      {/* Pending orders picker */}
+      {/* Pending orders & deals picker */}
       {ordersPanelOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Pending orders">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Orders and deals">
           <div className="absolute inset-0 bg-black/55 backdrop-blur-[2px]" onClick={() => setOrdersPanelOpen(false)} />
-          <div className="relative w-full max-w-lg bg-surface-canvas rounded-2xl shadow-2xl border border-border-subtle overflow-hidden flex flex-col max-h-[86vh]">
+          <div className="relative w-full max-w-2xl bg-surface-canvas rounded-2xl shadow-2xl border border-border-subtle overflow-hidden flex flex-col max-h-[86vh]">
             <div className="px-space-lg pt-space-lg pb-space-sm border-b border-border-subtle flex items-start justify-between gap-3">
               <div>
-                <h2 className="font-heading-md text-heading-md text-text-primary tracking-tight">Pending Orders</h2>
+                <h2 className="font-heading-md text-heading-md text-text-primary tracking-tight">Orders &amp; Deal Vouchers</h2>
                 <p className="font-caption text-caption text-text-secondary mt-0.5">
-                  Pick an order to load it onto the ticket and take payment.
+                  Pick an order or deal voucher to load it onto the ticket and process payment.
                 </p>
+                <div className="flex items-center gap-2 mt-3">
+                  <button
+                    type="button"
+                    onClick={() => setOrdersTab('orders')}
+                    className={`px-3 py-1 rounded-lg font-label-sm text-label-sm font-semibold transition-colors flex items-center gap-1.5 ${
+                      ordersTab === 'orders'
+                        ? 'bg-primary text-on-primary shadow-sm'
+                        : 'bg-surface-container text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    <Icon name="receipt_long" className="text-[15px]" />
+                    <span>Pending Orders ({pendingOrders.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrdersTab('deals')}
+                    className={`px-3 py-1 rounded-lg font-label-sm text-label-sm font-semibold transition-colors flex items-center gap-1.5 ${
+                      ordersTab === 'deals'
+                        ? 'bg-primary text-on-primary shadow-sm'
+                        : 'bg-surface-container text-text-secondary hover:text-text-primary'
+                    }`}
+                  >
+                    <Icon name="local_offer" className="text-[15px]" />
+                    <span>Deal Vouchers</span>
+                  </button>
+                </div>
               </div>
               <button
                 type="button"
@@ -969,41 +1179,52 @@ export function DesktopPosRegisterScreen({
               </button>
             </div>
             <div className="flex-1 overflow-y-auto px-space-lg py-space-md">
-              {pendingOrders.length === 0 ? (
-                <div className="py-10 flex flex-col items-center text-center gap-2">
-                  <Icon name="checklist" className="text-[32px] text-text-tertiary" />
-                  <p className="font-body-md text-body-md text-text-secondary">No pending orders — the queue is clear.</p>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {pendingOrders.map((order) => (
-                    <button
-                      key={order.id}
-                      type="button"
-                      onClick={() => pickOrder(order.id)}
-                      className="w-full p-space-sm rounded-xl bg-surface hover:bg-surface-tint-blue text-left transition-colors flex items-center justify-between gap-3"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <Icon name="receipt_long" className="text-primary text-[20px] shrink-0" />
-                        <div className="min-w-0">
-                          <span className="font-mono font-label-md text-label-md text-text-primary font-semibold block truncate">
-                            #{order.orderRef}
+              {ordersTab === 'orders' ? (
+                pendingOrders.length === 0 ? (
+                  <div className="py-10 flex flex-col items-center text-center gap-2">
+                    <Icon name="checklist" className="text-[32px] text-text-tertiary" />
+                    <p className="font-body-md text-body-md text-text-secondary">No pending orders — the queue is clear.</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {pendingOrders.map((order) => (
+                      <button
+                        key={order.id}
+                        type="button"
+                        onClick={() => pickOrder(order.id)}
+                        className="w-full p-space-sm rounded-xl bg-surface hover:bg-surface-tint-blue text-left transition-colors flex items-center justify-between gap-3"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <Icon name={order.origin === 'Deal' ? 'local_offer' : 'receipt_long'} className="text-primary text-[20px] shrink-0" />
+                          <div className="min-w-0">
+                            <span className="font-mono font-label-md text-label-md text-text-primary font-semibold block truncate">
+                              #{order.orderRef}
+                            </span>
+                            <span className="font-caption text-caption text-text-secondary truncate block">
+                              {order.customerName} • {order.origin} • {order.items.length} items
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold capitalize">
+                            {order.status}
                           </span>
-                          <span className="font-caption text-caption text-text-secondary truncate block">
-                            {order.customerName} • {order.origin} • {order.items.length} items
+                          <span className="font-label-md text-label-md font-bold text-text-primary">
+                            {formatNaira(order.confirmedTotal)}
                           </span>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="px-2 py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold capitalize">
-                          {order.status}
-                        </span>
-                        <span className="font-label-md text-label-md font-bold text-text-primary">
-                          {formatNaira(order.confirmedTotal)}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <DealClaimsLedger
+                    title="Claimed Deal Vouchers"
+                    limit={40}
+                    allowRedeem
+                    onProcessInPos={handleProcessDealInPos}
+                  />
                 </div>
               )}
             </div>
@@ -1107,6 +1328,186 @@ export function DesktopPosRegisterScreen({
               >
                 Return to Orders →
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cash Drawer Float Modal */}
+      {drawerModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-md bg-surface-canvas rounded-2xl p-6 shadow-2xl border border-border-subtle flex flex-col gap-4">
+            <div className="flex items-center justify-between pb-3 border-b border-border-subtle">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center">
+                  <Icon name="point_of_sale" className="text-[22px]" />
+                </div>
+                <div>
+                  <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary">
+                    {live ? (pos.isOpen ? 'Cash Drawer Details' : 'Set Opening Cash Drawer Float') : 'Cash Drawer Details'}
+                  </h3>
+                  <span className="font-caption text-caption text-text-secondary">
+                    {live ? (pos.isOpen ? `${pos.tillName} · Shift Active` : 'Count physical cash before selling') : 'Shift #0842 · Morning'}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDrawerModalOpen(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-text-secondary hover:bg-surface-container"
+              >
+                <Icon name="close" className="text-[20px]" />
+              </button>
+            </div>
+
+            {pos.isOpen || !live ? (
+              <div className="p-3.5 rounded-xl bg-surface-container-low border border-border-subtle flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Icon name="payments" className="text-primary text-[20px]" />
+                  <span className="font-label-md text-label-md text-text-secondary">Current Money in Drawer:</span>
+                </div>
+                <strong className="font-heading-sm text-heading-sm text-text-primary font-bold">
+                  ₦{expectedCashInDrawer.toLocaleString()}
+                </strong>
+              </div>
+            ) : (
+              <div className="p-3.5 rounded-xl bg-surface-tint-blue border border-primary/20 text-xs text-primary space-y-1">
+                <p className="font-semibold flex items-center gap-1.5 text-primary text-[13px]">
+                  <Icon name="info" className="text-[17px]" />
+                  <span>Initial Cash Drawer Float</span>
+                </p>
+                <p className="text-[12px] text-text-secondary leading-relaxed">
+                  The cash drawer money has not been set yet. Count the physical cash in your drawer and enter your starting float before processing sales.
+                </p>
+              </div>
+            )}
+
+            {live && pos.isOpen && (
+              <div className="grid grid-cols-2 gap-2 text-caption">
+                <div className="p-2.5 rounded-xl bg-surface-subtle border border-border-subtle">
+                  <span className="block text-text-secondary">Recorded by</span>
+                  <strong className="text-text-primary">{pos.cashierName || 'Signed-in cashier'}</strong>
+                </div>
+                <div className="p-2.5 rounded-xl bg-surface-subtle border border-border-subtle">
+                  <span className="block text-text-secondary">Opened at</span>
+                  <strong className="text-text-primary">{drawerDateTime(pos.session?.openedAt)}</strong>
+                </div>
+              </div>
+            )}
+
+            {live && (
+              <div className="rounded-xl border border-border-subtle overflow-hidden">
+                <div className="px-3 py-2 bg-surface-container-low flex items-center justify-between">
+                  <span className="font-label-sm text-label-sm font-semibold text-text-primary">Drawer records</span>
+                  <span className="text-caption text-text-secondary">Newest first</span>
+                </div>
+                <div className="max-h-40 overflow-y-auto divide-y divide-border-subtle">
+                  {drawerHistory.data?.length ? (
+                    drawerHistory.data.map((record) => (
+                      <div key={record.id} className="px-3 py-2 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <span className="block text-body-sm text-text-primary font-medium">
+                            {record.cashierName} · {drawerDateTime(record.openedAt)}
+                          </span>
+                          <span className="block text-caption text-text-secondary">
+                            Opened {drawerMoney(record.openingCash)} · Closed {record.countedCash != null ? drawerMoney(record.countedCash) : 'Not counted'}
+                          </span>
+                        </div>
+                        <span className={`text-caption font-semibold ${record.status === 'open' ? 'text-primary' : 'text-text-secondary'}`}>
+                          {record.status === 'open' ? 'Open' : 'Closed'}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="px-3 py-3 text-caption text-text-secondary">
+                      {drawerHistory.isLoading ? 'Loading drawer records…' : 'No drawer records yet.'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {(!pos.isOpen && live) && (
+              <div className="flex flex-col gap-2">
+                <label className="font-label-sm text-label-sm font-semibold text-text-primary">
+                  Starting Cash Drawer Float (₦)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-[16px] font-bold text-text-secondary">₦</span>
+                  <input
+                    type="text"
+                    value={floatInput}
+                    onChange={(e) => setFloatInput(e.target.value)}
+                    placeholder="0"
+                    autoFocus
+                    className="w-full h-11 pl-8 pr-3 rounded-xl border border-border-subtle text-body-md font-bold bg-surface-subtle text-text-primary focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <p className="font-caption text-caption text-text-tertiary">
+                  Verify currency notes and coins physically inside your till.
+                </p>
+              </div>
+            )}
+
+            {(pos.isOpen && live) && (
+              <div className="flex flex-col gap-2">
+                <label className="font-label-sm text-label-sm font-semibold text-text-primary">
+                  Closing Cash Count (₦)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-[16px] font-bold text-text-secondary">₦</span>
+                  <input
+                    type="text"
+                    value={closingCashInput}
+                    onChange={(e) => setClosingCashInput(e.target.value)}
+                    placeholder={expectedCashInDrawer.toLocaleString()}
+                    className="w-full h-11 pl-8 pr-3 rounded-xl border border-border-subtle text-body-md font-bold bg-surface-subtle text-text-primary focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <p className="font-caption text-caption text-text-tertiary">
+                  Count the drawer before closing this shift. This count is saved with the recorder name and time.
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDrawerModalOpen(false)}
+                className="h-11 rounded-xl bg-surface-container text-text-secondary font-label-md font-semibold"
+              >
+                Close
+              </button>
+              {(!pos.isOpen && live) ? (
+                <button
+                  type="button"
+                  onClick={() => void handleConfirmFloat()}
+                  disabled={openingBusy}
+                  className="h-11 rounded-xl bg-primary text-on-primary font-label-md font-semibold flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
+                >
+                  <Icon name="check" className="text-[18px]" />
+                  <span>{openingBusy ? 'Opening…' : 'Confirm & Open'}</span>
+                </button>
+              ) : pos.isOpen && live ? (
+                <button
+                  type="button"
+                  onClick={() => void handleRecordClosing()}
+                  disabled={closingBusy}
+                  className="h-11 rounded-xl bg-primary text-on-primary font-label-md font-semibold flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50"
+                >
+                  <Icon name="check" className="text-[18px]" />
+                  <span>{closingBusy ? 'Saving…' : 'Record Closing Count'}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setDrawerModalOpen(false)}
+                  className="h-11 rounded-xl bg-primary text-on-primary font-label-md font-semibold flex items-center justify-center gap-1.5 shadow-sm"
+                >
+                  <Icon name="check" className="text-[18px]" />
+                  <span>Done</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { MobileTabBar, type MobileTabKey } from '../components/MobileTabBar';
@@ -30,7 +30,7 @@ type Hub = 'orders' | 'bookings';
 
 const ORDER_STEPS = [
   { label: 'Received', icon: 'check' },
-  { label: 'In the Kitchen', icon: 'restaurant' },
+  { label: 'In Preparation', icon: 'pending_actions' },
   { label: 'Ready', icon: 'shopping_bag' },
   { label: 'Picked Up', icon: 'done_all' },
 ];
@@ -225,7 +225,7 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
               onClick={() => onOpenConversation(order.merchantId)}
               className="h-11 rounded-xl bg-surface-container text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 hover:bg-surface-container-high transition-colors active:scale-[0.98]"
             >
-              <Icon name="chat" className="text-[18px]" />
+              <Icon name="vemtap-chat" className="text-[18px]" />
               <span>Contact Merchant</span>
             </button>
             <button
@@ -278,7 +278,7 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
     <AppScreen>
       <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 pt-safe bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
         <div className="h-16 px-margin flex items-center justify-between">
-          <h1 className="font-heading-md text-heading-md text-on-surface tracking-tight truncate">Orders &amp; Bookings</h1>
+          <h1 className="font-heading-md text-heading-md text-on-surface tracking-tight truncate">Orders</h1>
           <button
             aria-label="Account"
             type="button"
@@ -294,7 +294,7 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
         <div className="px-margin pt-space-xs mb-space-sm">
           <div className="flex items-center gap-space-xs bg-surface-container-low p-1 rounded-xl shadow-sm">
             {hubChip('orders', 'Orders', myOrders.length)}
-            {hubChip('bookings', 'Bookings', spaBooking.appointments.length)}
+            {/* Product-only rollout: the Bookings hub is hidden. */}
           </div>
         </div>
 
@@ -329,7 +329,7 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
 
         <div className="px-margin flex flex-col gap-space-md">
           {loading ? (
-            <SkeletonGroup label="Loading your orders and bookings" className="flex flex-col gap-space-md">
+            <SkeletonGroup label="Loading your orders" className="flex flex-col gap-space-md">
               {[0, 1, 2].map((key) => (
                 <Skeleton key={key} className="h-40 w-full rounded-xl" />
               ))}
@@ -375,7 +375,8 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
             </>
           )}
 
-          {!loading && hub === 'bookings' && (
+          {/* Product-only rollout: booking cards stay hidden. */}
+          {false && !loading && hub === 'bookings' && (
             <>
               {showUpcomingBooking &&
                 (upcomingAppointments.length > 0 ? (
@@ -478,10 +479,10 @@ export function OrdersScreen({ onTab, onOpenConversation, onOpenOrder, onOpenBoo
             <Icon name="help_outline" className="text-primary text-[22px] flex-shrink-0 mt-0.5" />
             <div className="flex flex-col gap-1">
               <h4 className="font-label-md text-label-md font-semibold text-text-primary">
-                Need help with an order or booking?
+                Need help with an order?
               </h4>
               <p className="font-caption text-caption text-text-secondary leading-relaxed">
-                Our support team can chase receipts, reschedule visits, or resolve disputes.{' '}
+                Our support team can chase receipts or resolve disputes.{' '}
                 <button
                   type="button"
                   onClick={() => onNavigate('support')}

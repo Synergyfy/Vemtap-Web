@@ -184,7 +184,7 @@ export function BookingCheckoutScreen({ onBack, onConfirmed }: BookingCheckoutSc
           </div>
           <label className="pt-2 border-t border-border-subtle flex items-center justify-between cursor-pointer group">
             <div className="flex items-center gap-2">
-              <Icon name="notifications_active" className="text-text-secondary text-[20px]" />
+              <Icon name="whatsapp" className="text-badge-discount-text text-[20px]" />
               <span className="text-caption text-caption font-label-md text-text-primary group-hover:text-primary transition-colors">
                 Send SMS &amp; WhatsApp Reminder
               </span>

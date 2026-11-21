@@ -4,6 +4,7 @@ export interface ProfileBranch {
   id: string;
   name: string;
   address?: string | null;
+  district?: string | null;
   city?: string | null;
   state?: string | null;
   latitude?: number | string | null;

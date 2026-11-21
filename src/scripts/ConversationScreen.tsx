@@ -107,7 +107,7 @@ export function ConversationScreen({ threadId, onBack, onViewPass, onSecondary }
       <AppScreen>
         <div className="flex flex-1 items-center justify-center px-space-md text-center">
           <div className="space-y-2">
-            <Icon name="forum" className="text-[36px] text-outline-variant mx-auto" />
+            <Icon name="vemtap-chat" className="text-[36px] text-outline-variant mx-auto" />
             <p className="font-label-md text-label-md text-text-secondary">Loading conversation…</p>
           </div>
         </div>

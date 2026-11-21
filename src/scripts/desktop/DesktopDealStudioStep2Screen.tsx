@@ -702,7 +702,7 @@ export function DesktopDealStudioStep2Screen({
                   <div className="flex items-center justify-between pt-space-2xs">
                     {!live || studio.gifting ? (
                       <div className="flex items-center gap-space-xs text-text-secondary font-caption text-caption">
-                        <Icon name="card_giftcard" className="text-[16px] text-badge-discount-text" />
+                        <Icon name="whatsapp" className="text-[16px] text-badge-discount-text" />
                         <span>Giftable via WhatsApp link</span>
                       </div>
                     ) : (
@@ -812,7 +812,9 @@ export function DesktopDealStudioStep2Screen({
               className="inline-flex items-center justify-center gap-space-2xs px-space-md py-space-xs rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-subtle font-button-secondary text-button-secondary transition-colors"
             >
               <Icon name="arrow_back" className="text-[18px]" />
-              <span>Back to Step 1: Strategy</span>
+              <span>
+                {studio.strategy === 'current' ? 'Change Deal Price' : 'Back to Step 1: Strategy'}
+              </span>
             </button>
             <button
               type="button"

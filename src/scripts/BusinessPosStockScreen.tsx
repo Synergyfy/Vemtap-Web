@@ -27,7 +27,7 @@ type Availability = 'in' | 'low' | 'out';
 const AVAILABILITY_META: Record<Availability, { label: string; chip: string }> = {
   in: { label: 'In stock · 18', chip: 'bg-badge-discount-bg text-badge-discount-text' },
   low: { label: 'Low · 5 left', chip: 'bg-secondary-fixed text-on-secondary-fixed' },
-  out: { label: '86’d', chip: 'bg-surface-container text-text-secondary' },
+  out: { label: 'Sold Out', chip: 'bg-surface-container text-text-secondary' },
 };
 
 interface StockRow {
@@ -113,7 +113,7 @@ export function BusinessPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }
       }
     }
     liveStock
-      .setQuantity(row.product.id, quantity, availability === 'out' ? '86’d at the till' : 'Till stock count')
+      .setQuantity(row.product.id, quantity, availability === 'out' ? 'Marked sold out at the till' : 'Register stock count')
       .then(() => {
         setModal(null);
         showToast(`${row.product.name} · ${quantity} on hand`);
@@ -395,9 +395,9 @@ export function BusinessPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }
                     isActive ? 'bg-surface-tint-blue border-2 border-border-active text-on-surface' : 'bg-surface-canvas text-on-surface'
                   }`}
                 >
-                  <span>{key === 'in' ? 'Mark in stock' : key === 'low' ? 'Mark low stock' : '86 item (sold out)'}</span>
+                  <span>{key === 'in' ? 'Mark in stock' : key === 'low' ? 'Mark low stock' : 'Mark sold out'}</span>
                   <span className={`h-5 px-1.5 rounded-full font-caption text-caption ${meta.chip}`}>
-                    {live ? (key === modal.availability ? chipLabel(modal) : key === 'out' ? '86’d' : 'Set count') : meta.label}
+                    {live ? (key === modal.availability ? chipLabel(modal) : key === 'out' ? 'Sold Out' : 'Set count') : meta.label}
                   </span>
                 </button>
               );

@@ -283,7 +283,7 @@ export function DesktopDealTermsScreen({ onNav, onBack, onClaim, detail, loading
                 onClick={() => onNav('messages')}
                 className="h-11 rounded-xl bg-surface-canvas border border-border-subtle text-text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-2 hover:bg-surface-subtle transition-colors shadow-sm"
               >
-                <Icon name="forum" className="text-[18px] text-primary" />
+                <Icon name="vemtap-chat" className="text-[18px] text-primary" />
                 <span>Message Merchant</span>
               </button>
             </aside>

@@ -283,7 +283,7 @@ export function BusinessAddServiceStep3Screen({
                     Tiered Branch Pricing
                   </p>
                   <p className="font-caption text-caption text-text-secondary mt-0.5">
-                    Customize per studio (e.g. Maitama VIP suites premium or rent differentials).
+                    Customize pricing per branch or location.
                   </p>
                 </div>
               </label>
@@ -566,7 +566,7 @@ export function BusinessAddServiceStep3Screen({
               })}
 
               <div className="bg-surface-tint-blue p-space-sm rounded-xl flex items-start gap-space-xs mt-1">
-                <Icon className="text-primary text-[20px] shrink-0 mt-0.5" filled name="sms" />
+                <Icon className="text-primary text-[20px] shrink-0 mt-0.5" name="whatsapp" />
                 <p className="font-caption text-caption text-on-secondary-container leading-relaxed">
                   <strong className="font-semibold text-primary">Automated WhatsApp Concierge:</strong> Reminders are
                   automatically triggered 24 hours and 2 hours prior to the session.

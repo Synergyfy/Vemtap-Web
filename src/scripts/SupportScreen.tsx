@@ -10,7 +10,6 @@ interface SupportScreenProps {
 const TOPICS = [
   { id: 'deals', icon: 'local_offer', label: 'Deals & Claims' },
   { id: 'orders', icon: 'shopping_bag', label: 'Orders & Delivery' },
-  { id: 'bookings', icon: 'calendar_today', label: 'Bookings' },
   { id: 'account', icon: 'person', label: 'Account & Login' },
   { id: 'payments', icon: 'account_balance', label: 'Payments' },
   { id: 'other', icon: 'help', label: 'Something Else' },
@@ -151,7 +150,7 @@ export function SupportScreen({ onBack, onOpenHelp }: SupportScreenProps) {
           >
             <div className="flex items-center gap-space-sm min-w-0">
               <div className="w-9 h-9 rounded-full bg-badge-discount-bg text-badge-discount-text flex items-center justify-center shrink-0">
-                <Icon name="chat" className="text-[20px]" />
+                <Icon name="whatsapp" className="text-[20px]" />
               </div>
               <div className="flex flex-col min-w-0">
                 <span className="text-label-md font-label-md text-text-primary truncate">WhatsApp Desk</span>

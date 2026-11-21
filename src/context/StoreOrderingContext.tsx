@@ -4,6 +4,7 @@ import { hasApiConfig } from '../services/api/client';
 import { apiErrorMessage } from '../services/errorMessages';
 import { storeOrderingService } from '../services/storeOrderingService';
 import { ordersService } from '../services/ordersService';
+import { claimsService } from '../services/claimsService';
 import {
   type StoreOrder,
   type StoreOrderStatus,
@@ -36,6 +37,8 @@ interface StoreOrderingContextValue {
   orders: StoreOrder[];
   qrCodes: StoreQrRecord[];
   settings: StoreOrderingSettings;
+  settingsLoading: boolean;
+  settingsSaving: boolean;
   summaryMetrics: {
     newOrders: number;
     preparing: number;
@@ -78,7 +81,7 @@ interface StoreOrderingContextValue {
   submitCustomerStoreOrder: (order: Omit<StoreOrder, 'id' | 'orderRef' | 'createdAt' | 'statusHistory' | 'payment'>) => StoreOrder;
   addQrCode: (newQr: Omit<StoreQrRecord, 'id' | 'createdAt' | 'scansCount' | 'ordersCount' | 'revenueGenerated'>) => StoreQrRecord;
   toggleQrActive: (qrId: string) => void;
-  updateSettings: (patch: Partial<StoreOrderingSettings>) => void;
+  updateSettings: (patch: Partial<StoreOrderingSettings>) => Promise<{ ok: boolean; message: string }>;
   activePosHandoffOrderId: string | null;
   setActivePosHandoffOrderId: (id: string | null) => void;
   completeOrderFromPos: (
@@ -132,11 +135,11 @@ const memberLabel = (m: TeamMember) => {
 };
 
 /** Display name of the signed-in account (`GET /auth/profile`). */
-const sessionLabel = (user?: { firstName?: string | null; lastName?: string | null; email?: string | null; role?: string | null; businessRole?: string | null; roleTag?: string | null } | null) => {
+const sessionLabel = (user?: { firstName?: string | null; lastName?: string | null; email?: string | null; role?: string | null; businessRole?: string | null; roleTag?: string | null; jobTitle?: string | null } | null) => {
   if (!user) return '';
   const name = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email || '';
   if (!name) return '';
-  const role = user.businessRole || user.roleTag || user.role;
+  const role = user.roleTag || user.jobTitle || user.businessRole || user.role;
   return role ? `${name} (${role})` : name;
 };
 
@@ -164,6 +167,24 @@ const liveKeys = {
   summary: ['store-ordering', 'summary'] as const,
   qr: ['store-ordering', 'qr'] as const,
   settings: ['store-ordering', 'settings'] as const,
+};
+
+/** Neutral values while GET /store-ordering/settings loads — never demo data. */
+const LIVE_SETTINGS_PLACEHOLDER: StoreOrderingSettings = {
+  enabled: false,
+  usePosForCompletion: false,
+  paymentMethods: [],
+  activeBranches: {},
+  immediatePickup: false,
+  scheduledPreOrder: false,
+  defaultPrepMinutes: 0,
+  pickupInstructions: '',
+  guestOrderingAllowed: false,
+  acceptOrdersOutsideHours: false,
+  allowSubstitutions: false,
+  autoNotifyCustomerSms: false,
+  autoNotifyCustomerWhatsApp: false,
+  notifiedStaff: [],
 };
 const STORAGE_QRS_KEY = 'vemtap_store_qrs_v1';
 const STORAGE_SETTINGS_KEY = 'vemtap_store_settings_v1';
@@ -611,8 +632,9 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const updateSettings = useCallback((patch: Partial<StoreOrderingSettings>) => {
+  const updateSettings = useCallback(async (patch: Partial<StoreOrderingSettings>) => {
     setSettings((prev) => ({ ...prev, ...patch }));
+    return { ok: true, message: 'Store Ordering settings saved successfully.' };
   }, []);
 
   const [activePosHandoffOrderId, setActivePosHandoffOrderId] = useState<string | null>(null);
@@ -621,6 +643,9 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
     (orderId: string, tender: string, posTransactionId: string, notes?: string) => {
       const order = orders.find((o) => o.id === orderId || o.orderRef === orderId);
       if (!order) return { ok: false, message: 'Order not found' };
+      if (order.origin === 'Deal' && order.sourceRef) {
+        void claimsService.redeemVoucher(order.sourceRef).catch(() => {});
+      }
       const completer = order.assignedStaff || 'Store Staff';
 
       const timestamp = new Date().toLocaleTimeString('en-US', {
@@ -681,6 +706,7 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
   }, []);
   const fetchLive = live && consumers > 0;
   const [lastError, setLastError] = useState<string | null>(null);
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const clearLastError = useCallback(() => setLastError(null), []);
   const liveOrders = useQuery({ queryKey: liveKeys.orders, queryFn: storeOrderingService.orders, enabled: fetchLive, refetchInterval: 30_000 });
   const liveSummary = useQuery({ queryKey: liveKeys.summary, queryFn: storeOrderingService.summary, enabled: fetchLive, refetchInterval: 30_000 });
@@ -725,22 +751,23 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
   );
 
   /**
-   * Live: the person recorded as completing an order — the assigned staff
-   * member when there is one, otherwise the signed-in account (the owner),
-   * which is also persisted onto the order so nothing is completed anonymously.
+   * Live: the assigned person is the only recorded completer (owner included
+   * when selected in the dropdown). Nothing is auto-assigned here — an
+   * unassigned order must be rejected, and the backend enforces the same rule.
    */
   const resolveCompleter = useCallback(
-    (order: StoreOrder): string => {
+    (order: StoreOrder): string | null => {
+      const assignedId = order.assignedStaffId;
+      const member = teamRows.find(
+        (candidate) =>
+          (assignedId && candidate.id === assignedId) ||
+          (!assignedId && order.assignedStaff && memberName(candidate) === order.assignedStaff),
+      );
+      if (member) return memberLabel(member);
       if (order.assignedStaff) return order.assignedStaff;
-      const name = sessionLabel(signedIn);
-      if (!name || !signedIn?.id) return 'Store Staff';
-      void storeOrderingService
-        .assign(order.id, signedIn.id)
-        .then(() => void queryClient.invalidateQueries({ queryKey: liveKeys.orders }))
-        .catch(() => undefined);
-      return name;
+      return null;
     },
-    [signedIn, queryClient]
+    [teamRows]
   );
 
   const run = useCallback(
@@ -753,14 +780,39 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
     [queryClient],
   );
 
+  // Settings need an honest result so the Save button can report the real
+  // server outcome instead of showing success before the PATCH has finished.
+  const runSettings = useCallback(
+    async (patch: Partial<StoreOrderingSettings>) => {
+      setLastError(null);
+      setSettingsSaving(true);
+      try {
+        await storeOrderingService.updateSettings(patch);
+        return { ok: true, message: 'Store Ordering settings saved successfully.' };
+      } catch (error: unknown) {
+        const message = apiErrorMessage(error, 'The store-ordering update failed.');
+        setLastError(message);
+        return { ok: false, message };
+      } finally {
+        setSettingsSaving(false);
+        void queryClient.invalidateQueries({ queryKey: liveKeys.settings });
+      }
+    },
+    [queryClient],
+  );
+
   const liveValue = useMemo((): StoreOrderingContextValue | null => {
     if (!live) return null;
+    // Only the API's orders are shown in live mode; the seeded/localStorage
+    // orders belong to demo mode and must never leak into the live table.
     const list = liveOrders.data ?? [];
     const find = (id: string) => list.find((o) => o.id === id || o.orderRef === id);
     return {
       orders: list,
       qrCodes: liveQr.data ?? [],
-      settings: liveSettings.data ?? INITIAL_ORDERING_SETTINGS,
+      settings: liveSettings.data ?? LIVE_SETTINGS_PLACEHOLDER,
+      settingsLoading: liveSettings.isLoading,
+      settingsSaving,
       summaryMetrics: liveSummary.data ?? {
         newOrders: 0,
         preparing: 0,
@@ -782,8 +834,9 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
         if (newStatus === 'completed' && !PAID_STATUSES.includes(order.payment.status))
           return { ok: false, message: 'Record the payment before completing the order.' };
         if (newStatus === 'completed') {
-          // The completion entry always names the person who completed it.
+          // The completion entry always names the assigned person (owner included).
           const completer = resolveCompleter(order);
+          if (!completer) return { ok: false, message: 'Assign the person completing this order first.' };
           run(() =>
             storeOrderingService.setStatus(order.id, newStatus, withCompleter(note, completer, `Status updated to ${newStatus}`)),
           );
@@ -809,15 +862,27 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
         if (!order || !staffValue) return;
         // The picker sends the account id (falling back to a display name).
         const member = teamRows.find((m) => m.id === staffValue) ?? teamRows.find((m) => memberName(m) === staffValue);
+        const applyAssignment = (id: string, label: string) => {
+          // Show the assignment immediately so completion can be guarded in the
+          // same session; the API response replaces it on the next refetch.
+          queryClient.setQueryData<StoreOrder[]>(liveKeys.orders, (current = []) =>
+            current.map((candidate) =>
+              candidate.id === order.id
+                ? { ...candidate, assignedStaff: label, assignedStaffId: id }
+                : candidate,
+            ),
+          );
+          run(() => storeOrderingService.assign(order.id, id));
+        };
         if (!member) {
           if (signedIn?.id === staffValue) {
-            run(() => storeOrderingService.assign(order.id, staffValue));
+            applyAssignment(staffValue, sessionLabel(signedIn) || 'Signed-in account');
             return;
           }
           setLastError('That person is not on your team yet — invite them from the Staff page first.');
           return;
         }
-        run(() => storeOrderingService.assign(order.id, member.id));
+        applyAssignment(member.id, memberLabel(member));
       },
       recordStorePayment: (orderId, methodOrParams, reference, notes) => {
         const order = find(orderId);
@@ -828,7 +893,10 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
             ? methodOrParams
             : { method: methodOrParams, reference, notes, markCompleted: true };
         // A payment that closes the order carries the person completing it.
-        const completer = params.markCompleted ? resolveCompleter(order) : '';
+        const completer = params.markCompleted ? resolveCompleter(order) : null;
+        if (params.markCompleted && !completer) {
+          return { ok: false, message: 'Assign the person completing this order first.' };
+        }
         const paymentNotes = [params.notes, completer ? `Completed by ${completer}` : '']
           .filter(Boolean)
           .join(' — ');
@@ -850,6 +918,7 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
           return { ok: false, message: 'Record the payment before handing the order over.' };
         // The handover entry names who handed it over, not just who is signed in.
         const completer = resolveCompleter(order);
+        if (!completer) return { ok: false, message: 'Assign the person completing this order first.' };
         run(() =>
           storeOrderingService.setStatus(
             order.id,
@@ -886,14 +955,22 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
         const qr = (liveQr.data ?? []).find((q) => q.id === qrId);
         if (qr) run(() => storeOrderingService.updateQr(qr.id, { isActive: !qr.active }), [liveKeys.qr]);
       },
-      updateSettings: (patch) => run(() => storeOrderingService.updateSettings(patch), [liveKeys.settings]),
+      updateSettings: (patch) => runSettings(patch),
       activePosHandoffOrderId,
       setActivePosHandoffOrderId,
       completeOrderFromPos: (orderId, tender, posTransactionId, notes) => {
         const order = find(orderId);
         if (!order) return { ok: false, message: 'Order not found' };
-        if (!UUID.test(posTransactionId)) return { ok: false, message: 'Complete the sale on VEMTAP POS first.' };
+        if (order.origin === 'Deal' && order.sourceRef) {
+          void claimsService.redeemVoucher(order.sourceRef).catch(() => {});
+        }
+        if (!UUID.test(posTransactionId)) {
+          const result = updateOrderStatus(orderId, 'completed', notes);
+          if (result.ok) setActivePosHandoffOrderId(null);
+          return result;
+        }
         const completer = resolveCompleter(order);
+        if (!completer) return { ok: false, message: 'Assign the person completing this order first.' };
         const handoffNotes = [notes, `Completed by ${completer}`].filter(Boolean).join(' — ');
         run(() =>
           storeOrderingService.completeFromPos(order.id, { tender, posSaleId: posTransactionId, notes: handoffNotes }),
@@ -909,6 +986,8 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
     liveOrders.data,
     liveQr.data,
     liveSettings.data,
+    liveSettings.isLoading,
+    settingsSaving,
     liveSummary.data,
     teamRows,
     signedIn,
@@ -916,6 +995,8 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
     staffValueFor,
     resolveCompleter,
     run,
+    runSettings,
+    queryClient,
     submitCustomerStoreOrder,
     activePosHandoffOrderId,
     lastError,
@@ -927,6 +1008,8 @@ export function StoreOrderingProvider({ children }: { children: ReactNode }) {
       orders,
       qrCodes,
       settings,
+      settingsLoading: false,
+      settingsSaving: false,
       summaryMetrics,
       getOrderById,
       updateOrderStatus,

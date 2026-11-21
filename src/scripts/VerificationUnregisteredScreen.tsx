@@ -13,7 +13,7 @@ interface VerificationUnregisteredScreenProps {
 const UNLOCKED_PERKS = [
   { icon: 'local_offer', body: 'Post deals and create daily flash offers' },
   { icon: 'qr_code_2', body: 'Set up your storefront & share instant QR code' },
-  { icon: 'forum', body: 'Receive customer chat messages & bookings directly' },
+  { icon: 'vemtap-chat', body: 'Receive customer chat messages & bookings directly' },
 ];
 
 const RESERVED_PERKS = [

@@ -167,6 +167,8 @@ export function DesktopAddServiceStep1Screen({
               <ServiceImageUploader
                 currentImage={draft.image}
                 onImageChange={(url) => onDraftChange({ image: url })}
+                videos={draft.videos}
+                onVideosChange={(videos) => onDraftChange({ videos })}
                 aspectRatio="16/9"
                 aiContext={{
                   itemName: draft.title,
@@ -424,7 +426,7 @@ export function DesktopAddServiceStep1Screen({
                 <div className="flex items-center gap-2">
                   <Icon name="description" className="text-primary text-[22px]" />
                   <h2 className="font-heading-md text-heading-md text-text-primary">
-                    Description &amp; Treatment Highlights
+                    Service Description
                   </h2>
                 </div>
                 <button

@@ -1,13 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../components/ui/Icon';
 import { URBAN_BUSINESS } from './businessData';
 import { useBusinessBranch } from '../context/BusinessBranchContext';
-import { useTeamMutations } from '../hooks/business/useBranchesAndTeam';
+import { useProgressiveAccordion } from '../hooks/useProgressiveAccordion';
+import { useBranches, useTeamMutations } from '../hooks/business/useBranchesAndTeam';
 import { useMyBusiness } from '../hooks/business/useMyBusiness';
 import { hasApiConfig } from '../services/api/client';
 import { apiErrorMessage } from '../services/errorMessages';
 import { planErrorMessage } from '../services/planErrors';
-import { inviteRole, toApiPermissions } from './teamLive';
+import {
+  ALL_STAFF_PAGE_IDS,
+  STAFF_PAGE_DEFAULTS,
+  STAFF_PAGE_TREE,
+  inviteRole,
+  toApiPermissions,
+  toPermissionMap,
+} from './teamLive';
 
 interface BusinessInviteStaffScreenProps {
   onBack: () => void;
@@ -17,24 +25,18 @@ type Channel = 'email' | 'whatsapp' | 'sms';
 type RoleKey = 'owner' | 'manager' | 'staff' | 'cashier';
 type RoleMode = 'preset' | 'custom';
 
-interface PermissionItem {
-  id: string;
-  label: string;
-  desc: string;
-  icon: string;
-}
-
-const STEPS = [
-  { title: 'Contact details', sub: 'Who you are inviting' },
-  { title: 'Assign a role', sub: 'Preset role or your own title' },
-  { title: 'Permissions', sub: 'Pages they can open' },
-  { title: 'Branch access', sub: 'Where they work' },
-  { title: 'Send invitation', sub: 'Delivery, link and message' },
+const SECTIONS = [
+  { title: '1. Contact Identity & Channel', sub: 'Who you are inviting', icon: 'badge' },
+  { title: '2. Role Preset & Authority Tier', sub: 'Preset role or your own title', icon: 'admin_panel_settings' },
+  { title: '3. Page Access Permissions', sub: 'Pages they can open', icon: 'admin_panel_settings' },
+  { title: '4. Operating Branch Assignment', sub: 'Where they work', icon: 'store' },
+  { title: '5. Staff Security', sub: 'Set their 6-digit sign-in PIN', icon: 'lock' },
+  { title: '6. Send Invitation', sub: 'Review the pre-filled message', icon: 'send' },
 ];
 
 const CHANNELS: { key: Channel; label: string; icon: string }[] = [
   { key: 'email', label: 'Email', icon: 'mail' },
-  { key: 'whatsapp', label: 'WhatsApp', icon: 'chat' },
+  { key: 'whatsapp', label: 'WhatsApp', icon: 'whatsapp' },
   { key: 'sms', label: 'SMS', icon: 'sms' },
 ];
 
@@ -45,72 +47,9 @@ const ROLES: { key: RoleKey; label: string; desc: string; icon: string }[] = [
   { key: 'cashier', label: 'Cashier', desc: 'POS checkout, refunds and daily reports', icon: 'point_of_sale' },
 ];
 
-const PERMISSION_GROUPS: { group: string; items: PermissionItem[] }[] = [
-  {
-    group: 'Operations',
-    items: [
-      { id: 'overview', label: 'Overview & Dashboard', desc: 'Daily KPIs, alerts and activity', icon: 'dashboard' },
-      { id: 'orders', label: 'Orders', desc: 'Order list, details and fulfilment', icon: 'receipt_long' },
-      { id: 'pos', label: 'POS & Customer Display', desc: 'Terminal, tips, split bill and receipt', icon: 'point_of_sale' },
-      { id: 'messages', label: 'Messages', desc: 'Customer and deal conversations', icon: 'chat_bubble' },
-    ],
-  },
-  {
-    group: 'Sales & catalogue',
-    items: [
-      { id: 'catalog', label: 'Products & Services', desc: 'Menu, inventory and pricing', icon: 'inventory_2' },
-      { id: 'deals', label: 'Deals & Promotions', desc: 'Create, publish and track deals', icon: 'local_offer' },
-      { id: 'loyalty', label: 'Loyalty & Rewards', desc: 'Points, tiers and reward rules', icon: 'card_membership' },
-      { id: 'boost', label: 'Boost Campaigns', desc: 'Paid promotion and daily spend', icon: 'campaign' },
-    ],
-  },
-  {
-    group: 'Customers & team',
-    items: [
-      { id: 'customers', label: 'Customers CRM', desc: 'Profiles, segments and notes', icon: 'groups' },
-      { id: 'staff', label: 'Staff & Team Access', desc: 'Invites, roles and permissions', icon: 'badge' },
-      { id: 'locations', label: 'Locations & Branches', desc: 'Branch details, hours and QR', icon: 'location_on' },
-      { id: 'profile', label: 'Business Profile', desc: 'Public profile, storefront and links', icon: 'storefront' },
-    ],
-  },
-  {
-    group: 'Insights & account',
-    items: [
-      { id: 'analytics', label: 'Analytics & Reports', desc: 'Traffic, audience and branch data', icon: 'insights' },
-      { id: 'subscription', label: 'Subscription & Add-ons', desc: 'Plan, invoices and add-ons', icon: 'receipt' },
-      { id: 'verification', label: 'Verification & Compliance', desc: 'KYC status and documents', icon: 'verified_user' },
-      { id: 'more', label: 'More & Settings', desc: 'App settings and preferences', icon: 'tune' },
-    ],
-  },
-];
-
-const ALL_PERMISSION_IDS = PERMISSION_GROUPS.flatMap((group) => group.items.map((item) => item.id));
-
-const ROLE_DEFAULTS: Record<RoleKey, string[]> = {
-  owner: ALL_PERMISSION_IDS,
-  manager: [
-    'overview',
-    'orders',
-    'pos',
-    'messages',
-    'catalog',
-    'deals',
-    'loyalty',
-    'customers',
-    'locations',
-    'profile',
-    'analytics',
-  ],
-  staff: ['overview', 'orders', 'messages', 'customers'],
-  cashier: ['overview', 'orders', 'pos', 'messages'],
-};
-
 const BRANCHES = ['Wuse 2', 'Maitama', 'Lekki Phase 1'];
 
 const INVITE_LINK = `https://vemtap.com/join/${URBAN_BUSINESS.slug}?invite=VT48Q2K`;
-
-const toPermissionMap = (ids: string[]) =>
-  Object.fromEntries(ALL_PERMISSION_IDS.map((id) => [id, ids.includes(id)])) as Record<string, boolean>;
 
 const fieldClass =
   'w-full h-10 px-space-sm rounded-xl bg-surface-container-low text-text-primary font-label-sm text-label-sm placeholder:text-text-tertiary outline-none focus:bg-surface-canvas border border-border-subtle';
@@ -123,7 +62,6 @@ const cardClass = 'bg-surface-canvas rounded-2xl p-space-sm shadow-sm';
 const stepTitleClass = 'font-label-md text-label-md text-text-primary font-semibold';
 
 export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenProps) {
-  const [step, setStep] = useState(0);
   const [sheetUp, setSheetUp] = useState(false);
 
   const [name, setName] = useState('');
@@ -137,8 +75,10 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
   const [role, setRole] = useState<RoleKey>('staff');
   const [customRole, setCustomRole] = useState('');
 
-  const [permissions, setPermissions] = useState<Record<string, boolean>>(() => toPermissionMap(ROLE_DEFAULTS.staff));
-  const [selectedBranches, setSelectedBranches] = useState<string[]>(['Wuse 2']);
+  const [permissions, setPermissions] = useState<Record<string, boolean>>(() =>
+    toPermissionMap(STAFF_PAGE_DEFAULTS.staff),
+  );
+  const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
 
   const [channel, setChannel] = useState<Channel>('email');
   const [message, setMessage] = useState('');
@@ -150,11 +90,13 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
   // Live: real branches (one per member: the backend keeps a single branch),
   // and the invite is emailed with the PIN set here.
   const live = hasApiConfig();
-  const { branches: liveBranches, activeBranchId } = useBusinessBranch();
+  const branchList = useBranches();
+  const { activeBranchId } = useBusinessBranch();
   const { invite } = useTeamMutations();
   const businessName = useMyBusiness().data?.name;
-  const branchOptions = live ? liveBranches.map((branch) => branch.name) : BRANCHES;
-  const branchIdFor = (branchName: string) => liveBranches.find((branch) => branch.name === branchName)?.id;
+  const apiBranches = (branchList.data ?? []).filter((branch) => branch.isActive !== false);
+  const branchOptions = live ? apiBranches.map((branch) => branch.name) : BRANCHES;
+  const branchIdFor = (branchName: string) => apiBranches.find((branch) => branch.name === branchName)?.id;
   const inviteLink = live ? window.location.origin : INVITE_LINK;
   const lastName = name.trim().split(/\s+/).slice(1).join(' ');
   const [toast, setToast] = useState<string | null>(null);
@@ -164,8 +106,24 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
   const phoneOk = phone.replace(/\D/g, '').length >= 7;
   const roleLabel =
     roleMode === 'preset' ? ROLES.find((option) => option.key === role)?.label ?? '' : customRole.trim();
-  const enabledCount = Object.values(permissions).filter(Boolean).length;
+  const enabledCount = ALL_STAFF_PAGE_IDS.filter((id) => permissions[id]).length;
   const firstName = name.trim().split(/\s+/)[0] ?? '';
+
+  const contactComplete = name.trim().length > 1 && (!live || lastName.length > 0) && emailOk;
+  const roleComplete = roleMode === 'preset' || customRole.trim().length > 1;
+  const permissionsComplete = enabledCount > 0;
+  const branchComplete = (!live && selectedBranches.length > 0) || (live && Boolean(branchIdFor(selectedBranches[0])));
+  const securityComplete = pin.length === 6 && pin === confirmPin;
+  const inviteComplete = message.trim().length > 10 && (channel === 'email' ? emailOk : phoneOk);
+  const completedSections = [
+    contactComplete,
+    roleComplete,
+    permissionsComplete,
+    branchComplete,
+    securityComplete,
+    inviteComplete,
+  ];
+  const { activeIndex, highestAvailable, reveal } = useProgressiveAccordion(completedSections);
 
   const buildMessage = () => {
     const greeting = firstName || 'there';
@@ -184,9 +142,9 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
   }, [name, email, roleLabel, messageEdited]);
 
   useEffect(() => {
-    if (step === STEPS.length - 1 && !messageEdited) setMessage(buildMessage());
+    if (activeIndex === SECTIONS.length - 1 && !messageEdited) setMessage(buildMessage());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step]);
+  }, [activeIndex]);
 
   useEffect(() => {
     const openTimer = window.setTimeout(() => setSheetUp(true), 10);
@@ -207,14 +165,14 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
 
   // Live: start on the active branch once branches have loaded.
   useEffect(() => {
-    if (!live || !liveBranches.length) return;
+    if (!live || !apiBranches.length) return;
     setSelectedBranches((current) => {
       if (current.length === 1 && branchIdFor(current[0])) return current;
-      const active = liveBranches.find((branch) => branch.id === activeBranchId) ?? liveBranches[0];
+      const active = apiBranches.find((branch) => branch.id === activeBranchId) ?? apiBranches[0];
       return [active.name];
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [live, liveBranches, activeBranchId]);
+  }, [live, branchList.data, activeBranchId]);
 
   const showToast = (text: string) => {
     if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
@@ -222,123 +180,112 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
-  const stepValid = (index: number) => {
-    switch (index) {
-      case 0:
-        return name.trim().length > 1 && (!live || lastName.length > 0) && emailOk && pin.length === 6 && pin === confirmPin;
-      case 1:
-        return roleMode === 'preset' || customRole.trim().length > 1;
-      case 2:
-        return enabledCount > 0;
-      case 3:
-        return selectedBranches.length > 0;
-      default:
-        return (
-          message.trim().length > 10 && (channel === 'email' ? emailOk : phoneOk) && !sending && !sent
-        );
-    }
-  };
-
-  const stepHint = (index: number) => {
+  const sectionHint = (index: number) => {
     switch (index) {
       case 0:
         if (name.trim().length <= 1 || (live && !lastName)) return 'Enter the full name of your teammate.';
         if (!emailOk) return 'Enter a valid email address.';
-        if (pin.length < 6) return 'Set a 6-digit PIN — you are creating it on their behalf.';
-        if (pin !== confirmPin) return 'PINs do not match.';
-        return 'You set the PIN, they receive it on their registered email.';
+        return 'Contact details are ready.';
       case 1:
         return roleMode === 'preset'
           ? 'Preset roles arrive with pre-selected permissions.'
           : 'Type the role you want to give this staff member.';
       case 2:
-        return `${enabledCount} of ${ALL_PERMISSION_IDS.length} pages enabled.`;
+        return `${enabledCount} of ${ALL_STAFF_PAGE_IDS.length} pages enabled.`;
       case 3:
         if (live) return selectedBranches.length ? `Works at ${selectedBranches[0]}.` : 'Select their branch.';
         return selectedBranches.length
           ? `${selectedBranches.length} branch${selectedBranches.length > 1 ? 'es' : ''} selected.`
           : 'Select at least one branch.';
+      case 4:
+        if (pin.length < 6) return 'Set a 6-digit PIN — you are creating it on their behalf.';
+        if (pin !== confirmPin) return 'PINs do not match.';
+        return 'You set the PIN, they receive it on their registered email.';
       default:
-        if (!stepValid(index)) {
-          if (channel !== 'email' && !phoneOk) return 'Add a phone number in step 1 to use WhatsApp or SMS.';
-          if (message.trim().length <= 10) return 'Add a short note before sending.';
-        }
+        if (channel !== 'email' && !phoneOk) return 'Add a phone number in step 1 to use WhatsApp or SMS.';
         return channel === 'email'
           ? `Delivered to ${email.trim()} — PIN goes to the same inbox.`
           : `Sent to ${phone.trim()} — PIN goes to ${email.trim()}.`;
     }
   };
 
-  const goNext = () => {
-    if (!stepValid(step)) return;
-    if (step === STEPS.length - 1) {
-      if (sending || sent) return;
-      if (live) {
-        const branchId = branchIdFor(selectedBranches[0]);
-        if (!branchId) return showToast('Choose the branch they will work at.');
-        setSending(true);
-        invite.mutate(
-          {
-            firstName: name.trim().split(/\s+/)[0],
-            lastName,
-            email: email.trim(),
-            phone: phone.trim() || undefined,
-            role: inviteRole(roleMode === 'preset' ? role : 'custom', roleLabel),
-            jobTitle: roleMode === 'custom' ? customRole.trim() : undefined,
-            permissions: toApiPermissions(Object.keys(permissions).filter((id) => permissions[id])),
-            branchId,
-            pin,
-          },
-          {
-            onSuccess: () => {
-              setSending(false);
-              setSent(true);
-              showToast(`Invitation sent to ${name.trim().split(' ')[0]} by email`);
-              window.setTimeout(onBack, 1800);
-            },
-            onError: (error) => {
-              setSending(false);
-              showToast(planErrorMessage(error) ?? apiErrorMessage(error, 'Could not send the invite.'));
-            },
-          },
-        );
-        return;
-      }
+  const sendInvite = () => {
+    if (sending || sent) return;
+    if (!completedSections.every(Boolean)) return;
+    if (live) {
+      const branchId = branchIdFor(selectedBranches[0]);
+      if (!branchId) return showToast('Choose the branch they will work at.');
       setSending(true);
-      window.setTimeout(() => {
-        setSending(false);
-        setSent(true);
-        showToast(`Invitation sent to ${name.trim().split(' ')[0]} via ${CHANNELS.find((item) => item.key === channel)?.label}`);
-        window.setTimeout(onBack, 1800);
-      }, 900);
+      invite.mutate(
+        {
+          firstName: name.trim().split(/\s+/)[0],
+          lastName,
+          email: email.trim(),
+          phone: phone.trim() || undefined,
+          role: inviteRole(roleMode === 'preset' ? role : 'custom', roleLabel),
+          jobTitle: roleMode === 'custom' ? customRole.trim() : undefined,
+          permissions: toApiPermissions(ALL_STAFF_PAGE_IDS.filter((id) => permissions[id])),
+          branchId,
+          pin,
+        },
+        {
+          onSuccess: () => {
+            setSending(false);
+            setSent(true);
+            showToast(`Invitation sent to ${name.trim().split(' ')[0]} by email`);
+            window.setTimeout(onBack, 1800);
+          },
+          onError: (error) => {
+            setSending(false);
+            showToast(planErrorMessage(error) ?? apiErrorMessage(error, 'Could not send the invite.'));
+          },
+        },
+      );
       return;
     }
-    setStep((current) => Math.min(current + 1, STEPS.length - 1));
-  };
-
-  const goBack = () => {
-    if (step === 0) onBack();
-    else setStep((current) => current - 1);
+    setSending(true);
+    window.setTimeout(() => {
+      setSending(false);
+      setSent(true);
+      showToast(`Invitation sent to ${name.trim().split(' ')[0]} via ${CHANNELS.find((item) => item.key === channel)?.label}`);
+      window.setTimeout(onBack, 1800);
+    }, 900);
   };
 
   const selectRole = (key: RoleKey) => {
     setRole(key);
-    setPermissions(toPermissionMap(ROLE_DEFAULTS[key]));
+    setPermissions(toPermissionMap(STAFF_PAGE_DEFAULTS[key]));
+    reveal(2);
   };
 
   const togglePermission = (id: string) => {
     setPermissions((current) => ({ ...current, [id]: !current[id] }));
+    reveal(3);
   };
 
   const toggleAllPermissions = () => {
-    setPermissions(toPermissionMap(enabledCount === ALL_PERMISSION_IDS.length ? [] : ALL_PERMISSION_IDS));
+    setPermissions(toPermissionMap(enabledCount === ALL_STAFF_PAGE_IDS.length ? [] : ALL_STAFF_PAGE_IDS));
+    reveal(3);
+  };
+
+  const toggleSection = (ids: string[], allGranted: boolean) => {
+    setPermissions((current) => {
+      const next = { ...current };
+      ids.forEach((id) => {
+        next[id] = !allGranted;
+      });
+      return next;
+    });
+    reveal(3);
   };
 
   const toggleBranch = (branch: string) => {
-    if (live) return setSelectedBranches([branch]);
-    setSelectedBranches((current) =>
-      current.includes(branch) ? current.filter((item) => item !== branch) : [...current, branch],
-    );
+    if (live) setSelectedBranches([branch]);
+    else
+      setSelectedBranches((current) =>
+        current.includes(branch) ? current.filter((item) => item !== branch) : [...current, branch],
+      );
+    reveal(4);
   };
 
   const copyLink = async () => {
@@ -348,6 +295,78 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
     } catch {
       showToast('Copy failed — select the link instead');
     }
+  };
+
+  const renderContinue = (index: number, label: string) => (
+    <button
+      className={`h-10 w-full rounded-xl font-label-md text-label-md font-semibold flex items-center justify-center gap-1.5 transition-all ${
+        completedSections[index]
+          ? 'bg-primary-container text-on-primary shadow-sm active:scale-95'
+          : 'bg-surface-container-highest text-text-tertiary'
+      }`}
+      disabled={!completedSections[index]}
+      onClick={() => reveal(index + 1)}
+      type="button"
+    >
+      <span>{label}</span>
+      <Icon name="arrow_forward" className="text-[15px]" />
+    </button>
+  );
+
+  const renderAccordion = (index: number, body: ReactNode, trailing?: ReactNode) => {
+    const open = activeIndex === index;
+    const locked = index > highestAvailable;
+    const done = completedSections[index];
+    const section = SECTIONS[index];
+    return (
+      <section key={`invite-section-${index}`} className={cardClass}>
+        <button
+          aria-controls={`mobile-invite-section-${index}`}
+          aria-expanded={open}
+          className={`w-full flex items-center justify-between gap-space-xs rounded-xl p-space-xs text-left transition-colors ${
+            open
+              ? 'bg-surface-tint-blue'
+              : done
+                ? 'bg-surface-container-low'
+                : 'bg-surface-container-lowest'
+          } ${locked ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+          disabled={locked}
+          onClick={() => reveal(index)}
+          type="button"
+        >
+          <span className="flex min-w-0 items-center gap-space-xs">
+            <span
+              className={`h-8 w-8 shrink-0 rounded-lg flex items-center justify-center ${
+                open || done ? 'bg-primary-container text-on-primary' : 'bg-surface-container text-text-secondary'
+              }`}
+            >
+              <Icon name={section.icon} className="text-[16px]" />
+            </span>
+            <span className="min-w-0">
+              <span className="block font-label-sm text-label-sm font-semibold text-text-primary truncate">
+                {section.title}
+              </span>
+              <span className="block font-caption text-caption text-text-secondary truncate">{section.sub}</span>
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-1">
+            {trailing}
+            <span
+              className={`h-6 w-6 rounded-full flex items-center justify-center ${
+                done ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary'
+              }`}
+            >
+              <Icon name={done ? 'check_circle' : locked ? 'lock' : 'expand_more'} className="text-[14px]" />
+            </span>
+          </span>
+        </button>
+        {open && (
+          <div className="pt-space-xs" id={`mobile-invite-section-${index}`}>
+            {body}
+          </div>
+        )}
+      </section>
+    );
   };
 
   const renderContact = () => (
@@ -391,7 +410,237 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
           </label>
         </div>
       </section>
+      {renderContinue(0, 'Continue to role')}
+    </div>
+  );
 
+  const renderRole = () => (
+    <div className="space-y-space-sm">
+      <div className="grid grid-cols-2 gap-space-xs">
+        {(['preset', 'custom'] as RoleMode[]).map((mode) => (
+          <button
+            className={`h-10 rounded-xl flex items-center justify-center gap-1.5 font-label-sm text-label-sm transition-all ${
+              roleMode === mode
+                ? 'bg-primary-container text-on-primary shadow-sm'
+                : 'bg-surface-container-low text-text-secondary'
+            }`}
+            key={mode}
+            type="button"
+            onClick={() => setRoleMode(mode)}
+          >
+            <Icon name={mode === 'preset' ? 'list_alt' : 'edit'} className="text-[15px]" />
+            <span>{mode === 'preset' ? 'Preset roles' : 'Type my own'}</span>
+          </button>
+        ))}
+      </div>
+
+      {roleMode === 'preset' ? (
+        <div className="flex flex-col gap-space-xs">
+          {ROLES.map((option) => {
+            const active = role === option.key;
+            return (
+              <button
+                className={`w-full text-left rounded-xl p-space-xs border transition-all flex items-start gap-space-xs ${
+                  active
+                    ? 'border-primary bg-surface-tint-blue'
+                    : 'border-border-subtle bg-surface-canvas hover:bg-surface-container-low'
+                }`}
+                key={option.key}
+                type="button"
+                onClick={() => selectRole(option.key)}
+              >
+                <span
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                    active ? 'bg-primary-container text-on-primary' : 'bg-surface-container-low text-text-secondary'
+                  }`}
+                >
+                  <Icon name={option.icon} className="text-[16px]" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-space-xs">
+                    <span className="font-label-sm text-label-sm font-semibold text-text-primary">{option.label}</span>
+                    <span className="font-caption text-caption text-text-tertiary">
+                      {STAFF_PAGE_DEFAULTS[option.key].length} pages
+                    </span>
+                    <span
+                      className={`ml-auto w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                        active ? 'border-primary' : 'border-outline-variant'
+                      }`}
+                    >
+                      {active && <span className="w-2 h-2 rounded-full bg-primary" />}
+                    </span>
+                  </span>
+                  <span className="font-caption text-caption text-text-secondary block mt-0.5">{option.desc}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <section className={cardClass}>
+          <label className="flex flex-col gap-1">
+            <span className="font-caption text-caption text-text-secondary">Your custom role</span>
+            <input
+              className={fieldClass}
+              placeholder="e.g. Shift Supervisor"
+              type="text"
+              value={customRole}
+              onChange={(event) => setCustomRole(event.target.value)}
+            />
+          </label>
+          <p className="font-caption text-caption text-text-tertiary leading-relaxed mt-1.5">
+            Use any title your team recognises — Head Chef, Front Desk Lead, Store Supervisor. You choose their
+            permissions next.
+          </p>
+        </section>
+      )}
+      {renderContinue(1, 'Continue to permissions')}
+    </div>
+  );
+
+  const renderPermissions = () => (
+    <div className="space-y-space-sm">
+      <div className="flex items-center justify-between">
+        <span className="font-caption text-caption text-text-tertiary">
+          {enabledCount} of {ALL_STAFF_PAGE_IDS.length} pages allowed
+        </span>
+        <button
+          className="font-label-sm text-label-sm text-primary active:scale-95 transition-transform"
+          type="button"
+          onClick={toggleAllPermissions}
+        >
+          {enabledCount === ALL_STAFF_PAGE_IDS.length ? 'Clear all' : 'Select all'}
+        </button>
+      </div>
+
+      {STAFF_PAGE_TREE.map((section) => {
+        const childIds = section.children.map((child) => child.id);
+        const allGranted = section.children.length
+          ? childIds.every((id) => permissions[id])
+          : Boolean(permissions[section.id]);
+        const someGranted = section.children.length
+          ? childIds.some((id) => permissions[id])
+          : allGranted;
+        const toggleIds = childIds.length ? childIds : [section.id];
+        return (
+          <section key={section.id}>
+            <button
+              className="w-full flex items-center justify-between gap-space-xs py-2 px-1.5 text-left"
+              type="button"
+              onClick={() => toggleSection(toggleIds, allGranted)}
+            >
+              <span className="min-w-0 flex-1 flex items-center gap-space-xs">
+                <Icon name={section.icon ?? 'folder'} className="text-[15px] text-primary shrink-0" />
+                <span className="font-label-md text-label-md text-text-primary font-semibold truncate">
+                  {section.label}
+                </span>
+              </span>
+              <span
+                className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
+                  allGranted ? 'bg-primary border-primary' : 'bg-surface-canvas border-outline-variant'
+                }`}
+              >
+                {allGranted ? (
+                  <Icon name="check" className="text-on-primary text-[13px]" />
+                ) : someGranted ? (
+                  <span className="w-2 h-0.5 rounded bg-primary" />
+                ) : null}
+              </span>
+            </button>
+            {section.children.length > 0 && (
+              <div className="bg-surface-canvas rounded-2xl p-space-xs shadow-sm divide-y divide-border-subtle pl-space-md">
+                {section.children.map((item) => {
+                  const checked = Boolean(permissions[item.id]);
+                  return (
+                    <button
+                      className="w-full flex items-start justify-between gap-space-xs py-2 px-1.5 text-left"
+                      key={item.id}
+                      type="button"
+                      onClick={() => togglePermission(item.id)}
+                    >
+                      <span className="min-w-0 flex-1 flex items-start gap-space-xs">
+                        <span
+                          className={`w-5 h-5 mt-0.5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
+                            checked ? 'bg-primary border-primary' : 'bg-surface-canvas border-outline-variant'
+                          }`}
+                        >
+                          {checked && <Icon name="check" className="text-on-primary text-[13px]" />}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-1.5">
+                            <Icon name={item.icon ?? 'chevron_right'} className="text-[15px] text-text-secondary shrink-0" />
+                            <span className="font-label-sm text-label-sm text-text-primary truncate">{item.label}</span>
+                          </span>
+                          {item.description && (
+                            <span className="font-caption text-caption text-text-tertiary block truncate mt-0.5">
+                              {item.description}
+                            </span>
+                          )}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        );
+      })}
+      {renderContinue(2, 'Continue to branch')}
+    </div>
+  );
+
+  const renderBranches = () => (
+    <div className="space-y-space-sm">
+      <div className="flex items-center justify-between">
+        <span className="font-caption text-caption text-text-tertiary">
+          {selectedBranches.length} of {branchOptions.length} selected
+        </span>
+        {!live && (
+          <button
+            className="font-label-sm text-label-sm text-primary active:scale-95 transition-transform"
+            type="button"
+            onClick={() => setSelectedBranches(selectedBranches.length === BRANCHES.length ? [] : [...BRANCHES])}
+          >
+            {selectedBranches.length === BRANCHES.length ? 'Clear all' : 'Select all'}
+          </button>
+        )}
+      </div>
+      <section className={cardClass}>
+        <div className="flex flex-wrap gap-1.5">
+          {branchOptions.map((branch) => {
+            const active = selectedBranches.includes(branch);
+            return (
+              <button
+                className={`inline-flex items-center gap-1 px-2.5 h-8 rounded-full font-label-sm text-label-sm transition-all ${
+                  active
+                    ? 'bg-primary-container text-on-primary shadow-sm'
+                    : 'bg-surface-container-low text-text-secondary hover:bg-surface-container'
+                }`}
+                key={branch}
+                type="button"
+                onClick={() => toggleBranch(branch)}
+              >
+                <Icon name={active ? 'check' : 'location_on'} className="text-[14px]" />
+                <span>{branch}</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+      <section className="rounded-xl bg-surface-tint-blue p-space-xs flex items-start gap-space-xs">
+        <Icon name="info" className="text-primary text-[16px] shrink-0 mt-0.5" />
+        <p className="font-caption text-caption text-on-surface leading-relaxed">
+          They only see data, orders and customers from the branches selected here. You can change access later from
+          Staff &amp; Team Access.
+        </p>
+      </section>
+      {renderContinue(3, 'Continue to security')}
+    </div>
+  );
+
+  const renderSecurity = () => (
+    <div className="space-y-space-sm">
       <section className={cardClass}>
         <div className="flex items-start gap-space-xs">
           <span className="w-8 h-8 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
@@ -443,194 +692,7 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
           <span>{showPin ? 'Hide PIN' : 'Show PIN'}</span>
         </button>
       </section>
-    </div>
-  );
-
-  const renderRole = () => (
-    <div className="space-y-space-sm">
-      <div className="grid grid-cols-2 gap-space-xs">
-        {(['preset', 'custom'] as RoleMode[]).map((mode) => (
-          <button
-            className={`h-10 rounded-xl flex items-center justify-center gap-1.5 font-label-sm text-label-sm transition-all ${
-              roleMode === mode
-                ? 'bg-primary-container text-on-primary shadow-sm'
-                : 'bg-surface-container-low text-text-secondary'
-            }`}
-            key={mode}
-            type="button"
-            onClick={() => setRoleMode(mode)}
-          >
-            <Icon name={mode === 'preset' ? 'list_alt' : 'edit'} className="text-[15px]" />
-            <span>{mode === 'preset' ? 'Preset roles' : 'Type my own'}</span>
-          </button>
-        ))}
-      </div>
-
-      {roleMode === 'preset' ? (
-        <div className="flex flex-col gap-space-xs">
-          {ROLES.map((option) => {
-            const active = role === option.key;
-            return (
-              <button
-                className={`w-full text-left rounded-xl p-space-xs border transition-all flex items-start gap-space-xs ${
-                  active
-                    ? 'border-primary bg-surface-tint-blue'
-                    : 'border-border-subtle bg-surface-canvas hover:bg-surface-container-low'
-                }`}
-                key={option.key}
-                type="button"
-                onClick={() => selectRole(option.key)}
-              >
-                <span
-                  className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                    active ? 'bg-primary-container text-on-primary' : 'bg-surface-container-low text-text-secondary'
-                  }`}
-                >
-                  <Icon name={option.icon} className="text-[16px]" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-space-xs">
-                    <span className="font-label-sm text-label-sm font-semibold text-text-primary">{option.label}</span>
-                    <span className="font-caption text-caption text-text-tertiary">
-                      {ROLE_DEFAULTS[option.key].length} pages
-                    </span>
-                    <span
-                      className={`ml-auto w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                        active ? 'border-primary' : 'border-outline-variant'
-                      }`}
-                    >
-                      {active && <span className="w-2 h-2 rounded-full bg-primary" />}
-                    </span>
-                  </span>
-                  <span className="font-caption text-caption text-text-secondary block mt-0.5">{option.desc}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        <section className={cardClass}>
-          <label className="flex flex-col gap-1">
-            <span className="font-caption text-caption text-text-secondary">Your custom role</span>
-            <input
-              className={fieldClass}
-              placeholder="e.g. Shift Supervisor"
-              type="text"
-              value={customRole}
-              onChange={(event) => setCustomRole(event.target.value)}
-            />
-          </label>
-          <p className="font-caption text-caption text-text-tertiary leading-relaxed mt-1.5">
-            Use any title your team recognises — Head Chef, Front Desk Lead, Store Supervisor. You choose their
-            permissions on the next step.
-          </p>
-        </section>
-      )}
-    </div>
-  );
-
-  const renderPermissions = () => (
-    <div className="space-y-space-sm">
-      <div className="flex items-center justify-between">
-        <span className="font-caption text-caption text-text-tertiary">
-          {enabledCount} of {ALL_PERMISSION_IDS.length} pages allowed
-        </span>
-        <button
-          className="font-label-sm text-label-sm text-primary active:scale-95 transition-transform"
-          type="button"
-          onClick={toggleAllPermissions}
-        >
-          {enabledCount === ALL_PERMISSION_IDS.length ? 'Clear all' : 'Select all'}
-        </button>
-      </div>
-
-      {PERMISSION_GROUPS.map((group) => (
-        <section key={group.group}>
-          <p className="font-label-sm text-label-sm text-text-tertiary font-semibold uppercase tracking-wide mb-1.5">
-            {group.group}
-          </p>
-          <div className="bg-surface-canvas rounded-2xl p-space-xs shadow-sm divide-y divide-border-subtle">
-            {group.items.map((item) => {
-              const checked = permissions[item.id];
-              return (
-                <button
-                  className="w-full flex items-start justify-between gap-space-xs py-2 px-1.5 text-left"
-                  key={item.id}
-                  type="button"
-                  onClick={() => togglePermission(item.id)}
-                >
-                  <span className="min-w-0 flex-1 flex items-start gap-space-xs">
-                    <span
-                      className={`w-5 h-5 mt-0.5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors ${
-                        checked ? 'bg-primary border-primary' : 'bg-surface-canvas border-outline-variant'
-                      }`}
-                    >
-                      {checked && <Icon name="check" className="text-on-primary text-[13px]" />}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="flex items-center gap-1.5">
-                        <Icon name={item.icon} className="text-[15px] text-text-secondary shrink-0" />
-                        <span className="font-label-sm text-label-sm text-text-primary truncate">{item.label}</span>
-                      </span>
-                      <span className="font-caption text-caption text-text-tertiary block truncate mt-0.5">
-                        {item.desc}
-                      </span>
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      ))}
-    </div>
-  );
-
-  const renderBranches = () => (
-    <div className="space-y-space-sm">
-      <div className="flex items-center justify-between">
-        <span className="font-caption text-caption text-text-tertiary">
-          {selectedBranches.length} of {branchOptions.length} selected
-        </span>
-        {!live && (
-          <button
-            className="font-label-sm text-label-sm text-primary active:scale-95 transition-transform"
-            type="button"
-            onClick={() => setSelectedBranches(selectedBranches.length === BRANCHES.length ? [] : [...BRANCHES])}
-          >
-            {selectedBranches.length === BRANCHES.length ? 'Clear all' : 'Select all'}
-          </button>
-        )}
-      </div>
-      <section className={cardClass}>
-        <div className="flex flex-wrap gap-1.5">
-          {branchOptions.map((branch) => {
-            const active = selectedBranches.includes(branch);
-            return (
-              <button
-                className={`inline-flex items-center gap-1 px-2.5 h-8 rounded-full font-label-sm text-label-sm transition-all ${
-                  active
-                    ? 'bg-primary-container text-on-primary shadow-sm'
-                    : 'bg-surface-container-low text-text-secondary hover:bg-surface-container'
-                }`}
-                key={branch}
-                type="button"
-                onClick={() => toggleBranch(branch)}
-              >
-                <Icon name={active ? 'check' : 'location_on'} className="text-[14px]" />
-                <span>{branch}</span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-      <section className="rounded-xl bg-surface-tint-blue p-space-xs flex items-start gap-space-xs">
-        <Icon name="info" className="text-primary text-[16px] shrink-0 mt-0.5" />
-        <p className="font-caption text-caption text-on-surface leading-relaxed">
-          They only see data, orders and customers from the branches selected here. You can change access later from
-          Staff &amp; Team Access.
-        </p>
-      </section>
+      {renderContinue(4, 'Review invitation')}
     </div>
   );
 
@@ -670,17 +732,14 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
               ? `Sent to ${phone.trim()} on WhatsApp with a tap-to-login link`
               : `Texted to ${phone.trim()} with a tap-to-login link`}
         </p>
-        {!phoneOk && !live && (
-          <p className="font-caption text-caption text-badge-discount-text mt-1">
-            Add a phone number in step 1 to unlock WhatsApp and SMS.
-          </p>
-        )}
       </section>
 
       <section>
         <div className="flex items-center justify-between">
           <h3 className={stepTitleClass}>Invite link</h3>
-          <span className="font-caption text-caption text-text-tertiary">{live ? 'Sign in with email + PIN' : 'Expires in 48 hours'}</span>
+          <span className="font-caption text-caption text-text-tertiary">
+            {live ? 'Sign in with email + PIN' : 'Expires in 48 hours'}
+          </span>
         </div>
         <div className={`${cardClass} mt-space-xs flex items-center gap-space-xs`}>
           <span className="w-9 h-9 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
@@ -703,7 +762,7 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
 
       <section>
         <div className="flex items-center justify-between">
-          <h3 className={stepTitleClass}>Message</h3>
+          <h3 className={stepTitleClass}>Invite message</h3>
           <button
             className="font-label-sm text-label-sm text-primary active:scale-95 transition-transform"
             type="button"
@@ -726,37 +785,57 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
         />
         <p className="font-caption text-caption text-text-tertiary mt-1">
           Addressed to <span className="text-text-primary font-semibold">{firstName || 'your teammate'}</span> —
-          pre-filled with instructions, tap to edit before sending.
+          pre-filled with the invite link and PIN instructions. Tap to edit before sending.
         </p>
       </section>
 
-      <section className="rounded-xl bg-badge-discount-bg p-space-xs flex items-start gap-space-xs">
-        <Icon name="verified_user" className="text-badge-discount-text text-[16px] shrink-0 mt-0.5" />
-        <p className="font-caption text-caption text-on-surface leading-relaxed">
-          Invitations expire after 48 hours. You can revoke access any time from Staff &amp; Team Access, and every
-          permission change is logged.
-        </p>
-      </section>
+      {!live && (
+        <section className="rounded-xl bg-badge-discount-bg p-space-xs flex items-start gap-space-xs">
+          <Icon name="verified_user" className="text-badge-discount-text text-[16px] shrink-0 mt-0.5" />
+          <p className="font-caption text-caption text-on-surface leading-relaxed">
+            Invitations expire after 48 hours. You can revoke access any time from Staff &amp; Team Access, and every
+            permission change is logged.
+          </p>
+        </section>
+      )}
+
+      <button
+        className={`h-11 w-full rounded-xl font-label-md text-label-md font-semibold flex items-center justify-center gap-2 transition-all ${
+          inviteComplete && !sending && !sent
+            ? 'bg-primary-container text-on-primary shadow-md active:scale-95'
+            : 'bg-surface-container-highest text-text-tertiary'
+        }`}
+        disabled={!inviteComplete || sending || sent}
+        onClick={sendInvite}
+        type="button"
+      >
+        <Icon name={sending ? 'hourglass_top' : sent ? 'check_circle' : 'send'} className="text-[16px]" />
+        <span>{sending ? 'Sending…' : sent ? 'Sent' : 'Send invitation'}</span>
+      </button>
     </div>
   );
 
-  const renderStepBody = () => {
-    switch (step) {
-      case 0:
-        return renderContact();
-      case 1:
-        return renderRole();
-      case 2:
-        return renderPermissions();
-      case 3:
-        return renderBranches();
-      default:
-        return renderSend();
-    }
-  };
-
-  const isLast = step === STEPS.length - 1;
-  const valid = stepValid(step);
+  const renderSections = () =>
+    SECTIONS.map((_, index) => {
+      switch (index) {
+        case 0:
+          return renderAccordion(0, renderContact());
+        case 1:
+          return renderAccordion(1, renderRole());
+        case 2:
+          return renderAccordion(2, renderPermissions(), (
+            <span className="font-caption text-caption text-text-tertiary">{enabledCount} pages</span>
+          ));
+        case 3:
+          return renderAccordion(3, renderBranches());
+        case 4:
+          return renderAccordion(4, renderSecurity());
+        default:
+          return renderAccordion(5, renderSend(), (
+            <span className="font-caption text-caption text-text-tertiary">Pre-filled</span>
+          ));
+      }
+    });
 
   return (
     <>
@@ -786,7 +865,7 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
               <div className="min-w-0">
                 <h2 className="font-heading-sm text-heading-sm text-text-primary tracking-tight">Invite team member</h2>
                 <p className="font-caption text-caption text-text-secondary">
-                  Step {step + 1} of {STEPS.length} · {STEPS[step].title}
+                  Step {activeIndex + 1} of {SECTIONS.length} · {SECTIONS[activeIndex].title}
                 </p>
               </div>
               <button
@@ -799,51 +878,30 @@ export function BusinessInviteStaffScreen({ onBack }: BusinessInviteStaffScreenP
               </button>
             </div>
             <div className="flex gap-1.5 mt-space-xs">
-              {STEPS.map((item, index) => (
+              {SECTIONS.map((section, index) => (
                 <span
                   className={`h-1 flex-1 rounded-full transition-colors ${
-                    index <= step ? 'bg-primary' : 'bg-surface-container-highest'
+                    completedSections[index]
+                      ? 'bg-primary'
+                      : index === activeIndex
+                        ? 'bg-primary/50'
+                        : 'bg-surface-container-highest'
                   }`}
-                  key={item.title}
+                  key={section.title}
                 />
               ))}
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-margin py-space-sm">{renderStepBody()}</div>
-
-          <div className="shrink-0 border-t border-border-subtle bg-surface px-margin pt-space-xs pb-[calc(env(safe-area-inset-bottom,0px)+12px)]">
-            <p className="font-caption text-caption text-text-tertiary mb-space-xs">{stepHint(step)}</p>
-            <div className="flex items-center gap-space-xs">
-              <button
-                className="h-11 px-space-md rounded-xl bg-surface-container-low text-text-primary font-label-md text-label-md font-semibold active:scale-95 transition-transform"
-                type="button"
-                onClick={goBack}
-              >
-                {step === 0 ? 'Cancel' : 'Back'}
-              </button>
-              <button
-                className={`h-11 flex-1 rounded-xl font-label-md text-label-md font-semibold flex items-center justify-center gap-2 transition-all ${
-                  valid
-                    ? 'bg-primary-container text-on-primary shadow-md active:scale-95'
-                    : 'bg-surface-container-highest text-text-tertiary'
-                }`}
-                type="button"
-                onClick={goNext}
-              >
-                <Icon
-                  name={sending ? 'hourglass_top' : sent ? 'check_circle' : isLast ? 'send' : 'arrow_forward'}
-                  className="text-[16px]"
-                />
-                <span>{sending ? 'Sending…' : sent ? 'Sent' : isLast ? 'Send invitation' : 'Next'}</span>
-              </button>
-            </div>
+          <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-margin py-space-sm">
+            <p className="font-caption text-caption text-text-secondary mb-space-xs">{sectionHint(activeIndex)}</p>
+            <div className="space-y-space-sm">{renderSections()}</div>
           </div>
         </div>
       </div>
 
       {toast && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-margin z-[70] pointer-events-none">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-margin z-[70] pointer-events-none">
           <div className="bg-inverse-surface text-inverse-on-surface px-4 py-2 rounded-full font-label-sm text-label-sm shadow-xl flex items-center gap-2">
             <Icon name="check_circle" className="text-badge-discount-text text-[16px]" />
             <span className="truncate">{toast}</span>

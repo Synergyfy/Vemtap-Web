@@ -125,7 +125,7 @@ const ACCOUNT_MENU_ITEMS: Array<{ key: DesktopNavKey; label: string; icon: strin
   { key: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   { key: 'my-deals', label: 'My Deals', icon: 'redeem' },
   { key: 'orders', label: 'Orders', icon: 'receipt_long' },
-  { key: 'messages', label: 'Messages', icon: 'forum' },
+  { key: 'messages', label: 'Messages', icon: 'vemtap-chat' },
   { key: 'cart', label: 'Cart', icon: 'shopping_cart' },
   { key: 'account-settings', label: 'Account Settings', icon: 'settings' },
 ];
@@ -133,7 +133,7 @@ const ACCOUNT_MENU_ITEMS: Array<{ key: DesktopNavKey; label: string; icon: strin
 const CUSTOMER_NAV_ITEMS: Array<{ key: DesktopNavKey; label: string }> = [
   { key: 'dashboard', label: 'Dashboard' },
   { key: 'my-deals', label: 'My Deals & Vouchers' },
-  { key: 'orders', label: 'Orders & Bookings' },
+  { key: 'orders', label: 'Orders' },
   { key: 'messages', label: 'Messages' },
   { key: 'saved', label: 'Saved Items & Stores' },
   { key: 'notifications', label: 'Notifications' },

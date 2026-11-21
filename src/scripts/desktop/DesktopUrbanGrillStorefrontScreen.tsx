@@ -23,6 +23,10 @@ interface DesktopUrbanGrillStorefrontScreenProps {
   onOpenDeal?: (deal: ClaimDealSummary) => void;
   /** Opens the product/service page. */
   onOpenItem?: (itemId: string) => void;
+  /** Opens the business-specific public "See All" pages. */
+  onOpenDeals?: () => void;
+  onOpenProducts?: () => void;
+  onOpenServices?: () => void;
   /** Review the tray and submit the order (goes to checkout). */
   onCheckout: () => void;
   /** Opens with the chat box ready, for a chat started from Messages. */
@@ -82,7 +86,7 @@ const amenityIcon = (label: string) => {
 
 const ALL = 'all';
 
-export function DesktopUrbanGrillStorefrontScreen({ business: selected, onNav, activeNav = 'businesses', onClaim, onOpenDeal, onOpenItem, startChat, onChatStarted }: DesktopUrbanGrillStorefrontScreenProps) {
+export function DesktopUrbanGrillStorefrontScreen({ business: selected, onNav, activeNav = 'businesses', onClaim, onOpenDeal, onOpenItem, onOpenDeals, onOpenProducts, onOpenServices, startChat, onChatStarted }: DesktopUrbanGrillStorefrontScreenProps) {
   const { business, deals, products, services, loading, catalogueLoading, error, reload } = usePublicBusiness(selected?.slug ?? null);
   const [category, setCategory] = useState<string>(ALL);
   const [query, setQuery] = useState('');
@@ -110,7 +114,10 @@ export function DesktopUrbanGrillStorefrontScreen({ business: selected, onNav, a
     () => [...storefrontDeals].sort((a, b) => b.percent - a.percent)[0] ?? null,
     [storefrontDeals],
   );
-  const catalogue = useMemo(() => [...products, ...services], [products, services]);
+  // Product-only rollout: service items stay out of the storefront catalogue.
+  void services;
+  void onOpenServices;
+  const catalogue = useMemo(() => [...products], [products]);
   const categories = useMemo(() => {
     const names = [...new Set(catalogue.map((item) => item.category).filter((name): name is string => Boolean(name)))];
     return [ALL, ...names];
@@ -231,10 +238,68 @@ export function DesktopUrbanGrillStorefrontScreen({ business: selected, onNav, a
       (!query.trim() || item.name.toLowerCase().includes(query.trim().toLowerCase()) || (item.description ?? '').toLowerCase().includes(query.trim().toLowerCase())),
   );
 
-  const resultsLabel =
-    query.trim() || category !== ALL ? `Showing ${visibleProducts.length} matching items` : `Showing ${visibleProducts.length} items`;
-
   const containerClass = 'flex gap-5 overflow-x-auto pb-2 no-scrollbar';
+  const visibleProductItems = visibleProducts.filter((item) => item.kind === 'product');
+  // Product-only rollout: service items are not surfaced on the storefront.
+  // const visibleServiceItems = visibleProducts.filter((item) => item.kind === 'service');
+
+  const renderCatalogueCard = (product: PublicCatalogueItem) => (
+    <div
+      key={product.id}
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpenItem?.(product.id)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpenItem?.(product.id);
+        }
+      }}
+      className="group w-[300px] shrink-0 bg-surface-canvas rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer"
+    >
+      <div>
+        <div className="relative h-44 w-full overflow-hidden bg-surface-container flex items-center justify-center">
+          {product.image ? (
+            <img alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" src={product.image} />
+          ) : (
+            <Icon name={product.kind === 'service' ? 'room_service' : 'inventory_2'} className="text-[40px] text-outline" />
+          )}
+          {product.kind === 'service' ? (
+            <span className="absolute top-3 left-3 px-2 py-0.5 rounded-full font-caption text-caption font-semibold shadow-sm bg-surface-tint-blue text-primary">Service</span>
+          ) : null}
+          {product.category ? (
+            <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md font-caption text-caption bg-inverse-surface/85 backdrop-blur text-inverse-on-surface">
+              {product.category}
+            </span>
+          ) : null}
+        </div>
+        <div className="p-4 space-y-2">
+          <h3 className="font-heading-sm text-heading-sm text-on-surface group-hover:text-primary transition-colors">{product.name}</h3>
+          {product.description ? <p className="font-caption text-caption text-text-secondary line-clamp-2">{product.description}</p> : null}
+        </div>
+      </div>
+      <div className="p-4 pt-0">
+        <div className="flex items-center justify-between pt-3">
+          <span className="font-heading-sm text-heading-sm text-on-surface font-bold">{product.price > 0 ? naira(product.price) : ''}</span>
+          {product.price > 0 ? (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                addToTray(product);
+              }}
+              className="h-10 px-3.5 rounded-xl bg-primary-container text-on-primary-container font-label-md text-label-md font-semibold hover:opacity-95 shadow-sm active:scale-95 transition-all flex items-center gap-1.5"
+            >
+              <Icon name={cart.qtyOf(product.id) > 0 ? 'check' : 'add'} className="text-[18px]" />
+              <span>{cart.qtyOf(product.id) > 0 ? `In Tray (${cart.qtyOf(product.id)})` : 'Add'}</span>
+            </button>
+          ) : (
+            <span className="font-label-sm text-label-sm text-primary font-semibold">View details</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 
   if (loading || error || !business) {
     return (
@@ -451,7 +516,7 @@ export function DesktopUrbanGrillStorefrontScreen({ business: selected, onNav, a
                       rel="noopener noreferrer"
                       target="_blank"
                     >
-                      <Icon name="chat" className="text-[20px]" />
+                      <Icon name="whatsapp" className="text-[20px]" />
                       <span>WhatsApp</span>
                     </a>
                   ) : null}
@@ -464,7 +529,7 @@ export function DesktopUrbanGrillStorefrontScreen({ business: selected, onNav, a
                       }}
                       className="px-5 py-3 rounded-xl bg-primary-container text-on-primary-container font-button-primary text-button-primary flex items-center justify-center gap-2 hover:opacity-95 shadow-md hover:scale-[0.99] transition-all w-full sm:w-auto"
                     >
-                      <Icon name="forum" className="text-[20px]" />
+                      <Icon name="vemtap-chat-white" className="text-[20px]" />
                       <span>Direct Chat on VEMTAP</span>
                     </button>
                   ) : null}
@@ -562,7 +627,7 @@ export function DesktopUrbanGrillStorefrontScreen({ business: selected, onNav, a
                   </div>
                   <button
                     type="button"
-                    onClick={() => onNav('deals')}
+                    onClick={() => (onOpenDeals ? onOpenDeals() : onNav('deals'))}
                     className="h-9 px-4 rounded-full bg-surface-tint-blue text-primary font-label-md text-label-md font-semibold flex items-center gap-1 hover:bg-primary hover:text-on-primary transition-colors shrink-0"
                   >
                     See All Deals
@@ -641,7 +706,7 @@ export function DesktopUrbanGrillStorefrontScreen({ business: selected, onNav, a
                       className="w-full h-11 pl-10 pr-4 rounded-xl bg-surface-subtle text-on-surface placeholder:text-text-tertiary font-body-md text-body-md focus:outline-none focus:ring-2 focus:ring-primary-container/20 transition-all"
                       id="menu-search-input"
                       onChange={(event) => setQuery(event.target.value)}
-                      placeholder={`Search ${business.name}'s products and services...`}
+                      placeholder={`Search ${business.name}'s products...`}
                       type="text"
                       value={query}
                     />
@@ -666,81 +731,67 @@ export function DesktopUrbanGrillStorefrontScreen({ business: selected, onNav, a
                 ) : null}
               </div>
 
-              <div className="flex items-center justify-between gap-4 px-1">
-                <div>
-                  <h2 className="font-heading-md text-heading-md text-on-surface">Products &amp; Services</h2>
-                  <p className="font-caption text-caption text-text-secondary">Prices displayed in Nigerian Naira (₦).</p>
-                </div>
-                {!catalogueLoading ? <span className="font-label-sm text-label-sm text-text-secondary shrink-0">{resultsLabel}</span> : null}
-              </div>
-
-              <div className={containerClass}>
-                {catalogueLoading ? (
-                  [0, 1, 2].map((key) => <Skeleton key={key} className="w-[300px] h-[300px] shrink-0 rounded-2xl" />)
-                ) : visibleProducts.length === 0 ? (
-                  <div className="w-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-5 text-text-secondary font-body-md text-body-md">
-                    {catalogue.length === 0 ? `${business.name} hasn’t listed any products or services yet.` : 'No items match your search.'}
-                  </div>
-                ) : (
-                  visibleProducts.map((product) => (
-                    <div
-                      key={product.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => onOpenItem?.(product.id)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          onOpenItem?.(product.id);
-                        }
-                      }}
-                      className="group w-[300px] shrink-0 bg-surface-canvas rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer"
-                    >
-                      <div>
-                        <div className="relative h-44 w-full overflow-hidden bg-surface-container flex items-center justify-center">
-                          {product.image ? (
-                            <img alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" src={product.image} />
-                          ) : (
-                            <Icon name={product.kind === 'service' ? 'room_service' : 'inventory_2'} className="text-[40px] text-outline" />
-                          )}
-                          {product.kind === 'service' ? (
-                            <span className="absolute top-3 left-3 px-2 py-0.5 rounded-full font-caption text-caption font-semibold shadow-sm bg-surface-tint-blue text-primary">Service</span>
-                          ) : null}
-                          {product.category ? (
-                            <span className="absolute bottom-2 right-2 px-2 py-0.5 rounded-md font-caption text-caption bg-inverse-surface/85 backdrop-blur text-inverse-on-surface">
-                              {product.category}
-                            </span>
-                          ) : null}
-                        </div>
-                        <div className="p-4 space-y-2">
-                          <h3 className="font-heading-sm text-heading-sm text-on-surface group-hover:text-primary transition-colors">{product.name}</h3>
-                          {product.description ? <p className="font-caption text-caption text-text-secondary line-clamp-2">{product.description}</p> : null}
-                        </div>
-                      </div>
-                      <div className="p-4 pt-0">
-                        <div className="flex items-center justify-between pt-3">
-                          <span className="font-heading-sm text-heading-sm text-on-surface font-bold">{product.price > 0 ? naira(product.price) : ''}</span>
-                          {product.kind === 'product' && product.price > 0 ? (
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                addToTray(product);
-                              }}
-                              className="h-10 px-3.5 rounded-xl bg-primary-container text-on-primary-container font-label-md text-label-md font-semibold hover:opacity-95 shadow-sm active:scale-95 transition-all flex items-center gap-1.5"
-                            >
-                              <Icon name={cart.qtyOf(product.id) > 0 ? 'check' : 'add'} className="text-[18px]" />
-                              <span>{cart.qtyOf(product.id) > 0 ? `In Tray (${cart.qtyOf(product.id)})` : 'Add'}</span>
-                            </button>
-                          ) : (
-                            <span className="font-label-sm text-label-sm text-primary font-semibold">View details</span>
-                          )}
-                        </div>
-                      </div>
+              {catalogueLoading || products.length > 0 ? (
+                <section className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between gap-4 px-1">
+                    <div>
+                      <h2 className="font-heading-md text-heading-md text-on-surface">Products</h2>
+                      <p className="font-caption text-caption text-text-secondary">Prices displayed in Nigerian Naira (₦).</p>
                     </div>
-                  ))
-                )}
-              </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      {!catalogueLoading ? <span className="font-label-sm text-label-sm text-text-secondary">{visibleProductItems.length} shown</span> : null}
+                      {onOpenProducts ? (
+                        <button type="button" onClick={onOpenProducts} className="h-9 px-4 rounded-full bg-surface-tint-blue text-primary font-label-md text-label-md font-semibold flex items-center gap-1 hover:bg-primary hover:text-on-primary transition-colors shrink-0">
+                          See All Products
+                          <Icon name="chevron_right" className="text-[18px]" />
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className={containerClass}>
+                    {catalogueLoading
+                      ? [0, 1, 2].map((key) => <Skeleton key={key} className="w-[300px] h-[300px] shrink-0 rounded-2xl" />)
+                      : visibleProductItems.length === 0
+                        ? <div className="w-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-5 text-text-secondary font-body-md text-body-md">No products match your search.</div>
+                        : visibleProductItems.map(renderCatalogueCard)}
+                  </div>
+                </section>
+              ) : null}
+
+              {/* Product-only rollout: service section is hidden.
+              {catalogueLoading || services.length > 0 ? (
+                <section className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between gap-4 px-1">
+                    <div>
+                      <h2 className="font-heading-md text-heading-md text-on-surface">Services</h2>
+                      <p className="font-caption text-caption text-text-secondary">Book or add a service to your order.</p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      {!catalogueLoading ? <span className="font-label-sm text-label-sm text-text-secondary">{visibleServiceItems.length} shown</span> : null}
+                      {onOpenServices ? (
+                        <button type="button" onClick={onOpenServices} className="h-9 px-4 rounded-full bg-surface-tint-blue text-primary font-label-md text-label-md font-semibold flex items-center gap-1 hover:bg-primary hover:text-on-primary transition-colors shrink-0">
+                          See All Services
+                          <Icon name="chevron_right" className="text-[18px]" />
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className={containerClass}>
+                    {catalogueLoading
+                      ? [0, 1, 2].map((key) => <Skeleton key={key} className="w-[300px] h-[300px] shrink-0 rounded-2xl" />)
+                      : visibleServiceItems.length === 0
+                        ? <div className="w-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-5 text-text-secondary font-body-md text-body-md">No services match your search.</div>
+                        : visibleServiceItems.map(renderCatalogueCard)}
+                  </div>
+                </section>
+              ) : null}
+              */}
+
+              {!catalogueLoading && catalogue.length === 0 ? (
+                <div className="w-full rounded-2xl border border-dashed border-primary/20 bg-surface-subtle p-5 text-text-secondary font-body-md text-body-md">
+                  {business.name} hasn’t listed any products yet.
+                </div>
+              ) : null}
             </div>
 
             <div className="lg:col-span-4 flex flex-col gap-6">

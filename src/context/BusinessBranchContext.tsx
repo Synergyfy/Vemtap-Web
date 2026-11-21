@@ -2,8 +2,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { Icon } from '../components/ui/Icon';
 import { useMyBusiness } from '../hooks/business/useMyBusiness';
 import { useSessionUser } from '../hooks/useSessionUser';
-import type { ProfileBranch } from '../services/businessService';
+import type { ProfileBranch, MyBusiness } from '../services/businessService';
 import { hasApiConfig } from '../services/api/client';
+import { getBusinessSetupSnapshot } from '../scripts/businessSetup';
 
 export interface BusinessBranchData {
   key: string;
@@ -108,16 +109,23 @@ const readStoredBranch = () => {
   }
 };
 
-const toBranchData = (branch: ProfileBranch): BusinessBranchData => ({
-  key: branch.id,
-  id: branch.id,
-  isMainBranch: branch.isMainBranch === true,
-  name: branch.name,
-  shortName: branch.name.replace(/\s+branch$/i, ''),
-  area: [branch.address, branch.city].filter(Boolean).join(', ') || branch.state || '',
-  // Per-branch figures come from the dashboard query, not the branch list.
-  stats: EMPTY_STATS,
-});
+const toBranchData = (branch: ProfileBranch, myBusinessData?: MyBusiness | null): BusinessBranchData => {
+  const address = branch.address || (branch.isMainBranch ? myBusinessData?.address : null);
+  const district = branch.district;
+  const city = branch.city || (branch.isMainBranch ? myBusinessData?.city : null);
+  const state = branch.state || (branch.isMainBranch ? myBusinessData?.state : null);
+  const area = [address, district, city, state].filter(Boolean).join(', ') || '';
+  return {
+    key: branch.id,
+    id: branch.id,
+    isMainBranch: branch.isMainBranch === true,
+    name: branch.name,
+    shortName: branch.name.replace(/\s+branch$/i, ''),
+    area,
+    // Per-branch figures come from the dashboard query, not the branch list.
+    stats: EMPTY_STATS,
+  };
+};
 
 const BusinessBranchContext = createContext<BusinessBranchContextValue | null>(null);
 
@@ -137,10 +145,78 @@ export function BusinessBranchProvider({
     () =>
       (myBusiness.data?.branches ?? [])
         .filter((b) => b.id && b.isActive !== false && (!scopedBranchId || b.id === scopedBranchId))
-        .map(toBranchData),
+        .map((b) => toBranchData(b, myBusiness.data)),
     [myBusiness.data, scopedBranchId],
   );
-  const isLive = liveBranches.length > 0;
+
+  // If the business profile is saved but individual branch rows are not yet provisioned in the backend,
+  // synthesize a main location using the business's own name and address configured during onboarding.
+  const fallbackLiveBranch = useMemo<BusinessBranchData[]>(() => {
+    if (!myBusiness.data?.id && !myBusiness.data?.name) return [];
+    const area =
+      [myBusiness.data.address, myBusiness.data.city, myBusiness.data.state].filter(Boolean).join(', ') || '';
+    const name = myBusiness.data.name || 'Main Location';
+    return [
+      {
+        key: myBusiness.data.id || 'main',
+        id: myBusiness.data.id,
+        isMainBranch: true,
+        name,
+        shortName: name.replace(/\s+branch$/i, ''),
+        area,
+        stats: EMPTY_STATS,
+      },
+    ];
+  }, [myBusiness.data]);
+
+  // Read onboarding progress snapshot so newly typed branch name and address are immediately available
+  // in product creation and deal studio prior to or during API synchronisation.
+  const onboardingBranches = useMemo<BusinessBranchData[]>(() => {
+    try {
+      const stored = getBusinessSetupSnapshot();
+      if (!stored?.data) return [];
+      const location = stored.data.location as Record<string, unknown> | undefined;
+      const draft = stored.data.draft as Record<string, unknown> | undefined;
+      const extraBranches = (stored.data.extraBranches as Record<string, unknown>[] | undefined) ?? [];
+
+      const list: BusinessBranchData[] = [];
+      const primaryName = (location?.branchName as string) || (draft?.name as string);
+      const primaryAddress =
+        (location?.address as string) ||
+        [location?.district, location?.city, location?.state].filter(Boolean).join(', ');
+
+      if (primaryName || primaryAddress) {
+        list.push({
+          key: 'main-onboarding',
+          id: undefined,
+          isMainBranch: true,
+          name: primaryName || 'Main Location',
+          shortName: (primaryName || 'Main Location').replace(/\s+branch$/i, ''),
+          area: primaryAddress || '',
+          stats: EMPTY_STATS,
+        });
+      }
+
+      extraBranches.forEach((eb, index) => {
+        const name = (eb.name as string) || `Branch ${index + 2}`;
+        const area = (eb.address as string) || [eb.district, eb.city, eb.state].filter(Boolean).join(', ') || '';
+        list.push({
+          key: `extra-onboarding-${index}`,
+          id: undefined,
+          isMainBranch: false,
+          name,
+          shortName: name.replace(/\s+branch$/i, ''),
+          area,
+          stats: EMPTY_STATS,
+        });
+      });
+      return list;
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const isLive = liveBranches.length > 0 || fallbackLiveBranch.length > 0;
   // Never mix sample branches into a live business: their keys would reach branch-scoped APIs.
   // In API mode, until branches load (or when there are none) use an id-less placeholder so
   // screens show empty values instead of the demo business.
@@ -148,7 +224,16 @@ export function BusinessBranchProvider({
     const label = myBusiness.isLoading ? 'Loading…' : 'No branch yet';
     return [{ key: 'pending', name: label, shortName: label, area: '', stats: EMPTY_STATS }];
   }, [myBusiness.isLoading]);
-  const branches = isLive ? liveBranches : hasApiConfig() ? placeholder : BUSINESS_BRANCHES;
+
+  const branches = liveBranches.length > 0
+    ? liveBranches
+    : fallbackLiveBranch.length > 0
+      ? fallbackLiveBranch
+      : onboardingBranches.length > 0
+        ? onboardingBranches
+        : hasApiConfig()
+          ? placeholder
+          : BUSINESS_BRANCHES;
 
   const [branchKey, setBranchKey] = useState<string>(() => readStoredBranch() ?? 'wuse-ii');
   const [switching, setSwitching] = useState(false);

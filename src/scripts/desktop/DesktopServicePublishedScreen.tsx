@@ -6,10 +6,13 @@ import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ServiceDraft } from './desktopServiceDraft';
 import { NO_ITEM_IMAGE, draftImageAlt } from './draftImage';
+import { hasApiConfig } from '../../services/api/client';
+import { DealPriceChoiceModal } from '../deals/DealPriceChoiceModal';
+import type { DealPriceChoice } from '../deals/dealStudioShared';
 
 interface DesktopServicePublishedScreenProps {
   draft: ServiceDraft;
-  onMakeDeal: () => void;
+  onMakeDeal: (choice: DealPriceChoice) => void;
   onViewCatalog: () => void;
   onAddAnother: () => void;
   onNav?: (key: BusinessPortalNavKey) => void;
@@ -37,8 +40,10 @@ export function DesktopServicePublishedScreen({
   // Live: the merchant's real branches backing the locations chosen at publish time.
   const { branches: liveBranches } = useBusinessBranch();
   const Shell = onNav ? MerchantShell : BusinessSetupChrome;
+  const live = hasApiConfig();
   const [mode, setMode] = useState<'live' | 'draft'>('live');
   const [dealState, setDealState] = useState<'idle' | 'importing' | 'success'>('idle');
+  const [priceChoiceOpen, setPriceChoiceOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const timers = useRef<number[]>([]);
 
@@ -66,9 +71,13 @@ export function DesktopServicePublishedScreen({
 
   const handleMakeDeal = () => {
     if (dealState !== 'idle') return;
+    if (live) {
+      setPriceChoiceOpen(true);
+      return;
+    }
     setDealState('importing');
     timers.current.push(window.setTimeout(() => setDealState('success'), 900));
-    timers.current.push(window.setTimeout(() => onMakeDeal(), 2100));
+    timers.current.push(window.setTimeout(() => setPriceChoiceOpen(true), 2100));
   };
 
   const handleCopy = () => {
@@ -210,7 +219,7 @@ export function DesktopServicePublishedScreen({
 
             <div className="bg-surface-tint-blue rounded-2xl p-5 flex items-start gap-4">
               <div className="w-10 h-10 rounded-xl bg-surface-canvas text-primary flex items-center justify-center shrink-0 shadow-sm">
-                <Icon name="bolt" className="text-[22px]" />
+                <Icon name="whatsapp" className="text-[22px]" />
               </div>
               <div className="flex-1 flex flex-col gap-1">
                 <h3 className="font-heading-sm text-heading-sm font-semibold text-text-primary">
@@ -276,24 +285,24 @@ export function DesktopServicePublishedScreen({
                     Recommended Deal Formula
                   </span>
                   <span className="px-2 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
-                    20% OFF
+                    {live ? 'You choose' : '20% OFF'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="font-label-md text-label-md font-semibold text-text-primary">
-                      Flash Weekday Voucher
+                      {live ? 'Deal Pricing' : 'Flash Weekday Voucher'}
                     </div>
                     <div className="font-caption text-caption text-text-secondary mt-0.5">
-                      Valid Mon–Thu, 11:00 AM – 3:30 PM
+                      {live ? 'Keep your listed price or set a special deal price.' : 'Valid Mon–Thu, 11:00 AM – 3:30 PM'}
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="font-heading-sm text-heading-sm font-bold text-text-primary">
-                      ₦{dealPrice.toLocaleString('en-US')}
+                      {live ? `₦${priceMin.toLocaleString('en-US')}` : `₦${dealPrice.toLocaleString('en-US')}`}
                     </div>
                     <div className="font-caption text-caption text-badge-discount-text font-medium">
-                      Save ₦{dealSave.toLocaleString('en-US')}
+                      {live ? 'Listed price' : `Save ₦${dealSave.toLocaleString('en-US')}`}
                     </div>
                   </div>
                 </div>
@@ -384,6 +393,17 @@ export function DesktopServicePublishedScreen({
           </div>
         </div>
       </div>
+
+      <DealPriceChoiceModal
+        open={priceChoiceOpen}
+        itemName={draft.title}
+        priceLabel={priceMin > 0 ? priceMin.toLocaleString('en-US') : undefined}
+        onClose={() => setPriceChoiceOpen(false)}
+        onChoose={(choice) => {
+          setPriceChoiceOpen(false);
+          onMakeDeal(choice);
+        }}
+      />
     </Shell>
   );
 }

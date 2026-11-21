@@ -59,7 +59,7 @@ const SECTIONS: Array<{ key: SectionKey; label: string }> = [
 const FILTERS: Array<{ key: NotificationCategory | 'all'; label: string; icon: string; iconClass: string }> = [
   { key: 'all', label: 'All', icon: '', iconClass: '' },
   { key: 'deals', label: 'Deals & Claims', icon: 'local_fire_department', iconClass: 'text-tertiary' },
-  { key: 'bookings', label: 'Orders & Bookings', icon: 'calendar_month', iconClass: 'text-primary' },
+  { key: 'bookings', label: 'Orders', icon: 'receipt_long', iconClass: 'text-primary' },
   { key: 'rewards', label: 'Rewards', icon: 'military_tech', iconClass: 'text-badge-discount-text' },
   { key: 'system', label: 'System', icon: 'campaign', iconClass: 'text-secondary' },
 ];
@@ -275,7 +275,7 @@ export function NotificationsScreen({
             </div>
             <h3 className="font-heading-sm text-heading-sm text-on-surface mb-1">Loading your inbox…</h3>
             <p className="font-body-md text-body-md text-text-secondary max-w-xs">
-              Fetching the latest deals, bookings, and account updates.
+              Fetching the latest deals, orders, and account updates.
             </p>
           </div>
         ) : visible.length === 0 ? (

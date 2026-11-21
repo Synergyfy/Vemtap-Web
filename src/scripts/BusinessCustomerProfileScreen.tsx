@@ -63,7 +63,7 @@ const INTERACTIONS = [
     tone: 'bg-badge-discount-bg text-badge-discount-text',
   },
   {
-    icon: 'chat',
+    icon: 'vemtap-chat',
     title: 'Replied to lunch combo offer',
     meta: 'Yesterday, 6:12 PM · 2 messages',
     tone: 'bg-surface-container-low text-on-surface-variant',
@@ -256,7 +256,7 @@ export function BusinessCustomerProfileScreen({
         <section className="px-margin pt-space-sm">
           <div className="grid grid-cols-4 gap-space-xs">
             {[
-              { icon: 'chat', label: 'Message', onClick: () => (onMessage ? onMessage() : showToast('Opening conversation…')) },
+              { icon: 'vemtap-chat', label: 'Message', onClick: () => (onMessage ? onMessage() : showToast('Opening conversation…')) },
               { icon: 'call', label: 'Call', onClick: callCustomer },
               {
                 icon: 'card_giftcard',

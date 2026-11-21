@@ -14,6 +14,8 @@ interface DesktopServicesCategoriesScreenProps {
   onBackToCatalog?: () => void;
   /** Opens the create-service flow (its own route on the catalogue hub). */
   onAddService?: () => void;
+  /** Reuses the existing category form on the Products catalogue page. */
+  onAddCategory?: () => void;
 }
 
 interface ServiceCardData {
@@ -187,6 +189,7 @@ export function DesktopServicesCategoriesScreen({
   onNav,
   onBackToCatalog,
   onAddService,
+  onAddCategory,
 }: DesktopServicesCategoriesScreenProps) {
   const [query, setQuery] = useState('');
   const [pill, setPill] = useState<StatusPill>('all');
@@ -195,16 +198,14 @@ export function DesktopServicesCategoriesScreen({
   // Live: the business's real services and categories; demo keeps the samples.
   const live = hasApiConfig();
   const serviceItems = useCatalogueItems('service');
-  const productItems = useCatalogueItems('product');
-  const liveCategories = useCatalogueCategories();
+  const liveCategories = useCatalogueCategories('service');
   const { branches } = useBusinessBranch();
   const branchCount = branches.filter((branch) => branch.id).length;
   const liveServices = serviceItems.data ?? [];
   const services = live ? liveServices.map((item) => liveServiceCard(item, branchCount)) : SERVICES;
-  const allLiveItems = [...liveServices, ...(productItems.data ?? [])];
   const categories = live
     ? (liveCategories.data ?? []).map((category) => {
-        const items = allLiveItems.filter((item) => item.categoryId === category.id || item.category?.id === category.id);
+        const items = liveServices.filter((item) => item.categoryId === category.id || item.category?.id === category.id);
         const isServices = (category.kind ?? (items.some((item) => item.itemType === 'service') ? 'service' : 'product')) === 'service';
         return {
           name: category.name,
@@ -215,10 +216,12 @@ export function DesktopServicesCategoriesScreen({
         };
       })
     : CATEGORIES;
-  const bookable = liveServices.filter((item) => item.isBookable).length;
+  const active = live ? liveServices.filter(isItemActive).length : SERVICES.length;
+  const bookable = live ? liveServices.filter((item) => item.isBookable).length : 11;
+  const archived = live ? liveServices.filter((item) => item.status === 'archived').length : 0;
   const tiles = live
     ? [
-        { ...TILES[0], value: String(liveServices.filter(isItemActive).length), valueNote: `${liveServices.length} total` },
+        { ...TILES[0], value: String(active), valueNote: `${liveServices.length} total` },
         {
           ...TILES[1],
           value: String(bookable),
@@ -275,6 +278,7 @@ export function DesktopServicesCategoriesScreen({
           <div className="flex items-center gap-space-sm flex-wrap shrink-0">
             <button
               type="button"
+              onClick={onAddCategory}
               className="inline-flex items-center gap-space-2xs px-space-md py-space-sm rounded-xl bg-surface-container hover:bg-surface-container-high text-on-surface font-button-secondary text-button-secondary shadow-sm transition-all hover:scale-[1.01] active:scale-[0.98]"
             >
               <Icon name="create_new_folder" className="text-[20px] text-primary" />
@@ -319,22 +323,15 @@ export function DesktopServicesCategoriesScreen({
           <div className="flex items-center gap-space-2xs bg-surface-container-low p-space-2xs rounded-lg overflow-x-auto">
             <button
               type="button"
-              onClick={onBackToCatalog}
-              className="px-space-md py-space-xs rounded-md text-text-secondary hover:text-on-surface font-label-md text-label-md transition-colors whitespace-nowrap"
-            >
-              Products <span className="text-text-tertiary">(28)</span>
-            </button>
-            <button
-              type="button"
               className="px-space-md py-space-xs rounded-md bg-surface-canvas text-primary font-label-md text-label-md font-semibold shadow-sm transition-colors whitespace-nowrap"
             >
-              Services <span className="text-primary">(14 Active)</span>
+              Services <span className="text-primary">({active} Active)</span>
             </button>
             <button
               type="button"
               className="px-space-md py-space-xs rounded-md text-text-secondary hover:text-on-surface font-label-md text-label-md transition-colors whitespace-nowrap"
             >
-              Categories <span className="text-text-tertiary">(6 Taxonomies)</span>
+              Categories <span className="text-text-tertiary">({live ? liveCategories.data?.length ?? 0 : categories.length} Taxonomies)</span>
             </button>
           </div>
           <div className="flex items-center gap-space-xs overflow-x-auto pb-1 md:pb-0">
@@ -349,7 +346,7 @@ export function DesktopServicesCategoriesScreen({
             >
               <span>All Active</span>
               <span className="w-4 h-4 rounded-full bg-primary text-on-primary text-[10px] flex items-center justify-center font-bold">
-                14
+                {active}
               </span>
             </button>
             <button
@@ -362,7 +359,7 @@ export function DesktopServicesCategoriesScreen({
               }`}
             >
               <span>Requires Booking</span>
-              <span className="text-text-secondary font-medium">11</span>
+              <span className="text-text-secondary font-medium">{bookable}</span>
             </button>
             <button
               type="button"
@@ -374,7 +371,7 @@ export function DesktopServicesCategoriesScreen({
               }`}
             >
               <span>Archived</span>
-              <span className="text-text-secondary font-medium">3</span>
+              <span className="text-text-secondary font-medium">{archived}</span>
             </button>
             <div className="h-5 w-px bg-surface-container-high mx-space-2xs" />
             <div className="relative flex items-center">
@@ -398,7 +395,7 @@ export function DesktopServicesCategoriesScreen({
               <div className="flex items-center gap-space-xs">
                 <h2 className="font-heading-sm text-heading-sm text-on-surface">Active Services & Treatments</h2>
                 <span className="px-space-xs py-space-2xs rounded-full bg-surface-container-high text-on-surface font-caption text-caption font-semibold">
-                  14 Available
+                  {active} Available
                 </span>
               </div>
               <div className="flex items-center gap-space-xs text-caption text-caption text-text-secondary">
@@ -523,7 +520,7 @@ export function DesktopServicesCategoriesScreen({
                       Catalogue Taxonomy & Category Ordering
                     </h2>
                     <span className="w-6 h-6 rounded-full bg-surface-tint-blue text-primary text-caption text-caption flex items-center justify-center font-bold">
-                      6
+                      {live ? liveCategories.data?.length ?? 0 : CATEGORIES.length}
                     </span>
                   </div>
                   <p className="font-caption text-caption text-text-secondary leading-relaxed">
@@ -620,7 +617,9 @@ export function DesktopServicesCategoriesScreen({
                 <div className="flex items-center justify-between pt-space-2xs text-caption text-caption text-text-secondary">
                   <span className="inline-flex items-center gap-1">
                     <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                    All 4 connected POS lanes operational
+                    {live
+                      ? `${branchCount} connected POS lane${branchCount === 1 ? '' : 's'} operational`
+                      : 'All 4 connected POS lanes operational'}
                   </span>
                   <button type="button" className="text-primary font-medium hover:underline">
                     Force Flush

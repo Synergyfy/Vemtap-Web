@@ -26,7 +26,6 @@ const INBOX_CHIPS: { key: InboxChipKey; label: string; count: string; icon?: str
   { key: 'unread', label: 'Unread', count: '(4)', pulse: true },
   { key: 'orders', label: 'Orders', count: '(6)', icon: 'receipt_long' },
   { key: 'deals', label: 'Deals', count: '(5)', icon: 'local_offer' },
-  { key: 'bookings', label: 'Bookings', count: '(3)', icon: 'calendar_today' },
 ];
 
 interface ConversationRow {
@@ -193,7 +192,7 @@ export function BusinessMessagesHomeScreen({
   const conversations: ConversationRow[] = useMemo(
     () =>
       live
-        ? liveRows.map((row) => ({
+        ? liveRows.filter((row) => row.kind !== 'booking').map((row) => ({
             id: row.id,
             img: row.avatar,
             alt: row.name,
@@ -215,7 +214,8 @@ export function BusinessMessagesHomeScreen({
               ...(row.kind === 'booking' ? (['bookings'] as const) : []),
             ],
           }))
-        : CONVERSATIONS,
+        // Product-only rollout: demo booking conversations stay hidden.
+        : CONVERSATIONS.filter((row) => row.thread !== 'booking'),
     [live, liveRows],
   );
 

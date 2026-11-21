@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Icon } from './ui/Icon';
+import { useMyBusiness } from '../hooks/business/useMyBusiness';
 
 interface ClusterQrCodeProps {
   url: string;
   clusterName: string;
   displayCode: string;
+  logoUrl?: string | null;
   size?: number;
   className?: string;
 }
@@ -13,10 +15,13 @@ export function ClusterQrCode({
   url,
   clusterName,
   displayCode,
+  logoUrl,
   size = 200,
   className = '',
 }: ClusterQrCodeProps) {
   const [copied, setCopied] = useState(false);
+  const myBusiness = useMyBusiness();
+  const effectiveLogo = logoUrl !== undefined ? logoUrl : myBusiness.data?.logoUrl;
 
   const handleCopy = () => {
     navigator.clipboard?.writeText(url).catch(() => undefined);
@@ -102,8 +107,14 @@ export function ClusterQrCode({
 
           {/* Central Logo Overlay */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-10 h-10 bg-primary-container text-white rounded-xl shadow-md flex items-center justify-center border-2 border-white">
-              <Icon name="hub" className="text-[20px]" />
+            <div className="w-10 h-10 bg-white rounded-xl shadow-md flex items-center justify-center border-2 border-white overflow-hidden p-0.5">
+              {effectiveLogo ? (
+                <img src={effectiveLogo} alt={clusterName} className="w-full h-full object-cover rounded-lg" />
+              ) : (
+                <div className="w-full h-full bg-primary-container text-white rounded-lg flex items-center justify-center">
+                  <Icon name="hub" className="text-[20px]" />
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -22,7 +22,6 @@ const FILTERS: Array<{ key: SavedFilter; label: string }> = [
   { key: 'all', label: 'All' },
   { key: 'deals', label: 'Deals' },
   { key: 'businesses', label: 'Businesses' },
-  { key: 'services', label: 'Services & Menu' },
 ];
 
 interface BookmarkButtonProps {
@@ -205,7 +204,9 @@ export function DesktopSavedItemsScreen({
 }: DesktopSavedItemsScreenProps) {
   const [filter, setFilter] = useState<SavedFilter>('all');
   const [query, setQuery] = useState('');
-  const { items, unsaved, loading, error, reload, toggleSaved } = useSavedItems();
+  const { items: savedItems, unsaved, loading, error, reload, toggleSaved } = useSavedItems();
+  // Product-only rollout: saved services are never shown.
+  const items = savedItems.filter((item) => item.category !== 'services');
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (message: string) => {

@@ -5,6 +5,7 @@ import {
   RECOMMENDED_FEATURES,
   applySystemDefaults,
   isFeatureLocked,
+  isProductOnlyHiddenFeature,
   mergeFeatureState,
   validateFeatureSelection,
   type FeatureId,
@@ -128,18 +129,30 @@ export function BusinessFeaturesProvider({ children }: { children: ReactNode }) 
         }
       });
     }
+    const productOnly: FeatureState = { ...applied };
+    // Services and Bookings are hidden for the whole product-only rollout.
+    FEATURE_IDS.forEach((id) => {
+      if (isProductOnlyHiddenFeature(id)) productOnly[id] = false;
+    });
     return {
-      ...applied,
+      ...productOnly,
       products: offerings.hasProducts,
-      services: offerings.hasServices,
+      services: false,
     };
   }, [stored, offerings.hasProducts, offerings.hasServices, systemDefaults]);
 
-  const isEnabled = useCallback((id: FeatureId) => Boolean(features[id]), [features]);
+  const isEnabled = useCallback(
+    (id: FeatureId) => !isProductOnlyHiddenFeature(id) && Boolean(features[id]),
+    [features],
+  );
 
   const saveFeatures = useCallback(
     (next: FeatureState, options?: { completeSetup?: boolean }): SaveFeaturesResult => {
       const selection = { ...next };
+      // Hidden features are forced off even if a stale form submits them on.
+      FEATURE_IDS.forEach((id) => {
+        if (isProductOnlyHiddenFeature(id)) selection[id] = false;
+      });
       // System defaults (chat, sms, email) are locked on and cannot be switched off
       DEFAULT_SYSTEM_FEATURES.forEach((id) => {
         selection[id] = true;
