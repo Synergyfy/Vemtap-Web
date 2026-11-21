@@ -1,16 +1,21 @@
 import { useState } from 'react';
-import { useLiveDealBranch } from '../hooks/business/useLiveDealBranch';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
-import type { DealStudioDraft, DealStrategy } from './dealStudio';
-import { DEAL_TYPE_OPTIONS, formatDealAmount, parseDealAmount, validateDealConfiguration } from './deals/dealStudioShared';
-import { useDealBranches, useDealBundleCatalog } from '../hooks/business/useDealStudioLive';
-import { draftImage, draftImageAlt } from './desktop/draftImage';
-import { DealTypeConfigurator, DealTypeSelector } from './deals/DealStudioConfigurator';
-import type { ComboProduct } from './deals/dealStudioShared';
-import { getActiveVariants } from './productVariants';
-import type { ProductDraft } from './productDraft';
+import { ProductImage } from '../components/ui/ProductImage';
 import { UserAvatar } from '../components/ui/UserAvatar';
+import type { DealStudioDraft } from './dealStudio';
+import {
+  DEAL_TYPE_OPTIONS,
+  dealTypeTitle,
+  formatDealAmount,
+  withDealStructure,
+  withSelectedProducts,
+  type DealStructure,
+} from './deals/dealStudioShared';
+import { useDealProductCatalog } from '../hooks/business/useDealStudioLive';
+import { DealProductPicker } from './deals/DealProductPicker';
+import { DealTypeSelector } from './deals/DealStudioConfigurator';
+import type { ProductDraft } from './productDraft';
 
 interface BusinessDealStudioStep1ScreenProps {
   draft: ProductDraft;
@@ -21,51 +26,36 @@ interface BusinessDealStudioStep1ScreenProps {
   onSaveDraft: () => void;
 }
 
-const CATALOG_IMAGE = {
-  src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBegO6wZn1Pkyeh_W7ogUoWoPzSup52SZy9Qsv6qu352UGD-32nsoPXPdnWU7nzr5oCNyyr75usbf5NsToY0h3jUp20Yx0TjiC4ooAn7tTorbsmJt1FlbxzZPG8gxGnyC7reOdNjoxbsGkzsqOHoDHTxpu0LhM33K2au5310WOcVSSixIJC5Kd047-jUuSz4P91sE2DGDRYKlajb2AVzoJ6n9vqYzYzQA9VXNAQCioA',
-  alt: 'Gourmet prime woodfire aged ribeye steak sizzling on dark rustic slate with fresh rosemary sprig and coarse sea salt garnish, warm moody restaurant ambient lighting, rich deep brown and caramel tones, commercial food styling shot',
-};
-
+/** Step 1: ask what kind of deal, then pick live catalogue products. */
 export function BusinessDealStudioStep1Screen({
-  draft,
   studio,
   onStudioChange,
   onBack,
   onNext,
   onSaveDraft,
 }: BusinessDealStudioStep1ScreenProps) {
-  // A current-price deal skips this step; if restored here, send it back to the chooser.
-  const selectedStrategy = studio.strategy === 'current' ? null : studio.strategy;
-  const [page, setPage] = useState<'choose' | 'configure'>(selectedStrategy ? 'configure' : 'choose');
+  const [page, setPage] = useState<'structure' | 'products'>('structure');
+  const { catalog, loading, error } = useDealProductCatalog();
+  const structure = studio.structure;
+  const activeOption = DEAL_TYPE_OPTIONS.find((option) => option.id === structure);
+  const minProducts = structure === 'bundle' ? 2 : 1;
+  const selectedProducts = catalog.filter((product) => studio.productIds.includes(product.id));
+  const enoughProducts = selectedProducts.length >= minProducts;
 
-  const activeStrategy = DEAL_TYPE_OPTIONS.find((item) => item.id === selectedStrategy);
-
-  const activeVariants = getActiveVariants(draft);
-  const regularVariant = activeVariants.find((variant) => variant.name === 'Regular') ?? activeVariants[0];
-  const baseAmount = parseDealAmount(regularVariant?.price ?? draft.basePrice);
-  const liveBranch = useLiveDealBranch();
-  // Live: the branches picked for the deal (step 3); demo keeps the samples.
-  const dealBranches = useDealBranches(studio);
-  const activeBranchCount = liveBranch.live ? dealBranches.selectedIds.length : Object.values(studio.branches).filter(Boolean).length;
-
-  const bundleCatalog: ComboProduct[] = useDealBundleCatalog(draft.title, baseAmount);
-  const configErrors = selectedStrategy ? validateDealConfiguration(studio, baseAmount, bundleCatalog) : [];
-
-  const chooseStrategy = (id: DealStrategy) => {
-    onStudioChange({ strategy: id });
-    setPage('configure');
+  const chooseStructure = (id: DealStructure) => {
+    onStudioChange(withDealStructure(studio, id));
+    setPage('products');
     window.scrollTo(0, 0);
   };
 
-  const backToChoose = () => {
-    setPage('choose');
-    window.scrollTo(0, 0);
+  const toggleProduct = (id: string) => {
+    const next = studio.productIds.includes(id)
+      ? studio.productIds.filter((value) => value !== id)
+      : [...studio.productIds, id];
+    onStudioChange(withSelectedProducts(studio, next, catalog));
   };
 
-  const openConfigure = () => {
-    setPage('configure');
-    window.scrollTo(0, 0);
-  };
+  const regularTotal = selectedProducts.reduce((sum, product) => sum + product.price, 0);
 
   return (
     <AppScreen>
@@ -76,7 +66,7 @@ export function BusinessDealStudioStep1Screen({
               aria-label="Go back"
               className="min-w-[44px] min-h-[44px] flex items-center justify-center -ml-space-xs text-on-surface hover:text-primary active:scale-95 transition-transform"
               type="button"
-              onClick={page === 'configure' ? backToChoose : onBack}
+              onClick={() => (page === 'products' ? setPage('structure') : onBack())}
             >
               <Icon name="arrow_back" className="text-[22px]" />
             </button>
@@ -84,190 +74,164 @@ export function BusinessDealStudioStep1Screen({
               <span className="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider leading-none">
                 VEMTAP Merchant
               </span>
-              <h1 className="font-heading-sm text-heading-sm text-on-surface leading-tight truncate max-w-[170px]">
-                {page === 'configure' ? 'Discount Setup' : 'Basic Details'}
-              </h1>
+              <h1 className="font-heading-sm text-heading-sm text-on-surface leading-tight">Create Deal</h1>
             </div>
           </div>
           <div className="flex items-center gap-space-2xs">
             <button
               aria-label="Save Draft"
-              className="min-h-[44px] px-space-xs flex items-center justify-center font-button-secondary text-button-secondary text-primary hover:text-on-primary-fixed-variant active:scale-95 transition-transform"
+              className="min-h-[44px] px-space-xs flex items-center justify-center font-button-secondary text-button-secondary text-primary"
               type="button"
               onClick={onSaveDraft}
             >
               Save
             </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-[0_2px_8px_rgba(6,108,244,0.25)] overflow-hidden">
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center overflow-hidden">
               <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
         </div>
       </header>
 
-      <div className="flex flex-col w-full pb-36">
+      <div className="flex flex-col w-full pb-40">
         <div className="px-margin pt-space-sm pb-space-2xs flex flex-col gap-space-2xs">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-space-2xs">
-              <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary text-on-primary font-caption font-semibold">
-                1
-              </span>
-              <span className="font-label-sm text-label-sm text-text-primary font-semibold">
-                Step 1 of 4: Discount Strategy
-              </span>
-            </div>
-            <span className="font-label-sm text-label-sm text-primary font-semibold">25% Complete</span>
+            <span className="font-label-sm text-label-sm text-text-primary font-semibold">
+              Step 1 of 5: {page === 'structure' ? 'Deal Structure' : 'Products'}
+            </span>
+            <span className="font-label-sm text-label-sm text-primary font-semibold">20% Complete</span>
           </div>
           <div className="w-full h-1 bg-surface-container-highest rounded-full overflow-hidden">
-            <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: '25%' }} />
+            <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: '20%' }} />
           </div>
         </div>
 
-        <div className="px-margin mt-space-sm">
-          <div className="bg-surface-container-lowest rounded-xl shadow-sm overflow-hidden">
-            <div className="flex items-center gap-space-sm px-space-sm py-space-2xs">
-              <div className="relative w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-surface-container">
-                <img className="w-full h-full object-cover" alt={draftImageAlt(draft.title, CATALOG_IMAGE.alt)} src={draftImage(draft.mainImage, CATALOG_IMAGE.src)} />
-                <div className="absolute bottom-0.5 left-0.5 px-1 py-px rounded bg-surface-canvas/90 backdrop-blur-sm flex items-center gap-0.5 shadow-xs">
-                  <Icon name="sync" className="text-primary text-[9px]" filled />
-                  <span className="font-caption text-[8px] leading-tight text-text-secondary font-medium">
-                    POS Live
-                  </span>
-                </div>
-              </div>
-              <div className="flex flex-col min-w-0 flex-grow">
-                <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider leading-none">
-                  Synced Catalog Item
-                </span>
-                <h2 className="font-heading-sm text-heading-sm text-text-primary truncate leading-snug">
-                  {draft.title}
-                </h2>
-                <div className="flex items-baseline gap-space-2xs">
-                  <span className="font-label-sm text-label-sm text-text-secondary">Base:</span>
-                  <span className="font-label-sm text-label-sm text-text-primary font-bold">
-                    ₦{formatDealAmount(baseAmount)}
-                  </span>
-                  {liveBranch.live ? null : <span className="font-caption text-caption text-text-tertiary">/ 350g cut</span>}
-                  <span className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption font-semibold">
-                    <span className="w-1 h-1 rounded-full bg-badge-discount-text inline-block" />
-                    {activeBranchCount} {activeBranchCount === 1 ? 'Branch' : 'Branches'}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between bg-surface-subtle px-space-sm py-1">
-              <div className="flex items-center gap-1 text-text-secondary">
-                <Icon name="storefront" className="text-[13px] text-primary" />
-                <span className="font-caption text-caption">{liveBranch.live
-                    ? dealBranches.selected.length > 1
-                      ? dealBranches.selected.map((branch) => branch.name).join(' • ')
-                      : dealBranches.selected[0]?.area || liveBranch.area
-                    : 'Victoria Island & Lekki Phase 1'}</span>
-              </div>
-              <button
-                className="font-caption text-caption text-primary font-semibold hover:underline flex items-center gap-0.5"
-                type="button"
-              >
-                Change item <Icon name="tune" className="text-[12px]" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {page === 'choose' && (
+        {page === 'structure' ? (
           <>
             <div className="px-margin mt-space-md">
-              <h3 className="font-heading-md text-heading-md text-text-primary leading-snug">
-                Choose Discount Strategy
-              </h3>
-              <p className="font-caption text-caption text-text-secondary leading-snug">
-                Select how your deal is priced and presented to diners nearby.
+              <h2 className="font-heading-md text-heading-md text-text-primary leading-snug">
+                What kind of deal do you want to create?
+              </h2>
+              <p className="font-caption text-caption text-text-secondary leading-snug mt-1">
+                Pick one simple structure. You’ll choose the products next.
               </p>
             </div>
-
             <div className="px-margin mt-space-sm">
-              <DealTypeSelector selected={selectedStrategy} onSelect={chooseStrategy} />
+              <DealTypeSelector selected={structure} onSelect={chooseStructure} />
+            </div>
+            <div className="px-margin mt-space-sm rounded-xl bg-surface-subtle px-space-sm py-space-2xs flex items-start gap-space-xs">
+              <Icon name="info" className="text-[16px] text-primary mt-0.5 shrink-0" />
+              <p className="font-caption text-caption text-text-secondary leading-snug">
+                Free Delivery can be added later as an extra benefit. Deals use products from your own catalogue only.
+              </p>
             </div>
           </>
-        )}
-
-        {page === 'configure' && activeStrategy && (
+        ) : (
           <>
-            <div className="px-margin mt-space-md">
-              <div className="flex items-start justify-between gap-space-xs">
-                <div className="min-w-0">
-                  <h3 className="font-heading-md text-heading-md text-text-primary leading-snug">
-                    {activeStrategy.title}
-                  </h3>
-                  <p className="font-caption text-caption text-text-secondary leading-snug">
-                    {activeStrategy.description}
-                  </p>
-                </div>
-                <button
-                  className="font-caption text-caption text-primary font-semibold flex items-center gap-0.5 shrink-0 mt-0.5 hover:underline"
-                  type="button"
-                  onClick={backToChoose}
-                >
-                  <Icon name="swap_horiz" className="text-[14px]" /> Change
-                </button>
+            <div className="px-margin mt-space-md flex items-start justify-between gap-space-xs">
+              <div className="min-w-0">
+                <h2 className="font-heading-md text-heading-md text-text-primary leading-snug">
+                  Choose products for your {dealTypeTitle(structure ?? null)}
+                </h2>
+                <p className="font-caption text-caption text-text-secondary leading-snug">
+                  {structure === 'bundle'
+                    ? 'Pick at least 2 products. They stay in your public catalogue and will also appear in Deals.'
+                    : 'Pick at least 1 product from your live catalogue.'}
+                </p>
               </div>
+              <button
+                className="font-caption text-caption text-primary font-semibold flex items-center gap-0.5 shrink-0 mt-0.5"
+                type="button"
+                onClick={() => setPage('structure')}
+              >
+                <Icon name="swap_horiz" className="text-[14px]" /> Change
+              </button>
             </div>
 
+            {selectedProducts.length > 0 && (
+              <div className="px-margin mt-space-sm">
+                <div className="rounded-xl bg-surface-tint-blue px-space-sm py-space-2xs flex items-center gap-space-xs">
+                  <div className="flex -space-x-2">
+                    {selectedProducts.slice(0, 3).map((product) => (
+                      <ProductImage
+                        key={product.id}
+                        alt={product.name}
+                        className="h-8 w-8 rounded-full ring-2 ring-surface-tint-blue"
+                        iconClassName="text-[12px]"
+                        showLabel={false}
+                        src={product.image}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="font-label-sm text-label-sm text-primary font-semibold">
+                      {selectedProducts.length} product{selectedProducts.length === 1 ? '' : 's'} selected
+                    </span>
+                    <span className="font-caption text-caption text-text-secondary">
+                      Regular total ₦{formatDealAmount(regularTotal)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="px-margin mt-space-sm">
-              <DealTypeConfigurator
-                basePrice={baseAmount}
-                catalog={bundleCatalog}
-                studio={studio}
-                onStudioChange={onStudioChange}
+              <DealProductPicker
+                error={error ? 'We couldn’t load your live catalogue. Pull to refresh and try again.' : null}
+                loading={loading}
+                minProducts={minProducts}
+                products={catalog}
+                selectedIds={studio.productIds}
+                onToggle={toggleProduct}
               />
             </div>
           </>
         )}
       </div>
 
-      {page === 'choose' ? (
-        <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-surface/95 backdrop-blur-xl px-margin pb-safe flex flex-col gap-space-2xs pt-space-2xs shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
-          <button
-            className="w-full h-11 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)] active:scale-[0.98] transition-transform flex items-center justify-center gap-space-2xs disabled:opacity-40 disabled:shadow-none"
-            type="button"
-            disabled={!selectedStrategy}
-            onClick={openConfigure}
-          >
-            <span>{selectedStrategy ? 'Continue to Discount Setup' : 'Select a strategy to continue'}</span>
-            {selectedStrategy && <Icon name="arrow_forward" className="text-[18px]" />}
-          </button>
-          <button
-            className="w-full h-9 rounded-xl bg-transparent text-text-secondary font-button-secondary text-button-secondary hover:text-text-primary active:scale-[0.99] transition-transform flex items-center justify-center gap-1"
-            type="button"
-            onClick={onBack}
-          >
-            <Icon name="arrow_back" className="text-[16px]" />
-            <span>Back to Catalog Items</span>
-          </button>
-        </div>
-      ) : (
-        <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-surface/95 backdrop-blur-xl px-margin pb-safe flex flex-col gap-space-2xs pt-space-2xs shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
-          <button
-            className="w-full h-11 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)] active:scale-[0.98] transition-transform flex items-center justify-center gap-space-2xs disabled:opacity-40 disabled:shadow-none"
-            type="button"
-            disabled={configErrors.length > 0}
-            onClick={() => {
-              if (configErrors.length === 0) onNext();
-            }}
-          >
-            <span>{configErrors.length > 0 ? 'Fix the highlighted setup to continue' : 'Continue to Limits & Rules'}</span>
-            {configErrors.length === 0 && <Icon name="arrow_forward" className="text-[18px]" />}
-          </button>
-          <button
-            className="w-full h-9 rounded-xl bg-transparent text-text-secondary font-button-secondary text-button-secondary hover:text-text-primary active:scale-[0.99] transition-transform flex items-center justify-center gap-1"
-            type="button"
-            onClick={backToChoose}
-          >
-            <Icon name="arrow_back" className="text-[16px]" />
-            <span>Back to Discount Strategy</span>
-          </button>
-        </div>
-      )}
+      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-surface/95 backdrop-blur-xl px-margin pb-safe flex flex-col gap-space-2xs pt-space-2xs shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+        {page === 'structure' ? (
+          <>
+            <button
+              className="w-full h-11 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center justify-center disabled:opacity-40"
+              disabled={!structure}
+              type="button"
+              onClick={() => structure && setPage('products')}
+            >
+              <span>{structure ? `Continue with ${activeOption?.title ?? 'this deal'}` : 'Select a deal type to continue'}</span>
+              {structure && <Icon name="arrow_forward" className="text-[18px]" />}
+            </button>
+            <button
+              className="w-full h-9 rounded-xl font-button-secondary text-button-secondary text-text-secondary"
+              type="button"
+              onClick={onBack}
+            >
+              Back
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              className="w-full h-11 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center justify-center disabled:opacity-40"
+              disabled={!enoughProducts}
+              type="button"
+              onClick={onNext}
+            >
+              <span>
+                {enoughProducts ? 'Continue to Offer Setup' : `Select ${minProducts} product${minProducts === 1 ? '' : 's'} to continue`}
+              </span>
+              {enoughProducts && <Icon name="arrow_forward" className="text-[18px]" />}
+            </button>
+            <button
+              className="w-full h-9 rounded-xl font-button-secondary text-button-secondary text-text-secondary"
+              type="button"
+              onClick={() => setPage('structure')}
+            >
+              Back to deal types
+            </button>
+          </>
+        )}
+      </div>
     </AppScreen>
   );
 }

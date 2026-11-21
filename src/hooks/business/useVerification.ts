@@ -1,12 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef } from 'react';
 import { hasApiConfig } from '../../services/api/client';
 import {
   reasonCopy,
   verificationService,
+  type BusinessPreview,
   type BusinessVerificationStatus,
   type IdentityIdType,
   type VerificationCheck,
   type VerificationCheckStatus,
+  type VerifyBusinessInput,
+  type VerifyRepresentativeInput,
 } from '../../services/verificationService';
 import { useMyBusiness } from './useMyBusiness';
 import { useSessionUser } from '../useSessionUser';
@@ -24,6 +28,17 @@ export interface CheckOutcome {
   reasons: string[];
 }
 
+export interface PreviewOutcome extends CheckOutcome {
+  /** Minimal registry fields for form autofill; never directors' details. */
+  preview: BusinessPreview;
+}
+
+/** Registry confirmation and the separate representative/ownership check. */
+export interface BusinessChecksOutcome {
+  business: CheckOutcome;
+  representative: CheckOutcome | null;
+}
+
 const POLL_MS = 3_000;
 const LIVENESS_TIMEOUT_MS = 10 * 60_000;
 /** Where the selfie tab returns to: the status center, which shows the result. */
@@ -31,20 +46,19 @@ export const LIVENESS_RETURN_PATH = '/business-verification/status';
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
-/** "14 / 08 / 1989" or "1989-08-14" → "1989-08-14"; undefined when unreadable. */
-export function toIsoDate(value: string): string | undefined {
-  const trimmed = value.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
-  const parts = trimmed.split(/\D+/).filter(Boolean);
-  if (parts.length !== 3) return undefined;
-  const [day, month, year] = parts;
-  if (year.length !== 4) return undefined;
-  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-}
-
 export function splitName(fullName: string) {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
   return { firstName: parts[0] ?? '', lastName: parts.slice(1).join(' ') };
+}
+
+/** RC / BN / IT + digits, as the backend expects. */
+export function cacRegistrationNumber(entity: string, cacNumber: string): string {
+  const digits = cacNumber.replace(/\D/g, '');
+  const prefix = (entity || cacNumber.replace(/[^a-z]/gi, '').slice(0, 2)).toUpperCase();
+  if (!/^(RC|BN|IT)$/.test(prefix) || !digits) {
+    throw new Error('Enter a CAC number that starts with RC, BN or IT.');
+  }
+  return `${prefix}${digits}`;
 }
 
 const outcome = (check: VerificationCheck): CheckOutcome => ({
@@ -56,63 +70,110 @@ const outcome = (check: VerificationCheck): CheckOutcome => ({
 export function useVerificationActions() {
   const queryClient = useQueryClient();
   const refresh = () => queryClient.invalidateQueries({ queryKey: verificationKeys.status });
+  // Block double taps while a request is open; the backend also de-dupes by reference.
+  const identityInFlight = useRef(false);
+  const businessInFlight = useRef(false);
 
   /**
    * Identity check. Live: opens bytID's selfie check in a new tab (opened
    * synchronously so popup blockers allow it), polls until the selfie passes,
-   * then submits the ID details. Demo: resolves like the old simulation.
-   * Must be called directly from a click handler.
+   * then submits the ID details. BVN is record-only: no selfie tab.
+   * Demo: resolves like the old simulation. Must be called from a click handler.
    */
   const verifyIdentity = async (
-    input: { idType: IdentityIdType; idNumber: string; legalName: string; dateOfBirth: string },
+    input: {
+      idType: IdentityIdType;
+      idNumber: string;
+      legalName: string;
+      /** Hosted data-page image URL; required for passports in live mode. */
+      documentUrl?: string;
+    },
     onStage?: (stage: 'selfie' | 'checking') => void,
   ): Promise<CheckOutcome> => {
-    const { firstName, lastName } = splitName(input.legalName);
-    if (!firstName || !lastName) throw new Error('Enter your first and last name as they appear on the ID.');
-    const dob = input.dateOfBirth ? toIsoDate(input.dateOfBirth) : undefined;
-    if (input.dateOfBirth && !dob) throw new Error('Enter your date of birth as DD / MM / YYYY.');
-    const base = { idType: input.idType, idNumber: input.idNumber || undefined, firstName, lastName, dob };
-
-    if (!hasApiConfig()) {
-      onStage?.('checking');
-      const check = await verificationService.verifyIdentity({ ...base, livenessSessionId: 'demo' });
-      return outcome(check);
-    }
-
-    const selfieTab = window.open('', '_blank');
+    if (identityInFlight.current) throw new Error('A verification is already in progress.');
+    identityInFlight.current = true;
     try {
-      const session = await verificationService.startLiveness(window.location.origin + LIVENESS_RETURN_PATH);
-      if (selfieTab) selfieTab.location.href = session.url;
-      else window.open(session.url, '_blank');
-      onStage?.('selfie');
+      const { firstName, lastName } = splitName(input.legalName);
+      if (!firstName || !lastName) throw new Error('Enter your first and last name as they appear on the ID.');
+      const live = hasApiConfig();
+      if (input.idType === 'passport' && live && !input.documentUrl) {
+        throw new Error('Upload a clear photo of your passport data page first.');
+      }
+      const base = {
+        idType: input.idType,
+        idNumber: input.idNumber || undefined,
+        firstName,
+        lastName,
+        documentUrl: input.documentUrl,
+      };
 
-      const deadline = Date.now() + LIVENESS_TIMEOUT_MS;
-      for (;;) {
-        await wait(POLL_MS);
-        const liveness = await verificationService.livenessStatus(session.sessionId);
-        if (liveness.status === 'passed') break;
-        if (liveness.status === 'failed') throw new Error(reasonCopy(liveness.reasons)[0] ?? 'The selfie check did not pass. Try again in good light.');
-        if (liveness.status === 'expired' || Date.now() > deadline) throw new Error('The selfie check timed out. Start again when you are ready.');
+      // BVN is a registry record lookup: no liveness session or face match.
+      if (input.idType === 'bvn' || !live) {
+        onStage?.('checking');
+        const check = await verificationService.verifyIdentity({ ...base, livenessSessionId: input.idType === 'bvn' ? undefined : 'demo' });
+        return outcome(check);
       }
 
-      onStage?.('checking');
-      const check = await verificationService.verifyIdentity({ ...base, livenessSessionId: session.sessionId });
-      return outcome(check);
-    } catch (error) {
-      selfieTab?.close();
-      throw error;
+      const selfieTab = window.open('', '_blank');
+      try {
+        const session = await verificationService.startLiveness(window.location.origin + LIVENESS_RETURN_PATH);
+        if (selfieTab) selfieTab.location.href = session.url;
+        else window.open(session.url, '_blank');
+        onStage?.('selfie');
+
+        const deadline = Date.now() + LIVENESS_TIMEOUT_MS;
+        for (;;) {
+          await wait(POLL_MS);
+          const liveness = await verificationService.livenessStatus(session.sessionId);
+          if (liveness.status === 'passed') break;
+          if (liveness.status === 'failed') throw new Error(reasonCopy(liveness.reasons)[0] ?? 'The selfie check did not pass. Try again in good light.');
+          if (liveness.status === 'expired' || Date.now() > deadline) throw new Error('The selfie check timed out. Start again when you are ready.');
+        }
+
+        onStage?.('checking');
+        const check = await verificationService.verifyIdentity({ ...base, livenessSessionId: session.sessionId });
+        return outcome(check);
+      } catch (error) {
+        selfieTab?.close();
+        throw error;
+      }
     } finally {
+      identityInFlight.current = false;
       void refresh();
     }
   };
 
-  /** CAC check — `entity` + digits, e.g. `RC` + `1234567`. */
-  const verifyBusiness = async (entity: string, cacNumber: string): Promise<CheckOutcome> => {
-    const digits = cacNumber.replace(/\D/g, '');
-    const prefix = (entity || cacNumber.replace(/[^a-z]/gi, '').slice(0, 2)).toUpperCase();
-    if (!/^(RC|BN|IT)$/.test(prefix) || !digits) throw new Error('Enter a CAC number that starts with RC, BN or IT.');
+  /** CAC registry lookup for autofill only — never a verification result. */
+  const previewBusiness = async (registrationNumber: string): Promise<PreviewOutcome> => {
+    if (businessInFlight.current) throw new Error('A verification is already in progress.');
+    businessInFlight.current = true;
     try {
-      return outcome(await verificationService.verifyBusiness(`${prefix}${digits}`));
+      const response = await verificationService.previewBusiness(registrationNumber);
+      return { ...outcome(response), preview: response.preview };
+    } finally {
+      businessInFlight.current = false;
+      void refresh();
+    }
+  };
+
+  /** Confirm the CAC details (and the preview id) before storing a check. */
+  const confirmBusiness = async (input: VerifyBusinessInput): Promise<CheckOutcome> => {
+    if (businessInFlight.current) throw new Error('A verification is already in progress.');
+    businessInFlight.current = true;
+    try {
+      return outcome(await verificationService.verifyBusiness(input));
+    } finally {
+      businessInFlight.current = false;
+      void refresh();
+    }
+  };
+
+  /** Ownership is checked separately from the CAC registry lookup. */
+  const verifyRepresentative = async (input: VerifyRepresentativeInput): Promise<CheckOutcome> => {
+    const name = input.representativeName.trim().replace(/\s+/g, ' ');
+    if (name.split(' ').length < 2) throw new Error("Enter the representative's first and last name.");
+    try {
+      return outcome(await verificationService.verifyRepresentative({ ...input, representativeName: name }));
     } finally {
       void refresh();
     }
@@ -126,7 +187,30 @@ export function useVerificationActions() {
     }
   };
 
-  return { verifyIdentity, verifyBusiness, submitUnregistered };
+  const requestManualReview = async (checkId?: string, note?: string) => {
+    try {
+      return outcome(await verificationService.requestManualReview({ checkId, note }));
+    } finally {
+      void refresh();
+    }
+  };
+
+  const verifyBusiness = async (entity?: string, cacNumber?: string): Promise<CheckOutcome> => {
+    return confirmBusiness({
+      registrationNumber: cacNumber || '',
+      businessName: entity || '',
+    } as any);
+  };
+
+  return {
+    verifyIdentity,
+    verifyBusiness,
+    previewBusiness,
+    confirmBusiness,
+    verifyRepresentative,
+    submitUnregistered,
+    requestManualReview,
+  };
 }
 
 const STATUS_LABEL: Record<BusinessVerificationStatus, string> = {
@@ -148,7 +232,11 @@ const ID_TYPE_LABEL: Record<string, string> = {
   nin: 'NIN',
   drivers_license: "Driver's licence",
   voters_card: "Voter's card",
+  bvn: 'BVN',
   passport: 'Passport',
+  cac: 'CAC',
+  unregistered: 'Unregistered business',
+  manual: 'Manual review',
 };
 
 const shortDate = (iso?: string | null) =>
@@ -165,6 +253,8 @@ const checkSummary = (check?: VerificationCheck | null) => ({
   idType: check ? (ID_TYPE_LABEL[check.idType] ?? check.idType) : null,
   note: check ? (reasonCopy(check.reasons)[0] ?? null) : null,
   date: shortDate(check?.reviewedAt ?? check?.createdAt),
+  /** Sandbox results must be labelled as such everywhere they are shown. */
+  sandbox: check?.environment === 'test',
 });
 
 export type VerificationCheckSummary = ReturnType<typeof checkSummary>;
@@ -180,6 +270,7 @@ export function useVerificationSummary() {
   const data = live ? status.data : undefined;
   const identity = checkSummary(data?.identity);
   const registration = checkSummary(data?.business);
+  const representative = checkSummary(data?.representative);
   const verified = data?.isVerified ?? false;
   const biz = business.data;
   const locations = (biz?.branches ?? [])
@@ -190,7 +281,7 @@ export function useVerificationSummary() {
       isMain: Boolean(branch.isMainBranch),
       address: [branch.address, branch.city].filter(Boolean).join(', ') || null,
     }));
-  const submitted = identity.submitted || registration.submitted;
+  const submitted = identity.submitted || registration.submitted || representative.submitted;
   // Nothing sent in yet reads "Not started", never "In progress".
   const progressLabel = verified
     ? 'Compliant'
@@ -208,9 +299,15 @@ export function useVerificationSummary() {
     verified,
     submitted,
     progressLabel,
-    statusLabel: data ? (submitted || verified ? STATUS_LABEL[data.status] : STATUS_LABEL.unverified) : 'Checking status…',
+    statusLabel: !live
+      ? 'Demo preview'
+      : data
+        ? submitted || verified
+          ? STATUS_LABEL[data.status]
+          : STATUS_LABEL.unverified
+        : 'Checking status…',
     lastVerified: shortDate(data?.verifiedAt),
-    checksVerified: Number(identity.ok) + Number(registration.ok),
+    checksVerified: Number(identity.ok) + Number(registration.ok) + Number(representative.ok),
     /** Cover photo, else logo; null shows the storefront icon. */
     image: biz?.coverImage || biz?.logoUrl || null,
     /** Active branches from `GET /businesses/my-business`. */
@@ -222,6 +319,7 @@ export function useVerificationSummary() {
     credentialRef: biz?.uniqueCode ?? null,
     identity,
     registration,
+    representative,
   };
 }
 
@@ -273,13 +371,15 @@ export const ID_TYPE_REQUIREMENTS: Record<IdentityIdType, string> = {
   nin: 'Your 11-digit NIN and a quick selfie — checked against the NIMC registry.',
   drivers_license: 'Your licence number and a quick selfie — checked against the FRSC registry.',
   voters_card: 'Your 19-character VIN and a quick selfie — checked against the INEC registry.',
-  passport: 'A clear photo of your passport data page and a quick selfie (no registry lookup).',
+  bvn: 'Your 11-digit BVN and account name — a record lookup only, with no selfie.',
+  passport: 'A clear photo of your passport data page and a quick selfie.',
 };
 
 const ID_TYPE_NAMES: Record<string, string> = {
   nin: 'NIN',
   drivers_license: "Driver's Licence",
   voters_card: "Voter's Card",
+  bvn: 'BVN',
   passport: 'Passport',
 };
 

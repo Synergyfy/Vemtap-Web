@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from '../components/ui/Icon';
 import { Skeleton, SkeletonGroup } from '../components/ui/Skeleton';
 import { claimsService, type ScannedVoucher } from '../services/claimsService';
+import { safeDealImageUrl } from '../utils/dealImages';
 import { NO_IMAGE } from '../utils/homeOffer';
 
 interface VoucherRedeemScreenProps {
@@ -67,7 +68,7 @@ export function VoucherRedeemScreen({ claimId, onDone }: VoucherRedeemScreenProp
           </SkeletonGroup>
         ) : voucher ? (
           <>
-            <img className="w-full h-40 object-cover rounded-xl" alt={voucher.offerName} src={voucher.offerImage ?? NO_IMAGE} />
+            <img className="w-full h-40 object-cover rounded-xl" alt={voucher.offerName} src={safeDealImageUrl(voucher.offerImage) ?? NO_IMAGE} />
             <div>
               <p className="font-label-md text-label-md font-semibold text-text-primary">{voucher.offerName}</p>
               <p className="font-body-md text-body-md text-text-secondary">{voucher.customerName}</p>

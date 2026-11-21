@@ -13,52 +13,40 @@ interface DesktopVerificationStatusCenterScreenProps {
   onNav?: (key: BusinessPortalNavKey) => void;
 }
 
-const BUSINESS_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuAarvXxTllFjmrWyAjU5r7WGOLEVTVViBsVPPNlhFRphLcv0Z7YdvavE8rHwYPrICOXnmIIMOTZP2yCGFTlolJS0gofjiXITYhskM4KxHKHAw3C6s8QdmXQ_S3f0Y6h0p8bEkMrbZfbUiyUEH27srpYBYX3BApkdj7-9zvgaJl9F1N9KSFDRZxl8gaB9aUz970lYlFFysMlg9PTwAN3l8OhELBK5-n0a6Wf5xdMtiXxDkcAYCcOZYOvXw';
-
-const RAIL_CHECKS = [
-  { label: 'Legal Entity Validated (CAC)', ok: true },
-  { label: '2 Physical Hubs Inspected (Apo & Wuse II)', ok: true },
-  { label: 'Protection Protocol (NDPR Active)', ok: true },
-];
-
-/** Sample certificate for demo mode only. */
-const DEMO_CERTIFICATE = { cacNumber: 'BN-3491820', businessName: 'Urban Grill & Bistro' };
-
-const TRUST_PATH = 'M0 40 L30 36 L60 38 L90 28 L120 32 L150 18 L180 20 L210 12 L240 16 L270 8 L300 4';
-
 export function DesktopVerificationStatusCenterScreen({
   onBack,
   onManageLocations,
   onBrand,
   onNav,
 }: DesktopVerificationStatusCenterScreenProps) {
-  // Live: the real status from `GET /verification/status`; demo keeps the sample copy.
+  // Live: the real status from GET /verification/status and the business record.
   const summary = useVerificationSummary();
-  const live = summary.live;
   const [sheet, setSheet] = useState<'id' | 'cac' | null>(null);
-  const [letterRequested, setLetterRequested] = useState(false);
   const [identityFlowOpen, setIdentityFlowOpen] = useState(false);
   const [identityNotice, setIdentityNotice] = useState<string | null>(null);
+
   const branchCount = summary.locations.length;
   const branchNames = summary.locations.map((branch) => branch.name).join(' & ');
-  const railChecks = live
-    ? [
-        {
-          label: summary.registration.ok ? 'Legal Entity Validated (CAC)' : `Legal Entity (CAC): ${summary.registration.label}`,
-          ok: summary.registration.ok,
-        },
-        {
-          label: branchCount
-            ? `${branchCount} Active ${branchCount === 1 ? 'Location' : 'Locations'} (${branchNames})`
-            : 'No locations added yet',
-          ok: branchCount > 0,
-        },
-        { label: 'Protection Protocol (NDPR Active)', ok: true },
-      ]
-    : RAIL_CHECKS;
+  const checksLabel = `${summary.checksVerified} ${summary.checksVerified === 1 ? 'check' : 'checks'} verified`;
+  const sandboxResult =
+    summary.identity.sandbox || summary.registration.sandbox || summary.representative.sandbox;
+  const railChecks = [
+    {
+      label: summary.registration.ok
+        ? 'Legal Entity Validated (CAC)'
+        : `Legal Entity (CAC): ${summary.registration.label}`,
+      ok: summary.registration.ok,
+    },
+    {
+      label: branchCount
+        ? `${branchCount} Active ${branchCount === 1 ? 'Location' : 'Locations'}${branchNames ? ` (${branchNames})` : ''}`
+        : 'No locations added yet',
+      ok: branchCount > 0,
+    },
+    { label: 'Verification records stored securely', ok: true },
+  ];
   const pill = (ok: boolean) =>
-    ok || !live ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary';
+    ok ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-surface-container text-text-secondary';
   const startIdentity = () => {
     setSheet(null);
     setIdentityNotice(null);
@@ -73,7 +61,11 @@ export function DesktopVerificationStatusCenterScreen({
         onBack={() => setIdentityFlowOpen(false)}
         onComplete={(result) => {
           setIdentityFlowOpen(false);
-          setIdentityNotice(result === 'success' ? 'Your identity is verified.' : 'Your identity details were submitted for review.');
+          setIdentityNotice(
+            result === 'success'
+              ? 'Your identity check is complete.'
+              : 'Your identity details were submitted for review.',
+          );
         }}
       />
     );
@@ -87,23 +79,28 @@ export function DesktopVerificationStatusCenterScreen({
             {identityNotice}
           </p>
         )}
+        {sandboxResult && (
+          <p className="rounded-xl bg-surface-tint-blue px-space-sm py-space-xs font-caption text-caption text-primary">
+            Sandbox results are shown for testing. They are not live verification.
+          </p>
+        )}
+
         <section className="relative overflow-hidden rounded-xl bg-surface-container-lowest shadow-sm">
-          <div className="absolute -right-20 -top-24 w-80 h-80 rounded-full bg-primary/5 pointer-events-none blur-2xl" />
           <div className="p-space-xl flex flex-col lg:flex-row lg:items-center justify-between gap-space-lg relative z-10">
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-space-lg">
               <div className="relative">
-                {!live || summary.image ? (
+                {summary.image ? (
                   <img
-                    alt={live ? summary.businessName : 'Urban Grill and Bistro dining hall'}
+                    alt={summary.businessName}
                     className="w-20 h-20 rounded-xl object-cover shadow-sm ring-2 ring-primary/20"
-                    src={live ? (summary.image ?? '') : BUSINESS_IMG}
+                    src={summary.image}
                   />
                 ) : (
                   <div className="w-20 h-20 rounded-xl bg-surface-container ring-2 ring-primary/20 flex items-center justify-center text-text-tertiary">
                     <Icon name="storefront" className="text-[32px]" />
                   </div>
                 )}
-                {(!live || summary.verified) && (
+                {summary.verified && (
                   <div className="absolute -bottom-2 -right-2 bg-badge-discount-bg text-badge-discount-text w-7 h-7 rounded-full flex items-center justify-center shadow-sm">
                     <Icon name="verified" filled className="text-[18px]" />
                   </div>
@@ -111,31 +108,25 @@ export function DesktopVerificationStatusCenterScreen({
               </div>
               <div className="flex flex-col gap-space-2xs">
                 <div className="flex flex-wrap items-center gap-space-xs">
-                  <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">{live ? summary.businessName : 'Urban Grill & Bistro'}</h1>
+                  <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">{summary.businessName}</h1>
                   <span className="px-space-xs py-space-2xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold uppercase tracking-wider flex items-center gap-space-2xs">
-                    <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                    {live ? summary.statusLabel : 'Tier 3 Merchant'}
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+                    {summary.statusLabel}
                   </span>
                 </div>
                 <p className="font-body-md text-body-md text-text-secondary flex items-center gap-space-xs flex-wrap">
                   <Icon name="event_available" className="text-text-tertiary text-[18px]" />
                   <span>
-                    {live && !summary.lastVerified ? (
-                      'Not verified yet'
+                    {summary.lastVerified ? (
+                      <>Last verified on <strong className="text-text-primary font-semibold">{summary.lastVerified}</strong></>
                     ) : (
-                      <>
-                        Last verified on <strong className="text-text-primary font-semibold">{live ? summary.lastVerified : 'Oct 18, 2024'}</strong>
-                      </>
+                      'Not verified yet'
                     )}
                   </span>
                   <span className="text-text-tertiary">•</span>
-                  <span
-                    className={`font-medium flex items-center gap-space-2xs ${
-                      !live || summary.verified ? 'text-badge-discount-text' : 'text-text-secondary'
-                    }`}
-                  >
-                    <Icon name={!live || summary.verified ? 'check_circle' : summary.submitted ? 'schedule' : 'pending'} className="text-[16px]" />
-                    {live ? summary.progressLabel : '100% Compliant'}
+                  <span className={`font-medium flex items-center gap-space-2xs ${summary.verified ? 'text-badge-discount-text' : 'text-text-secondary'}`}>
+                    <Icon name={summary.verified ? 'check_circle' : summary.submitted ? 'schedule' : 'pending'} className="text-[16px]" />
+                    {summary.progressLabel}
                   </span>
                 </p>
               </div>
@@ -143,25 +134,21 @@ export function DesktopVerificationStatusCenterScreen({
             <div className="grid grid-cols-3 gap-space-sm bg-surface-container-low/70 rounded-xl p-space-sm sm:self-auto self-stretch">
               <div className="flex flex-col items-center justify-center px-space-sm py-space-2xs text-center">
                 <span className="font-caption text-caption text-text-secondary">Legal Standing</span>
-                <span
-                  className={`font-label-md text-label-md font-semibold flex items-center gap-1 ${
-                    !live || summary.registration.ok ? 'text-badge-discount-text' : 'text-text-secondary'
-                  }`}
-                >
-                  <Icon name={!live || summary.registration.ok ? 'shield_with_heart' : 'schedule'} className="text-[14px]" />
-                  {!live || summary.registration.ok ? 'Validated' : summary.registration.label}
+                <span className={`font-label-md text-label-md font-semibold flex items-center gap-1 ${summary.registration.ok ? 'text-badge-discount-text' : 'text-text-secondary'}`}>
+                  <Icon name={summary.registration.ok ? 'shield_with_heart' : 'schedule'} className="text-[14px]" />
+                  {summary.registration.ok ? 'Validated' : summary.registration.label}
                 </span>
               </div>
               <div className="flex flex-col items-center justify-center px-space-sm py-space-2xs text-center">
-                <span className="font-caption text-caption text-text-secondary">{live ? 'Active Locations' : 'Audited Hubs'}</span>
+                <span className="font-caption text-caption text-text-secondary">Active Locations</span>
                 <span className="font-label-md text-label-md text-text-primary font-semibold">
-                  {live ? (summary.locationsLoading ? '…' : `${branchCount} ${branchCount === 1 ? 'Location' : 'Locations'}`) : '2 Locations'}
+                  {summary.locationsLoading ? '…' : `${branchCount} ${branchCount === 1 ? 'Location' : 'Locations'}`}
                 </span>
               </div>
               <div className="flex flex-col items-center justify-center px-space-sm py-space-2xs text-center">
                 <span className="font-caption text-caption text-text-secondary">Security Vault</span>
                 <span className="font-label-md text-label-md text-primary font-semibold flex items-center gap-1">
-                  <Icon name="lock" className="text-[14px]" /> NDPR Shield
+                  <Icon name="lock" className="text-[14px]" /> Secure records
                 </span>
               </div>
             </div>
@@ -179,9 +166,9 @@ export function DesktopVerificationStatusCenterScreen({
                 </div>
               ))}
             </div>
-            {(!live || summary.credentialRef) && (
+            {summary.credentialRef && (
               <span className="font-caption text-caption text-text-tertiary">
-                Permanent Credential Ref: {live ? summary.credentialRef : 'VMT-7749-ABJ'}
+                Permanent Credential Ref: {summary.credentialRef}
               </span>
             )}
           </div>
@@ -193,13 +180,13 @@ export function DesktopVerificationStatusCenterScreen({
               <div className="flex items-center gap-space-xs">
                 <h2 className="font-heading-sm text-heading-sm text-text-primary">Credentials &amp; Standing</h2>
                 <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
-                  {live ? `${summary.checksVerified} of 2 Verified` : '4 of 4 Active'}
+                  {checksLabel}
                 </span>
               </div>
-              <span className="font-caption text-caption text-text-secondary">Continuous Real-time Sync</span>
+              <span className="font-caption text-caption text-text-secondary">Status from your account</span>
             </div>
 
-            <div className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm flex flex-col gap-space-md transition-all hover:shadow-md">
+            <div className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm flex flex-col gap-space-md">
               <div className="flex items-start justify-between gap-space-md">
                 <div className="flex items-start gap-space-md">
                   <div className="w-10 h-10 rounded-lg bg-surface-tint-blue flex items-center justify-center text-primary shrink-0">
@@ -209,18 +196,16 @@ export function DesktopVerificationStatusCenterScreen({
                     <div className="flex items-center gap-space-xs">
                       <h3 className="font-label-md text-label-md text-text-primary font-bold">Identity Verification</h3>
                       <span className={`px-space-2xs py-0.5 rounded ${pill(summary.identity.ok)} font-caption text-caption font-semibold`}>
-                        {live ? summary.identity.label : 'Verified'}
+                        {summary.identity.label}
                       </span>
                     </div>
                     <p className="font-body-md text-body-md text-text-primary font-medium mt-space-2xs">
-                      {live ? (summary.identity.name ?? (summary.identity.submitted ? 'Account holder' : 'No ID submitted')) : 'Zainab Ahmed'}
+                      {summary.identity.submitted ? (summary.identity.name ?? 'Account holder') : 'No ID submitted'}
                     </p>
                     <p className="font-label-sm text-label-sm text-text-secondary">
-                      {live
-                        ? summary.identity.ref
-                          ? `${summary.identity.idType} (${summary.identity.ref})`
-                          : 'Not submitted yet'
-                        : 'National Identification Number (NIN ending in •••• 4821)'}
+                      {summary.identity.submitted
+                        ? `${summary.identity.idType ?? 'ID'} (${summary.identity.ref ?? '—'})`
+                        : 'Not submitted yet'}
                     </p>
                   </div>
                 </div>
@@ -236,16 +221,18 @@ export function DesktopVerificationStatusCenterScreen({
               <div className="bg-surface-subtle p-space-sm rounded-lg flex items-center justify-between text-text-secondary font-caption text-caption">
                 <span className="flex items-center gap-space-2xs">
                   <Icon
-                    name={!live || summary.identity.ok ? 'verified' : 'schedule'}
-                    className={`text-[16px] ${!live || summary.identity.ok ? 'text-badge-discount-text' : 'text-text-tertiary'}`}
+                    name={summary.identity.ok ? 'verified' : 'schedule'}
+                    className={`text-[16px] ${summary.identity.ok ? 'text-badge-discount-text' : 'text-text-tertiary'}`}
                   />
-                  {live ? (summary.identity.note ?? 'Gov-issued ID & selfie check') : 'Gov-issued ID & Biometric Facial Check Passed'}
+                  {summary.identity.sandbox
+                    ? 'Sandbox check — not live verification'
+                    : (summary.identity.note ?? 'Check recorded on your account')}
                 </span>
-                <span className="text-text-tertiary">{live ? (summary.identity.date ?? '') : 'Verified Dec 2023'}</span>
+                <span className="text-text-tertiary">{summary.identity.date ?? ''}</span>
               </div>
             </div>
 
-            <div className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm flex flex-col gap-space-md transition-all hover:shadow-md">
+            <div className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm flex flex-col gap-space-md">
               <div className="flex items-start justify-between gap-space-md">
                 <div className="flex items-start gap-space-md">
                   <div className="w-10 h-10 rounded-lg bg-surface-tint-blue flex items-center justify-center text-primary shrink-0">
@@ -255,14 +242,14 @@ export function DesktopVerificationStatusCenterScreen({
                     <div className="flex items-center gap-space-xs">
                       <h3 className="font-label-md text-label-md text-text-primary font-bold">Business Registration (CAC)</h3>
                       <span className={`px-space-2xs py-0.5 rounded ${pill(summary.registration.ok)} font-caption text-caption font-semibold`}>
-                        {live ? summary.registration.label : 'Active Filing'}
+                        {summary.registration.label}
                       </span>
                     </div>
                     <p className="font-body-md text-body-md text-text-primary font-medium mt-space-2xs">
                       Corporate Affairs Commission of Nigeria
                     </p>
                     <p className="font-label-sm text-label-sm text-text-secondary">
-                      Registration ID: <span className="font-mono text-text-primary font-medium">{live ? (summary.registration.ref ?? 'Not submitted yet') : 'BN-3491820'}</span>
+                      Registration ID: <span className="font-mono text-text-primary font-medium">{summary.registration.ref ?? 'Not submitted yet'}</span>
                     </p>
                   </div>
                 </div>
@@ -278,18 +265,17 @@ export function DesktopVerificationStatusCenterScreen({
               <div className="bg-surface-subtle p-space-sm rounded-lg flex flex-wrap items-center justify-between gap-space-xs text-text-secondary font-caption text-caption">
                 <span className="flex items-center gap-space-2xs">
                   <Icon
-                    name={!live || summary.registration.ok ? 'task_alt' : 'schedule'}
-                    className={`text-[16px] ${!live || summary.registration.ok ? 'text-badge-discount-text' : 'text-text-tertiary'}`}
+                    name={summary.registration.ok ? 'task_alt' : 'schedule'}
+                    className={`text-[16px] ${summary.registration.ok ? 'text-badge-discount-text' : 'text-text-tertiary'}`}
                   />
-                  {live
-                    ? (summary.registration.note ?? (summary.registration.date ? `Checked ${summary.registration.date}` : 'CAC register check'))
-                    : 'Registered 14 May 2021 • Category: Hospitality & Dining'}
+                  {summary.registration.sandbox
+                    ? 'Sandbox check — not live verification'
+                    : (summary.registration.note ?? (summary.registration.date ? `Checked ${summary.registration.date}` : 'CAC register check'))}
                 </span>
-                <span className="text-text-tertiary">CAC Electronic Register Match</span>
               </div>
             </div>
 
-            <div className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm flex flex-col gap-space-md transition-all hover:shadow-md">
+            <div className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm flex flex-col gap-space-md">
               <div className="flex items-start justify-between gap-space-md">
                 <div className="flex items-start gap-space-md">
                   <div className="w-10 h-10 rounded-lg bg-surface-tint-blue flex items-center justify-center text-primary shrink-0">
@@ -299,20 +285,18 @@ export function DesktopVerificationStatusCenterScreen({
                     <div className="flex items-center gap-space-xs">
                       <h3 className="font-label-md text-label-md text-text-primary font-bold">Physical Business Locations</h3>
                       <span className="px-space-2xs py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
-                        {live ? (branchCount ? `${branchCount} Active` : 'None yet') : '2 Inspected'}
+                        {summary.locationsLoading ? '…' : branchCount ? `${branchCount} Active` : 'None yet'}
                       </span>
                     </div>
                     <p className="font-body-md text-body-md text-text-primary font-medium mt-space-2xs">
-                      {live
-                        ? branchCount
+                      {summary.locationsLoading
+                        ? 'Loading branches…'
+                        : branchCount
                           ? branchNames
-                          : summary.locationsLoading
-                            ? 'Loading branches…'
-                            : 'No branches added yet'
-                        : 'Apo Grand Hub & Wuse II Flagship'}
+                          : 'No branches added yet'}
                     </p>
                     <p className="font-label-sm text-label-sm text-text-secondary">
-                      {live ? 'Branches customers can find you at on Vemtap' : 'Geofenced GPS Beacon active with verified storefront photos'}
+                      Branches customers can find you at on Vemtap
                     </p>
                   </div>
                 </div>
@@ -325,49 +309,26 @@ export function DesktopVerificationStatusCenterScreen({
                   <Icon name="arrow_forward" className="text-[16px] transition-transform group-hover:translate-x-0.5" />
                 </button>
               </div>
-              {live ? (
-                branchCount > 0 && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-xs">
-                    {summary.locations.map((branch) => (
-                      <div className="p-space-xs rounded-lg bg-surface-subtle flex items-center gap-space-xs" key={branch.id}>
-                        <div className="w-2 h-2 rounded-full bg-badge-discount-text shrink-0" />
-                        <div className="flex flex-col min-w-0">
-                          <span className="font-label-sm text-label-sm text-text-primary font-medium truncate">
-                            {branch.address ?? branch.name}
-                          </span>
-                          <span className="font-caption text-caption text-text-secondary truncate">
-                            {branch.isMain ? `${branch.name} • Main branch` : branch.name}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )
-              ) : (
+              {branchCount > 0 && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-xs">
-                  <div className="p-space-xs rounded-lg bg-surface-subtle flex items-center gap-space-xs">
-                    <div className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                    <div className="flex flex-col min-w-0">
-                      <span className="font-label-sm text-label-sm text-text-primary font-medium truncate">
-                        Plot 182, Apo District
-                      </span>
-                      <span className="font-caption text-caption text-text-secondary">Audit Pass: On-site Agent VMT-90</span>
+                  {summary.locations.map((branch) => (
+                    <div className="p-space-xs rounded-lg bg-surface-subtle flex items-center gap-space-xs" key={branch.id}>
+                      <div className="w-2 h-2 rounded-full bg-badge-discount-text shrink-0" />
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-label-sm text-label-sm text-text-primary font-medium truncate">
+                          {branch.address ?? branch.name}
+                        </span>
+                        <span className="font-caption text-caption text-text-secondary truncate">
+                          {branch.isMain ? `${branch.name} • Main branch` : branch.name}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="p-space-xs rounded-lg bg-surface-subtle flex items-center gap-space-xs">
-                    <div className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                    <div className="flex flex-col min-w-0">
-                      <span className="font-label-sm text-label-sm text-text-primary font-medium truncate">
-                        42 Adetokunbo Ademola, Wuse II
-                      </span>
-                      <span className="font-caption text-caption text-text-secondary">Audit Pass: GPS &amp; Utility Receipt</span>
-                    </div>
-                  </div>
+                  ))}
                 </div>
               )}
             </div>
 
-            <div className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm flex flex-col gap-space-md transition-all hover:shadow-md">
+            <div className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm flex flex-col gap-space-md">
               <div className="flex items-start justify-between gap-space-md">
                 <div className="flex items-start gap-space-md">
                   <div className="w-10 h-10 rounded-lg bg-badge-discount-bg flex items-center justify-center text-badge-discount-text shrink-0">
@@ -376,86 +337,49 @@ export function DesktopVerificationStatusCenterScreen({
                   <div className="flex flex-col">
                     <div className="flex items-center gap-space-xs">
                       <h3 className="font-label-md text-label-md text-text-primary font-bold">Storefront Standing</h3>
-                      {live && summary.suspended ? (
-                        <span className="px-space-xs py-space-2xs rounded-full bg-error-container text-on-error-container font-caption text-caption font-bold">
-                          Suspended
-                        </span>
-                      ) : (
-                        <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
-                          In Good Standing
-                        </span>
-                      )}
+                      <span className={`px-space-xs py-space-2xs rounded-full font-caption text-caption font-bold ${
+                        summary.suspended
+                          ? 'bg-error-container text-on-error-container'
+                          : 'bg-badge-discount-bg text-badge-discount-text'
+                      }`}>
+                        {summary.suspended ? 'Suspended' : 'Active'}
+                      </span>
                     </div>
                     <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
-                      {live && summary.suspended
+                      {summary.suspended
                         ? (summary.suspensionReason ?? 'Your storefront is paused. Contact Vemtap support to restore it.')
-                        : 'Full merchant rights unlocked: Hyper-local customer discovery, direct deal publishing, real-time tap reservations, and instant customer pass redemption.'}
+                        : 'Manage your storefront, deals and verification details from your dashboard.'}
                     </p>
                   </div>
                 </div>
               </div>
-              {!live && (
-              <div className="flex items-center gap-space-md pt-space-xs text-text-secondary font-caption text-caption">
-                <span className="flex items-center gap-1 text-badge-discount-text font-semibold">
-                  <Icon name="thumb_up" className="text-[16px]" /> 0 Customer Disputes
-                </span>
-                <span className="text-text-tertiary">•</span>
-                <span>Policy Compliance: 100%</span>
-                <span className="text-text-tertiary">•</span>
-                <span>Fraud Risk: Minimal</span>
-              </div>
-              )}
             </div>
           </div>
 
           <div className="lg:col-span-5 flex flex-col gap-space-lg">
-            <div className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm flex flex-col gap-space-md relative overflow-hidden">
+            <div className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm flex flex-col gap-space-md">
               <div className="flex items-center justify-between">
                 <span className="px-space-xs py-space-2xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-bold uppercase tracking-wider">
-                  Consumer Trust Multiplier
+                  Verification status
                 </span>
                 <Icon name="insights" className="text-primary text-[20px]" />
               </div>
               <div className="flex flex-col gap-space-xs">
                 <div className="flex items-baseline gap-space-xs">
-                  <span className="text-4xl font-extrabold text-text-primary tracking-tight">3.4x</span>
-                  <span className="font-label-md text-label-md text-text-secondary font-semibold">Foot Traffic Lift</span>
+                  <span className="text-4xl font-extrabold text-text-primary tracking-tight">
+                    {summary.checksVerified}
+                  </span>
+                  <span className="font-label-md text-label-md text-text-secondary font-semibold">{checksLabel.replace(/^\d+ /, '')}</span>
                 </div>
                 <p className="font-body-md text-body-md text-text-secondary">
-                  Verified merchants receive preferential placement across consumer feeds and local search suggestions
-                  within 5km radius.
+                  Your verification outcomes are recorded against your business account. Open the status centre any time to review them.
                 </p>
+                {sandboxResult && (
+                  <p className="rounded-lg bg-surface-tint-blue px-space-sm py-space-2xs font-caption text-caption text-primary">
+                    Sandbox results are for testing only, not live verification.
+                  </p>
+                )}
               </div>
-              {!live && (
-              <>
-              <div className="bg-surface-subtle p-space-md rounded-xl flex flex-col gap-space-sm">
-                <div className="flex items-center justify-between font-label-md text-label-md">
-                  <span className="text-text-primary font-bold">Platform Trust Score</span>
-                  <span className="text-primary font-extrabold text-heading-sm font-heading-sm">98 / 100</span>
-                </div>
-                <div className="w-full bg-surface-container-high rounded-full h-2.5 overflow-hidden">
-                  <div className="bg-primary h-2.5 rounded-full" style={{ width: '98%' }} />
-                </div>
-                <div className="flex items-center justify-between font-caption text-caption text-text-secondary">
-                  <span>Top 2% in Abuja</span>
-                  <span className="text-badge-discount-text font-semibold">Tier 3 Qualified</span>
-                </div>
-              </div>
-              <div className="pt-space-2xs">
-                <span className="font-caption text-caption text-text-tertiary uppercase tracking-wider">
-                  30-Day Consumer Impressions (Verified Badge Lift)
-                </span>
-                <svg className="w-full h-12 text-primary mt-space-2xs" fill="none" viewBox="0 0 300 48">
-                  <path d={TRUST_PATH} stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" />
-                  <path
-                    d={`${TRUST_PATH} L300 48 L0 48 Z`}
-                    fill="currentColor"
-                    fillOpacity="0.08"
-                  />
-                </svg>
-              </div>
-              </>
-              )}
             </div>
 
             <div className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm flex flex-col gap-space-md">
@@ -464,8 +388,7 @@ export function DesktopVerificationStatusCenterScreen({
                 <h3 className="font-label-md text-label-md font-bold">Manage Legal Information</h3>
               </div>
               <p className="font-body-md text-body-md text-text-secondary">
-                Any modification to registered business name, legal structure, or executive directors requires mandatory
-                re-verification to protect customer integrity.
+                Any modification to registered business name, legal structure, or executive directors requires mandatory re-verification.
               </p>
               <button
                 className="w-full h-11 rounded-lg bg-surface-subtle hover:bg-surface-container-high text-text-primary font-button-secondary text-button-secondary font-semibold transition-colors flex items-center justify-center gap-space-xs shadow-sm"
@@ -473,66 +396,21 @@ export function DesktopVerificationStatusCenterScreen({
                 onClick={startIdentity}
               >
                 <Icon name="edit_document" className="text-[18px]" />
-                <span>Update Verification Information</span>
-              </button>
-            </div>
-
-            <div className="rounded-xl bg-surface-container-lowest p-space-lg shadow-sm flex flex-col gap-space-sm">
-              <div className="flex items-center gap-space-xs">
-                <Icon name="verified" className="text-primary text-[20px]" />
-                <h3 className="font-label-md text-label-md text-text-primary font-bold">Enterprise Audit Proof</h3>
-              </div>
-              <p className="font-label-sm text-label-sm text-text-secondary">
-                Need certified proof of platform merchant verification for commercial bank loan applications or
-                commercial leases?
-              </p>
-              <button
-                className={`font-label-sm text-label-sm font-bold flex items-center gap-1 pt-space-2xs self-start ${
-                  letterRequested ? 'text-badge-discount-text' : 'text-primary hover:text-surface-tint'
-                }`}
-                type="button"
-                disabled={letterRequested}
-                onClick={() => setLetterRequested(true)}
-              >
-                <span>
-                  {letterRequested
-                    ? live
-                      ? 'Official verification letters are coming soon'
-                      : 'Verification Letter Sent to admin@urbangrillbistro.ng'
-                    : 'Request Official Verification Letter →'}
-                </span>
+                <span>{summary.submitted ? 'Update Verification Information' : 'Start Verification'}</span>
               </button>
             </div>
 
             <div className="rounded-xl bg-surface-container-low p-space-md flex items-start gap-space-sm text-text-secondary font-caption text-caption">
               <Icon name="policy" className="text-text-tertiary text-[20px] shrink-0 mt-0.5" />
               <div className="flex flex-col gap-space-2xs">
-                <span className="font-semibold text-text-primary">Regulatory Safe Harbor</span>
+                <span className="font-semibold text-text-primary">Data protection</span>
                 <p>
-                  VEMTAP operations comply strictly with the Nigeria Data Protection Act (NDPA) and NDPR guidelines.
-                  Encrypted records are securely held under tokenized vault architecture.
+                  Your details are handled in line with applicable data protection rules and stored securely against your account.
                 </p>
               </div>
             </div>
           </div>
         </div>
-
-        {!live && (
-        <div className="rounded-xl bg-surface-container-lowest px-space-lg py-space-md shadow-sm flex flex-col sm:flex-row items-center justify-between gap-space-sm text-text-secondary font-label-sm text-label-sm">
-          <div className="flex items-center gap-space-xs">
-            <span className="w-2.5 h-2.5 rounded-full bg-badge-discount-text" />
-            <span className="font-medium text-text-primary">System Integrity: 100% Secure</span>
-            <span className="text-text-tertiary hidden sm:inline">•</span>
-            <span className="hidden sm:inline">Last automated compliance check passed today at 04:15 WAT</span>
-          </div>
-          <div className="flex items-center gap-space-md font-caption text-caption text-text-tertiary">
-            <span>Node: ABV-EDGE-04</span>
-            <button className="text-primary hover:underline font-semibold" type="button">
-              Run Live Ping
-            </button>
-          </div>
-        </div>
-        )}
 
         <div className="flex items-center justify-center">
           <button
@@ -550,8 +428,7 @@ export function DesktopVerificationStatusCenterScreen({
           centered
           kind={sheet}
           check={sheet === 'cac' ? summary.registration : summary.identity}
-          live={live}
-          demo={DEMO_CERTIFICATE}
+          live={summary.live}
           onClose={() => setSheet(null)}
           onStart={startIdentity}
         />

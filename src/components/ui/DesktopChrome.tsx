@@ -457,7 +457,7 @@ export function DesktopNavHeader({ active, onNav, onOpenLocation, railOffset = f
                   </span>
                   <span className="hidden lg:flex flex-col text-left leading-tight">
                     <span className="font-label-md text-label-md text-text-primary">{fullName || 'User'}</span>
-                    <span className="font-caption text-caption text-text-tertiary">Consumer</span>
+                    <span className="font-caption text-caption text-text-tertiary">Customer</span>
                   </span>
                   <Icon name="keyboard_arrow_down" className="text-[18px] text-text-tertiary hidden lg:inline-block" />
                 </button>

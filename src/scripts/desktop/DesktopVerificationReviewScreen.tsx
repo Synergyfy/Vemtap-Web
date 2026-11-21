@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessVerificationChrome } from './BusinessVerificationChrome';
 
@@ -13,11 +12,6 @@ interface DesktopVerificationReviewScreenProps {
   onBrand?: () => void;
 }
 
-type ReviewPhase = 0 | 1 | 2;
-
-const PREVIEW_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuA8LOWRhd0z-_DIWvR_N1jp6VCFHIjD8uZ5vi_ttuIeqKyFYmeqoxXjeyN5Wyhyl8bt3rXwwYhm5KuMgpRDhxdM0HCHEOiwhoGJ9v036UzIdXntBW63MczDG6yXQZXEQbqRZ46cJj3rUZXUehwyu98gosrmGzuEitMtZAdaxuEMi3MyosAWSVIdFdSkvSlmihUs3pkPRVGQi25-fc4VTj4J-yEjVOVIEXjmNh42Ushb3eQHf3jccdDY2A';
-
 const ACTION_ITEMS = [
   {
     icon: 'restaurant_menu',
@@ -30,14 +24,14 @@ const ACTION_ITEMS = [
     icon: 'local_offer',
     title: 'Create Your First Deal',
     tag: null,
-    body: 'Draft a 15% happy hour voucher ready to broadcast on launch day.',
+    body: 'Draft a deal ready to broadcast on launch day.',
     onClickKey: 'deals' as const,
   },
   {
     icon: 'qr_code_2',
     title: 'Download Table QR Stands',
     tag: null,
-    body: 'Export high-res print templates for counter and table tap-points.',
+    body: 'Export print templates for counter and table tap-points.',
     onClickKey: 'profile' as const,
   },
 ];
@@ -52,26 +46,6 @@ export function DesktopVerificationReviewScreen({
   businessName,
   onBrand,
 }: DesktopVerificationReviewScreenProps) {
-  const [phase, setPhase] = useState<ReviewPhase>(0);
-  const timers = useRef<number[]>([]);
-
-  useEffect(() => {
-    timers.current.push(window.setTimeout(() => setPhase(1), 2500));
-    timers.current.push(window.setTimeout(() => setPhase(2), 5200));
-    return () => {
-      timers.current.forEach((id) => window.clearTimeout(id));
-      timers.current = [];
-    };
-  }, []);
-
-  const fastForward = () => {
-    timers.current.forEach((id) => window.clearTimeout(id));
-    timers.current = [];
-    setPhase(2);
-  };
-
-  const reviewComplete = phase === 2;
-
   const handleAction = (key: 'catalog' | 'deals' | 'profile') => {
     if (key === 'catalog') onCatalog?.();
     else if (key === 'deals') onDeals?.();
@@ -93,7 +67,7 @@ export function DesktopVerificationReviewScreen({
               </div>
             </div>
             <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center shadow-sm">
-              <Icon name="verified" filled className="text-[15px]" />
+              <Icon name="schedule" filled className="text-[15px]" />
             </div>
           </div>
           <div className="inline-flex items-center gap-space-xs px-space-md py-space-2xs rounded-full bg-surface-tint-blue text-primary mb-space-sm shadow-sm">
@@ -102,31 +76,32 @@ export function DesktopVerificationReviewScreen({
               <span className="relative inline-flex rounded-full h-2 w-2 bg-primary" />
             </span>
             <span className="font-label-sm text-label-sm font-semibold uppercase tracking-wider">
-              Application Under Review • Automated Sync Active
+              Checks Submitted
             </span>
           </div>
           <h1 className="font-heading-lg text-heading-lg text-text-primary mb-space-xs max-w-2xl">
-            Verification in progress
+            Verification in review
           </h1>
           <p className="font-body-md text-body-md text-text-secondary max-w-xl">
-            We are cross-referencing your submitted identity and corporate credentials against national registries.
-            This typically completes in under 15 minutes.
+            Your identity and business checks have been submitted. Check the status centre for the latest outcome.
           </p>
           <div className="mt-space-lg pt-space-md w-full max-w-xl flex items-center justify-between gap-space-md text-left">
             <div className="flex items-center gap-space-xs">
-              <Icon name="sync" className="text-badge-discount-text text-[20px]" />
+              <Icon name="fact_check" className="text-badge-discount-text text-[20px]" />
               <div>
-                <p className="font-caption text-caption text-text-tertiary">Real-Time Connection</p>
+                <p className="font-caption text-caption text-text-tertiary">Identity check</p>
                 <p className="font-label-sm text-label-sm font-semibold text-text-primary">
-                  Corporate Affairs Commission (CAC) API
+                  {legalName || 'Account holder'}
                 </p>
               </div>
             </div>
             <div className="hidden sm:flex items-center gap-space-xs">
-              <Icon name="security" className="text-primary text-[20px]" />
+              <Icon name="domain" className="text-primary text-[20px]" />
               <div>
-                <p className="font-caption text-caption text-text-tertiary">ID Verification Rail</p>
-                <p className="font-label-sm text-label-sm font-semibold text-text-primary">NIMC National DB Handshake</p>
+                <p className="font-caption text-caption text-text-tertiary">Business check</p>
+                <p className="font-label-sm text-label-sm font-semibold text-text-primary">
+                  {businessName || 'Your business'}
+                </p>
               </div>
             </div>
           </div>
@@ -141,7 +116,7 @@ export function DesktopVerificationReviewScreen({
                   <h2 className="font-heading-sm text-heading-sm text-text-primary">Verification Pipeline</h2>
                 </div>
                 <span className="px-space-xs py-space-2xs rounded bg-surface-subtle text-text-secondary font-caption text-caption font-semibold uppercase tracking-wide">
-                  Stage 3 of 4
+                  Submitted
                 </span>
               </div>
               <div className="relative flex flex-col gap-space-md mt-space-xs">
@@ -153,16 +128,12 @@ export function DesktopVerificationReviewScreen({
                   </div>
                   <div className="flex-1 pt-1">
                     <div className="flex items-center justify-between">
-                      <h3 className="font-label-md text-label-md font-semibold text-text-primary">Identity submitted</h3>
-                      <span className="font-caption text-caption text-badge-discount-text font-medium">Passed</span>
+                      <h3 className="font-label-md text-label-md font-semibold text-text-primary">Identity check submitted</h3>
+                      <span className="font-caption text-caption text-badge-discount-text font-medium">Recorded</span>
                     </div>
                     <p className="font-caption text-caption text-text-secondary mt-0.5">
-                      {legalName || 'Zainab Ahmed'} • NIN cross-verified via NIMC
+                      {legalName || 'Account holder'} • Recorded against your account
                     </p>
-                    <div className="mt-1 flex items-center gap-1 font-caption text-caption text-text-tertiary">
-                      <Icon name="schedule" className="text-[13px]" />
-                      <span>Completed at 14:22 WAT</span>
-                    </div>
                   </div>
                 </div>
 
@@ -175,122 +146,77 @@ export function DesktopVerificationReviewScreen({
                       <h3 className="font-label-md text-label-md font-semibold text-text-primary">
                         Business information submitted
                       </h3>
-                      <span className="font-caption text-caption text-badge-discount-text font-medium">Archived</span>
+                      <span className="font-caption text-caption text-badge-discount-text font-medium">Recorded</span>
                     </div>
                     <p className="font-caption text-caption text-text-secondary mt-0.5">
-                      {businessName || 'Urban Grill & Bistro'} • CAC documents registered (RC-1849204)
+                      {businessName || 'Your business'} • Registration check submitted
                     </p>
-                    <div className="mt-1 flex items-center gap-1 font-caption text-caption text-text-tertiary">
-                      <Icon name="description" className="text-[13px]" />
-                      <span>Certificate &amp; Form CAC 1.1 ingested</span>
+                  </div>
+                </div>
+
+                <div className="relative z-10 flex items-start gap-space-md p-space-sm -mx-space-sm rounded-lg bg-surface-tint-blue shadow-sm">
+                  <div className="relative w-10 h-10 rounded-full bg-primary-container text-on-primary flex items-center justify-center shrink-0 shadow-md">
+                    <span className="absolute inset-0 rounded-full bg-primary-container/30 animate-ping" />
+                    <Icon name="autorenew" className="text-[20px] relative z-10" />
+                  </div>
+                  <div className="flex-1 pt-0.5">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-label-md text-label-md font-semibold text-primary">Verification in progress</h3>
+                      <span className="px-2 py-0.5 rounded-full bg-primary text-on-primary font-caption text-caption font-semibold animate-pulse">
+                        Pending
+                      </span>
+                    </div>
+                    <p className="font-body-md text-body-md text-text-primary mt-1 font-medium">
+                      Your checks are being recorded.
+                    </p>
+                    <p className="font-caption text-caption text-text-secondary mt-1">
+                      The outcome appears in your verification status centre.
+                    </p>
+                    <div className="w-full bg-surface-container-high h-1.5 rounded-full mt-space-sm overflow-hidden">
+                      <div className="bg-primary-container h-full rounded-full w-2/3 transition-all duration-500" />
                     </div>
                   </div>
                 </div>
 
-                {phase < 2 ? (
-                  <div className="relative z-10 flex items-start gap-space-md p-space-sm -mx-space-sm rounded-lg bg-surface-tint-blue shadow-sm">
-                    <div className="relative w-10 h-10 rounded-full bg-primary-container text-on-primary flex items-center justify-center shrink-0 shadow-md">
-                      <span className="absolute inset-0 rounded-full bg-primary-container/30 animate-ping" />
-                      <Icon name="autorenew" className="text-[20px] relative z-10" />
-                    </div>
-                    <div className="flex-1 pt-0.5">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-label-md text-label-md font-semibold text-primary">Verification in progress</h3>
-                        <span className="px-2 py-0.5 rounded-full bg-primary text-on-primary font-caption text-caption font-semibold animate-pulse">
-                          Running
-                        </span>
-                      </div>
-                      <p className="font-body-md text-body-md text-text-primary mt-1 font-medium">
-                        Registry cross-reference under review by compliance team
-                      </p>
-                      <p className="font-caption text-caption text-text-secondary mt-1">
-                        Our automated engine is matching legal business name, registered Abuja address, and authorized
-                        signatory records.
-                      </p>
-                      <div className="w-full bg-surface-container-high h-1.5 rounded-full mt-space-sm overflow-hidden">
-                        <div className="bg-primary-container h-full rounded-full w-2/3 transition-all duration-500" />
-                      </div>
-                    </div>
+                <div className="relative z-10 flex items-start gap-space-md opacity-60">
+                  <div className="w-10 h-10 rounded-full bg-surface-subtle text-text-tertiary flex items-center justify-center shrink-0">
+                    <Icon name="workspace_premium" className="text-[20px]" />
                   </div>
-                ) : (
-                  <div className="relative z-10 flex items-start gap-space-md">
-                    <div className="w-10 h-10 rounded-full bg-badge-discount-bg text-badge-discount-text flex items-center justify-center shrink-0 shadow-sm">
-                      <Icon name="check_circle" filled className="text-[20px]" />
+                  <div className="flex-1 pt-1">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-label-md text-label-md font-semibold text-text-secondary">
+                        Final status
+                      </h3>
+                      <span className="font-caption text-caption text-text-tertiary">Pending</span>
                     </div>
-                    <div className="flex-1 pt-1">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-label-md text-label-md font-semibold text-text-primary">
-                          Verification in progress
-                        </h3>
-                        <span className="font-caption text-caption text-badge-discount-text font-medium">Passed</span>
-                      </div>
-                      <p className="font-caption text-caption text-text-secondary mt-0.5">
-                        Registry cross-reference cleared by compliance engine
-                      </p>
-                    </div>
+                    <p className="font-caption text-caption text-text-tertiary mt-0.5">
+                      Check the status centre for the outcome
+                    </p>
                   </div>
-                )}
-
-                {phase < 2 ? (
-                  <div className="relative z-10 flex items-start gap-space-md opacity-60">
-                    <div className="w-10 h-10 rounded-full bg-surface-subtle text-text-tertiary flex items-center justify-center shrink-0">
-                      <Icon name="verified" className="text-[20px]" />
-                    </div>
-                    <div className="flex-1 pt-1">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-label-md text-label-md font-semibold text-text-secondary">
-                          VEMTAP verification complete
-                        </h3>
-                        <span className="font-caption text-caption text-text-tertiary">Pending Step 3</span>
-                      </div>
-                      <p className="font-caption text-caption text-text-tertiary mt-0.5">
-                        Official Verified badge activation and automatic public catalog indexing
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="relative z-10 flex items-start gap-space-md p-space-sm -mx-space-sm rounded-lg bg-badge-discount-bg/60 shadow-sm">
-                    <div className="w-10 h-10 rounded-full bg-badge-discount-bg text-badge-discount-text flex items-center justify-center shrink-0 shadow-sm">
-                      <Icon name="verified" filled className="text-[20px]" />
-                    </div>
-                    <div className="flex-1 pt-0.5">
-                      <div className="flex items-center justify-between">
-                        <h3 className="font-label-md text-label-md font-semibold text-text-primary">
-                          VEMTAP verification complete
-                        </h3>
-                        <span className="px-2 py-0.5 rounded-full bg-badge-discount-text text-on-primary font-caption text-caption font-semibold">
-                          Ready
-                        </span>
-                      </div>
-                      <p className="font-caption text-caption text-text-secondary mt-0.5">
-                        Official Verified badge activation and automatic public catalog indexing
-                      </p>
-                    </div>
-                  </div>
-                )}
+                </div>
               </div>
             </div>
 
             <div className="bg-surface-canvas rounded-xl p-space-lg shadow-sm flex flex-col gap-space-sm">
               <div className="flex items-center gap-space-xs text-text-primary font-heading-sm text-heading-sm">
                 <Icon name="timelapse" className="text-primary text-[20px]" />
-                <span>Turnaround Time Expectations</span>
+                <span>Check your status anytime</span>
               </div>
               <div className="grid grid-cols-2 gap-space-sm pt-space-xs">
                 <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-col gap-1">
-                  <span className="font-caption text-caption text-text-secondary">Automated checks</span>
-                  <span className="font-heading-md text-heading-md text-badge-discount-text">&lt; 15 mins</span>
-                  <span className="font-caption text-caption text-text-tertiary">Standard instant pipeline</span>
+                  <span className="font-caption text-caption text-text-secondary">Check records</span>
+                  <span className="font-heading-md text-heading-md text-badge-discount-text">Saved</span>
+                  <span className="font-caption text-caption text-text-tertiary">Against your business account</span>
                 </div>
                 <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-col gap-1">
-                  <span className="font-caption text-caption text-text-secondary">Manual desk review</span>
-                  <span className="font-heading-md text-heading-md text-text-primary">2 – 24 hrs</span>
-                  <span className="font-caption text-caption text-text-tertiary">Only if flagged for clarify</span>
+                  <span className="font-caption text-caption text-text-secondary">Final outcome</span>
+                  <span className="font-heading-md text-heading-md text-text-primary">Status centre</span>
+                  <span className="font-caption text-caption text-text-tertiary">Open at any time</span>
                 </div>
               </div>
               <div className="flex items-center gap-space-xs p-space-xs px-space-sm rounded-lg bg-surface-subtle text-text-secondary font-caption text-caption mt-space-xs">
                 <Icon name="notifications_active" className="text-primary text-[18px]" />
-                <span>Push alerts and email confirmation will dispatch the moment verification settles.</span>
+                <span>Open the verification status centre to see the latest recorded outcome.</span>
               </div>
             </div>
           </div>
@@ -304,8 +230,8 @@ export function DesktopVerificationReviewScreen({
                 </div>
                 <h2 className="font-heading-sm text-heading-sm text-text-primary">You don't have to wait here!</h2>
                 <p className="font-body-md text-body-md text-text-secondary">
-                  Your back-office is unlocked. Setup your catalog, prepare specials, and prime your storefront so you
-                  can launch instantly when verified.
+                  Your back-office is unlocked. Set up your catalog, prepare specials, and prime your storefront while
+                  your checks are recorded.
                 </p>
               </div>
               <div className="flex flex-col gap-space-sm">
@@ -342,17 +268,17 @@ export function DesktopVerificationReviewScreen({
                 ))}
               </div>
               <div className="p-space-md rounded-xl bg-surface-subtle flex items-center gap-space-md">
-                <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-surface-container">
-                  <img alt="Urban Grill & Bistro dining room" className="w-full h-full object-cover" src={PREVIEW_IMAGE} />
+                <div className="w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-surface-tint-blue flex items-center justify-center text-primary">
+                  <Icon name="storefront" className="text-[26px]" />
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-space-xs">
                     <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                      {businessName || 'Urban Grill & Bistro'}
+                      {businessName || 'Your business'}
                     </span>
                     <Icon name="lock" className="text-text-tertiary text-[14px]" />
                   </div>
-                  <p className="font-caption text-caption text-text-secondary truncate">Wuse 2, Abuja • Unverified Draft State</p>
+                  <p className="font-caption text-caption text-text-secondary truncate">Verification in review • Draft state</p>
                 </div>
                 <button
                   className="px-space-sm py-space-xs rounded-lg bg-surface-canvas text-primary font-label-sm text-label-sm font-medium hover:bg-surface-tint-blue transition-colors shadow-sm"
@@ -371,35 +297,24 @@ export function DesktopVerificationReviewScreen({
                     <Icon name="support_agent" className="text-[18px]" />
                   </div>
                   <div>
-                    <h3 className="font-label-md text-label-md font-semibold text-text-primary">Need urgent assistance?</h3>
+                    <h3 className="font-label-md text-label-md font-semibold text-text-primary">Need assistance?</h3>
                     <p className="font-caption text-caption text-text-secondary">
-                      Dedicated Abuja Verification &amp; Compliance Desk
+                      Our merchant support team is here to help.
                     </p>
                   </div>
                 </div>
-                <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                  Online
-                </span>
               </div>
               <p className="font-caption text-caption text-text-secondary">
-                If your CAC legal business name varies from your trade certificate, our compliance officers can resolve
-                discrepancies manually right away.
+                If a detail differs from your records, contact support and we'll help you resolve it.
               </p>
               <div className="flex flex-wrap items-center gap-space-sm pt-space-xs">
-                <button
+                <a
                   className="flex-1 min-w-[140px] px-space-md py-space-xs rounded-lg bg-surface-subtle hover:bg-surface-tint-blue text-text-primary hover:text-primary font-label-sm text-label-sm font-semibold transition-colors flex items-center justify-center gap-space-xs shadow-sm"
-                  type="button"
+                  href="mailto:support@vemtap.com"
                 >
-                  <Icon name="whatsapp" className="text-[18px] text-badge-discount-text" />
-                  <span>WhatsApp Desk</span>
-                </button>
-                <button
-                  className="flex-1 min-w-[140px] px-space-md py-space-xs rounded-lg bg-surface-subtle hover:bg-surface-tint-blue text-text-primary hover:text-primary font-label-sm text-label-sm font-semibold transition-colors flex items-center justify-center gap-space-xs shadow-sm"
-                  type="button"
-                >
-                  <Icon name="vemtap-chat" className="text-[18px]" />
-                  <span>In-Portal Chat</span>
-                </button>
+                  <Icon name="mail" className="text-[18px] text-badge-discount-text" />
+                  <span>Email Merchant Support</span>
+                </a>
               </div>
             </div>
           </div>
@@ -411,9 +326,12 @@ export function DesktopVerificationReviewScreen({
           <div className="flex items-center gap-space-xs text-text-secondary">
             <Icon name="live_help" className="text-[20px] text-primary" />
             <span className="font-body-md text-body-md text-text-secondary">Questions regarding verification?</span>
-            <span className="font-label-md text-label-md font-semibold text-primary hover:underline cursor-pointer ml-1">
+            <a
+              className="font-label-md text-label-md font-semibold text-primary hover:underline cursor-pointer ml-1"
+              href="mailto:support@vemtap.com"
+            >
               Contact Merchant Support
-            </span>
+            </a>
           </div>
           <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
             <button
@@ -426,9 +344,9 @@ export function DesktopVerificationReviewScreen({
             <button
               className="w-full sm:w-auto px-space-xl py-space-sm rounded-xl bg-primary hover:bg-primary-container text-on-primary font-button-primary text-button-primary shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-space-xs"
               type="button"
-              onClick={reviewComplete ? onReviewComplete : fastForward}
+              onClick={onReviewComplete}
             >
-              <span>{reviewComplete ? 'Continue to Activation' : 'Continue Store Setup'}</span>
+              <span>Continue to Activation</span>
               <Icon name="arrow_forward" className="text-[18px]" />
             </button>
           </div>

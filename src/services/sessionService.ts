@@ -1,6 +1,6 @@
 import { api } from './api/client';
 
-export type UserRole = 'USER' | 'SUPER_ADMIN' | 'Owner' | 'Manager' | 'Staff' | 'Admin' | 'Customer' | 'Agent';
+export type UserRole = 'USER' | 'SUPER_ADMIN' | 'Owner' | 'Manager' | 'Staff' | 'Admin' | 'ADMIN' | 'Customer' | 'Agent';
 
 /** `GET /auth/profile` — only the fields the web uses are typed. */
 export interface SessionUser {
@@ -8,6 +8,7 @@ export interface SessionUser {
   email: string;
   firstName?: string | null;
   lastName?: string | null;
+  name?: string | null;
   phone?: string | null;
   avatar?: string | null;
   role: UserRole;

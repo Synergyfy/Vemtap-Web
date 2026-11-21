@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useVerificationActions } from '../hooks/business/useVerification';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
@@ -7,17 +8,53 @@ interface VerificationIdReviewScreenProps {
   onBack: () => void;
   onRetry: () => void;
   onUseAnotherId: () => void;
+  /** Readable reasons from the verification check, when one was stored. */
+  reasons?: string[];
+  /** Backend check id, so manual review is attached to the right record. */
+  checkId?: string;
 }
 
-const REVIEW_REASONS = [
-  { icon: 'badge', body: "Information doesn't match official records" },
-  { icon: 'blur_on', body: 'Document details or photo could not be read clearly' },
-  { icon: 'crop_free', body: "Document was cropped or corners weren't visible" },
-  { icon: 'wifi_tethering_error', body: 'Official verification network is temporarily slow or unavailable' },
+const GENERAL_REASONS = [
+  { icon: 'badge', body: 'Check the ID number and name you entered.' },
+  { icon: 'blur_on', body: 'If you uploaded a document, make sure the details can be read clearly.' },
+  { icon: 'support_agent', body: 'If the details are correct, request a manual review.' },
 ];
 
-export function VerificationIdReviewScreen({ onBack, onRetry, onUseAnotherId }: VerificationIdReviewScreenProps) {
+export function VerificationIdReviewScreen({
+  onBack,
+  onRetry,
+  onUseAnotherId,
+  reasons,
+  checkId,
+}: VerificationIdReviewScreenProps) {
+  const verification = useVerificationActions();
   const [manualRequested, setManualRequested] = useState(false);
+  const [manualLoading, setManualLoading] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!manualError) return;
+    const timeout = window.setTimeout(() => setManualError(null), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [manualError]);
+
+  const handleManualReview = async () => {
+    if (manualRequested || manualLoading) return;
+    setManualLoading(true);
+    setManualError(null);
+    try {
+      await verification.requestManualReview(checkId);
+      setManualRequested(true);
+    } catch (error) {
+      setManualError(error instanceof Error ? error.message : 'Could not request a review. Please try again.');
+    } finally {
+      setManualLoading(false);
+    }
+  };
+
+  const displayedReasons = reasons?.length
+    ? reasons.map((reason) => ({ icon: 'error_outline', body: reason }))
+    : GENERAL_REASONS;
 
   return (
     <AppScreen>
@@ -46,8 +83,8 @@ export function VerificationIdReviewScreen({ onBack, onRetry, onUseAnotherId }: 
             <h3 className="font-label-md text-label-md text-on-surface font-semibold">Common reasons this happens</h3>
           </div>
           <div className="space-y-2.5">
-            {REVIEW_REASONS.map((reason) => (
-              <div className="flex items-start gap-2.5" key={reason.icon}>
+            {displayedReasons.map((reason, index) => (
+              <div className="flex items-start gap-2.5" key={`${reason.icon}-${index}`}>
                 <div className="w-6 h-6 rounded-full bg-surface-container flex items-center justify-center shrink-0 mt-0.5">
                   <Icon name={reason.icon} className="text-primary text-[13px]" />
                 </div>
@@ -90,22 +127,33 @@ export function VerificationIdReviewScreen({ onBack, onRetry, onUseAnotherId }: 
               }`}
               id="manual-review-btn"
               type="button"
-              disabled={manualRequested}
-              onClick={() => setManualRequested(true)}
+              disabled={manualRequested || manualLoading}
+              onClick={handleManualReview}
             >
               <Icon
-                name={manualRequested ? 'check_circle' : 'support_agent'}
-                className="text-[18px]"
+                name={manualRequested ? 'check_circle' : manualLoading ? 'progress_activity' : 'support_agent'}
+                className={`text-[18px]${manualLoading ? ' animate-spin' : ''}`}
                 filled={manualRequested}
               />
-              <span>{manualRequested ? 'Manual Review Requested' : 'Request Manual Review'}</span>
+              <span>
+                {manualRequested
+                  ? 'Manual Review Requested'
+                  : manualLoading
+                    ? 'Requesting Review...'
+                    : 'Request Manual Review'}
+              </span>
             </button>
             <span className="font-caption text-caption text-text-tertiary">
-              Our compliance team will review your document within 24 hours
+              {manualRequested ? 'Your review request has been recorded.' : 'Our compliance team will review this check.'}
             </span>
           </div>
         </div>
       </div>
+      {manualError && (
+        <div className="fixed bottom-32 left-1/2 -translate-x-1/2 max-w-[430px] z-50 rounded-xl bg-inverse-surface text-inverse-on-surface px-4 py-2.5 text-label-md font-medium shadow-lg">
+          {manualError}
+        </div>
+      )}
     </AppScreen>
   );
 }

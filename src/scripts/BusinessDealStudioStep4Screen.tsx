@@ -1,25 +1,29 @@
 import { useState } from 'react';
-import { useDealBranches, useDealBundleCatalog } from '../hooks/business/useDealStudioLive';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import type { ProductDraft } from './productDraft';
 import type { DealStudioDraft } from './dealStudio';
-import { dealDurationLabel, formatDealValidity } from './dealStudio';
+import { DealMediaPreview } from './deals/DealMediaGallery';
 import {
-  DEAL_TYPE_OPTIONS,
-  claimLimitLabel,
+  DEAL_PUBLICATION_COPY,
+  publishDeal,
+  type DealPublicationResult,
+} from './deals/dealPublication';
+import {
   dealBadgeLabel,
   dealTypeTitle,
-  describeComboRules,
-  formatFlashValidity,
-  isCurrentPriceDeal,
+  formatDealAmount,
+  formatDealDate,
   resolveDealPricing,
+  selectedRegularTotal,
   validateDealConfiguration,
+  validateDealGallery,
+  validateDealInformation,
+  describeQuantityTiers,
+  galleryDealMedia,
+  mainDealMedia,
 } from './deals/dealStudioShared';
-import { DEAL_PUBLICATION_COPY, publishDeal, type DealPublicationResult } from './deals/dealPublication';
-import { getActiveVariants } from './productVariants';
-import type { ProductDraft } from './productDraft';
-import { draftImage, draftImageAlt } from './desktop/draftImage';
-import { UserAvatar } from '../components/ui/UserAvatar';
+import { useDealProductCatalog } from '../hooks/business/useDealStudioLive';
 
 interface BusinessDealStudioStep4ScreenProps {
   draft: ProductDraft;
@@ -27,40 +31,20 @@ interface BusinessDealStudioStep4ScreenProps {
   onBack: () => void;
   onEditOffer: () => void;
   onEditRules: () => void;
+  onEditGallery: () => void;
   onEditLocations: () => void;
   onPublish: () => void;
-  /** Live: publishes for real and resolves with the outcome the modal shows. */
   livePublish?: () => Promise<DealPublicationResult>;
   onSaveDraft: () => void;
 }
 
-const HERO_IMAGE = {
-  src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB3zk8H_VVFT_7YsSAEfRslYg_o-9CPBE1oNObjdBBoEPq726Ajh14wQjrdHZDIfHquWuYaJ57IRfi4ewZAuR-wK6ryANgZTN0vJdXrIsxml-SdNyMr2K19Q3D5NBNGa8CeOSQFmZpQYt4uMfS4DsdwSTUNtLubw9qloAP_2NiIn_4cUBRWqXURxptZWQtGsP09QHtSNJhj0KaNJj81tJjRQ3D_CFHMRSXK7Nc6nMqb',
-  alt: 'A juicy, charcoal-grilled woodfire aged ribeye steak served on a rustic dark slate board with melted rosemary herb butter, coarse sea salt flakes, and tender roasted baby tomatoes. Warm ambient restaurant lighting with rich deep tones and high-end culinary photography.',
-};
-
-const DAY_ORDER: Array<keyof DealStudioDraft['days']> = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-
-const DAY_LABELS: Record<keyof DealStudioDraft['days'], string> = {
-  mon: 'Mon',
-  tue: 'Tue',
-  wed: 'Wed',
-  thu: 'Thu',
-  fri: 'Fri',
-  sat: 'Sat',
-  sun: 'Sun',
-};
-
-const parseAmount = (value: string) => Number(value.replace(/[^0-9]/g, '')) || 0;
-
-const formatAmount = (value: number) => value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-
+/** Step 5: preview the customer-facing deal (including its gallery) and publish it. */
 export function BusinessDealStudioStep4Screen({
-  draft,
   studio,
   onBack,
   onEditOffer,
   onEditRules,
+  onEditGallery,
   onEditLocations,
   onPublish,
   livePublish,
@@ -68,543 +52,186 @@ export function BusinessDealStudioStep4Screen({
 }: BusinessDealStudioStep4ScreenProps) {
   const [publication, setPublication] = useState<DealPublicationResult | null>(null);
   const [showResult, setShowResult] = useState(false);
-
-  const activeVariants = getActiveVariants(draft);
-  const regularVariant = activeVariants.find((variant) => variant.name === 'Regular') ?? activeVariants[0];
-  const baseAmount = parseAmount(regularVariant?.price ?? draft.basePrice);
-  const pct = studio.discountPct;
-  const bundleCatalog = useDealBundleCatalog(draft.title, baseAmount);
-  // The business's branches picked in step 3.
-  const dealBranches = useDealBranches(studio);
-  const pricing = resolveDealPricing(studio, baseAmount, bundleCatalog);
-  const savings = pricing.savings;
-  const dealAmount = pricing.dealPrice;
-  const savingsPct = pricing.savingsPct;
-  const isCurrent = isCurrentPriceDeal(studio);
-  const strategyTitle = dealTypeTitle(studio.strategy);
-  const strategyIcon = isCurrent
-    ? 'payments'
-    : DEAL_TYPE_OPTIONS.find((option) => option.id === studio.strategy)?.icon ?? 'percent';
-  const comboRules = studio.strategy === 'combo' ? describeComboRules(studio.combo, baseAmount, bundleCatalog) : [];
-  const strategyDetail = isCurrent
-    ? 'Current Price (no discount — customers pay the listed price)'
-    : studio.strategy === 'fixed'
-      ? `Fixed Amount Off (₦${formatAmount(studio.fixed.amountOff)} off${
-          studio.fixed.minSpend > 0 ? ` • min spend ₦${formatAmount(studio.fixed.minSpend)}` : ''
-        })`
-      : studio.strategy === 'tiered'
-        ? `Tiered / Flash Happy Hour (${studio.flash.discountPct}% off in window)`
-        : studio.strategy === 'combo'
-          ? (comboRules[0] ?? 'Combo & Bundle Deal')
-          : `Percentage Discount (${pct}% Off)`;
-  const activeBranches = dealBranches.selected.map((branch) => ({
-    key: branch.id,
-    name: branch.name,
-    address: branch.area,
-  }));
-  const activeDayKeys = DAY_ORDER.filter((key) => studio.days[key]);
-  const weekdayCount = (['mon', 'tue', 'wed', 'thu', 'fri'] as Array<keyof DealStudioDraft['days']>).filter(
-    (key) => studio.days[key],
-  ).length;
-  const dayLabel =
-    weekdayCount === 5 && !studio.days.sat && !studio.days.sun
-      ? 'Mon – Fri'
-      : activeDayKeys.map((key) => DAY_LABELS[key]).join(', ');
-
-  // Pre-publish validation: pricing rules + the operational fields the
-  // storefront and customers rely on.
-  const readinessErrors: string[] = [
-    ...validateDealConfiguration(studio, baseAmount, bundleCatalog),
-    ...(studio.vouchers <= 0 ? ['Set the total promotional quantity to at least 1.'] : []),
-    ...(studio.claimSteps.length === 0 ? ['Add at least one “how to claim” instruction.'] : []),
-    ...(studio.terms.length === 0 ? ['Add at least one term & condition.'] : []),
-    ...(activeBranches.length === 0
-      ? ['Select at least one participating branch in Step 3.']
-      : []),
-    ...(activeDayKeys.length === 0 ? ['Select at least one redemption day.'] : []),
-  ];
-  const canPublish = readinessErrors.length === 0;
-
   const [publishing, setPublishing] = useState(false);
-  const handlePublish = () => {
-    if (!canPublish || publication || publishing) return;
-    if (livePublish) {
-      // Live: the modal shows what the API actually did; failures surface in the flow's banner.
-      setPublishing(true);
-      livePublish()
-        .then((result) => {
-          setPublication(result);
-          setShowResult(true);
-        })
-        .catch(() => undefined)
-        .finally(() => setPublishing(false));
-      return;
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const { catalog } = useDealProductCatalog();
+  const selectedProducts = catalog.filter((product) => studio.productIds.includes(product.id));
+  const regularTotal = selectedRegularTotal(studio, catalog);
+  const pricing = resolveDealPricing(studio, regularTotal, catalog);
+  const errors = [
+    ...validateDealConfiguration(studio, regularTotal, catalog),
+    ...validateDealInformation(studio),
+    ...validateDealGallery(studio),
+  ];
+  const canPublish = errors.length === 0 && !publishing;
+  const mainMedia = mainDealMedia(studio);
+  const galleryMedia = galleryDealMedia(studio);
+  const title = studio.title.trim() || dealTypeTitle(studio.structure ?? null);
+
+  const handlePublish = async () => {
+    if (!canPublish || publication) return;
+    setPublishing(true);
+    setPublishError(null);
+    try {
+      const result = livePublish
+        ? await livePublish()
+        : publishDeal({ dealTitle: title, studio });
+      setPublication(result);
+      setShowResult(true);
+    } catch (error) {
+      setPublishError(error instanceof Error ? error.message : 'Could not publish this deal.');
+    } finally {
+      setPublishing(false);
     }
-    // Render the status the service actually returns — never assume "live".
-    const result = publishDeal({ dealTitle: draft.title, studio });
-    setPublication(result);
-    setShowResult(true);
   };
 
   return (
     <AppScreen>
       <header className="sticky top-0 z-30 bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
-        <div className="h-16 px-margin flex items-center justify-between">
-          <div className="flex items-center gap-space-xs">
-            <button
-              aria-label="Go back"
-              className="min-w-[44px] min-h-[44px] flex items-center justify-center -ml-space-xs text-on-surface hover:text-primary active:scale-95 transition-transform"
-              type="button"
-              onClick={onBack}
-            >
-              <Icon name="arrow_back" className="text-[24px]" />
+        <div className="h-14 px-margin flex items-center justify-between">
+          <div className="flex items-center gap-space-2xs">
+            <button aria-label="Go back" className="min-w-[44px] min-h-[44px] flex items-center justify-center -ml-space-xs text-on-surface" type="button" onClick={onBack}>
+              <Icon name="arrow_back" className="text-[22px]" />
             </button>
             <div className="flex flex-col">
-              <span className="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider leading-none mb-0.5">
-                VEMTAP Merchant
-              </span>
-              <h1 className="font-heading-sm text-heading-sm text-on-surface leading-tight truncate max-w-[170px]">
-                Review &amp; Launch
-              </h1>
+              <span className="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider leading-none">VEMTAP Merchant</span>
+              <h1 className="font-heading-sm text-heading-sm text-on-surface leading-tight">Preview & Publish</h1>
             </div>
           </div>
-          <div className="flex items-center gap-space-xs">
-            <button
-              aria-label="Save Draft"
-              className="min-w-[44px] min-h-[44px] px-space-xs flex items-center justify-center font-button-secondary text-button-secondary text-primary hover:text-on-primary-fixed-variant active:scale-95 transition-transform"
-              type="button"
-              onClick={onSaveDraft}
-            >
-              Save
-            </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-[0_2px_8px_rgba(6,108,244,0.25)] overflow-hidden">
-              <UserAvatar textClassName="text-on-primary text-[13px]" />
-            </div>
-          </div>
+          <button className="px-space-xs text-primary font-button-secondary text-button-secondary" type="button" onClick={onSaveDraft}>Save</button>
         </div>
       </header>
 
-      <div className="flex flex-col w-full px-margin pb-48 space-y-space-md">
-        <section className="flex flex-col gap-space-xs mt-space-sm">
+      <div className="flex flex-col w-full pb-44">
+        <div className="px-margin pt-space-sm">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-space-2xs">
-              <span className="font-label-sm text-label-sm text-text-secondary">Step 4 of 4</span>
-              <span className="w-1 h-1 rounded-full bg-text-tertiary" />
-              <span className="font-label-sm text-label-sm font-semibold text-text-primary">Final Review</span>
-            </div>
-            <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-badge-discount-bg text-badge-discount-text">
-              <Icon name="check_circle" className="text-[14px]" filled />
-              <span className="font-label-sm text-label-sm font-semibold">Ready to Publish</span>
-            </div>
+            <span className="font-label-sm text-label-sm text-text-primary font-semibold">Step 5 of 5: Review & Publish</span>
+            <span className="font-label-sm text-label-sm text-primary font-semibold">100% Complete</span>
           </div>
-          <div className="w-full h-1.5 rounded-full bg-surface-container overflow-hidden">
-            <div className="h-full w-full rounded-full bg-primary-container transition-all duration-500" />
+          <div className="w-full h-1 bg-surface-container-highest rounded-full overflow-hidden mt-space-2xs">
+            <div className="h-full bg-primary rounded-full" style={{ width: '100%' }} />
           </div>
-        </section>
+        </div>
 
-        <section className="rounded-xl p-space-md bg-surface-tint-blue shadow-sm flex items-start gap-space-sm">
-          <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-            <Icon name="celebration" className="text-primary text-[20px]" filled />
-          </div>
-          <div className="flex flex-col min-w-0">
-            <p className="font-heading-sm text-heading-sm text-text-primary leading-snug">🎉 Deal configured &amp; verified!</p>
-            <p className="font-body-md text-body-md text-text-secondary mt-1">
-              Review all terms, rules, and audience reach before publishing live to local members.
+        <div className="px-margin mt-space-md">
+          <h2 className="font-heading-md text-heading-md text-text-primary">How customers will see it</h2>
+          <p className="font-caption text-caption text-text-secondary">Check the preview before publishing.</p>
+        </div>
+
+        <div className="px-margin mt-space-sm bg-surface-canvas rounded-2xl overflow-hidden shadow-sm ring-1 ring-border-subtle">
+          <DealMediaPreview alt={title} className="h-44 w-full" item={mainMedia} />
+          <div className="p-space-sm flex flex-col gap-space-2xs">
+            <div className="flex items-center justify-between gap-space-xs">
+              <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
+                {dealBadgeLabel(studio, pricing.savingsPct)}
+              </span>
+              {studio.freeDelivery && (
+                <span className="px-space-xs py-space-2xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
+                  Free Delivery
+                </span>
+              )}
+            </div>
+            <h3 className="font-heading-sm text-heading-sm text-text-primary font-bold">{title}</h3>
+            {studio.description && <p className="font-caption text-caption text-text-secondary">{studio.description}</p>}
+            <div className="flex items-baseline gap-space-xs">
+              <span className="font-heading-md text-heading-md text-primary font-bold">₦{formatDealAmount(pricing.dealPrice)}</span>
+              <span className="font-label-sm text-label-sm text-text-tertiary line-through">₦{formatDealAmount(pricing.originalTotal)}</span>
+              <span className="ml-auto font-caption text-caption text-badge-discount-text font-semibold">
+                Save ₦{formatDealAmount(Math.max(pricing.savings, 0))}
+              </span>
+            </div>
+            <p className="font-caption text-caption text-text-tertiary">
+              {formatDealDate(studio.startDate)} → {formatDealDate(studio.endDate)} • {studio.vouchers} available
             </p>
           </div>
-        </section>
+        </div>
 
-        <article className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-md">
+        <div className="px-margin mt-space-sm rounded-xl bg-surface-container-lowest p-space-sm shadow-sm flex flex-col gap-space-2xs">
           <div className="flex items-center justify-between">
-            <span className="font-label-md text-label-md text-text-secondary uppercase tracking-wider">
-              Offer Showcase
-            </span>
-            <button
-              className="font-button-secondary text-button-secondary text-primary hover:text-on-primary-fixed-variant flex items-center gap-0.5"
-              type="button"
-              onClick={onEditOffer}
-            >
-              Edit
-              <Icon name="edit" className="text-[16px]" />
-            </button>
+            <span className="font-label-sm text-label-sm text-text-primary font-semibold">Deal gallery</span>
+            <span className="font-caption text-caption text-text-secondary">{1 + galleryMedia.length} of 5 slots used</span>
           </div>
-          <div className="flex gap-space-sm items-start">
-            <div className="relative w-24 h-24 rounded-xl overflow-hidden shrink-0 bg-surface-container">
-              <img className="w-full h-full object-cover" alt={draftImageAlt(draft.title, HERO_IMAGE.alt)} src={draftImage(draft.mainImage, HERO_IMAGE.src)} />
-              <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold shadow-sm">
-                {dealBadgeLabel(studio, savingsPct)}
-              </div>
-            </div>
-            <div className="flex flex-col min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 mb-1">
-                <span className="px-2 py-0.5 rounded-full bg-surface-container font-caption text-caption text-text-secondary font-medium">
-                  Auto-Synced
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-surface-tint-blue font-caption text-caption text-primary font-medium truncate">
-                  {strategyTitle}
-                </span>
-              </div>
-              <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">
-                {studio.strategy === 'percentage' ? `${pct}% Off ${draft.title}` : `${strategyTitle}: ${draft.title}`}
-              </h2>
-              <p className="font-body-md text-body-md text-text-secondary line-clamp-1 mt-0.5">
-                {draft.description || draft.title}
-              </p>
-            </div>
-          </div>
-          <div className="rounded-xl bg-surface-subtle p-space-sm flex flex-col gap-space-xs">
-            <div className="flex items-baseline justify-between">
-              <span className="font-body-md text-body-md text-text-secondary">
-                {isCurrent ? 'Sales Price' : 'Original Price'}
-              </span>
-              <span
-                className={`font-body-md text-body-md ${isCurrent ? 'text-text-primary' : 'text-text-tertiary line-through'}`}
-              >
-                ₦{formatAmount(baseAmount)}
-              </span>
-            </div>
-            <div className="flex items-baseline justify-between pt-1">
-              <div className="flex flex-col">
-                <span className="font-heading-sm text-heading-sm font-semibold text-text-primary">
-                  {isCurrent ? 'Deal Price' : 'Member Pay Price'}
-                </span>
-                <span className="font-caption text-caption text-badge-discount-text font-medium">
-                  {isCurrent ? 'Same as your listed price — no discount' : `Instant savings of ₦${formatAmount(savings)}`}
-                </span>
-              </div>
-              <span className="font-heading-lg text-heading-lg font-bold text-primary">
-                ₦{formatAmount(dealAmount)}
-              </span>
-            </div>
-            <div className="mt-2 pt-2 flex flex-col gap-1 bg-surface-canvas rounded-lg px-space-sm py-2 shadow-sm">
-              <div className="flex items-center justify-between gap-space-xs">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Icon name={strategyIcon} className="text-primary text-[18px] shrink-0" />
-                  <span className="font-label-sm text-label-sm text-text-primary truncate">{strategyDetail}</span>
-                </div>
-                <Icon name="verified" className="text-text-tertiary text-[16px] shrink-0" />
-              </div>
-              {studio.strategy === 'tiered' && (
-                <span className="font-caption text-caption text-text-secondary">
-                  Validity: {formatFlashValidity(studio.flash)} • {studio.flash.days}, {studio.flash.window}
-                </span>
-              )}
-              {studio.strategy === 'combo' && comboRules[1] && (
-                <span className="font-caption text-caption text-text-secondary">{comboRules[1]}</span>
-              )}
-            </div>
-          </div>
-        </article>
-
-        <article className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Icon name="tune" className="text-secondary text-[20px]" />
-              <h3 className="font-heading-sm text-heading-sm text-text-primary">Limits, Rules &amp; Gifting</h3>
-            </div>
-            <button
-              className="font-button-secondary text-button-secondary text-primary hover:text-on-primary-fixed-variant flex items-center gap-0.5"
-              type="button"
-              onClick={onEditRules}
-            >
-              Edit
-              <Icon name="edit" className="text-[16px]" />
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-space-xs mt-1">
-            <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-col">
-              <span className="font-caption text-caption text-text-secondary">Quantity Limit</span>
-              <span className="font-heading-sm text-heading-sm text-text-primary font-semibold mt-0.5">
-                {studio.vouchers} Available
-              </span>
-              <span className="font-caption text-caption text-text-tertiary mt-0.5">Total promotional stock</span>
-            </div>
-            <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-col">
-              <span className="font-caption text-caption text-text-secondary">Claim Limit</span>
-              <span className="font-heading-sm text-heading-sm text-text-primary font-semibold mt-0.5">
-                {claimLimitLabel(studio)}
-              </span>
-              <span className="font-caption text-caption text-text-tertiary mt-0.5">Per customer</span>
-            </div>
-          </div>
-          <div className="flex flex-col space-y-2.5 mt-2">
-            {studio.gifting && (
-              <div className="flex items-start gap-space-xs">
-                <div className="w-7 h-7 rounded-full bg-surface-container flex items-center justify-center shrink-0 mt-0.5">
-                  <Icon name="card_giftcard" className="text-primary text-[16px]" />
-                </div>
-                <div className="flex flex-col min-w-0">
-                  <span className="font-label-md text-label-md text-text-primary font-medium">Gifting Allowed</span>
-                  <span className="font-caption text-caption text-text-secondary">
-                    Friends &amp; family can receive voucher via SMS/WhatsApp
-                    {studio.otpVerify ? ' with one-time OTP claim verification.' : '.'}
-                  </span>
-                </div>
-              </div>
-            )}
-            <div className="flex items-start gap-space-xs">
-              <div className="w-7 h-7 rounded-full bg-surface-container flex items-center justify-center shrink-0 mt-0.5">
-                <Icon name="restaurant" className="text-secondary text-[16px]" />
-              </div>
-              <div className="flex flex-col min-w-0">
-                <span className="font-label-md text-label-md text-text-primary font-medium">Order Types</span>
-                <div className="flex items-center gap-2 mt-1">
-                  <span
-                    className={`inline-flex items-center gap-1 font-caption text-caption px-2 py-0.5 rounded-full font-medium ${
-                      studio.dineIn
-                        ? 'bg-badge-discount-bg text-badge-discount-text'
-                        : 'bg-surface-container text-text-tertiary'
-                    }`}
-                  >
-                    <Icon name={studio.dineIn ? 'check' : 'close'} className="text-[13px]" /> Dine-In
-                  </span>
-                  <span
-                    className={`inline-flex items-center gap-1 font-caption text-caption px-2 py-0.5 rounded-full font-medium ${
-                      studio.pickup
-                        ? 'bg-badge-discount-bg text-badge-discount-text'
-                        : 'bg-surface-container text-text-tertiary'
-                    }`}
-                  >
-                    <Icon name={studio.pickup ? 'check' : 'close'} className="text-[13px]" /> Pickup
-                  </span>
-                  <span className="inline-flex items-center gap-1 font-caption text-caption px-2 py-0.5 rounded-full bg-surface-container text-text-tertiary font-medium">
-                    <Icon name="close" className="text-[13px]" /> Delivery
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </article>
-
-        <article className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-sm">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Icon name="store" className="text-secondary text-[20px]" />
-              <h3 className="font-heading-sm text-heading-sm text-text-primary">Branches &amp; Schedule</h3>
-            </div>
-            <button
-              className="font-button-secondary text-button-secondary text-primary hover:text-on-primary-fixed-variant flex items-center gap-0.5"
-              type="button"
-              onClick={onEditLocations}
-            >
-              Edit
-              <Icon name="edit" className="text-[16px]" />
-            </button>
-          </div>
-          <div className="flex flex-col gap-2 mt-1">
-            {activeBranches.map((branch) => (
-              <div
-                key={branch.key}
-                className="flex items-center justify-between p-2.5 rounded-lg bg-surface-subtle"
-              >
-                <div className="flex items-center gap-2.5">
-                  <Icon name="location_on" className="text-primary text-[18px]" />
-                  <div className="flex flex-col">
-                    <span className="font-label-md text-label-md font-medium text-text-primary">{branch.name}</span>
-                    <span className="font-caption text-caption text-text-secondary">{branch.address}</span>
-                  </div>
-                </div>
-                <span className="px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                  Active
-                </span>
-              </div>
+          <div className="flex gap-space-2xs overflow-x-auto pb-space-2xs">
+            {[mainMedia, ...galleryMedia].map((item, index) => (
+              <DealMediaPreview
+                alt={`${title} media ${index + 1}`}
+                className="h-16 w-20 rounded-lg shrink-0"
+                item={item}
+                key={`${item?.url ?? 'empty'}-${index}`}
+              />
             ))}
           </div>
-          <div className="mt-2 grid grid-cols-2 gap-space-xs">
-            <div className="p-2.5 rounded-lg bg-surface-container-low flex flex-col">
-              <span className="font-caption text-caption text-text-secondary">Redeem Hours</span>
-              <span className="font-label-md text-label-md text-text-primary font-semibold mt-1">{dayLabel}</span>
-              <span className="font-caption text-caption text-primary font-medium">
-                {studio.redeemAllDay ? 'All Day (24 Hours)' : `${studio.redeemStart} – ${studio.redeemEnd}`}
-              </span>
-            </div>
-            <div className="p-2.5 rounded-lg bg-surface-container-low flex flex-col">
-              <span className="font-caption text-caption text-text-secondary">Duration</span>
-              <span className="font-label-md text-label-md text-text-primary font-semibold mt-1">
-                {studio.duration === 'forever' ? 'Always On' : `${dealDurationLabel(studio.duration)} Window`}
-              </span>
-              <span className="font-caption text-caption text-text-secondary">
-                {studio.duration === 'forever' ? 'No fixed end date' : formatDealValidity(studio)}
-              </span>
-            </div>
-          </div>
-        </article>
+        </div>
 
-        <article className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-sm">
-          <div className="flex items-center gap-2">
-            <Icon name="assignment_turned_in" className="text-secondary text-[20px]" />
-            <h3 className="font-heading-sm text-heading-sm text-text-primary">How to Claim &amp; Terms</h3>
+        <div className="px-margin mt-space-sm rounded-xl bg-surface-container-lowest p-space-sm shadow-sm flex flex-col gap-space-xs">
+          <div className="flex items-center justify-between">
+            <span className="font-label-sm text-label-sm text-text-secondary">Deal structure</span>
+            <span className="font-label-sm text-label-sm text-text-primary font-semibold">{dealTypeTitle(studio.structure ?? null)}</span>
           </div>
-          <div className="flex flex-col gap-space-xs">
-            <span className="font-label-md text-label-md text-text-primary font-medium">Redemption steps (customer)</span>
-            {studio.claimSteps.length === 0 ? (
-              <span className="font-body-md text-body-md text-error">
-                No claim instructions yet — add them in the “How to Claim” step.
-              </span>
-            ) : (
-              <ol className="flex flex-col gap-space-xs">
-                {studio.claimSteps.map((step, index) => (
-                  <li key={`${index}-${step}`} className="flex items-start gap-space-xs">
-                    <span className="font-caption text-caption font-semibold text-primary px-2 py-0.5 rounded-full bg-surface-tint-blue shrink-0">
-                      {String(index + 1).padStart(2, '0')}
-                    </span>
-                    <span className="font-body-md text-body-md text-text-secondary">{step}</span>
-                  </li>
-                ))}
-              </ol>
-            )}
+          <div className="flex items-center justify-between">
+            <span className="font-label-sm text-label-sm text-text-secondary">Products</span>
+            <span className="font-label-sm text-label-sm text-text-primary font-semibold">{selectedProducts.length}</span>
           </div>
-          <div className="flex flex-col gap-space-xs pt-space-xs border-t border-border-subtle">
-            <span className="font-label-md text-label-md text-text-primary font-medium">Terms &amp; conditions</span>
-            {studio.terms.length === 0 ? (
-              <span className="font-body-md text-body-md text-error">
-                No terms yet — add them in the “Terms &amp; Conditions” step.
-              </span>
-            ) : (
-              <ul className="flex flex-col gap-space-xs">
-                {studio.terms.map((term, index) => (
-                  <li key={`${index}-${term}`} className="flex items-start gap-space-xs">
-                    <Icon name="check_circle" className="text-badge-discount-text text-[16px] shrink-0 mt-0.5" />
-                    <span className="font-body-md text-body-md text-text-secondary">{term}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
+          <div className="flex items-center justify-between">
+            <span className="font-label-sm text-label-sm text-text-secondary">Deal quantity</span>
+            <span className="font-label-sm text-label-sm text-text-primary font-semibold">{studio.vouchers}</span>
           </div>
-          <p className="font-caption text-caption text-text-tertiary">
-            These terms are shown to customers before they claim, and are locked into each existing claim so later
-            edits don’t rewrite an agreement already accepted.
-          </p>
-        </article>
+          {studio.structure === 'buy-more-save-more' &&
+            describeQuantityTiers(studio, regularTotal).map((line) => (
+              <p key={line} className="font-caption text-caption text-text-secondary">{line}</p>
+            ))}
+        </div>
 
-        {!canPublish && (
-          <article className="rounded-xl bg-error/5 border border-error/20 p-space-md flex flex-col gap-space-xs">
-            <span className="font-label-md text-label-md text-error font-semibold flex items-center gap-2">
-              <Icon name="error" className="text-[18px]" />
-              Complete these before publishing
-            </span>
-            <ul className="flex flex-col gap-1">
-              {readinessErrors.map((error) => (
-                <li key={error} className="font-caption text-caption text-error flex items-start gap-space-2xs">
-                  <span className="mt-1.5 w-1 h-1 rounded-full bg-error shrink-0" />
-                  <span>{error}</span>
-                </li>
-              ))}
-            </ul>
-          </article>
+        <div className="px-margin mt-space-sm flex flex-wrap gap-space-xs">
+          <button className="px-space-sm py-space-2xs rounded-lg bg-surface-subtle text-primary font-label-sm text-label-sm" type="button" onClick={onEditOffer}>Edit offer</button>
+          <button className="px-space-sm py-space-2xs rounded-lg bg-surface-subtle text-primary font-label-sm text-label-sm" type="button" onClick={onEditRules}>Edit deal information</button>
+          <button className="px-space-sm py-space-2xs rounded-lg bg-surface-subtle text-primary font-label-sm text-label-sm" type="button" onClick={onEditGallery}>Edit deal gallery</button>
+          <button className="px-space-sm py-space-2xs rounded-lg bg-surface-subtle text-primary font-label-sm text-label-sm" type="button" onClick={onEditLocations}>Edit branches</button>
+        </div>
+
+        {errors.length > 0 && (
+          <div className="px-margin mt-space-sm rounded-xl bg-error-container px-space-sm py-space-2xs flex flex-col gap-1">
+            {errors.map((error) => (
+              <p key={error} className="font-caption text-caption text-on-error-container">• {error}</p>
+            ))}
+          </div>
         )}
-
-        <article className="rounded-xl bg-surface-canvas shadow-sm p-space-md flex flex-col gap-space-sm">
-            <div className="flex items-center gap-2">
-              <Icon name="rocket_launch" className="text-primary text-[20px]" />
-              <h3 className="font-heading-sm text-heading-sm text-text-primary">Launch Summary</h3>
-            </div>
-            <div className="flex items-start gap-2.5 font-body-md text-body-md text-text-primary">
-              <Icon name="storefront" className="text-primary text-[18px] mt-0.5" />
-              <span>
-                Goes live at{' '}
-                <strong className="font-semibold">
-                  {activeBranches.length > 1 ? `${activeBranches.length} branches` : activeBranches[0]?.name ?? 'no branch yet'}
-                </strong>
-                , where nearby customers can find and claim it.
-              </span>
-            </div>
-            <div className="flex items-start gap-2.5 font-body-md text-body-md text-text-primary">
-              <Icon name="calendar_month" className="text-primary text-[18px] mt-0.5" />
-              <span>{formatDealValidity(studio)}</span>
-            </div>
-            <div className="flex items-start gap-2.5 font-body-md text-body-md text-text-primary">
-              <Icon name="verified_user" className="text-badge-discount-text text-[18px] mt-0.5" />
-              <span>Customers pay ₦{formatAmount(dealAmount)} directly to you.</span>
-            </div>
-            {studio.publishedDealGroupId && (
-              <div className="flex items-start gap-2.5 font-body-md text-body-md text-text-secondary">
-                <Icon name="sync" className="text-primary text-[18px] mt-0.5" />
-                <span>Already published — publishing again updates this deal instead of creating a new one.</span>
-              </div>
-            )}
-          </article>
       </div>
 
-      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-surface/95 backdrop-blur-xl px-margin pt-space-xs pb-safe flex flex-col gap-space-xs shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-40 bg-surface/95 backdrop-blur-xl px-margin pb-safe flex flex-col gap-space-2xs pt-space-2xs shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+        {publishError && (
+          <p className="rounded-lg bg-error-container px-space-xs py-space-2xs font-caption text-caption text-on-error-container">{publishError}</p>
+        )}
         <button
-          className={`w-full h-[54px] rounded-xl font-button-primary text-button-primary transition-all active:scale-[0.98] flex items-center justify-center gap-2 ${
-            publication
-              ? 'bg-badge-discount-text text-on-primary'
-              : canPublish
-                ? 'bg-primary-container text-on-primary shadow-[0_8px_24px_-4px_rgba(6,108,244,0.35)]'
-                : 'bg-surface-container-high text-text-tertiary shadow-none'
-          }`}
+          className="w-full h-11 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center justify-center disabled:opacity-40"
+          disabled={!canPublish}
           type="button"
-          disabled={!canPublish || publication !== null}
-          onClick={handlePublish}
+          onClick={() => void handlePublish()}
         >
-          {publication ? (
-            <>
-              <Icon name="check_circle" className="text-[22px]" />
-              <span>{DEAL_PUBLICATION_COPY[publication.status].title}</span>
-            </>
-          ) : canPublish ? (
-            <span>{publishing ? 'Publishing…' : studio.publishedDealGroupId ? 'Update Published Deal' : 'Publish Deal to Nearby Feeds 🔥 🚀'}</span>
-          ) : (
-            <span>Resolve {readinessErrors.length} issue{readinessErrors.length === 1 ? '' : 's'} to publish 🔒</span>
-          )}
+          <span>{publishing ? 'Publishing…' : publication ? 'Published' : 'Publish Deal'}</span>
+          {!publishing && !publication && <Icon name="rocket_launch" className="text-[18px]" />}
         </button>
-        <div className="grid grid-cols-2 gap-space-xs">
-          <button
-            className="w-full h-11 rounded-xl bg-surface-subtle text-text-secondary hover:text-text-primary font-button-secondary text-button-secondary active:scale-[0.98] transition-transform flex items-center justify-center gap-space-2xs"
-            type="button"
-            onClick={onSaveDraft}
-          >
-            <Icon name="bookmark_border" className="text-[16px]" />
-            <span>Save Deal as Draft</span>
-          </button>
-          <button
-            className="w-full h-11 rounded-xl bg-surface-subtle text-text-secondary hover:text-text-primary font-button-secondary text-button-secondary active:scale-[0.98] transition-transform flex items-center justify-center gap-space-2xs"
-            type="button"
-            onClick={onBack}
-          >
-            <Icon name="arrow_back" className="text-[16px]" />
-            <span>Back to Step 3</span>
-          </button>
-        </div>
-        <p className="font-caption text-caption text-text-tertiary text-center px-space-md">
-          You can pause, edit quotas, or end this deal at any time from your Business Hub.
-        </p>
+        <button className="w-full h-9 rounded-xl text-text-secondary font-button-secondary text-button-secondary" type="button" onClick={onPublish}>
+          Continue without publishing
+        </button>
       </div>
 
       {showResult && publication && (
-        <div
-          className="fixed inset-0 z-50 bg-inverse-surface/60 backdrop-blur-sm flex items-center justify-center p-space-md"
-          onClick={() => setShowResult(false)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            onClick={(event) => event.stopPropagation()}
-            className="w-full max-w-[380px] rounded-2xl bg-surface-container-lowest p-space-xl shadow-2xl flex flex-col items-center text-center gap-space-lg"
-          >
-            <div
-              className={`w-16 h-16 rounded-full flex items-center justify-center ${DEAL_PUBLICATION_COPY[publication.status].tone}`}
-            >
+        <div className="fixed inset-0 z-50 bg-on-surface/50 flex items-end sm:items-center justify-center p-0 sm:p-space-md">
+          <div className="w-full max-w-[430px] rounded-t-2xl sm:rounded-2xl bg-surface-canvas p-space-lg flex flex-col items-center gap-space-sm text-center">
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center ${DEAL_PUBLICATION_COPY[publication.status].tone}`}>
               <Icon name={DEAL_PUBLICATION_COPY[publication.status].icon} className="text-[34px]" />
             </div>
-            <div className="flex flex-col gap-space-2xs">
-              <h3 className="font-heading-md text-heading-md text-text-primary font-bold">
-                {DEAL_PUBLICATION_COPY[publication.status].title}
-              </h3>
-              <p className="font-body-md text-body-md text-text-secondary">{publication.message}</p>
-              <p className="font-caption text-caption text-text-tertiary mt-space-2xs">
-                Status: {publication.status} • Ref {publication.reference}
-              </p>
-            </div>
+            <h3 className="font-heading-md text-heading-md text-on-surface font-bold">{DEAL_PUBLICATION_COPY[publication.status].title}</h3>
+            <p className="font-body-md text-body-md text-on-surface-variant">{publication.message}</p>
+            <p className="font-caption text-caption text-on-surface-variant">Ref {publication.reference}</p>
             <button
+              className="w-full h-11 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary"
               type="button"
               onClick={() => {
                 setShowResult(false);
                 onPublish();
               }}
-              className="w-full h-12 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary"
             >
               Done
             </button>

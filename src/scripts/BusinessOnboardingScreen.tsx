@@ -19,6 +19,7 @@ import { BusinessDealAutoImportScreen } from './BusinessDealAutoImportScreen';
 import { BusinessDealStudioStep1Screen } from './BusinessDealStudioStep1Screen';
 import { BusinessDealStudioStep2Screen } from './BusinessDealStudioStep2Screen';
 import { BusinessDealStudioStep3Screen } from './BusinessDealStudioStep3Screen';
+import { BusinessDealGalleryScreen } from './BusinessDealGalleryScreen';
 import { BusinessDealStudioStep4Screen } from './BusinessDealStudioStep4Screen';
 import { BusinessIntroScreen } from './BusinessIntroScreen';
 import { BusinessLocationScreen } from './BusinessLocationScreen';
@@ -139,6 +140,7 @@ const STEPS = [
   'dealStudio1',
   'dealStudio2',
   'dealStudio3',
+  'dealGallery',
   'dealStudio4',
   'dealAutoImport',
   'businessQr',
@@ -274,7 +276,7 @@ export function BusinessOnboardingScreen({
   const sync = useOnboardingSync();
   // Live: deals are built on a real catalogue item and published to the API.
   const liveDeal = useLiveDealPublish(
-    () => setStepIndex(25), (stored?.data.dealSource as CatalogueItem | undefined) ?? null,
+    () => setStepIndex(26), (stored?.data.dealSource as CatalogueItem | undefined) ?? null,
     // Remember the published deal so going back and publishing again updates it.
     (patch) => setDealStudio((prev) => ({ ...prev, ...patch })),
   );
@@ -461,7 +463,7 @@ export function BusinessOnboardingScreen({
           onNext={(dealItem) => {
             // Live deals are built on a real item; with none picked, deals wait until later.
             if (hasApiConfig()) {
-              if (!dealItem) return setStepIndex(25);
+              if (!dealItem) return setStepIndex(26);
               startLiveDeal(dealItem);
             }
             setStepIndex(20);
@@ -653,16 +655,28 @@ export function BusinessOnboardingScreen({
           onSaveDraft={onBack}
         />
       );
+    case 'dealGallery':
+      return (
+        <BusinessDealGalleryScreen
+          draft={dealDraft}
+          studio={dealStudio}
+          onStudioChange={updateDealStudio}
+          onBack={() => setStepIndex(22)}
+          onNext={() => setStepIndex(24)}
+          onSaveDraft={() => setStepIndex(7)}
+        />
+      );
     case 'dealStudio4':
       return (
         <BusinessDealStudioStep4Screen
           draft={dealDraft}
           studio={dealStudio}
-          onBack={() => setStepIndex(22)}
+          onBack={() => setStepIndex(23)}
           onEditOffer={() => (dealStudio.strategy === 'current' ? setDealPriceModalOpen(true) : setStepIndex(20))}
           onEditRules={() => setStepIndex(21)}
+          onEditGallery={() => setStepIndex(23)}
           onEditLocations={() => setStepIndex(22)}
-          onPublish={() => setStepIndex(25)}
+          onPublish={() => setStepIndex(26)}
           livePublish={liveDeal.live ? () => liveDeal.publishAsync(dealStudio) : undefined}
           onSaveDraft={() => setStepIndex(7)}
         />
@@ -678,7 +692,7 @@ export function BusinessOnboardingScreen({
         />
       );
     case 'businessQr':
-      return <BusinessBusinessQrScreen onBack={() => setStepIndex(23)} onContinue={onComplete} />;
+      return <BusinessBusinessQrScreen onBack={() => setStepIndex(24)} onContinue={onComplete} />;
     default:
       return null;
     }

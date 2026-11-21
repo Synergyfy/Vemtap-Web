@@ -28,11 +28,13 @@ import { SkipSubscriptionCheck } from '../subscriptions/decorators/skip-subscrip
 import { VerificationService } from './verification.service';
 import {
   AdminVerificationDecisionDto,
+  ConfirmBusinessDto,
   ManualReviewDto,
+  PreviewBusinessDto,
   StartLivenessDto,
   UnregisteredBusinessDto,
-  VerifyBusinessDto,
   VerifyIdentityDto,
+  VerifyRepresentativeDto,
 } from './dto/verify.dto';
 import { verifyBytidSignature } from './verification-rules';
 import type { BytidWebhookEvent } from './bytid/bytid.types';
@@ -112,10 +114,26 @@ export class VerificationController {
   @Permissions('verification')
   @ApiOperation({
     summary:
-      "Verify the account holder: NIN, driver's licence or voter's card (registry + selfie), or passport (document + selfie)",
+      "Verify the account holder: NIN, driver's licence, voter's card (registry + selfie), BVN (record lookup) or passport (document + selfie)",
   })
   verifyIdentity(@Req() req: AuthedRequest, @Body() dto: VerifyIdentityDto) {
     return this.verificationService.verifyIdentity(
+      businessOf(req),
+      req.user.id,
+      dto,
+    );
+  }
+
+  @Post('business/preview')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.OWNER, UserRole.MANAGER)
+  @Permissions('verification')
+  @ApiOperation({
+    summary:
+      'Look up CAC details for form autofill only; does not verify the business or ownership',
+  })
+  previewBusiness(@Req() req: AuthedRequest, @Body() dto: PreviewBusinessDto) {
+    return this.verificationService.previewBusiness(
       businessOf(req),
       req.user.id,
       dto,
@@ -127,10 +145,30 @@ export class VerificationController {
   @Roles(UserRole.OWNER, UserRole.MANAGER)
   @Permissions('verification')
   @ApiOperation({
-    summary: 'Verify a CAC-registered business (RC / BN / IT number)',
+    summary:
+      'Confirm CAC details and check the registered name/status (RC / BN / IT number)',
   })
-  verifyBusiness(@Req() req: AuthedRequest, @Body() dto: VerifyBusinessDto) {
+  verifyBusiness(@Req() req: AuthedRequest, @Body() dto: ConfirmBusinessDto) {
     return this.verificationService.verifyBusiness(
+      businessOf(req),
+      req.user.id,
+      dto,
+    );
+  }
+
+  @Post('business/representative')
+  @HttpCode(HttpStatus.OK)
+  @Roles(UserRole.OWNER, UserRole.MANAGER)
+  @Permissions('verification')
+  @ApiOperation({
+    summary:
+      'Separately verify that the account representative is a director or beneficial owner on the CAC record',
+  })
+  verifyRepresentative(
+    @Req() req: AuthedRequest,
+    @Body() dto: VerifyRepresentativeDto,
+  ) {
+    return this.verificationService.verifyRepresentative(
       businessOf(req),
       req.user.id,
       dto,

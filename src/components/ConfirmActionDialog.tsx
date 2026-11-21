@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useIsDesktop } from '../hooks/useIsDesktop';
 import { DesktopModal, ModalCloseButton } from './desktop/DesktopModal';
 import { SheetShell } from './sheets/SheetShell';
@@ -14,9 +15,13 @@ export interface ConfirmActionDialogProps {
   bullets?: string[];
   confirmLabel: string;
   cancelLabel?: string;
-  /** `danger` paints the confirm button in the error tone. */
-  tone?: 'default' | 'danger';
+  /** `danger` paints the confirm button in the error tone; `warning` for setup requirements. */
+  tone?: 'default' | 'danger' | 'warning';
   busy?: boolean;
+  /** Optional live content (e.g. an upload control) between the copy and actions. */
+  children?: ReactNode;
+  /** Keeps the confirm action disabled until the required input is complete. */
+  confirmDisabled?: boolean;
 }
 
 function ConfirmBody({
@@ -29,18 +34,25 @@ function ConfirmBody({
   cancelLabel = 'Cancel',
   tone = 'default',
   busy = false,
+  children,
+  confirmDisabled = false,
 }: ConfirmActionDialogProps) {
   const danger = tone === 'danger';
+  const warning = tone === 'warning';
   return (
     <div className="flex flex-col">
       <div className="flex items-center justify-between px-space-md pt-space-md pb-space-sm border-b border-border-subtle">
         <div className="flex items-center gap-space-sm min-w-0">
           <span
             className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-              danger ? 'bg-error-container text-on-error-container' : 'bg-surface-tint-blue text-primary'
+              danger
+                ? 'bg-error-container text-on-error-container'
+                : warning
+                  ? 'bg-badge-warning-bg text-badge-warning-text'
+                  : 'bg-surface-tint-blue text-primary'
             }`}
           >
-            <Icon name={danger ? 'warning' : 'help'} className="text-[22px]" />
+            <Icon name={danger || warning ? 'warning' : 'help'} className="text-[22px]" />
           </span>
           <h3 className="font-heading-sm text-heading-sm text-text-primary truncate">{title}</h3>
         </div>
@@ -61,6 +73,8 @@ function ConfirmBody({
           </ul>
         )}
 
+        {children}
+
         <div className="flex items-center justify-end gap-space-xs pt-space-sm mt-space-xs border-t border-border-subtle">
           <button
             type="button"
@@ -73,7 +87,7 @@ function ConfirmBody({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={busy}
+            disabled={busy || confirmDisabled}
             className={`px-space-md py-space-xs rounded-xl font-button-secondary text-button-secondary font-semibold shadow-sm disabled:opacity-60 transition-colors ${
               danger
                 ? 'bg-error text-on-error hover:bg-error/90'

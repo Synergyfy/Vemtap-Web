@@ -158,7 +158,7 @@ export function VerificationCacStatusScreen({
           <div className="flex items-center justify-center gap-1.5 py-1 text-center">
             <Icon name="lock" className="text-[15px] text-text-tertiary" />
             <span className="font-caption text-caption text-text-secondary">
-              Official CAC lookup integration is secure and encrypted
+              Your details are handled securely during verification
             </span>
           </div>
         </div>

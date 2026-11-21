@@ -3,22 +3,18 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ApiError, hasApiConfig } from '../../services/api/client';
 import { offerKeys, useOfferMutations } from './useOffers';
 import { offersService, studioToOfferInput, type BusinessOffer, type CreateOfferInput } from '../../services/offersService';
+import { firstUsableItemImage } from '../../scripts/catalogueLive';
 import { toPrice, type CatalogueItem } from '../../services/catalogueItemsService';
 import { apiErrorMessage } from '../../services/errorMessages';
 import { planErrorMessage } from '../../services/planErrors';
 import type { DealStudioDraft } from '../../scripts/deals/dealStudioShared';
 import type { DealPublicationResult } from '../../scripts/deals/dealPublication';
-import { pickDealBranchIds, useDealBranchOptions, useDealBundleCatalog } from './useDealStudioLive';
+import { pickDealBranchIds, useDealBranchOptions, useDealProductCatalog } from './useDealStudioLive';
 
 /**
- * Live Deal Studio: the deal is built on a real catalogue item (picked first)
- * and published with `POST /catalogue/offers` at the branches the owner chose.
- * Publishing a draft again updates that deal instead of creating another.
- * Demo mode keeps the sample flow.
- *
- * `initialSource` restores an item picked before a reload (onboarding keeps it
- * with setup progress). `onPublished` receives the studio fields to remember
- * (the deal group and its branches) so a later publish can update it.
+ * Live Deal Studio: the deal is built from live catalogue products selected in
+ * the wizard and published with `POST /catalogue/offers`. There is no mock
+ * catalogue and no synthetic source item. Publishing a draft again updates it.
  */
 export function useLiveDealPublish(
   onComplete: () => void,
@@ -31,17 +27,34 @@ export function useLiveDealPublish(
   const [source, setSource] = useState<CatalogueItem | null>(initialSource);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const { options, activeBranchId } = useDealBranchOptions(source);
-  const basePrice = toPrice(source?.price ?? undefined) ?? 0;
-  const catalog = useDealBundleCatalog(source?.name ?? '', basePrice, source);
+  const { catalog, products } = useDealProductCatalog();
+  // Branch availability follows whichever products the merchant selected.
+  const { options, activeBranchId } = useDealBranchOptions(source ? [source] : []);
 
-  const buildInput = (studio: DealStudioDraft, branchIds: string[]): CreateOfferInput =>
-    studioToOfferInput(
+  /** Keeps the source used by legacy callers in sync with the wizard's first product. */
+  const selectedFor = (studio: DealStudioDraft) => {
+    const byId = new Map(products.map((item) => [item.id, item]));
+    const selected = studio.productIds.map((id) => byId.get(id)).filter((item): item is CatalogueItem => Boolean(item));
+    const primary = selected[0] ?? source ?? products[0] ?? null;
+    return { primary, selected };
+  };
+
+  const buildInput = (studio: DealStudioDraft, branchIds: string[]): CreateOfferInput => {
+    const { primary } = selectedFor(studio);
+    if (!primary) throw new Error('Choose at least one live product for this deal.');
+    const basePrice = toPrice(primary.price ?? undefined) ?? 0;
+    return studioToOfferInput(
       studio,
-      { itemId: (source as CatalogueItem).id, name: (source as CatalogueItem).name, basePrice, mainImage: source?.mainImage },
+      {
+        itemId: primary.id,
+        name: primary.name,
+        basePrice,
+        mainImage: firstUsableItemImage(primary),
+      },
       branchIds[0],
       { branchIds, catalog },
     );
+  };
 
   /** Updates the deal this draft published: its terms everywhere, then which branches run it. */
   const updatePublished = async (studio: DealStudioDraft, groupId: string, branchIds: string[]) => {
@@ -60,8 +73,13 @@ export function useLiveDealPublish(
 
   /** Creates or updates the deal; null when the deal group it updated has no row we can read back. */
   const save = async (studio: DealStudioDraft): Promise<{ offer: BusinessOffer | null; branchIds: string[] }> => {
-    const branchIds = pickDealBranchIds(studio, options, activeBranchId);
-    if (!branchIds.length) throw new Error('This item isn’t sold at any of your branches yet.');
+    const { selected } = selectedFor(studio);
+    if (!selected.length) throw new Error('Choose at least one live product for this deal.');
+    const allowedOptions = options.filter((option) =>
+      selected.every((item) => !item.branches?.length || item.branches.some((branch) => branch.id === option.id)),
+    );
+    const branchIds = pickDealBranchIds(studio, allowedOptions, activeBranchId);
+    if (!branchIds.length) throw new Error('The selected products are not sold at any of your branches yet.');
     if (studio.publishedDealGroupId) {
       try {
         const offer = await updatePublished(studio, studio.publishedDealGroupId, branchIds);
@@ -84,7 +102,6 @@ export function useLiveDealPublish(
 
   const publish = (studio: DealStudioDraft) => {
     if (!live) return onComplete();
-    if (!source) return setError('Choose the item this deal is for first.');
     setError(null);
     setSaving(true);
     save(studio)
@@ -98,10 +115,6 @@ export function useLiveDealPublish(
 
   /** Creates or updates the offer and describes what actually happened, for the review step's modal. */
   const publishAsync = async (studio: DealStudioDraft): Promise<DealPublicationResult> => {
-    if (!source) {
-      setError('Choose the item this deal is for first.');
-      throw new Error('No source item');
-    }
     setError(null);
     setSaving(true);
     try {
@@ -146,7 +159,7 @@ export function useLiveDealPublish(
     live,
     publishAsync,
     source,
-    needsSource: live && !source,
+    needsSource: false,
     pick: setSource,
     publish,
     publishing: create.isPending || saving,

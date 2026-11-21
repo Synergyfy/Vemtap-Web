@@ -127,17 +127,22 @@ export function ClusterBoostFlow({
   const liveBoost = useLiveClusterBoost();
   const myBusiness = useMyBusiness();
   const business = myBusiness.data;
-  const clusterState = useMemo(() => getClusterState(), []);
-  const cluster = live ? liveBoost.cluster : clusterState.currentCluster;
+  // Demo fixtures stay behind the demo flag; live mode only reads the API.
+  const localClusterState = useMemo(() => (live ? null : getClusterState()), [live]);
+  const cluster = live ? liveBoost.cluster : localClusterState?.currentCluster ?? null;
   const hasActiveBoost = live ? liveBoost.hasActiveBoostForItem : hasActiveBoostForItem;
-  const profileItem = clusterState.showcaseItems.find((i) => i.entityType === 'profile');
-  const businessName = business?.name ?? (profileItem?.businessName || 'Urban Grill & Bistro');
+  const profileItem = localClusterState?.showcaseItems.find((i) => i.entityType === 'profile');
+  const businessName = business?.name ?? (live ? 'Your business' : profileItem?.businessName || 'Urban Grill & Bistro');
   const businessLogo = business?.logoUrl ?? null;
-  const businessCategory = business?.subcategory?.name ?? business?.category?.name ?? 'Artisan Smokehouse & Grill';
-  const businessLocation = [business?.address, business?.city].filter(Boolean).join(', ') || 'Maitama, Abuja';
-  const businessVerified = business?.isVerified ?? true;
+  const businessCategory = live
+    ? business?.subcategory?.name ?? business?.category?.name ?? '—'
+    : business?.subcategory?.name ?? business?.category?.name ?? 'Artisan Smokehouse & Grill';
+  const businessLocation = live
+    ? [business?.address, business?.city].filter(Boolean).join(', ') || '—'
+    : [business?.address, business?.city].filter(Boolean).join(', ') || 'Maitama, Abuja';
+  const businessVerified = live ? Boolean(business?.isVerified) : business?.isVerified ?? true;
 
-  const localEligible = useMemo(() => getBoostEligibleItems(), []);
+  const localEligible = useMemo(() => (live ? [] : getBoostEligibleItems()), [live]);
   const eligibleItems = live ? liveBoost.eligibleItems : localEligible;
   // Preselection accepts a pool item id or its title (the Boost Hub passes
   // display names). When matched, the placement and item steps are skipped.
@@ -179,7 +184,7 @@ export function ClusterBoostFlow({
   const [startDate, setStartDate] = useState(todayIso);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [method, setMethod] = useState<ClusterBoostPaymentMethod>('wallet');
-  const [localWalletBalance, setWalletBalance] = useState(() => getClusterBoostWallet().balance);
+  const [localWalletBalance, setWalletBalance] = useState(() => (live ? 0 : getClusterBoostWallet().balance));
   const walletBalance = live ? liveBoost.walletBalance : localWalletBalance;
   const [topUpOpen, setTopUpOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -682,29 +687,33 @@ export function ClusterBoostFlow({
             <Icon name="hub" className="text-[22px]" />
           </span>
           <div className="min-w-0">
-            <p className="text-sm font-bold text-text-primary truncate">{cluster.name}</p>
+            <p className="text-sm font-bold text-text-primary truncate">{cluster?.name ?? 'Your cluster'}</p>
             <p className="text-[11px] text-text-secondary truncate">
-              {cluster.address}, {cluster.city}
-              {cluster.state ? ` · ${cluster.state}` : ''}
+              {[cluster?.address, cluster?.city].filter(Boolean).join(', ') || '—'}
+              {cluster?.state ? ` · ${cluster.state}` : ''}
             </p>
           </div>
         </div>
         <div className="grid grid-cols-3 gap-2 pt-1">
           <div className="p-2 rounded-xl bg-surface-canvas border border-border-subtle text-center">
-            <p className="text-xs font-bold text-text-primary">{clusterState.members.length}</p>
+            <p className="text-xs font-bold text-text-primary">
+              {live ? cluster?.stats.totalBusinesses ?? 0 : localClusterState?.members.length ?? 0}
+            </p>
             <p className="text-[9px] uppercase tracking-wider text-text-tertiary mt-0.5">Members</p>
           </div>
           <div className="p-2 rounded-xl bg-surface-canvas border border-border-subtle text-center">
             <p className="text-xs font-bold text-text-primary">
-              {(cluster.radiusMeters / 1000).toFixed(1)} km
+              {cluster ? `${(cluster.radiusMeters / 1000).toFixed(1)} km` : '—'}
             </p>
             <p className="text-[9px] uppercase tracking-wider text-text-tertiary mt-0.5">Radius</p>
           </div>
           <div className="p-2 rounded-xl bg-surface-canvas border border-border-subtle text-center">
             <p className="text-xs font-bold text-text-primary">
-              {cluster.rotatorSettings.isActive
-                ? `${cluster.rotatorSettings.rotationIntervalSeconds}s`
-                : 'Paused'}
+              {cluster
+                ? cluster.rotatorSettings.isActive
+                  ? `${cluster.rotatorSettings.rotationIntervalSeconds}s`
+                  : 'Paused'
+                : '—'}
             </p>
             <p className="text-[9px] uppercase tracking-wider text-text-tertiary mt-0.5">Rotation</p>
           </div>

@@ -167,8 +167,8 @@ export function DesktopVerificationIntroScreen({
                   Verify your business
                 </h1>
                 <p className="font-body-lg text-body-lg text-text-secondary leading-relaxed">
-                  Help us keep VEMTAP safe for customers and genuine businesses across Nigeria. Verification protects
-                  your store identity and instantly accelerates customer engagement.
+                  Help us keep VEMTAP safe for customers and genuine businesses across Nigeria. Verification records
+                  your identity and business details against your account.
                 </p>
               </div>
             </div>
@@ -303,11 +303,11 @@ export function DesktopVerificationIntroScreen({
                 </div>
                 <div className="flex flex-col gap-space-2xs">
                   <span className="font-label-md text-label-md text-text-primary font-semibold">
-                    NDPR &amp; NIMC Compliance Guarantee
+                    Data protection
                   </span>
                   <p className="font-caption text-caption text-text-secondary leading-relaxed">
-                    Verification builds safety for both you and your buyers. We keep your credentials strictly
-                    confidential and bank-grade encrypted. Data is never shared with third-party advertisers.
+                    Verification builds safety for both you and your buyers. We keep your credentials confidential
+                    and use them only for verification. Data is not shared with third-party advertisers.
                   </p>
                 </div>
               </div>
@@ -317,7 +317,7 @@ export function DesktopVerificationIntroScreen({
                     Required for verification
                   </span>
                   <span className="font-caption text-caption text-badge-discount-text bg-badge-discount-bg px-space-xs py-space-2xs rounded-full font-medium">
-                    &lt; 2 minutes
+                    Identity + CAC
                   </span>
                 </div>
                 <div className="flex flex-col gap-space-xs">
@@ -338,7 +338,7 @@ export function DesktopVerificationIntroScreen({
               <div className="flex items-center gap-space-sm px-space-md py-space-xs bg-surface-container rounded-lg text-text-secondary">
                 <Icon name="timer" className="text-primary text-[18px]" />
                 <span className="font-caption text-caption">
-                  Estimated completion time: <strong>&lt; 2 minutes</strong> with instant digital verification.
+                  Check results are recorded against your business account and shown in the status centre.
                 </span>
               </div>
               <div className="flex flex-col gap-space-sm pt-space-xs">
@@ -371,11 +371,11 @@ export function DesktopVerificationIntroScreen({
             <div className="bg-surface-subtle p-space-md rounded-xl flex items-center justify-between text-caption font-caption text-text-secondary shadow-sm flex-wrap gap-space-xs">
               <div className="flex items-center gap-space-2xs">
                 <Icon name="lock" className="text-badge-discount-text text-[16px]" />
-                <span>256-bit SSL Encrypted Vault</span>
+                <span>Securely stored</span>
               </div>
               <div className="flex items-center gap-space-2xs">
                 <Icon name="verified" className="text-primary text-[16px]" />
-                <span>NIMC Direct Verification Rails</span>
+                <span>Identity &amp; business checks</span>
               </div>
             </div>
           </div>
@@ -404,12 +404,12 @@ export function DesktopVerificationIntroScreen({
               </button>
             </div>
             <div className="flex flex-col gap-space-sm text-body-md font-body-md text-text-secondary">
-              <p>Connecting to secure identity gateway...</p>
+              <p>Opening verification...</p>
               <div className="w-full bg-surface-container rounded-full h-2 overflow-hidden">
                 <div className="bg-primary h-full w-2/3 animate-pulse" />
               </div>
               <span className="text-caption font-caption text-text-tertiary">
-                Launching secured camera &amp; NIMC verification interface.
+                Starting your identity verification steps.
               </span>
             </div>
             <div className="flex justify-end gap-space-sm pt-space-md">

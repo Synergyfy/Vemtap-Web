@@ -13,6 +13,8 @@ import {
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { formatNaira, getLocationPricing } from '../locationPricing';
 import { useBusinessOfferings, type OfferingsState } from '../../context/BusinessOfferingsContext';
+import { useLocationAccess } from '../../hooks/business/useSubscription';
+import { purchaseTermLabel } from '../locationAccessUi';
 import { STAFF_PAGE_DEFAULTS, toApiPermissions } from '../teamLive';
 
 interface DesktopBusinessAddBranchScreenProps {
@@ -61,6 +63,8 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
   const [role, setRole] = useState('Branch Manager');
   // Live: the preview cards reflect what has been typed; there is no map / reach data yet.
   const live = hasApiConfig();
+  const accessQuery = useLocationAccess();
+  const access = live ? accessQuery.data ?? null : null;
   const leadInitials =
     leadName
       .split(/\s+/)
@@ -197,9 +201,14 @@ export function DesktopBusinessAddBranchScreen({ onBack, onSaved }: DesktopBusin
               Add Branch Location
             </h1>
             <p className="font-body-md text-body-md text-text-secondary">
-              Expand your customer reach. Each additional location costs{' '}
-              {formatNaira(getLocationPricing().pricePerAdditionalLocation)} (one-time) — payable at checkout.
-              Enabling services later at this branch does <strong>not</strong> incur another location fee.
+              Expand your customer reach.{' '}
+              {live
+                ? access
+                  ? access.purchaseOption.available
+                    ? purchaseTermLabel(access.purchaseOption)
+                    : `This location uses your plan allowance (${access.usage.total} of ${access.allowance.total} used).`
+                  : 'Location allowance is loading from your plan configuration.'
+                : `Each additional location costs ${formatNaira(getLocationPricing().pricePerAdditionalLocation)} (one-time) — payable at checkout. Enabling services later at this branch does not incur another location fee.`}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-space-md">

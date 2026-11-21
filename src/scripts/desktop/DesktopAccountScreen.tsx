@@ -249,7 +249,7 @@ export function DesktopAccountScreen({ onNav, onBack, onNavigate, onSignOut }: D
                   Sign Out
                 </button>
                 <p className="font-caption text-caption text-text-tertiary text-center">
-                  VEMTAP Consumer • Made with pride in Abuja
+                  VEMTAP Customer • Made with pride in Abuja
                 </p>
               </section>
             </div>

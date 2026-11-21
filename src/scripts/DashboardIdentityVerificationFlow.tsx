@@ -23,7 +23,7 @@ export function DashboardIdentityVerificationFlow({
     ...INITIAL_VERIFICATION_DRAFT,
     idNumber: '',
     legalName: '',
-    dateOfBirth: '',
+    representativeName: '',
   }));
   const changeDraft = (patch: Partial<VerificationDraft>) => setDraft((current) => ({ ...current, ...patch }));
   const changeIdType = (idType: VerificationIdType) => changeDraft({ idType, idNumber: '' });
@@ -40,12 +40,13 @@ export function DashboardIdentityVerificationFlow({
       />
     ) : (
       <DesktopVerificationIdFormScreen
+        key={draft.idType}
         inDashboard
         dashboardNav={onNav}
         onBack={() => setStep('type')}
         draft={draft}
         onDraftChange={changeDraft}
-        onResult={onComplete}
+        onResult={(result) => onComplete(result.result)}
       />
     );
   }
@@ -59,11 +60,12 @@ export function DashboardIdentityVerificationFlow({
     />
   ) : (
     <VerificationIdFormScreen
+      key={draft.idType}
       inDashboard
       onBack={() => setStep('type')}
       draft={draft}
       onDraftChange={changeDraft}
-      onResult={onComplete}
+      onResult={(result) => onComplete(result.result)}
     />
   );
 }

@@ -259,6 +259,21 @@ export class SubscriptionsController {
     return this.subscriptionsService.cancelSubscription(businessId);
   }
 
+  @Get('locations/access')
+  @SkipSubscriptionCheck()
+  @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)
+  @ApiOperation({
+    summary: 'View business location allowance, usage and access rules',
+  })
+  @ApiOkResponse({
+    description:
+      'Config-driven location entitlement, restricted branches, plans and purchase options',
+  })
+  async getLocationAccess(@Request() req) {
+    const businessId = await this.getBusinessId(req);
+    return this.subscriptionsService.getLocationAccess(businessId);
+  }
+
   @Get('capabilities')
   @SkipSubscriptionCheck()
   @Roles(UserRole.OWNER, UserRole.ADMIN, UserRole.MANAGER, UserRole.STAFF)

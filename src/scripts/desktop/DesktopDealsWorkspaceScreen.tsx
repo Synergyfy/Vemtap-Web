@@ -10,6 +10,7 @@ import { DealEndDialog, type DealEndRequest } from '../../components/DealEndDial
 import { useBusinessAnalytics } from '../../hooks/business/useBusinessAnalytics';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import type { BusinessOffer } from '../../services/offersService';
+import { dealPrimaryImage } from '../../utils/dealImages';
 import {
   dealBadgeLabel,
   isOfferPaused,
@@ -618,7 +619,7 @@ export function DesktopDealsWorkspaceScreen({
                       onSelect: () => setEndRequest({ kind: 'delete', dealGroupId: groupId(offer), name: offer.name }),
                     },
                   ]}
-                  image={offer.mainImage || LIVE_IMAGE_PLACEHOLDER}
+                  image={dealPrimaryImage(offer) ?? LIVE_IMAGE_PLACEHOLDER}
                   imageAlt={offer.name}
                   badges={
                     <>

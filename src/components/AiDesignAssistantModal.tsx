@@ -36,6 +36,12 @@ const DESCRIPTION_STEPS = [
   'Return here and paste the description into the Storefront Description field.',
 ] as const;
 
+const DEAL_STEPS = [
+  'Copy the prepared prompt — it already contains your deal information — and open an AI tool below.',
+  'Generate and download the media on that provider’s website (image under 2MB, video under 5MB).',
+  'Return to the Deal Gallery and upload the downloaded file into the main or additional slot you chose.',
+] as const;
+
 type CopyState = 'idle' | 'copied' | 'failed';
 
 /**
@@ -56,7 +62,8 @@ export function AiDesignAssistantModal({
   fileHint,
 }: AiDesignAssistantModalProps) {
   const isDescription = assetType === 'description';
-  const steps = isDescription ? DESCRIPTION_STEPS : IMAGE_STEPS;
+  const isDealAsset = assetType === 'deal-image' || assetType === 'deal-video';
+  const steps = isDealAsset ? DEAL_STEPS : isDescription ? DESCRIPTION_STEPS : IMAGE_STEPS;
   const [copyState, setCopyState] = useState<CopyState>('idle');
   const [copiedTo, setCopiedTo] = useState<string | null>(null);
   const [editedPrompt, setEditedPrompt] = useState<string | null>(null);
@@ -141,7 +148,15 @@ export function AiDesignAssistantModal({
         </div>
 
         {/* How it works */}
-        {isDescription ? (
+        {isDealAsset ? (
+          <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
+            VEMTAP prepared a prompt below from the deal information you entered — title, description,
+            products, offer, dates, availability and branches. Review or edit it, copy it into ChatGPT or
+            Google Gemini, generate and download the {assetType === 'deal-video' ? 'video' : 'image'} there,
+            then return and upload it to your Deal Gallery. VEMTAP does not generate media — your own AI
+            provider account and its limits apply.
+          </p>
+        ) : isDescription ? (
           <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
             VEMTAP prepared a prompt below from the business name, category and subcategories you picked.
             Review or edit it, copy it into ChatGPT or Google Gemini, then copy the description they write
@@ -246,6 +261,18 @@ export function AiDesignAssistantModal({
             <p className="font-caption text-caption text-text-secondary leading-relaxed">
               Review the text before publishing. AI copy can include details your business does not
               actually offer. Output length and availability are controlled by the provider you choose.
+            </p>
+          </div>
+        ) : isDealAsset ? (
+          <div className="rounded-xl bg-surface-subtle p-space-sm flex flex-col gap-space-xs">
+            <p className="font-caption text-caption text-text-secondary leading-relaxed">
+              <span className="font-semibold text-text-primary">Upload the downloaded file yourself.</span>{' '}
+              Deal images must be 2MB or smaller and videos 5MB or smaller; only one video is allowed per
+              deal.
+            </p>
+            <p className="font-caption text-caption text-text-secondary leading-relaxed">
+              Review AI media before publishing — generated visuals can show products, packaging or claims
+              your business does not actually offer. The prompt uses your deal details so you stay in control.
             </p>
           </div>
         ) : (

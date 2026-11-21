@@ -1,6 +1,7 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
+import { maskIdNumber } from '../services/verificationService';
 
 interface VerificationCompleteScreenProps {
   onBack: () => void;
@@ -8,12 +9,10 @@ interface VerificationCompleteScreenProps {
   onPreviewStorefront: () => void;
   legalName: string;
   cacNumber: string;
+  businessName?: string;
+  /** True when any check came back from the BytID sandbox. */
+  sandbox?: boolean;
 }
-
-const BURGER_IMG =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBeoDqzO4anB8Z-TU6M-cbD3FQJO-Ip7BzoIsvYZJaOZhcKc7ntuU4bR_ZugHITIMPdjNhg5aBnPkz1omKk8iA6CvNRqbSSfmiHjCMijjw2UANIVzgXlkrnYgguwiQqQY3BAZCu1PSUO1eKTPE0mqQYuTJJhCBd8k6dhqFzHiK-563AAUlOj-cm0UN0aU3l9U1SoGltJeYsMxuI07jAEz2GBpP48CkpTD01PKphMVZQn71RHylcoHyVWQ';
-const BURGER_ALT =
-  'Modern gourmet artisan grill burger with melted smoked cheddar, caramelized onions, fresh microgreens, and crisp fries photographed in warm natural daylight inside an upscale bistro with rich wooden textures and minimalist brand colors.';
 
 function VerifiedShield() {
   return (
@@ -59,21 +58,24 @@ export function VerificationCompleteScreen({
   onPreviewStorefront,
   legalName,
   cacNumber,
+  businessName,
+  sandbox = false,
 }: VerificationCompleteScreenProps) {
+  const maskedRegistration = cacNumber ? maskIdNumber(cacNumber) : 'Not supplied';
   const pillars: Pillar[] = [
-    { icon: 'badge', title: 'Identity', status: 'Verified', detail: `Operator: ${legalName}` },
-    { icon: 'domain_verification', title: 'Business', status: 'CAC verified', detail: `Registry: ${cacNumber}` },
+    { icon: 'badge', title: 'Identity', status: 'Submitted', detail: `Operator: ${legalName || 'Account holder'}` },
+    { icon: 'domain_verification', title: 'Business', status: 'Submitted', detail: `Registry: ${maskedRegistration}` },
     {
       icon: 'storefront',
       title: 'Business Location',
-      status: 'Added',
-      detail: 'Apo District, Abuja • 2 Branches Active',
+      status: 'Optional',
+      detail: 'Manage branches from your dashboard',
     },
     {
       icon: 'palette',
       title: 'Business Profile',
       status: 'Ready',
-      detail: 'Logo, Cover, Catalog & Deal Configured',
+      detail: 'Logo, cover, catalogue & deals',
     },
   ];
 
@@ -81,7 +83,7 @@ export function VerificationCompleteScreen({
     <AppScreen>
       <ScreenHeader title="Verification Complete" onBack={onBack} />
       <div className="flex flex-col w-full flex-1 px-margin pb-space-2xl space-y-space-lg">
-        {/* Celebratory Hero Visual Section */}
+        {/* Hero Visual Section */}
         <div className="flex flex-col items-center text-center pt-space-md">
           <div className="relative flex items-center justify-center w-28 h-28 mb-space-md">
             <div className="absolute inset-0 rounded-full bg-badge-discount-bg blur-xl opacity-90" />
@@ -89,30 +91,35 @@ export function VerificationCompleteScreen({
             <div className="relative w-24 h-24 rounded-full bg-surface-container-lowest shadow-xl flex items-center justify-center">
               <VerifiedShield />
               <div className="absolute -top-1 -right-1 w-7 h-7 rounded-full bg-badge-discount-bg flex items-center justify-center shadow-md">
-                <Icon name="verified" filled className="text-badge-discount-text text-[16px]" />
+                <Icon name={sandbox ? 'science' : 'check'} filled className="text-badge-discount-text text-[16px]" />
               </div>
             </div>
           </div>
-          <div className="inline-flex items-center gap-space-2xs px-3 py-1 rounded-full bg-badge-discount-bg mb-space-xs">
-            <span className="w-2 h-2 rounded-full bg-badge-discount-text animate-pulse" />
-            <span className="font-label-sm text-label-sm text-badge-discount-text">Account 100% Validated</span>
+          <div className="inline-flex items-center gap-space-2xs px-3 py-1 rounded-full bg-surface-tint-blue mb-space-xs">
+            <span className="font-label-sm text-label-sm text-primary">
+              {sandbox ? 'Sandbox checks recorded' : 'Checks submitted'}
+            </span>
           </div>
-          <h2 className="font-heading-md text-heading-md text-text-primary tracking-tight">You're verified</h2>
-          <p className="font-label-sm text-label-sm text-text-secondary">Your business is ready for the next step.</p>
+          <h2 className="font-heading-md text-heading-md text-text-primary tracking-tight">
+            Verification setup complete
+          </h2>
+          <p className="font-label-sm text-label-sm text-text-secondary">
+            Your business is ready for the next step.
+          </p>
         </div>
 
-        {/* Pillars Confirmation Summary Bento Card */}
+        {/* Confirmation Summary Bento Card */}
         <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm space-y-space-md">
           <div className="flex items-center justify-between pb-space-xs">
             <span className="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">
               Verification Breakdown
             </span>
-            <span className="font-label-sm text-label-sm text-badge-discount-text font-semibold flex items-center gap-1">
+            <span className="font-label-sm text-label-sm text-primary font-semibold flex items-center gap-1">
               <Icon name="check_circle" filled className="text-[15px]" />
-              4 / 4 Confirmed
+              Setup summary
             </span>
           </div>
-          {/* Verified Items List */}
+          {/* Submitted Items List */}
           <div className="space-y-space-sm">
             {pillars.map((pillar) => (
               <div className="flex items-start gap-space-sm p-space-xs rounded-lg bg-surface-subtle" key={pillar.icon}>
@@ -122,7 +129,7 @@ export function VerificationCompleteScreen({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <h4 className="font-label-md text-label-md text-text-primary">{pillar.title}</h4>
-                    <span className="font-label-sm text-label-sm text-badge-discount-text flex items-center gap-0.5">
+                    <span className="font-label-sm text-label-sm text-primary flex items-center gap-0.5">
                       <Icon name="done" className="text-[14px]" /> {pillar.status}
                     </span>
                   </div>
@@ -131,43 +138,38 @@ export function VerificationCompleteScreen({
               </div>
             ))}
           </div>
-          {/* Verified Storefront Preview Inset Banner */}
+          {/* Storefront Preview Inset Banner */}
           <div className="pt-space-xs">
             <div className="flex items-center gap-space-sm p-space-xs rounded-xl bg-surface-container-low">
-              <img
-                alt={BURGER_ALT}
-                className="w-14 h-14 rounded-lg object-cover shadow-sm shrink-0"
-                src={BURGER_IMG}
-              />
+              <div className="w-14 h-14 rounded-lg object-cover shadow-sm shrink-0 bg-surface-tint-blue flex items-center justify-center">
+                <Icon name="storefront" className="text-primary text-[24px]" />
+              </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1">
-                  <p className="font-label-md text-label-md text-text-primary truncate">Urban Grill & Bistro</p>
-                  <Icon name="verified" filled className="text-primary-container text-[16px]" />
+                  <p className="font-label-md text-label-md text-text-primary truncate">
+                    {businessName || 'Your business'}
+                  </p>
                 </div>
                 <p className="font-caption text-caption text-text-secondary truncate">
-                  Live Catalog • 1 Active Welcome Voucher
+                  Continue setup from your dashboard
                 </p>
-                <div className="inline-flex items-center gap-1 mt-0.5">
-                  <span className="font-caption text-caption text-badge-discount-text font-medium">
-                    Ready for consumer discovery
-                  </span>
-                </div>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Official Trust Status Banner */}
+        {/* Next Steps Banner */}
         <div className="relative overflow-hidden rounded-xl bg-surface-tint-blue p-space-md">
           <div className="relative z-10 flex items-start gap-space-sm">
             <div className="w-8 h-8 rounded-full bg-primary-container flex items-center justify-center shrink-0 shadow-sm shadow-primary/20">
-              <Icon name="verified_user" className="text-on-primary text-[18px]" />
+              <Icon name="info" className="text-on-primary text-[18px]" />
             </div>
             <div className="space-y-1 flex-1">
-              <h3 className="font-label-md text-label-md text-text-primary font-semibold">Official Trust Status</h3>
+              <h3 className="font-label-md text-label-md text-text-primary font-semibold">What happens next</h3>
               <p className="font-label-sm text-label-sm text-text-secondary">
-                Your official VEMTAP Verified Business badge is now active. Your storefront will feature the verified
-                trust checkmark across all customer discovery searches.
+                {sandbox
+                  ? 'These results came from sandbox checks and are not live verification. Open the status centre to see the recorded outcome.'
+                  : 'Your checks are recorded against your business account. Open the status centre to see the final outcome.'}
               </p>
             </div>
           </div>
@@ -180,7 +182,6 @@ export function VerificationCompleteScreen({
               Your business is ready for the next step.
             </p>
           </div>
-          {/* Primary CTA button */}
           <button
             className="w-full h-11 rounded-xl bg-primary-container text-on-primary font-button-secondary text-button-secondary shadow-md shadow-primary/20 flex items-center justify-center gap-space-xs hover:opacity-95 active:scale-[0.98] transition-all"
             id="activateBtn"
@@ -190,7 +191,6 @@ export function VerificationCompleteScreen({
             <span>Continue to Activation</span>
             <Icon name="arrow_forward" className="text-[18px]" />
           </button>
-          {/* Secondary Text Action */}
           <div className="flex justify-center">
             <button
               className="h-11 px-space-md flex items-center justify-center gap-space-2xs text-text-primary font-button-secondary text-button-secondary hover:text-primary-container transition-colors active:scale-95"
@@ -199,14 +199,13 @@ export function VerificationCompleteScreen({
               onClick={onPreviewStorefront}
             >
               <Icon name="visibility" className="text-[18px]" />
-              <span>Preview Verified Storefront</span>
+              <span>Preview Storefront</span>
             </button>
           </div>
-          {/* Reassurance Footer */}
           <div className="flex items-center justify-center gap-space-2xs text-text-tertiary pt-space-xs">
             <Icon name="lock" className="text-[16px]" />
             <span className="font-caption text-caption text-text-secondary">
-              Encrypted & securely stored via NDPR compliance standards.
+              Verification records are stored securely.
             </span>
           </div>
         </div>

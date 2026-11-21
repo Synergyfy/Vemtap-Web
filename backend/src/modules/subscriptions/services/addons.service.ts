@@ -2,9 +2,13 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
+  ServiceUnavailableException,
   Logger,
   Inject,
+  OnModuleInit,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
@@ -18,12 +22,14 @@ import {
 import { Business } from '../../businesses/entities/business.entity';
 import { PaymentsService } from '../../payments/payments.service';
 import {
+  Payment,
   PaymentPurpose,
   PaymentStatus,
 } from '../../payments/entities/payment.entity';
 import { CreateAddonDto } from '../dto/addons/create-addon.dto';
 import { UpdateAddonDto } from '../dto/addons/update-addon.dto';
 import { PurchaseAddonDto } from '../dto/addons/purchase-addon.dto';
+import { StartLocationCheckoutDto } from '../dto/addons/location-checkout.dto';
 import { SettingsService } from '../../settings/settings.service';
 import { BundleDiscountsService } from './bundle-discounts.service';
 
@@ -45,7 +51,7 @@ const CACHE_KEY_ADDONS_ADMIN = 'addons:admin:list';
 const CACHE_TTL = 3600000; // 1 hour
 
 @Injectable()
-export class AddonsService {
+export class AddonsService implements OnModuleInit {
   private readonly logger = new Logger(AddonsService.name);
 
   constructor(
@@ -60,6 +66,16 @@ export class AddonsService {
     private readonly bundleDiscountsService: BundleDiscountsService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
+
+  onModuleInit() {
+    // Paystack webhooks for standalone location add-on checkouts are routed here.
+    // The handler only acts on its own metadata, so renewal charges with the
+    // ADDON purpose are left untouched.
+    this.paymentsService.registerPurposeHandler(
+      PaymentPurpose.ADDON,
+      (payment) => this.completeLocationCheckout(payment).then(() => undefined),
+    );
+  }
 
   private async invalidateCache() {
     await this.cacheManager.del(CACHE_KEY_ADDONS_PUBLIC);
@@ -290,6 +306,219 @@ export class AddonsService {
     }
 
     return results;
+  }
+
+  /**
+   * Standalone location checkout. The price, currency, and number of slots per
+   * purchase all come from the admin-configured add-on — the client only says
+   * how many locations it wants.
+   */
+  async startLocationCheckout(
+    user: { id: string; email?: string | null; businessId?: string | null },
+    dto: StartLocationCheckoutDto,
+  ) {
+    if (!user.businessId) {
+      throw new ForbiddenException('Locations are bought by a business account');
+    }
+
+    const addon = await this.findOne(dto.addonId);
+    if (!addon.isActive || !this.isLocationAddon(addon)) {
+      throw new BadRequestException('This location add-on is not available');
+    }
+
+    const locationsPerPurchase = Number(addon.additionalLimit) || 0;
+    const price = Number(addon.price) || 0;
+    if (locationsPerPurchase <= 0 || price <= 0) {
+      throw new BadRequestException('This location add-on is not configured');
+    }
+    if (dto.locations % locationsPerPurchase !== 0) {
+      throw new BadRequestException(
+        `Choose a multiple of ${locationsPerPurchase} location${locationsPerPurchase === 1 ? '' : 's'}`,
+      );
+    }
+
+    const rawMax = (addon as any).maxPurchasable ?? (addon as any).metadata?.maxPurchasable;
+    const maxPurchasable = Number(rawMax);
+    if (Number.isFinite(maxPurchasable) && maxPurchasable > 0) {
+      const activeAddons = await this.getActiveBusinessAddons(user.businessId);
+      const purchased = activeAddons.reduce(
+        (sum, businessAddon) => sum + this.locationSlotsForBusinessAddon(businessAddon),
+        0,
+      );
+      if (purchased + dto.locations > maxPurchasable) {
+        throw new BadRequestException(
+          `You can buy at most ${Math.max(0, maxPurchasable - purchased)} more locations`,
+        );
+      }
+    }
+
+    const quantity = dto.locations / locationsPerPurchase;
+    const amount = price * quantity;
+    const reference = `LOC-${randomUUID()}`;
+    const metadata = {
+      kind: 'location_purchase',
+      addonId: addon.id,
+      addonName: addon.name,
+      quantity,
+      locations: dto.locations,
+      locationsPerPurchase,
+      pricePerPurchase: price,
+    };
+
+    const business = await this.businessRepository.findOne({
+      where: { id: user.businessId },
+      relations: ['owner'],
+    });
+    const email =
+      business?.officialEmail || business?.owner?.email || user.email;
+    if (!email) {
+      throw new BadRequestException(
+        'Business owner email is required to initialize payment',
+      );
+    }
+
+    await this.paymentsService.recordPayment({
+      reference,
+      amount,
+      purpose: PaymentPurpose.ADDON,
+      status: PaymentStatus.PENDING,
+      metadata,
+      userId: user.id,
+      businessId: user.businessId,
+    });
+
+    const checkout = await this.paymentsService.initializeTransaction({
+      email,
+      amount: Math.round(amount * 100),
+      reference,
+      currency: addon.currency || 'NGN',
+      metadata: { ...metadata, purpose: PaymentPurpose.ADDON },
+      callbackUrl: dto.callbackUrl,
+    });
+    if (!checkout) {
+      throw new ServiceUnavailableException(
+        'Could not start the card payment; try again',
+      );
+    }
+
+    return {
+      reference,
+      amount,
+      currency: addon.currency || 'NGN',
+      locations: dto.locations,
+      authorizationUrl: checkout.authorization_url,
+      accessCode: checkout.access_code,
+    };
+  }
+
+  /** Check a Paystack return for a location purchase (safe to repeat). */
+  async confirmLocationCheckout(
+    businessId: string | null | undefined,
+    reference: string,
+  ) {
+    const payment = await this.paymentsService.findByReference(reference);
+    if (
+      !payment ||
+      !businessId ||
+      payment.purpose !== PaymentPurpose.ADDON ||
+      payment.businessId !== businessId ||
+      (payment.metadata as { kind?: string } | null)?.kind !==
+        'location_purchase'
+    ) {
+      throw new NotFoundException('Location purchase not found');
+    }
+
+    const completed = await this.completeLocationCheckout(payment);
+    const metadata = (payment.metadata ?? {}) as { locations?: number };
+    return {
+      reference,
+      status: completed ? ('completed' as const) : ('pending' as const),
+      locations: metadata.locations ?? 0,
+    };
+  }
+
+  /**
+   * Award a paid location checkout exactly once. The pending -> success flip is
+   * the lock shared by the return confirmation and the Paystack webhook.
+   */
+  async completeLocationCheckout(payment: Payment): Promise<boolean> {
+    if (payment.status === PaymentStatus.SUCCESS) return true;
+
+    const metadata = (payment.metadata ?? {}) as {
+      kind?: string;
+      addonId?: string;
+      quantity?: number;
+      locations?: number;
+      locationsPerPurchase?: number;
+      targetCapability?: string;
+      additionalLimit?: number;
+    };
+    if (metadata.kind !== 'location_purchase' || !metadata.addonId) {
+      return false;
+    }
+
+    const verified = await this.paymentsService.verifyTransaction(
+      payment.reference,
+    );
+    const paidKobo = Number(verified?.amount ?? 0);
+    if (
+      verified?.status !== 'success' ||
+      paidKobo < Math.round(Number(payment.amount) * 100)
+    ) {
+      return false;
+    }
+
+    const won = await this.paymentsService.claimPending(payment.reference);
+    if (!won) return true;
+
+    const addon = await this.findOne(metadata.addonId);
+    const quantity = Math.max(1, Number(metadata.quantity) || 1);
+    const purchasedAt = new Date();
+    const expiresAt = addon.isOneTime
+      ? new Date('2099-12-31')
+      : new Date(purchasedAt.getTime() + (addon.durationDays || 30) * 86_400_000);
+
+    await this.businessAddonRepository.save(
+      this.businessAddonRepository.create({
+        addonId: addon.id,
+        businessId: payment.businessId,
+        status: BusinessAddOnStatus.ACTIVE,
+        purchasedAt,
+        expiresAt,
+        quantity,
+        totalPaid: Number(payment.amount),
+        paymentReference: payment.reference,
+        metadata: {
+          addonType: addon.type,
+          targetCapability: addon.targetCapability,
+          additionalLimit: addon.additionalLimit,
+          ...metadata,
+        },
+      }),
+    );
+
+    return true;
+  }
+
+  private isLocationAddon(addon: AddOn): boolean {
+    const value = (addon.targetCapability || '').trim().toLowerCase();
+    return (
+      addon.type === AddOnType.RESOURCE &&
+      (value === 'branches' ||
+        value === 'branchlimit' ||
+        value === 'locations' ||
+        value === 'locationlimit')
+    );
+  }
+
+  private locationSlotsForBusinessAddon(businessAddon: BusinessAddOn): number {
+    const addon = businessAddon.addon;
+    if (!addon || !this.isLocationAddon(addon)) return 0;
+    const rawLimit = Number(
+      businessAddon.metadata?.additionalLimit ?? addon.additionalLimit ?? 0,
+    );
+    const quantity = Math.max(1, Number(businessAddon.quantity) || 1);
+    return Math.max(0, Number.isFinite(rawLimit) ? rawLimit : 0) * quantity;
   }
 
   async purchasePlanWithAddons(

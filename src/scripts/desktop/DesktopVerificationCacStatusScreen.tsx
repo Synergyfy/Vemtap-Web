@@ -33,7 +33,7 @@ export function DesktopVerificationCacStatusScreen({
               <div className="h-1.5 w-6 rounded-full bg-primary-container" />
               <div className="h-1.5 w-8 rounded-full bg-primary-container shadow-sm" />
               <span className="font-caption text-caption text-text-secondary ml-space-xs font-medium">
-                100% Onboarding Flow
+                Business details
               </span>
             </div>
           </div>
@@ -97,8 +97,7 @@ export function DesktopVerificationCacStatusScreen({
                   <div className="flex items-start gap-space-xs">
                     <Icon name="stars" filled className="text-primary text-[20px] mt-0.5 shrink-0" />
                     <p className="font-label-md text-label-md text-on-primary-fixed-variant leading-snug">
-                      Unlocks official <strong className="font-semibold">Verified Business badge</strong> &amp; higher
-                      rank visibility across Abuja &amp; Lagos consumer feeds.
+                      Allows your business registration to be checked during verification.
                     </p>
                   </div>
                 </div>
@@ -232,8 +231,7 @@ export function DesktopVerificationCacStatusScreen({
           <div className="mt-space-2xl flex items-center justify-center gap-space-xs text-text-tertiary font-caption text-caption text-center">
             <Icon name="lock" className="text-[16px] text-badge-discount-text" />
             <span>
-              Official CAC registry validation is strictly encrypted under NDPR compliance guidelines and secure banking
-              protocols.
+              Your details are handled securely during verification.
             </span>
           </div>
         </div>

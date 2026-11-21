@@ -21,6 +21,14 @@ export const isItemActive = (item: CatalogueItem) =>
 
 export const isService = (item: CatalogueItem) => item.itemType === 'service';
 
+/**
+ * The item's own display image. Category art is deliberately not used: a live
+ * product without its own photo renders the shared grey cart tile until the
+ * merchant uploads one.
+ */
+export const firstUsableItemImage = (item: CatalogueItem | null | undefined) =>
+  [item?.mainImage, ...(item?.galleryImages ?? [])].find((image) => Boolean(image?.trim()))?.trim() ?? null;
+
 /** At or below the item's own low-stock threshold (products that track stock only). */
 export const isLowStock = (item: CatalogueItem) =>
   !isService(item) &&

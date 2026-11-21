@@ -70,7 +70,7 @@ export function SupportLegalScreen({ onBack, onNavigate }: SupportLegalScreenPro
         </RowGroup>
 
         <p className="font-caption text-caption text-text-tertiary text-center pt-space-xs">
-          VEMTAP Consumer v2.4.0 • Made with pride in Abuja
+          VEMTAP Customer v2.4.0 • Made with pride in Abuja
         </p>
       </main>
     </AppScreen>

@@ -1,29 +1,26 @@
 import { useState } from 'react';
-import { useDealBranches, useDealBundleCatalog } from '../../hooks/business/useDealStudioLive';
 import { Icon } from '../../components/ui/Icon';
-import { getActiveVariants } from '../productVariants';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
 import type { ProductDraft } from './desktopProductDraft';
 import type { DealStudioDraft } from './desktopDealStudio';
-import { formatDealValidity } from './desktopDealStudio';
+import { DEAL_PUBLICATION_COPY, publishDeal, type DealPublicationResult } from '../deals/dealPublication';
+import { DealMediaPreview } from '../deals/DealMediaGallery';
 import {
-  DEAL_TYPE_OPTIONS,
-  claimLimitLabel,
   dealBadgeLabel,
   dealTypeTitle,
-  describeComboRules,
-  formatFlashValidity,
-  isCurrentPriceDeal,
+  describeQuantityTiers,
+  formatDealAmount,
+  formatDealDate,
+  galleryDealMedia,
+  mainDealMedia,
   resolveDealPricing,
+  selectedRegularTotal,
   validateDealConfiguration,
+  validateDealGallery,
+  validateDealInformation,
 } from '../deals/dealStudioShared';
-import {
-  DEAL_PUBLICATION_COPY,
-  publishDeal,
-  type DealPublicationResult,
-} from '../deals/dealPublication';
-import { draftImage, draftImageAlt } from './draftImage';
+import { useDealProductCatalog } from '../../hooks/business/useDealStudioLive';
 
 interface DesktopDealStudioStep4ScreenProps {
   draft: ProductDraft;
@@ -31,667 +28,234 @@ interface DesktopDealStudioStep4ScreenProps {
   onBack: () => void;
   onEditOffer: () => void;
   onEditRules: () => void;
+  onEditGallery: () => void;
   onEditLocations: () => void;
   onPublish: () => void;
-  /** Live: publishes for real and resolves with the outcome the modal shows. */
   livePublish?: () => Promise<DealPublicationResult>;
-  onAnalytics: () => void;
+  onAnalytics?: () => void;
   onSaveDraft: () => void;
   onNav?: (key: string) => void;
 }
 
-const SHOWCASE_IMAGES: Array<{ src: string; alt: string }> = [
-  {
-    src: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBIDbVLmuz5V80aoA7UySCRNnywXaqopQlvjH8hejoFvdo-v2c_jZiSelr-kE1L6BB2hp5RlB1Rv7NNwMGW8y0vX934t6xlstTsBMcIBGTrM0P9q-xOj171VJVDVVDxBt3GpcCUbPTz0hQi6J77qOTonBLDPopUs9ls55WsIVigHo2oANgMGZIbTArM60PBBXxyre_x2wVIsPIBBUS14WHfgAtda5G7TR1cKBkZSQmW7ggUFiPP8B_dgg',
-    alt: 'A sizzling, freshly carved woodfire aged ribeye steak garnished with rosemary butter on a slate platter in a modern steakhouse setting. Ambient warm cinematic restaurant lighting, deep rich mahogany tones, gourmet food photography.',
-  },
-];
+const STEPS = ['Deal & Products', 'Offer Setup', 'Deal Information', 'Deal Gallery', 'Review & Publish'];
 
-const DAY_ORDER: Array<{ key: keyof DealStudioDraft['days']; label: string }> = [
-  { key: 'mon', label: 'Mon' },
-  { key: 'tue', label: 'Tue' },
-  { key: 'wed', label: 'Wed' },
-  { key: 'thu', label: 'Thu' },
-  { key: 'fri', label: 'Fri' },
-  { key: 'sat', label: 'Sat' },
-  { key: 'sun', label: 'Sun' },
-];
-
-const TO_NUMBER = (value: string) => {
-  const parsed = Number.parseInt(value.replace(/\D/g, ''), 10);
-  return Number.isNaN(parsed) ? 0 : parsed;
-};
-
-const FORMAT_AMOUNT = (value: number) => value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-
+/** Step 5: customer preview and publish for desktop. */
 export function DesktopDealStudioStep4Screen({
-  draft,
   studio,
   onBack,
   onEditOffer,
   onEditRules,
+  onEditGallery,
   onEditLocations,
   onPublish,
   livePublish,
-  onAnalytics,
   onSaveDraft,
   onNav,
 }: DesktopDealStudioStep4ScreenProps) {
-  const [showModal, setShowModal] = useState(false);
   const [publication, setPublication] = useState<DealPublicationResult | null>(null);
-
-  const activeVariants = getActiveVariants(draft);
-  const variantPriceSource =
-    activeVariants.find((variant) => variant.name === 'Regular')?.price ?? activeVariants[0]?.price ?? draft.basePrice;
-  const parsedVariantPrice = TO_NUMBER(variantPriceSource);
-  const basePrice = parsedVariantPrice > 0 ? parsedVariantPrice : TO_NUMBER(draft.basePrice);
-  const discount = studio.discountPct;
-  const bundleCatalog = useDealBundleCatalog(draft.title, basePrice);
-  // The business's branches picked in step 3.
-  const dealBranches = useDealBranches(studio);
-  const pricing = resolveDealPricing(studio, basePrice, bundleCatalog);
-  const dealPrice = pricing.dealPrice;
-  const savings = pricing.savings;
-  const savingsPct = pricing.savingsPct;
-  const isCurrent = isCurrentPriceDeal(studio);
-  const strategyTitle = dealTypeTitle(studio.strategy);
-  const strategyIcon = isCurrent
-    ? 'payments'
-    : DEAL_TYPE_OPTIONS.find((option) => option.id === studio.strategy)?.icon ?? 'percent';
-  const comboRules = studio.strategy === 'combo' ? describeComboRules(studio.combo, basePrice, bundleCatalog) : [];
-
-  // Everything that must hold before the deal can be published: pricing rules
-  // plus the operational requirements the storefront/customers rely on.
-  const readinessErrors: string[] = [
-    ...validateDealConfiguration(studio, basePrice, bundleCatalog),
-    ...(studio.vouchers <= 0 ? ['Set the total promotional quantity to at least 1.'] : []),
-    ...(studio.claimSteps.length === 0 ? ['Add at least one “how to claim” instruction.'] : []),
-    ...(studio.terms.length === 0 ? ['Add at least one term & condition.'] : []),
-    ...(dealBranches.selectedIds.length === 0
-      ? ['Select at least one participating branch in Step 3.']
-      : []),
-    ...(Object.values(studio.days).every((value) => !value) ? ['Select at least one redemption day.'] : []),
-  ];
-  const canPublish = readinessErrors.length === 0;
-
+  const [showModal, setShowModal] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const handlePublish = () => {
-    if (!canPublish || publishing) return;
-    if (livePublish) {
-      // Live: the modal shows what the API actually did; failures surface in the flow's banner.
-      setPublishing(true);
-      livePublish()
-        .then((result) => {
-          setPublication(result);
-          setShowModal(true);
-        })
-        .catch(() => undefined)
-        .finally(() => setPublishing(false));
-      return;
-    }
-    // The status here is whatever the service returns — not an assumption.
-    setPublication(publishDeal({ dealTitle: draft.title, studio }));
-    setShowModal(true);
-  };
-  const strategyDetail = isCurrent
-    ? 'Current Price (no discount — customers pay the listed price)'
-    : studio.strategy === 'fixed'
-      ? `Fixed Amount Off (₦${FORMAT_AMOUNT(studio.fixed.amountOff)} off${
-          studio.fixed.minSpend > 0 ? ` • min spend ₦${FORMAT_AMOUNT(studio.fixed.minSpend)}` : ''
-        })`
-      : studio.strategy === 'tiered'
-        ? `Tiered / Flash Happy Hour (${studio.flash.discountPct}% off in window)`
-        : studio.strategy === 'combo'
-          ? (comboRules[0] ?? 'Combo & Bundle Deal')
-          : `Percentage Discount (${discount}% Off)`;
-  const activeBranches = dealBranches.selected.map((branch) => ({
-    key: branch.id,
-    label: branch.name,
-  }));
-  const activeDays = DAY_ORDER.filter((day) => studio.days[day.key]);
-  const dayIndices = activeDays.map((day) => DAY_ORDER.findIndex((entry) => entry.key === day.key));
-  const contiguous =
-    activeDays.length > 1 && dayIndices.every((value, index) => index === 0 || value === dayIndices[index - 1] + 1);
-  const daysLabel =
-    activeDays.length === 0
-      ? 'No Eligible Days'
-      : contiguous
-        ? `${activeDays[0].label} – ${activeDays[activeDays.length - 1].label}`
-        : activeDays.map((day) => day.label).join(', ');
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const { catalog } = useDealProductCatalog();
+  const selectedProducts = catalog.filter((product) => studio.productIds.includes(product.id));
+  const regularTotal = selectedRegularTotal(studio, catalog);
+  const pricing = resolveDealPricing(studio, regularTotal, catalog);
+  const errors = [
+    ...validateDealConfiguration(studio, regularTotal, catalog),
+    ...validateDealInformation(studio),
+    ...validateDealGallery(studio),
+  ];
+  const canPublish = errors.length === 0 && !publishing;
+  const title = studio.title.trim() || dealTypeTitle(studio.structure ?? null);
+  const mainMedia = mainDealMedia(studio);
+  const galleryMedia = galleryDealMedia(studio);
 
-  const claimLimit = claimLimitLabel(studio);
-  const giftingPrivileges = !studio.gifting ? 'Not Allowed' : studio.otpVerify ? 'Allowed with OTP' : 'Allowed';
+  const handlePublish = async () => {
+    if (!canPublish || publication) return;
+    setPublishing(true);
+    setPublishError(null);
+    try {
+      const result = livePublish ? await livePublish() : publishDeal({ dealTitle: title, studio });
+      setPublication(result);
+      setShowModal(true);
+    } catch (error) {
+      setPublishError(error instanceof Error ? error.message : 'Could not publish this deal.');
+    } finally {
+      setPublishing(false);
+    }
+  };
 
   const inner = (
     <>
-      <div className="w-full max-w-7xl mx-auto px-space-xl py-space-xl flex flex-col gap-space-2xl">
-        <div className="flex flex-col gap-space-md">
-          <div className="flex flex-wrap items-center justify-between gap-space-md">
-            <div className="flex items-center gap-space-xs font-caption text-caption text-on-surface-variant">
-              <span className="hover:text-primary transition-colors cursor-pointer">Catalog Workflow</span>
-              <Icon name="chevron_right" className="text-[14px]" />
-              <span className="hover:text-primary transition-colors cursor-pointer">Deal Studio</span>
-              <Icon name="chevron_right" className="text-[14px]" />
-              <span className="text-on-surface font-semibold">Step 4 of 4: Final Review &amp; Launch</span>
-            </div>
-            <div className="flex items-center gap-space-xs px-space-sm py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text">
-              <Icon name="verified" className="text-[16px]" />
-              <span className="font-caption text-caption font-semibold tracking-wide uppercase">Ready to Publish</span>
-            </div>
-          </div>
+      <div className="w-full bg-surface-container-lowest px-space-xl py-space-lg shadow-sm">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-space-md">
           <div className="flex flex-col gap-space-2xs">
-            <div className="w-full h-1.5 rounded-full bg-surface-container overflow-hidden">
-              <div className="h-full bg-primary-container rounded-full transition-all duration-700 ease-out" style={{ width: '100%' }} />
+            <div className="flex items-center gap-space-xs text-secondary font-caption text-caption">
+              <span>Catalog Workflow</span>
+              <Icon name="chevron_right" className="text-[14px]" />
+              <span>Deal Studio</span>
+              <Icon name="chevron_right" className="text-[14px]" />
+              <span className="text-primary font-semibold">Step 5 of 5: Review & Publish</span>
             </div>
-            <div className="flex items-center justify-between font-caption text-caption text-on-surface-variant">
-              <span className="font-medium text-primary">100% Complete</span>
-              <span>Automated Pre-Flight Check: Passed</span>
-            </div>
-          </div>
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-space-md pt-space-xs">
-            <div className="max-w-2xl">
-              <h1 className="font-heading-lg text-heading-lg text-on-surface tracking-tight">
-                Deal Configured &amp; Verified!
-              </h1>
-              <p className="font-body-md text-body-md text-on-surface-variant mt-space-2xs">
-                Review all terms, rules, pricing, and audience reach before publishing live to local members.
-              </p>
-            </div>
-            <div className="flex items-center gap-space-sm">
-              <button
-                type="button"
-                onClick={onBack}
-                className="px-space-md py-space-xs rounded-xl bg-surface-container text-on-surface font-label-md text-label-md hover:bg-surface-container-high transition-colors flex items-center gap-space-2xs"
-              >
-                <Icon name="arrow_back" className="text-[18px]" />
-                <span>Back to Step 3</span>
-              </button>
-              <button
-                type="button"
-                className="px-space-md py-space-xs rounded-xl bg-surface-container text-on-surface font-label-md text-label-md hover:bg-surface-container-high transition-colors flex items-center gap-space-2xs"
-              >
-                <Icon name="preview" className="text-[18px]" />
-                <span>Customer Mobile Preview</span>
-              </button>
+            <div className="flex flex-wrap items-center gap-space-sm mt-space-2xs">
+              {STEPS.map((label, index) => (
+                <div key={label} className="flex items-center gap-space-xs">
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center font-caption text-caption font-bold ${
+                    index < 3 ? 'bg-badge-discount-bg text-badge-discount-text' : 'bg-primary text-on-primary'
+                  }`}>
+                    {index < 3 ? <Icon name="check" className="text-[15px]" /> : index + 1}
+                  </span>
+                  <span className="font-label-sm text-label-sm text-primary font-semibold">{label}</span>
+                </div>
+              ))}
             </div>
           </div>
+          <span className="font-label-md text-label-md text-primary font-bold">100% Completed</span>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto w-full px-space-xl pt-space-xl pb-space-3xl">
+        <div className="flex flex-col gap-space-2xs mb-space-lg">
+          <h1 className="font-heading-lg text-heading-lg text-on-surface font-bold tracking-tight">Preview before publishing</h1>
+          <p className="font-body-md text-body-md text-on-surface-variant max-w-3xl">
+            This is how the deal will appear to customers. Publish when everything looks right.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-xl items-start">
-          <div className="lg:col-span-7 flex flex-col gap-space-xl">
-            <div className="rounded-xl bg-surface-container-lowest shadow-sm p-space-lg flex flex-col gap-space-lg transition-all hover:shadow-md">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-space-xs text-primary">
-                  <Icon name="restaurant" className="text-[20px]" />
-                  <span className="font-heading-sm text-heading-sm text-on-surface">Offer Showcase</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={onEditOffer}
-                  className="px-space-sm py-space-2xs rounded-lg bg-surface-tint-blue text-primary font-label-sm text-label-sm hover:bg-secondary-fixed transition-colors flex items-center gap-space-2xs"
-                >
-                  <Icon name="edit" className="text-[16px]" />
-                  <span>Edit Offer</span>
-                </button>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-space-lg">
-                <div className="relative w-full sm:w-48 h-36 rounded-lg overflow-hidden bg-surface-container shrink-0">
-                  <img className="w-full h-full object-cover" alt={draftImageAlt(draft.title, SHOWCASE_IMAGES[0].alt)} src={draftImage(draft.mainImage, SHOWCASE_IMAGES[0].src)} />
-                  <div className="absolute top-space-xs left-space-xs px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center gap-space-2xs shadow-sm">
-                    <Icon name="local_offer" className="text-[14px]" />
-                    <span>{dealBadgeLabel(studio, savingsPct)}</span>
-                  </div>
-                </div>
-                <div className="flex flex-col justify-between flex-1 gap-space-sm">
-                  <div className="flex flex-col gap-space-2xs">
-                    <div className="flex flex-wrap items-center gap-space-xs">
-                      <span className="px-space-xs py-space-2xs rounded-full bg-surface-container text-on-surface-variant font-caption text-caption flex items-center gap-space-2xs">
-                        <Icon name="sync" className="text-[14px] text-badge-discount-text" />
-                        <span>Auto-Synced</span>
-                      </span>
-                      <span className="px-space-xs py-space-2xs rounded-full bg-tertiary-fixed text-on-tertiary-fixed-variant font-caption text-caption font-semibold flex items-center gap-space-2xs">
-                        <Icon name={strategyIcon} className="text-[14px]" />
-                        <span>{strategyTitle}</span>
-                      </span>
-                    </div>
-                    <h3 className="font-heading-sm text-heading-sm text-on-surface">
-                      {studio.strategy === 'percentage'
-                        ? `${discount}% Off ${draft.title}`
-                        : `${strategyTitle}: ${draft.title}`}
-                    </h3>
-                    <p className="font-caption text-caption text-on-surface-variant line-clamp-2">
-                      {studio.strategy === 'tiered'
-                        ? `Validity: ${formatFlashValidity(studio.flash)} • ${studio.flash.days}, ${studio.flash.window}`
-                        : studio.strategy === 'combo'
-                          ? (comboRules[1] ?? comboRules[0] ?? '')
-                          : `${strategyDetail}${draft.description ? ` — ${draft.description}` : ''}`}
-                    </p>
-                  </div>
-                  <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-wrap items-baseline justify-between gap-space-xs">
-                    <div className="flex items-baseline gap-space-xs">
-                      <span className="font-caption text-caption text-on-surface-variant">
-                        {isCurrent ? 'Deal Price:' : 'Member Pay:'}
-                      </span>
-                      <span className="font-heading-md text-heading-md text-primary font-bold">
-                        ₦{FORMAT_AMOUNT(dealPrice)}
-                      </span>
-                      {!isCurrent && (
-                        <span className="font-label-sm text-label-sm text-text-tertiary line-through">
-                          ₦{FORMAT_AMOUNT(pricing.originalTotal)}
-                        </span>
-                      )}
-                    </div>
-                    <span className="font-caption text-caption font-semibold text-badge-discount-text">
-                      {isCurrent
-                        ? 'Listed price — no discount'
-                        : `Save ₦${FORMAT_AMOUNT(Math.max(savings, 0))} (${savingsPct}% Off)`}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-surface-container-lowest shadow-sm p-space-lg flex flex-col gap-space-lg transition-all hover:shadow-md">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-space-xs text-primary">
-                  <Icon name="tune" className="text-[20px]" />
-                  <span className="font-heading-sm text-heading-sm text-on-surface">Limits, Rules &amp; Gifting</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={onEditRules}
-                  className="px-space-sm py-space-2xs rounded-lg bg-surface-tint-blue text-primary font-label-sm text-label-sm hover:bg-secondary-fixed transition-colors flex items-center gap-space-2xs"
-                >
-                  <Icon name="edit" className="text-[16px]" />
-                  <span>Edit Rules</span>
-                </button>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-md">
-                <div className="p-space-md rounded-xl bg-surface-subtle flex items-start gap-space-sm">
-                  <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center shrink-0 text-primary">
-                    <Icon name="inventory_2" className="text-[20px]" />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="font-caption text-caption text-on-surface-variant">Quantity Limit</span>
-                    <span className="font-label-md text-label-md text-on-surface font-semibold">
-                      {studio.vouchers} Total Units
-                    </span>
-                    <span className="font-caption text-caption text-badge-discount-text flex items-center gap-space-2xs mt-0.5">
-                      <Icon name="lock" className="text-[12px]" /> Total promotional stock
-                    </span>
-                  </div>
-                </div>
-                <div className="p-space-md rounded-xl bg-surface-subtle flex items-start gap-space-sm">
-                  <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center shrink-0 text-primary">
-                    <Icon name="person_check" className="text-[20px]" />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="font-caption text-caption text-on-surface-variant">Claim Limit</span>
-                    <span className="font-label-md text-label-md text-on-surface font-semibold">{claimLimit}</span>
-                    <span className="font-caption text-caption text-on-surface-variant mt-0.5">
-                      {studio.claimOnce
-                        ? 'Once per customer, ever'
-                        : studio.unlimitedClaims
-                          ? 'No per-customer cap'
-                          : 'Counted per calendar month'}
-                    </span>
-                  </div>
-                </div>
-                <div className="p-space-md rounded-xl bg-surface-subtle flex items-start gap-space-sm">
-                  <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center shrink-0 text-primary">
-                    <Icon name="card_giftcard" className="text-[20px]" />
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="font-caption text-caption text-on-surface-variant">Gifting Privileges</span>
-                    <span className="font-label-md text-label-md text-on-surface font-semibold">
-                      {giftingPrivileges}
-                    </span>
-                    <span className="font-caption text-caption text-on-surface-variant mt-0.5">
-                      {!studio.gifting ? 'Customers can’t pass it on' : studio.otpVerify ? 'Recipient verified via mobile token' : 'No recipient verification'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-space-sm pt-space-xs">
-                <span className="font-caption text-caption text-on-surface-variant">Redemption Modes:</span>
-                {studio.dineIn && (
-                  <div className="flex items-center gap-space-2xs px-space-sm py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                    <Icon name="table_restaurant" className="text-[14px]" /> Dine-In Enabled
-                  </div>
-                )}
-                {studio.pickup && (
-                  <div className="flex items-center gap-space-2xs px-space-sm py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                    <Icon name="shopping_bag" className="text-[14px]" /> Pickup Enabled
-                  </div>
-                )}
-                {studio.reservation && (
-                  <div className="flex items-center gap-space-2xs px-space-sm py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                    <Icon name="event_seat" className="text-[14px]" /> Reservations Enabled
-                  </div>
-                )}
-                <div className="flex items-center gap-space-2xs px-space-sm py-space-2xs rounded-full bg-surface-container text-on-surface-variant font-caption text-caption">
-                  <Icon name="block" className="text-[14px]" /> Delivery Not Allowed
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-surface-container-lowest shadow-sm p-space-lg flex flex-col gap-space-lg transition-all hover:shadow-md">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-space-xs text-primary">
-                  <Icon name="storefront" className="text-[20px]" />
-                  <span className="font-heading-sm text-heading-sm text-on-surface">Branches &amp; Schedule</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={onEditLocations}
-                  className="px-space-sm py-space-2xs rounded-lg bg-surface-tint-blue text-primary font-label-sm text-label-sm hover:bg-secondary-fixed transition-colors flex items-center gap-space-2xs"
-                >
-                  <Icon name="edit" className="text-[16px]" />
-                  <span>Edit Locations</span>
-                </button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-space-md">
-                <div className="p-space-md rounded-xl bg-surface-subtle flex flex-col gap-space-xs">
-                  <span className="font-caption text-caption text-on-surface-variant font-medium">
-                    Eligible Merchant Hubs
+          <div className="lg:col-span-7 flex flex-col gap-space-lg">
+            <div className="bg-surface-canvas rounded-2xl overflow-hidden shadow-sm ring-1 ring-border-subtle max-w-xl">
+              <DealMediaPreview alt={title} className="h-64 w-full" item={mainMedia} />
+              <div className="p-space-md flex flex-col gap-space-xs">
+                <div className="flex items-center justify-between">
+                  <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
+                    {dealBadgeLabel(studio, pricing.savingsPct)}
                   </span>
-                  <div className="flex flex-col gap-space-xs mt-space-2xs">
-                    {activeBranches.map((branch) => (
-                      <div key={branch.key} className="flex items-center justify-between">
-                        <div className="flex items-center gap-space-xs">
-                          <Icon name="pin_drop" className="text-[18px] text-primary" />
-                          <span className="font-label-md text-label-md text-on-surface font-semibold">
-                            {branch.label}
-                          </span>
-                        </div>
-                        <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                          Active
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  {studio.freeDelivery && (
+                    <span className="px-space-xs py-space-2xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold">Free Delivery</span>
+                  )}
                 </div>
-                <div className="p-space-md rounded-xl bg-surface-subtle flex flex-col gap-space-xs">
-                  <span className="font-caption text-caption text-on-surface-variant font-medium">
-                    Redemption Window
-                  </span>
-                  <div className="flex flex-col gap-space-2xs mt-space-2xs">
-                    <div className="flex items-center gap-space-xs">
-                      <Icon name="calendar_month" className="text-[18px] text-on-surface-variant" />
-                      <span className="font-label-md text-label-md text-on-surface font-medium">
-                        {formatDealValidity(studio)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-space-xs">
-                      <Icon name="alarm" className="text-[18px] text-on-surface-variant" />
-                      <span className="font-body-md text-body-md text-on-surface-variant">
-                        {daysLabel} •{' '}
-                        {studio.redeemAllDay
-                          ? 'All Day (24 Hours)'
-                          : `${studio.redeemStart} – ${studio.redeemEnd}`}
-                      </span>
-                    </div>
-                  </div>
+                <h2 className="font-heading-md text-heading-md text-on-surface font-bold">{title}</h2>
+                {studio.description && <p className="font-body-md text-body-md text-on-surface-variant">{studio.description}</p>}
+                <div className="flex items-baseline gap-space-sm">
+                  <span className="font-heading-lg text-heading-lg text-primary font-bold">₦{formatDealAmount(pricing.dealPrice)}</span>
+                  <span className="font-label-md text-label-md text-on-surface-variant line-through">₦{formatDealAmount(pricing.originalTotal)}</span>
+                  <span className="ml-auto font-caption text-caption text-badge-discount-text font-semibold">Save ₦{formatDealAmount(Math.max(pricing.savings, 0))}</span>
                 </div>
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-surface-container-lowest shadow-sm p-space-lg flex flex-col gap-space-lg">
-              <div className="flex items-center gap-space-xs text-primary">
-                <Icon name="assignment_turned_in" className="text-[20px]" />
-                <span className="font-heading-sm text-heading-sm text-on-surface">
-                  Terms &amp; Redemption Steps Audit
-                </span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-space-lg">
-                <div className="flex flex-col gap-space-sm">
-                  <span className="font-label-md text-label-md text-on-surface font-semibold flex items-center gap-space-2xs">
-                    <span className="w-2 h-2 rounded-full bg-primary" />
-                    How Member Claims (Customer Flow)
-                  </span>
-                  <ol className="flex flex-col gap-space-sm pl-space-2xs">
-                    {studio.claimSteps.length === 0 && (
-                      <li className="font-body-md text-body-md text-error">
-                        No claim instructions yet — add them in “How to Claim”.
-                      </li>
-                    )}
-                    {studio.claimSteps.map((step, index) => (
-                      <li
-                        key={`${index}-${step}`}
-                        className="flex items-start gap-space-xs font-body-md text-body-md text-on-surface-variant"
-                      >
-                        <span className="font-semibold text-primary font-caption text-caption px-space-xs py-space-2xs rounded-full bg-surface-tint-blue shrink-0">
-                          {String(index + 1).padStart(2, '0')}
-                        </span>
-                        <span>{step}</span>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-                <div className="flex flex-col gap-space-sm">
-                  <span className="font-label-md text-label-md text-on-surface font-semibold flex items-center gap-space-2xs">
-                    <span className="w-2 h-2 rounded-full bg-secondary" />
-                    Enforced Merchant Terms
-                  </span>
-                  <ul className="flex flex-col gap-space-sm">
-                    {studio.terms.length === 0 && (
-                      <li className="font-body-md text-body-md text-error">
-                        No terms yet — add them in “Terms &amp; Conditions”.
-                      </li>
-                    )}
-                    {studio.terms.map((term, index) => (
-                      <li
-                        key={`${index}-${term}`}
-                        className="flex items-start gap-space-xs font-body-md text-body-md text-on-surface-variant"
-                      >
-                        <Icon name="check_circle" className="text-[18px] text-badge-discount-text shrink-0 mt-0.5" />
-                        <span>{term}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="lg:col-span-5 flex flex-col gap-space-lg lg:sticky lg:top-20">
-            <div className="rounded-xl bg-surface-container-lowest shadow-md p-space-lg flex flex-col gap-space-lg">
-              <div className="flex items-center gap-space-xs text-primary">
-                    <Icon name="rocket_launch" className="text-[20px]" />
-                    <span className="font-heading-sm text-heading-sm text-on-surface">Launch Summary</span>
-                  </div>
-                  <div className="flex flex-col gap-space-sm font-body-md text-body-md text-on-surface-variant">
-                    <div className="flex items-start gap-space-xs">
-                      <Icon name="storefront" className="text-[18px] text-primary mt-0.5" />
-                      <span>
-                        Goes live at{' '}
-                        <strong className="text-on-surface">
-                          {activeBranches.length > 1 ? `${activeBranches.length} branches` : activeBranches[0]?.label ?? 'no branch yet'}
-                        </strong>
-                        , where nearby customers can find and claim it.
-                      </span>
-                    </div>
-                    <div className="flex items-start gap-space-xs">
-                      <Icon name="calendar_month" className="text-[18px] text-primary mt-0.5" />
-                      <span>{formatDealValidity(studio)}</span>
-                    </div>
-                    <div className="flex items-start gap-space-xs">
-                      <Icon name="payments" className="text-[18px] text-badge-discount-text mt-0.5" />
-                      <span>
-                        Customers pay ₦{FORMAT_AMOUNT(dealPrice)} directly to you.
-                      </span>
-                    </div>
-                    {studio.publishedDealGroupId && (
-                      <div className="flex items-start gap-space-xs">
-                        <Icon name="sync" className="text-[18px] text-primary mt-0.5" />
-                        <span>Already published — publishing again updates this deal instead of creating a new one.</span>
-                      </div>
-                    )}
-                  </div>
-                
-              <div className="flex flex-col gap-space-sm pt-space-md">
-                {!canPublish && (
-                  <div className="rounded-xl bg-error/5 border border-error/20 p-space-sm flex flex-col gap-space-2xs">
-                    <span className="font-label-sm text-label-sm text-error font-semibold flex items-center gap-space-2xs">
-                      <Icon name="error" className="text-[16px]" />
-                      Complete these before publishing
-                    </span>
-                    <ul className="flex flex-col gap-1">
-                      {readinessErrors.map((error) => (
-                        <li key={error} className="font-caption text-caption text-error flex items-start gap-space-2xs">
-                          <span className="mt-1 w-1 h-1 rounded-full bg-error shrink-0" />
-                          <span>{error}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={handlePublish}
-                  disabled={!canPublish}
-                  className={`w-full h-14 rounded-xl font-button-primary text-button-primary shadow-lg flex items-center justify-center gap-space-xs text-center transition-all ${
-                    canPublish
-                      ? 'bg-primary-container text-on-primary shadow-primary-container/25 hover:bg-primary active:scale-[0.99] cursor-pointer'
-                      : 'bg-surface-container-high text-text-tertiary shadow-none cursor-not-allowed'
-                  }`}
-                >
-                  <span>{publishing ? 'Publishing…' : studio.publishedDealGroupId ? 'Update Published Deal' : 'Publish Deal to Nearby Feeds'}</span>
-                  <span className="text-lg">{canPublish ? '🔥 🚀' : '🔒'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={onSaveDraft}
-                  className="w-full h-11 rounded-xl bg-surface-subtle text-on-surface-variant font-button-secondary text-button-secondary hover:bg-surface-container hover:text-on-surface transition-colors flex items-center justify-center gap-space-2xs"
-                >
-                  <Icon name="bookmark_border" className="text-[18px]" />
-                  <span>Save Deal as Draft</span>
-                </button>
-                <p className="font-caption text-caption text-text-tertiary text-center px-space-xs mt-space-2xs leading-relaxed">
-                  You can pause redemption, adjust quotas, or cancel this offer at any time from your Merchant Business
-                  Hub.
+                <p className="font-caption text-caption text-on-surface-variant">
+                  {formatDealDate(studio.startDate)} → {formatDealDate(studio.endDate)} • {studio.vouchers} available
                 </p>
               </div>
             </div>
 
-            <div className="rounded-xl bg-surface-container-high/40 p-space-md flex items-center justify-between gap-space-md">
-              <div className="flex items-center gap-space-sm">
-                <Icon name="verified_user" className="text-primary text-[24px]" />
-                <div className="flex flex-col">
-                  <span className="font-label-sm text-label-sm text-on-surface font-semibold">
-                    Pre-Activation Assurance
-                  </span>
-                  <span className="font-caption text-caption text-on-surface-variant">
-                    NDPR compliant customer token routing
-                  </span>
-                </div>
+            <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-label-md text-label-md text-on-surface font-semibold">Deal gallery</span>
+                <span className="font-caption text-caption text-on-surface-variant">{1 + galleryMedia.length} of 5 slots used</span>
               </div>
-              <button type="button" className="font-label-sm text-label-sm text-primary hover:underline font-semibold">
-                Policy Guide
-              </button>
+              <div className="grid grid-cols-5 gap-space-2xs">
+                {[mainMedia, ...galleryMedia].map((item, index) => (
+                  <DealMediaPreview
+                    alt={`${title} media ${index + 1}`}
+                    className="h-20 w-full rounded-lg"
+                    item={item}
+                    key={`${item?.url ?? 'empty'}-${index}`}
+                  />
+                ))}
+              </div>
             </div>
+
+            <div className="bg-surface-container-lowest rounded-xl p-space-md shadow-sm flex flex-col gap-space-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-label-md text-label-md text-on-surface-variant">Deal structure</span>
+                <span className="font-label-md text-label-md text-on-surface font-semibold">{dealTypeTitle(studio.structure ?? null)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-label-md text-label-md text-on-surface-variant">Selected products</span>
+                <span className="font-label-md text-label-md text-on-surface font-semibold">{selectedProducts.length}</span>
+              </div>
+              {selectedProducts.map((product) => (
+                <div key={product.id} className="flex items-center justify-between rounded-lg bg-surface-subtle px-space-sm py-space-2xs">
+                  <span className="font-label-sm text-label-sm text-on-surface truncate">{product.name}</span>
+                  <span className="font-label-sm text-label-sm text-text-secondary">₦{formatDealAmount(product.price)}</span>
+                </div>
+              ))}
+              {studio.structure === 'buy-more-save-more' &&
+                describeQuantityTiers(studio, regularTotal).map((line) => (
+                  <p key={line} className="font-caption text-caption text-text-secondary">{line}</p>
+                ))}
+            </div>
+          </div>
+
+          <div className="lg:col-span-5 flex flex-col gap-space-lg lg:sticky lg:top-20">
+            <div className="bg-surface-canvas rounded-2xl p-space-md shadow-sm">
+              <span className="font-label-md text-label-md text-on-surface font-bold">Final checks</span>
+              {errors.length === 0 ? (
+                <div className="mt-space-sm flex items-start gap-space-xs rounded-xl bg-badge-discount-bg p-space-sm">
+                  <Icon name="check_circle" className="text-badge-discount-text text-[18px]" />
+                  <p className="font-body-md text-body-md text-badge-discount-text font-medium">Everything is ready to publish.</p>
+                </div>
+              ) : (
+                <div className="mt-space-sm rounded-xl bg-error-container p-space-sm flex flex-col gap-1">
+                  {errors.map((error) => (
+                    <p key={error} className="font-caption text-caption text-on-error-container">• {error}</p>
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-space-xs mt-space-md">
+                <button type="button" onClick={onEditOffer} className="px-space-sm py-space-2xs rounded-lg bg-surface-subtle text-primary font-label-sm text-label-sm">Edit offer</button>
+                <button type="button" onClick={onEditRules} className="px-space-sm py-space-2xs rounded-lg bg-surface-subtle text-primary font-label-sm text-label-sm">Edit information</button>
+                <button type="button" onClick={onEditGallery} className="px-space-sm py-space-2xs rounded-lg bg-surface-subtle text-primary font-label-sm text-label-sm">Edit gallery</button>
+                <button type="button" onClick={onEditLocations} className="px-space-sm py-space-2xs rounded-lg bg-surface-subtle text-primary font-label-sm text-label-sm">Edit branches</button>
+              </div>
+            </div>
+            {publishError && (
+              <div className="rounded-xl bg-error-container p-space-sm font-caption text-caption text-on-error-container">{publishError}</div>
+            )}
           </div>
         </div>
       </div>
 
       <div className="sticky bottom-0 left-0 right-0 z-40 bg-surface-canvas/95 backdrop-blur-md px-6 lg:px-12 py-space-md shadow-[0_-4px_20px_rgba(0,0,0,0.06)] border-t border-border-subtle/80">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-space-md">
-          <div className="flex items-center gap-space-sm w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={onBack}
-              className="px-space-md py-space-sm rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface-variant font-button-secondary text-button-secondary transition-colors flex items-center gap-space-xs"
-            >
-              <Icon name="arrow_back" className="text-[18px]" />
-              <span>Back to Step 3: Branch Availability</span>
+          <div className="flex items-center gap-space-sm">
+            <button type="button" onClick={onBack} className="px-space-md py-space-sm rounded-xl bg-surface-container-low text-on-surface-variant font-button-secondary text-button-secondary flex items-center gap-space-xs">
+              <Icon name="arrow_back" className="text-[18px]" /> Back
             </button>
-            <button
-              type="button"
-              onClick={onSaveDraft}
-              className="px-space-md py-space-sm rounded-xl bg-surface-container-low hover:bg-surface-container text-on-surface-variant font-button-secondary text-button-secondary transition-colors flex items-center gap-space-xs"
-            >
-              <Icon name="save" className="text-[18px]" />
-              <span>Save as Draft</span>
+            <button type="button" onClick={onSaveDraft} className="px-space-md py-space-sm rounded-xl bg-surface-container-low text-on-surface-variant font-button-secondary text-button-secondary flex items-center gap-space-xs">
+              <Icon name="save" className="text-[18px]" /> Save as Draft
             </button>
           </div>
-          <div className="flex items-center gap-space-md w-full sm:w-auto justify-end">
-            <button
-              type="button"
-              onClick={handlePublish}
-              disabled={!canPublish}
-              className={`px-space-xl py-space-sm rounded-xl font-button-primary text-button-primary shadow-lg flex items-center justify-center gap-space-xs transition-all ${
-                canPublish
-                  ? 'bg-primary hover:bg-primary-container text-on-primary shadow-primary/20 cursor-pointer'
-                  : 'bg-surface-container-high text-text-tertiary shadow-none cursor-not-allowed opacity-50'
-              }`}
-            >
-              <span>Publish Deal to Nearby Feeds</span>
-              <span className="text-lg">{canPublish ? '🔥 🚀' : '🔒'}</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            disabled={!canPublish}
+            onClick={() => void handlePublish()}
+            className="w-full sm:w-auto px-space-xl py-space-sm rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-space-xs disabled:opacity-40"
+          >
+            <span>{publishing ? 'Publishing…' : publication ? 'Published' : 'Publish Deal'}</span>
+            <Icon name="rocket_launch" className="text-[20px]" />
+          </button>
         </div>
       </div>
 
       {showModal && publication && (
-        <div
-          className="fixed inset-0 z-50 bg-inverse-surface/60 backdrop-blur-sm flex items-center justify-center p-space-md"
-          onClick={() => setShowModal(false)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            onClick={(event) => event.stopPropagation()}
-            className="w-full max-w-md rounded-2xl bg-surface-container-lowest p-space-xl shadow-2xl flex flex-col items-center text-center gap-space-lg transform transition-all"
-          >
-            <div
-              className={`w-16 h-16 rounded-full flex items-center justify-center shadow-inner ${DEAL_PUBLICATION_COPY[publication.status].tone}`}
-            >
+        <div className="fixed inset-0 z-50 bg-on-surface/50 flex items-center justify-center p-space-md">
+          <div className="w-full max-w-md rounded-2xl bg-surface-canvas p-space-lg flex flex-col items-center gap-space-sm text-center">
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center ${DEAL_PUBLICATION_COPY[publication.status].tone}`}>
               <Icon name={DEAL_PUBLICATION_COPY[publication.status].icon} className="text-[36px]" />
             </div>
-            <div className="flex flex-col gap-space-2xs">
-              <h3 className="font-heading-md text-heading-md text-on-surface font-bold">
-                {DEAL_PUBLICATION_COPY[publication.status].title}
-              </h3>
-              <p className="font-body-md text-body-md text-on-surface-variant">{publication.message}</p>
-              <p className="font-caption text-caption text-text-tertiary mt-space-2xs">
-                Status: {publication.status} • Ref {publication.reference}
-              </p>
-            </div>
-            <div className="w-full flex flex-col gap-space-xs">
-              <button
-                type="button"
-                onClick={onAnalytics}
-                className="w-full h-12 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary shadow-md hover:bg-primary-container transition-colors"
-              >
-                Go to Real-Time Analytics
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowModal(false);
-                  onPublish();
-                }}
-                className="w-full h-11 rounded-xl bg-surface-subtle text-on-surface-variant font-label-md text-label-md hover:bg-surface-container transition-colors"
-              >
-                Close Window
-              </button>
-            </div>
+            <h3 className="font-heading-md text-heading-md text-on-surface font-bold">{DEAL_PUBLICATION_COPY[publication.status].title}</h3>
+            <p className="font-body-md text-body-md text-on-surface-variant">{publication.message}</p>
+            <p className="font-caption text-caption text-on-surface-variant">Ref {publication.reference}</p>
+            <button type="button" onClick={() => { setShowModal(false); onPublish(); }} className="w-full h-11 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary">
+              Done
+            </button>
           </div>
         </div>
       )}
     </>
   );
 
-  if (onNav) {
-    return (
-      <MerchantShell activeNav="business-deals" onNav={onNav}>
-        {inner}
-      </MerchantShell>
-    );
-  }
-  return (
-    <BusinessSetupChrome activeNav="deals">
-      {inner}
-    </BusinessSetupChrome>
-  );
+  if (onNav) return <MerchantShell activeNav="business-deals" onNav={onNav}>{inner}</MerchantShell>;
+  return <BusinessSetupChrome activeNav="deals">{inner}</BusinessSetupChrome>;
 }

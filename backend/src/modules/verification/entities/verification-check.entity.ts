@@ -8,6 +8,8 @@ export enum VerificationCheckKind {
   IDENTITY = 'identity',
   /** The business itself (CAC, or an unregistered-business submission). */
   BUSINESS = 'business',
+  /** Is the account holder a director / beneficial owner? Never inferred from CAC lookup alone. */
+  REPRESENTATIVE = 'representative',
 }
 
 export enum VerificationCheckStatus {
@@ -22,6 +24,7 @@ export enum IdentityDocumentType {
   NIN = 'nin',
   DRIVERS_LICENSE = 'drivers_license',
   VOTERS_CARD = 'voters_card',
+  BVN = 'bvn',
   PASSPORT = 'passport',
   /** CAC registration (RC / BN / IT number). */
   CAC = 'cac',
@@ -78,6 +81,10 @@ export class VerificationCheck extends AbstractBaseEntity {
   /** bytID's id for the check, to look it up or match webhooks. */
   @Column({ type: 'varchar', length: 80, nullable: true })
   providerCheckId: string | null;
+
+  /** `test` (sandbox) or `live`, from the provider response. Sandbox outcomes are never shown as live verification. */
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  environment: string | null;
 
   /** Our idempotency reference sent to bytID (unique per attempt). */
   @Index('UQ_verification_checks_reference', { unique: true })

@@ -6,6 +6,7 @@ import { useCatalogueItems } from '../hooks/business/useCatalogueItems';
 import { apiErrorMessage } from '../services/errorMessages';
 import type { BusinessOffer, DealGroupStats, OfferGroupBranchPricing } from '../services/offersService';
 import type { CatalogueItem } from '../services/catalogueItemsService';
+import { dealPrimaryImage, safeDealImageUrl } from '../utils/dealImages';
 import { dealBadgeLabel, isOfferPaused, offerClaimStats, offerSlot, pricingTypeLabel, redemptionWindowLabel } from './catalogueLive';
 import { DealEndDialog, type DealEndRequest } from '../components/DealEndDialog';
 import { Icon } from '../components/ui/Icon';
@@ -147,7 +148,7 @@ function liveDealView(
   const bundled = (offer.itemIds ?? []).map((id) => {
     const item = items.find((entry) => entry.id === id);
     return {
-      img: item?.mainImage || LIVE_IMAGE_PLACEHOLDER,
+      img: safeDealImageUrl(item?.mainImage) ?? LIVE_IMAGE_PLACEHOLDER,
       name: item?.name ?? 'Catalogue item',
       sub: item?.category?.name ?? (item?.itemType === 'service' ? 'Service' : 'Product'),
     };
@@ -158,7 +159,7 @@ function liveDealView(
     discountBadge: dealBadgeLabel(offer),
     categoryLine: [offer.branchName, offer.offerType].filter(Boolean).join(' · ') || 'Deal',
     name: offer.name,
-    heroImg: offer.mainImage || LIVE_IMAGE_PLACEHOLDER,
+    heroImg: dealPrimaryImage(offer) ?? LIVE_IMAGE_PLACEHOLDER,
     heroAlt: offer.name,
     boostHint: 'Reach more nearby customers',
     pricingType: pricingTypeLabel(offer),

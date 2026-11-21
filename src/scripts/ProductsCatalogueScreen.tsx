@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { FilterMenu } from '../components/FilterMenu';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
+import { ProductImage } from '../components/ui/ProductImage';
 import { CartSheet } from '../components/sheets/CartSheet';
 import { BusinessChatBox } from '../components/BusinessChatBox';
 import { useCart } from '../context/CartContext';
@@ -197,8 +198,9 @@ function initialCategorySlug(): string {
   return param ?? 'all';
 }
 
-export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onCheckout, businessCode, kind = 'all', startChat, onChatStarted }: ProductsCatalogueScreenProps) {
+export function ProductsCatalogueScreen({ onBack, onOpenProduct, onCheckout, businessCode, kind = 'all', startChat, onChatStarted }: ProductsCatalogueScreenProps) {
   const [categorySlug, setCategorySlug] = useState<string>(initialCategorySlug);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [minRating, setMinRating] = useState('');
   const [cartOpen, setCartOpen] = useState(false);
@@ -282,6 +284,165 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
 
   const isAdded = (id: string) => Boolean(id) && cart.qtyOf(id) > 0;
 
+  const renderCartControl = (product: ProductCardModel, compact = false) => {
+    if (product.kind === 'service') {
+      return (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpenProduct(product.id, product.display);
+          }}
+          className={`h-9 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold flex items-center justify-center ${
+            compact ? 'px-3 shrink-0' : 'w-full'
+          }`}
+        >
+          View service
+        </button>
+      );
+    }
+    if (isAdded(product.cartId)) {
+      return (
+        <div
+          className={`h-9 rounded-xl bg-badge-discount-bg text-badge-discount-text flex items-center justify-between active:scale-95 transition-all shadow-sm ${
+            compact ? 'px-1.5 w-[104px] shrink-0' : 'w-full px-1.5'
+          }`}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            aria-label={`Remove one ${product.name}`}
+            type="button"
+            onClick={() => cart.decrement(product.cartId)}
+            className="w-7 h-7 rounded-lg bg-surface-canvas/70 hover:bg-surface-canvas flex items-center justify-center text-text-primary active:scale-95 transition-all"
+          >
+            <Icon name="remove" className="text-[16px]" />
+          </button>
+          <span className="font-label-sm text-label-sm font-bold min-w-[16px] text-center">
+            {cart.qtyOf(product.cartId)}
+          </span>
+          <button
+            aria-label={`Add one ${product.name}`}
+            type="button"
+            onClick={() => cart.increment(product.cartId)}
+            className="w-7 h-7 rounded-lg bg-surface-canvas/70 hover:bg-surface-canvas flex items-center justify-center text-text-primary active:scale-95 transition-all"
+          >
+            <Icon name="add" className="text-[16px]" />
+          </button>
+        </div>
+      );
+    }
+    return (
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          addToCart(product);
+        }}
+        className={`add-to-bag-btn h-9 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 active:scale-95 transition-all shadow-sm ${
+          compact ? 'px-3 shrink-0' : 'w-full'
+        }`}
+      >
+        <Icon name="add" className="text-[18px]" />
+        <span>Add</span>
+      </button>
+    );
+  };
+
+  const renderBadges = (product: ProductCardModel) => (
+    <>
+      {product.badge && (
+        <span className={`absolute top-2 left-2 px-1.5 py-0.5 rounded-md font-caption text-[11px] font-bold shadow-sm ${product.badgeClass}`}>
+          {product.badge}
+        </span>
+      )}
+      {product.topRightBadge && (
+        <span className={`absolute top-2 right-2 px-1.5 py-0.5 rounded-md font-caption text-[10px] font-semibold shadow-sm ${product.topRightClass}`}>
+          {product.topRightBadge}
+        </span>
+      )}
+    </>
+  );
+
+  const renderProductCard = (product: ProductCardModel, mode: 'grid' | 'list') => {
+    const image = (
+      <ProductImage
+        alt={product.imageAlt}
+        className="h-full w-full"
+        iconClassName={mode === 'grid' ? 'text-[30px]' : 'text-[22px]'}
+        imageClassName="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+        showLabel={mode === 'grid'}
+        src={product.image}
+      />
+    );
+    const rating = (product.rating || product.reviews) ? (
+      <div className="flex items-center gap-1">
+        <div className="flex items-center text-tertiary">
+          <Icon name="star" className="text-[13px]" filled />
+          <span className="font-caption text-[11px] font-bold ml-0.5 text-text-primary">{product.rating}</span>
+        </div>
+        <span className="font-caption text-[11px] text-text-tertiary">{product.reviews}</span>
+      </div>
+    ) : null;
+    const price = (
+      <div className="flex items-baseline gap-1.5 flex-wrap">
+        <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{product.price}</span>
+        {product.was && <span className="font-caption text-caption text-text-tertiary line-through">{product.was}</span>}
+      </div>
+    );
+
+    if (mode === 'list') {
+      return (
+        <div
+          key={product.id}
+          onClick={() => onOpenProduct(product.id, product.display)}
+          className="group relative flex gap-space-sm bg-surface-canvas rounded-2xl p-2.5 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md cursor-pointer"
+        >
+          <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl">
+            {image}
+            {renderBadges(product)}
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col justify-between gap-1.5">
+            <div className="min-w-0">
+              {rating}
+              <h2 className="font-label-md text-label-md text-text-primary font-semibold line-clamp-2 mt-1 leading-snug">
+                {product.name}
+              </h2>
+            </div>
+            <div className="flex items-end justify-between gap-2">
+              {price}
+              {renderCartControl(product, true)}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div
+        key={product.id}
+        onClick={() => onOpenProduct(product.id, product.display)}
+        className="group relative flex flex-col bg-surface-canvas rounded-2xl shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md cursor-pointer"
+      >
+        <div className="relative w-full aspect-square overflow-hidden">
+          {image}
+          {renderBadges(product)}
+        </div>
+        <div className="p-2.5 flex flex-col flex-1 justify-between gap-1.5">
+          <div>
+            {rating}
+            <h2 className="font-label-md text-label-md text-text-primary font-semibold line-clamp-2 mt-1 leading-snug">
+              {product.name}
+            </h2>
+          </div>
+          <div className="pt-1 flex flex-col gap-1.5">
+            {price}
+            {renderCartControl(product)}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <AppScreen>
       <header className="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[430px] z-50 pt-safe bg-surface-canvas/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
@@ -339,12 +500,12 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
                 </button>
               ) : null}
               <button
-                aria-label="Toggle grid layout"
+                aria-label={viewMode === 'grid' ? 'Switch to list view' : 'Switch to grid view'}
                 type="button"
-                onClick={onListView}
+                onClick={() => setViewMode((mode) => (mode === 'grid' ? 'list' : 'grid'))}
                 className="w-9 h-9 rounded-full bg-surface-subtle flex items-center justify-center text-text-secondary hover:text-text-primary transition-colors"
               >
-                <Icon name="grid_view" className="text-[20px]" />
+                <Icon name={viewMode === 'grid' ? 'view_list' : 'grid_view'} className="text-[20px]" />
               </button>
               <div className="relative">
                 <button
@@ -409,16 +570,27 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
                 <div className="flex items-center p-0.5 rounded-lg bg-surface-subtle ml-1">
                   <button
                     aria-label="Switch to list view"
+                    aria-pressed={viewMode === 'list'}
                     type="button"
-                    onClick={onListView}
-                    className="w-7 h-7 flex items-center justify-center rounded-md text-text-secondary hover:text-text-primary transition-colors"
+                    onClick={() => setViewMode('list')}
+                    className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
+                      viewMode === 'list'
+                        ? 'bg-surface-canvas text-primary shadow-sm'
+                        : 'text-text-secondary hover:text-text-primary'
+                    }`}
                   >
                     <Icon name="view_list" className="text-[18px]" />
                   </button>
                   <button
-                    aria-label="Current view: grid view"
+                    aria-label="Switch to grid view"
+                    aria-pressed={viewMode === 'grid'}
                     type="button"
-                    className="w-7 h-7 flex items-center justify-center rounded-md bg-surface-canvas text-primary shadow-sm transition-colors"
+                    onClick={() => setViewMode('grid')}
+                    className={`w-7 h-7 flex items-center justify-center rounded-md transition-colors ${
+                      viewMode === 'grid'
+                        ? 'bg-surface-canvas text-primary shadow-sm'
+                        : 'text-text-secondary hover:text-text-primary'
+                    }`}
                   >
                     <Icon name="grid_view" className="text-[18px]" />
                   </button>
@@ -486,105 +658,15 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
           )}
 
           <div className="px-margin mt-space-sm mb-28">
-            <div className="grid grid-cols-2 gap-space-xs">
-              {filteredProducts.map((product) => (
-                <div
-                  key={product.id}
-                  onClick={() => onOpenProduct(product.id, product.display)}
-                  className="group relative flex flex-col bg-surface-canvas rounded-2xl shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md cursor-pointer"
-                >
-                  <div className="relative w-full aspect-square bg-surface-subtle overflow-hidden">
-                    <img
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      alt={product.imageAlt}
-                      src={product.image}
-                    />
-                    {product.badge && (
-                      <span className={`absolute top-2 left-2 px-1.5 py-0.5 rounded-md font-caption text-[11px] font-bold shadow-sm ${product.badgeClass}`}>
-                        {product.badge}
-                      </span>
-                    )}
-                    {product.topRightBadge && (
-                      <span className={`absolute top-2 right-2 px-1.5 py-0.5 rounded-md font-caption text-[10px] font-semibold shadow-sm ${product.topRightClass}`}>
-                        {product.topRightBadge}
-                      </span>
-                    )}
-                  </div>
-                  <div className="p-2.5 flex flex-col flex-1 justify-between gap-1.5">
-                    <div>
-                      {(product.rating || product.reviews) && <div className="flex items-center gap-1">
-                        <div className="flex items-center text-tertiary">
-                          <Icon name="star" className="text-[13px]" filled />
-                          <span className="font-caption text-[11px] font-bold ml-0.5 text-text-primary">{product.rating}</span>
-                        </div>
-                        <span className="font-caption text-[11px] text-text-tertiary">{product.reviews}</span>
-                      </div>}
-                      <h2 className="font-label-md text-label-md text-text-primary font-semibold line-clamp-2 mt-1 leading-snug">
-                        {product.name}
-                      </h2>
-                    </div>
-                    <div className="pt-1 flex flex-col gap-1.5">
-                      <div className="flex items-baseline gap-1.5 flex-wrap">
-                        <span className="font-heading-sm text-heading-sm text-text-primary font-bold">{product.price}</span>
-                        {product.was && <span className="font-caption text-caption text-text-tertiary line-through">{product.was}</span>}
-                      </div>
-                      {product.kind === 'service' ? (
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onOpenProduct(product.id, product.display);
-                          }}
-                          className="w-full h-9 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold flex items-center justify-center"
-                        >
-                          View service
-                        </button>
-                      ) : isAdded(product.cartId) ? (
-                        <div className="w-full h-9 rounded-xl bg-badge-discount-bg text-badge-discount-text flex items-center justify-between px-1.5 active:scale-95 transition-all shadow-sm">
-                          <button
-                            aria-label={`Remove one ${product.name}`}
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              cart.decrement(product.cartId);
-                            }}
-                            className="w-7 h-7 rounded-lg bg-surface-canvas/70 hover:bg-surface-canvas flex items-center justify-center text-text-primary active:scale-95 transition-all"
-                          >
-                            <Icon name="remove" className="text-[16px]" />
-                          </button>
-                          <span className="font-label-sm text-label-sm font-bold min-w-[16px] text-center">
-                            {cart.qtyOf(product.cartId)}
-                          </span>
-                          <button
-                            aria-label={`Add one ${product.name}`}
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              cart.increment(product.cartId);
-                            }}
-                            className="w-7 h-7 rounded-lg bg-surface-canvas/70 hover:bg-surface-canvas flex items-center justify-center text-text-primary active:scale-95 transition-all"
-                          >
-                            <Icon name="add" className="text-[16px]" />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            addToCart(product);
-                          }}
-                          className="add-to-bag-btn w-full h-9 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 active:scale-95 transition-all shadow-sm"
-                        >
-                          <Icon name="add" className="text-[18px]" />
-                          <span>Add</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {viewMode === 'grid' ? (
+              <div className="grid grid-cols-2 gap-space-xs">
+                {filteredProducts.map((product) => renderProductCard(product, 'grid'))}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-space-xs">
+                {filteredProducts.map((product) => renderProductCard(product, 'list'))}
+              </div>
+            )}
           </div>
 
           <div className="mt-space-xl pb-space-lg flex flex-col items-center justify-center text-center gap-1">

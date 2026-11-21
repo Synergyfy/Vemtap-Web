@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
@@ -9,16 +9,38 @@ import { useBranchCatalogueCounts, useBranches } from '../../hooks/business/useB
 import { useBusinessAnalytics } from '../../hooks/business/useBusinessAnalytics';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { posService } from '../../services/posService';
+import { apiErrorMessage } from '../../services/errorMessages';
 import { branchAddressLabel, branchOpenLabel } from '../branchLive';
 import { getAddedBusinessLocations } from '../businessLocationsStore';
-import { formatNaira } from '../locationPricing';
 import { useBusinessOfferings } from '../../context/BusinessOfferingsContext';
+import {
+  useLocationAccess,
+  useLocationCheckout,
+  useLocationCheckoutReturn,
+} from '../../hooks/business/useSubscription';
+import type { LocationAccessSummary } from '../../services/subscriptionService';
+import {
+  branchAccessLabel,
+  formatLocationLimit,
+  formatLocationMoney,
+  locationAllowanceLabel,
+  locationPlanLabel,
+  locationPurchaseTotal,
+  planLocationLabel,
+  purchaseTermLabel,
+} from '../locationAccessUi';
 
 interface DesktopBusinessLocationsHubScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   onAddBranch?: () => void;
   /** Live: receives the branch id to open. */
   onOpenBranch?: (branchId?: string) => void;
+  /** Location-limit modal — opens the dashboard plan page. */
+  onUpgradePlan?: () => void;
+  /** Location-limit modal and capacity card — opens the purchase form. */
+  onBuyLocations?: () => void;
+  /** Route mode: show the standalone purchase form immediately. */
+  initialBuyLocations?: boolean;
 }
 
 const LIVE_MAP_PLACEHOLDER =
@@ -33,6 +55,8 @@ interface BranchCardData {
   tag2: string;
   tag2Class: string;
   openLabel: string;
+  restricted?: boolean;
+  restrictionReason?: string | null;
   name: string;
   address: string;
   manager: string;
@@ -110,28 +134,63 @@ export function DesktopBusinessLocationsHubScreen({
   onNav,
   onAddBranch,
   onOpenBranch,
+  onUpgradePlan,
+  onBuyLocations,
+  initialBuyLocations = false,
 }: DesktopBusinessLocationsHubScreenProps) {
   // Live: the business's real branches, what each sells, its tills and visits; demo keeps the samples.
   const live = hasApiConfig();
   const branchesQuery = useBranches();
+  const accessQuery = useLocationAccess();
   const liveList = branchesQuery.data ?? [];
+  const access: LocationAccessSummary | null = live ? accessQuery.data ?? null : null;
+  const accessByBranchId = new Map((access?.branches ?? []).map((item) => [item.id, item]));
+  const isRestricted = (branchId: string) => accessByBranchId.get(branchId)?.access === 'restricted';
   const counts = useBranchCatalogueCounts(liveList.map((branch) => branch.id));
   const tillsQuery = useQuery({ queryKey: ['pos', 'tills', 'all'], queryFn: () => posService.tills(null), enabled: live });
   const locations = useBusinessAnalytics('locations', 30);
   const { branch: activeBranch, branches: allBranches, switchTo } = useBusinessBranch();
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [showLocationLimitModal, setShowLocationLimitModal] = useState(false);
+  const [showBuyForm, setShowBuyForm] = useState(initialBuyLocations);
+  const [purchaseLocations, setPurchaseLocations] = useState(
+    access?.purchaseOption.locationsPerPurchase || 1,
+  );
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
+  const [purchaseNotice, setPurchaseNotice] = useState<string | null>(null);
+  const [headerNotice, setHeaderNotice] = useState<string | null>(null);
+  const locationCheckout = useLocationCheckout();
   const tillCount = (branchId: string) => (tillsQuery.data ?? []).filter((till) => till.branchId === branchId).length;
   const n = (value: number | null | undefined) => (value == null ? '—' : String(value));
   const cards: BranchCardData[] = live
-    ? liveList.map((branch, index) => ({
+    ? liveList.map((branch, index) => {
+        const entitlement = accessByBranchId.get(branch.id);
+        const restricted = entitlement?.access === 'restricted';
+        return {
         id: branch.id,
         index: `BRANCH #${String(index + 1).padStart(2, '0')}`,
-        indexClass: branch.isMainBranch ? 'text-primary' : 'text-secondary',
-        tag1: branch.isMainBranch ? 'Main Branch' : 'Branch',
-        tag1Class: branch.isMainBranch ? 'bg-primary-fixed text-on-primary-fixed' : 'bg-secondary-fixed text-on-secondary-fixed',
+        indexClass: restricted ? 'text-error' : branch.isMainBranch ? 'text-primary' : 'text-secondary',
+        tag1: restricted
+          ? 'Restricted'
+          : entitlement?.isFree
+            ? 'Primary • Free'
+            : entitlement?.isPurchased
+              ? 'Purchased'
+              : branch.isMainBranch
+                ? 'Main Branch'
+                : entitlement?.entitlementSource === 'subscription'
+                  ? 'Plan Capacity'
+                  : 'Branch',
+        tag1Class: restricted
+          ? 'bg-error-container text-on-error-container'
+          : branch.isMainBranch
+            ? 'bg-primary-fixed text-on-primary-fixed'
+            : 'bg-secondary-fixed text-on-secondary-fixed',
         tag2: branch.state || branch.city || '—',
         tag2Class: 'bg-surface-tint-blue text-primary',
-        openLabel: branch.isActive === false ? 'Paused' : branchOpenLabel(branch),
+        openLabel: entitlement ? branchAccessLabel(entitlement) : branch.isActive === false ? 'Paused' : branchOpenLabel(branch),
+        restricted,
+        restrictionReason: entitlement?.restrictionReason ?? null,
         name: branch.name,
         address: branchAddressLabel(branch),
         manager: branch.managerName || '—',
@@ -149,18 +208,80 @@ export function DesktopBusinessLocationsHubScreen({
         mapBadge: branch.district || branch.city || 'Branch area',
         mapCaption: 'Customers near this branch see its deals in discovery.',
         beaconSize: 'w-24 h-24',
-      }))
+        };
+      })
     : LIVE_BRANCHES;
   const activeCount = liveList.filter((branch) => branch.isActive !== false).length;
   const states = Array.from(new Set(liveList.map((branch) => branch.state || branch.city).filter(Boolean))) as string[];
   const skuTotal = liveList.reduce((sum, branch) => sum + (counts[branch.id]?.products ?? 0) + (counts[branch.id]?.services ?? 0), 0);
   const v = <T,>(liveValue: T, demoValue: T) => (live ? liveValue : demoValue);
+
+  const purchaseOption = access?.purchaseOption ?? null;
+  const locationsPerPurchase = purchaseOption?.locationsPerPurchase || 1;
+  useEffect(() => {
+    if (initialBuyLocations) setShowBuyForm(true);
+  }, [initialBuyLocations]);
+  useEffect(() => {
+    setPurchaseLocations((current) => (current < locationsPerPurchase ? locationsPerPurchase : current));
+  }, [locationsPerPurchase]);
+
+  useLocationCheckoutReturn(
+    (result) => {
+      if (result.status === 'completed') {
+        setShowBuyForm(false);
+        setPurchaseNotice(`${result.locations} location${result.locations === 1 ? '' : 's'} added to your plan.`);
+      } else {
+        setPurchaseNotice('Payment is still being confirmed. Your locations will appear shortly.');
+      }
+    },
+    (error) => setPurchaseError(apiErrorMessage(error, 'Could not confirm this location purchase.')),
+  );
+
+  const openBuyLocations = () => {
+    setPurchaseError(null);
+    if (onBuyLocations) onBuyLocations();
+    else setShowBuyForm(true);
+  };
+
+  const submitLocationPurchase = () => {
+    if (!purchaseOption?.addonId || !purchaseOption.checkoutEnabled) {
+      setPurchaseError('Location checkout is not configured for this account.');
+      return;
+    }
+    const requested = Number(purchaseLocations);
+    if (!Number.isInteger(requested) || requested < locationsPerPurchase) {
+      setPurchaseError(`Choose at least ${locationsPerPurchase} location${locationsPerPurchase === 1 ? '' : 's'}.`);
+      return;
+    }
+    if (requested % locationsPerPurchase !== 0) {
+      setPurchaseError(`Choose a multiple of ${locationsPerPurchase} location${locationsPerPurchase === 1 ? '' : 's'}.`);
+      return;
+    }
+    const remaining = purchaseOption.remainingPurchasable;
+    if (remaining != null && requested > remaining) {
+      setPurchaseError(`You can buy at most ${remaining} more location${remaining === 1 ? '' : 's'}.`);
+      return;
+    }
+    setPurchaseError(null);
+    setPurchaseNotice(null);
+    locationCheckout.mutate(
+      {
+        addonId: purchaseOption.addonId,
+        locations: requested,
+        callbackUrl: window.location.href.split('?')[0],
+      },
+      { onError: (error) => setPurchaseError(apiErrorMessage(error, 'Could not start checkout.')) },
+    );
+  };
+
   const { getEffectiveBranchOfferings } = useBusinessOfferings();
   // Locations bought from the dashboard (seeded demo entries already match the
   // cards below, so only real additions are rendered as extra cards).
-  const addedLocations = getAddedBusinessLocations().filter(
-    (location) => !location.id.startsWith('seed-'),
-  );
+  const addedLocations = live
+    ? []
+    : getAddedBusinessLocations().filter(
+        (location) => !location.id.startsWith('seed-'),
+      );
   return (
     <MerchantShell activeNav="business-locations" onNav={onNav}>
       <div className="flex flex-col gap-space-2xs mb-space-lg">
@@ -210,7 +331,19 @@ export function DesktopBusinessLocationsHubScreen({
             </button>
             <button
               type="button"
-              onClick={onAddBranch}
+              onClick={() => {
+                if (live && !access) {
+                  setHeaderNotice('Checking your location allowance…');
+                  return;
+                }
+                if (access && !access.canAddLocation) {
+                  setHeaderNotice(null);
+                  setShowLocationLimitModal(true);
+                  return;
+                }
+                setHeaderNotice(null);
+                onAddBranch?.();
+              }}
               className="flex items-center gap-space-2xs px-space-md py-space-xs rounded-xl bg-primary-container hover:bg-primary text-on-primary-container hover:text-on-primary font-label-md text-label-md transition-all shadow-md hover:shadow-lg"
             >
               <Icon name="add_location_alt" className="text-[18px]" />
@@ -219,6 +352,145 @@ export function DesktopBusinessLocationsHubScreen({
           </div>
         </div>
       </div>
+
+      {headerNotice && (
+        <p className="mb-space-md rounded-lg bg-surface-container-low px-space-sm py-space-xs font-label-sm text-label-sm text-text-secondary">
+          {headerNotice}
+        </p>
+      )}
+
+      {/* Backend-derived allowance and usage */}
+      {access && (
+        <div className="rounded-xl bg-surface-container-lowest shadow-sm border border-border-subtle p-space-md mb-space-lg">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md">
+            <div className="min-w-0">
+              <p className="font-label-sm text-label-sm text-text-secondary uppercase tracking-wider">
+                {locationPlanLabel(access)}
+              </p>
+              <p className="font-heading-md text-heading-md text-text-primary mt-0.5">
+                {locationAllowanceLabel(access)} locations used
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-x-space-lg gap-y-space-2xs font-label-md text-label-md text-text-secondary">
+              <span>Free: <strong className="text-text-primary">{access.allowance.free}</strong></span>
+              <span>Plan: <strong className="text-text-primary">{formatLocationLimit(access.allowance.subscription)}</strong></span>
+              <span>Purchased: <strong className="text-text-primary">{access.allowance.purchased}</strong></span>
+            </div>
+          </div>
+          {access.notice && (
+            <p className="mt-space-sm rounded-lg bg-error-container text-on-error-container font-label-sm text-label-sm px-space-sm py-space-xs">
+              {access.notice}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Backend-derived plan and capacity options */}
+      {access && (access.upgradePlans.length > 0 || access.purchaseOption.available) && (
+        <div className="rounded-xl bg-surface-container-lowest shadow-sm border border-border-subtle p-space-lg mb-space-xl">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-space-md mb-space-md">
+            <div>
+              <h2 className="font-heading-sm text-heading-sm text-on-surface">Location capacity options</h2>
+              <p className="font-caption text-caption text-text-secondary mt-0.5">
+                Plans, pricing and purchase terms are supplied by your backend configuration.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-space-sm">
+            {access.upgradePlans.map((plan) => (
+              <div key={plan.id} className="rounded-xl bg-surface-container-low p-space-sm flex flex-col gap-space-2xs">
+                <p className="font-label-md text-label-md font-semibold text-text-primary">
+                  {plan.name}
+                  {plan.isCurrent && <span className="ml-1 text-primary">• Current</span>}
+                </p>
+                <p className="font-caption text-caption text-text-secondary">{planLocationLabel(plan)}</p>
+                <p className="font-heading-sm text-heading-sm text-text-primary">
+                  {formatLocationMoney(plan.monthlyPrice, plan.currency)}/mo
+                </p>
+              </div>
+            ))}
+          </div>
+          {access.purchaseOption.available && (
+            <div className="mt-space-md rounded-xl bg-surface-container-low p-space-sm flex flex-col md:flex-row md:items-center justify-between gap-space-sm">
+              <div className="min-w-0">
+                <p className="font-label-md text-label-md font-semibold text-text-primary">
+                  {access.purchaseOption.name ?? 'Additional location capacity'}
+                </p>
+                <p className="font-caption text-caption text-text-secondary mt-0.5">
+                  {purchaseTermLabel(access.purchaseOption)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={openBuyLocations}
+                disabled={!access.purchaseOption.checkoutEnabled || !access.purchaseOption.addonId}
+                className="px-space-md py-space-xs rounded-xl bg-primary text-on-primary font-label-md text-label-md disabled:bg-surface-container-high disabled:text-text-secondary disabled:cursor-not-allowed"
+              >
+                {access.purchaseOption.checkoutEnabled && access.purchaseOption.addonId
+                  ? 'Buy More Location'
+                  : 'Checkout unavailable'}
+              </button>
+
+              {showBuyForm && access.purchaseOption.checkoutEnabled && access.purchaseOption.addonId && (
+                <div className="w-full lg:max-w-md rounded-xl border border-border-subtle bg-surface-canvas p-space-sm flex flex-col gap-space-xs">
+                  <label className="font-label-sm text-label-sm text-text-primary" htmlFor="desktop-buy-locations-count">
+                    Number of locations
+                  </label>
+                  <input
+                    id="desktop-buy-locations-count"
+                    type="number"
+                    min={locationsPerPurchase}
+                    step={locationsPerPurchase}
+                    value={purchaseLocations}
+                    onChange={(event) => setPurchaseLocations(Number(event.target.value))}
+                    className="h-10 w-full rounded-lg bg-surface-subtle border border-border-subtle px-space-sm text-body-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                  <div className="flex items-center justify-between font-label-md text-label-md text-text-primary">
+                    <span>Total</span>
+                    <strong>{formatLocationMoney(locationPurchaseTotal(access.purchaseOption, purchaseLocations), access.purchaseOption.currency)}</strong>
+                  </div>
+                  {purchaseError && (
+                    <p className="font-caption text-caption text-on-error-container bg-error-container rounded-lg px-space-xs py-1.5">
+                      {purchaseError}
+                    </p>
+                  )}
+                  {purchaseNotice && (
+                    <p className="font-caption text-caption text-on-primary-container bg-primary-container rounded-lg px-space-xs py-1.5">
+                      {purchaseNotice}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={submitLocationPurchase}
+                    disabled={locationCheckout.isPending}
+                    className="h-10 rounded-lg bg-primary text-on-primary font-label-md text-label-md disabled:opacity-50"
+                  >
+                    {locationCheckout.isPending ? 'Opening checkout…' : 'Continue to Payment'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {initialBuyLocations && access && !access.purchaseOption.available && (
+        <div className="rounded-xl border border-border-subtle bg-surface-canvas p-space-md mb-space-lg flex flex-col gap-space-xs">
+          <p className="font-label-md text-label-md text-text-primary font-semibold">
+            Location purchases are not configured
+          </p>
+          <p className="font-caption text-caption text-text-secondary">
+            Your backend has no active location add-on. Upgrade your plan to include more locations.
+          </p>
+          <button
+            type="button"
+            onClick={onUpgradePlan}
+            className="self-start h-10 px-space-md rounded-lg bg-primary text-on-primary font-label-md text-label-md"
+          >
+            Upgrade
+          </button>
+        </div>
+      )}
 
       {/* Workspace focus bar */}
       <div className="relative overflow-hidden rounded-xl bg-surface-container-lowest p-space-md shadow-sm mb-space-xl flex flex-col md:flex-row md:items-center justify-between gap-space-md">
@@ -252,7 +524,7 @@ export function DesktopBusinessLocationsHubScreen({
           {switcherOpen && (
             <div className="absolute right-0 top-full mt-2 w-72 rounded-xl bg-surface-canvas border border-border-subtle shadow-xl p-2 z-50 flex flex-col gap-1">
               <span className="font-caption text-caption text-text-secondary px-2 py-1 font-semibold">Select Operating Branch</span>
-              {(allBranches ?? []).map((b) => (
+              {(allBranches ?? []).filter((b) => !live || !isRestricted(b.key || b.id || '')).map((b) => (
                 <button
                   key={b.key || b.id}
                   type="button"
@@ -472,6 +744,11 @@ export function DesktopBusinessLocationsHubScreen({
                     {branch.openLabel}
                   </span>
                 </div>
+                {branch.restrictionReason && (
+                  <div className="rounded-lg bg-error-container text-on-error-container font-label-sm text-label-sm px-space-sm py-space-xs mt-space-xs">
+                    {branch.restrictionReason}
+                  </div>
+                )}
                 <h3 className="font-heading-md text-heading-md text-on-surface font-bold">{branch.name}</h3>
                 <div className="flex items-center gap-space-2xs text-text-secondary font-body-md text-body-md mt-space-2xs">
                   <Icon name="location_on" className="text-[18px] text-text-tertiary" />
@@ -509,7 +786,8 @@ export function DesktopBusinessLocationsHubScreen({
                   <button
                     type="button"
                     onClick={() => onOpenBranch?.(live ? branch.id : undefined)}
-                    className="px-space-md py-space-xs rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5 cursor-pointer"
+                    disabled={Boolean(live && branch.restricted)}
+                    className="px-space-md py-space-xs rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Icon name="edit_location" className="text-[18px]" />
                     <span>Edit Location</span>
@@ -520,7 +798,8 @@ export function DesktopBusinessLocationsHubScreen({
                       if (live && branch.id) switchTo(branch.id);
                       onNav('pos-register');
                     }}
-                    className="px-space-md py-space-xs rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5 cursor-pointer"
+                    disabled={Boolean(live && branch.restricted)}
+                    className="px-space-md py-space-xs rounded-xl bg-surface-container-high hover:bg-surface-container-highest text-on-surface font-label-md text-label-md transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Icon name="point_of_sale" className="text-[18px]" />
                     <span>{branch.registerLabel}</span>
@@ -528,7 +807,8 @@ export function DesktopBusinessLocationsHubScreen({
                   <button
                     type="button"
                     onClick={() => onOpenBranch?.(live ? branch.id : undefined)}
-                    className="px-space-md py-space-xs rounded-xl bg-surface-tint-blue hover:bg-primary-fixed text-primary font-label-md text-label-md transition-colors flex items-center gap-1.5 cursor-pointer"
+                    disabled={Boolean(live && branch.restricted)}
+                    className="px-space-md py-space-xs rounded-xl bg-surface-tint-blue hover:bg-primary-fixed text-primary font-label-md text-label-md transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Icon name="settings_input_antenna" className="text-[18px]" />
                     <span>Manage Geofence</span>
@@ -678,7 +958,7 @@ export function DesktopBusinessLocationsHubScreen({
               <span className="flex items-center gap-space-2xs text-text-secondary font-label-sm text-label-sm">
                 <Icon name="payments" className="text-[16px] text-primary" />
                 {location.feePaid > 0
-                  ? `${formatNaira(location.feePaid)} one-time location fee paid`
+                  ? `${formatLocationMoney(location.feePaid, 'NGN')} one-time location fee paid`
                   : 'Included with your plan'}
               </span>
               <div className="flex items-center gap-space-xs">
@@ -752,6 +1032,71 @@ export function DesktopBusinessLocationsHubScreen({
           </div>
         </div>
       </div>
+
+      {/* Same entitlement gate as mobile: no silent disabled button. */}
+      {showLocationLimitModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-space-md bg-on-surface/50 backdrop-blur-xs"
+          onClick={() => setShowLocationLimitModal(false)}
+          role="presentation"
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-surface-canvas p-space-lg shadow-2xl border border-border-subtle flex flex-col gap-space-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="desktop-location-limit-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-space-xs">
+              <div className="flex items-center gap-space-xs">
+                <div className="w-9 h-9 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+                  <Icon name="add_location_alt" className="text-[20px]" />
+                </div>
+                <h3 id="desktop-location-limit-title" className="font-heading-sm text-heading-sm text-text-primary font-bold">
+                  More locations needed
+                </h3>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setShowLocationLimitModal(false)}
+                className="w-7 h-7 rounded-full flex items-center justify-center text-text-tertiary hover:bg-surface-container"
+              >
+                <Icon name="close" className="text-[18px]" />
+              </button>
+            </div>
+            <p className="font-body-md text-body-md text-text-secondary leading-normal">
+              {access?.blockedReason === 'PLAN_FEATURE_NOT_INCLUDED'
+                ? 'Your current plan does not include additional locations. Upgrade to a plan that includes them, or buy location capacity directly.'
+                : 'Your current plan does not include additional locations beyond the allowance you have already used. Upgrade to a higher plan, or buy more locations directly.'}
+            </p>
+            <div className="flex flex-col gap-space-2xs pt-space-2xs border-t border-border-subtle">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLocationLimitModal(false);
+                  onUpgradePlan?.();
+                }}
+                className="h-11 rounded-xl bg-primary text-on-primary font-label-md text-label-md flex items-center justify-center gap-space-2xs"
+              >
+                <Icon name="arrow_upward" className="text-[17px]" />
+                <span>Upgrade</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLocationLimitModal(false);
+                  openBuyLocations();
+                }}
+                className="h-11 rounded-xl bg-surface-subtle text-text-primary font-label-md text-label-md flex items-center justify-center gap-space-2xs"
+              >
+                <Icon name="shopping_cart" className="text-[17px]" />
+                <span>Buy More Location</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </MerchantShell>
   );
 }

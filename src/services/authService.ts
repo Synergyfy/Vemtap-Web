@@ -64,7 +64,7 @@ export const storeAuthResponse = (response: unknown) => {
 };
 
 export const authService = {
-  login: async (payload: { identifier: string; password?: string }) => {
+  login: async (payload: { identifier: string; password?: string; twoFactorCode?: string }) => {
     const response = await api.post<AuthTokensResponse>('/auth/login', payload);
 
     const accessToken = readTokenValue(response, ['accessToken', 'access_token', 'token']);

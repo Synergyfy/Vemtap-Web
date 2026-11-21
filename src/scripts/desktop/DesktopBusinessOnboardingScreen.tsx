@@ -35,6 +35,7 @@ import { withDealPriceChoice, type DealPriceChoice } from '../deals/dealStudioSh
 import { DesktopDealStudioStep1Screen } from './DesktopDealStudioStep1Screen';
 import { DesktopDealStudioStep2Screen } from './DesktopDealStudioStep2Screen';
 import { DesktopDealStudioStep3Screen } from './DesktopDealStudioStep3Screen';
+import { DesktopDealGalleryScreen } from './DesktopDealGalleryScreen';
 import { DesktopDealStudioStep4Screen } from './DesktopDealStudioStep4Screen';
 import { DesktopDealAutoImportScreen } from './DesktopDealAutoImportScreen';
 import { DesktopBusinessQrScreen } from './DesktopBusinessQrScreen';
@@ -102,6 +103,7 @@ type BusinessOnboardingStep =
   | 'dealStudio1'
   | 'dealStudio2'
   | 'dealStudio3'
+  | 'dealGallery'
   | 'dealStudio4'
   | 'dealAutoImport'
   | 'businessQr';
@@ -136,6 +138,7 @@ const ONBOARDING_STEPS: readonly BusinessOnboardingStep[] = [
   'dealStudio1',
   'dealStudio2',
   'dealStudio3',
+  'dealGallery',
   'dealStudio4',
   'dealAutoImport',
   'businessQr',
@@ -681,8 +684,19 @@ export function DesktopBusinessOnboardingScreen({
           studio={dealStudio}
           onStudioChange={updateDealStudio}
           onBack={() => setStep('dealStudio2')}
-          onNext={() => setStep('dealStudio4')}
+          onNext={() => setStep('dealGallery')}
           onSaveDraft={onBack}
+        />
+      );
+    case 'dealGallery':
+      return (
+        <DesktopDealGalleryScreen
+          draft={dealDraft}
+          studio={dealStudio}
+          onStudioChange={updateDealStudio}
+          onBack={() => setStep('dealStudio3')}
+          onNext={() => setStep('dealStudio4')}
+          onSaveDraft={() => setStep('catalog')}
         />
       );
     case 'dealStudio4':
@@ -690,9 +704,10 @@ export function DesktopBusinessOnboardingScreen({
       <DesktopDealStudioStep4Screen
         draft={dealDraft}
         studio={dealStudio}
-        onBack={() => setStep('dealStudio3')}
+        onBack={() => setStep('dealGallery')}
         onEditOffer={() => (dealStudio.strategy === 'current' ? setDealPriceModalOpen(true) : setStep('dealStudio1'))}
         onEditRules={() => setStep('dealStudio2')}
+        onEditGallery={() => setStep('dealGallery')}
         onEditLocations={() => setStep('dealStudio3')}
         onPublish={() => setStep('businessQr')}
         livePublish={liveDeal.live ? () => liveDeal.publishAsync(dealStudio) : undefined}

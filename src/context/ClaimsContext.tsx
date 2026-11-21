@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { apiGet, apiPost, hasApiConfig } from '../lib/api';
 import { claimsService } from '../services/claimsService';
+import { dealPrimaryImage, safeDealImageUrl } from '../utils/dealImages';
 import { useAuth } from './AuthContext';
 import { useSessionUser } from '../hooks/useSessionUser';
 
@@ -297,7 +298,7 @@ const normalizeClaimList = (payload: unknown): ClaimRecord[] => {
       offerId: typeof item.offerId === 'string' ? item.offerId : typeof offer.id === 'string' ? offer.id : undefined,
       dealTitle,
       dealBusiness: businessName,
-      dealImage: typeof item.dealImage === 'string' ? item.dealImage : typeof offer.mainImage === 'string' ? offer.mainImage : typeof offer.image === 'string' ? offer.image : undefined,
+      dealImage: dealPrimaryImage(offer) ?? safeDealImageUrl(item.dealImage),
       dealDescription: typeof offer.description === 'string' && offer.description.trim() ? offer.description.trim() : undefined,
       dealItems: Array.isArray(offer.items)
         ? (offer.items as { id?: unknown; name?: unknown }[]).flatMap((entry) =>

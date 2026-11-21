@@ -14,6 +14,8 @@ interface UseAnchoredPanelOptions {
   /** Clearance kept between the trigger and the viewport edge. */
   gap?: number;
   align?: 'left' | 'right';
+  /** Prefer opening above the trigger (used by table row menus so they float over the table). */
+  preferAbove?: boolean;
 }
 
 /**
@@ -28,7 +30,7 @@ interface UseAnchoredPanelOptions {
  * While open the panel re-anchors on scroll/resize, flips above the trigger
  * when the space below runs out, and closes on Escape.
  */
-export function useAnchoredPanel({ width, gap = 8, align = 'right' }: UseAnchoredPanelOptions) {
+export function useAnchoredPanel({ width, gap = 8, align = 'right', preferAbove = false }: UseAnchoredPanelOptions) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<AnchoredPosition | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -42,7 +44,8 @@ export function useAnchoredPanel({ width, gap = 8, align = 'right' }: UseAnchore
       if (!trigger) return;
       const height = panelRef.current?.offsetHeight ?? 260;
       const roomBelow = window.innerHeight - trigger.bottom;
-      const above = roomBelow < height + gap * 2 && trigger.top > height + gap * 2;
+      const roomAbove = trigger.top > height + gap * 2;
+      const above = preferAbove ? roomAbove : roomBelow < height + gap * 2 && roomAbove;
 
       const maxLeft = Math.max(gap, window.innerWidth - width - gap);
       const rawLeft = align === 'right' ? trigger.right - width : trigger.left;
@@ -68,7 +71,7 @@ export function useAnchoredPanel({ width, gap = 8, align = 'right' }: UseAnchore
       window.removeEventListener('resize', place);
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [open, align, gap, width]);
+  }, [open, align, gap, width, preferAbove]);
 
   const style: CSSProperties = {
     position: 'fixed',

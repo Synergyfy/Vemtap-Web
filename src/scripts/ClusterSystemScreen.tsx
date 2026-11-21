@@ -18,8 +18,8 @@ import {
 import { ClusterQrCode } from '../components/ClusterQrCode';
 import { hasApiConfig } from '../services/api/client';
 import { apiErrorMessage } from '../services/errorMessages';
-import { useSponsoredCampaigns } from '../hooks/business/useSponsored';
-import { liveBoostHelpers, useLiveCluster } from './clusterLive';
+import { useBoostList } from '../hooks/business/useSponsored';
+import { isRateLimitError, liveBoostHelpers, useLiveCluster } from './clusterLive';
 import { ClusterMemberProfileModal } from '../components/ClusterMemberProfileModal';
 import { ClusterMemberChatModal } from '../components/ClusterMemberChatModal';
 import { ClusterImportModal } from '../components/ClusterImportModal';
@@ -52,9 +52,9 @@ export function ClusterSystemScreen({
   const [activeTab, setActiveTab] = useState<ClusterTab>('overview');
   const live = hasApiConfig();
   const liveCluster = useLiveCluster();
-  const sponsored = useSponsoredCampaigns();
+  const boostCampaigns = useBoostList();
   const boosts = live
-    ? liveBoostHelpers(sponsored.data ?? [])
+    ? liveBoostHelpers(boostCampaigns.data ?? [])
     : { count: 0, hasActiveBoostForItem, isItemBoostEligible };
   const [localState, setClusterState] = useState(getClusterState());
   const clusterState = live ? liveCluster.state : localState;
@@ -102,10 +102,12 @@ export function ClusterSystemScreen({
     else setClusterState(getClusterState());
   };
 
+  // Notifications display state; they never refetch it. Previously every
+  // message (including load errors) invalidated the whole cluster query tree,
+  // which recreated the same error and produced a request burst.
   const showNotification = (msg: string) => {
     setSubmitToast(msg);
     setTimeout(() => setSubmitToast(null), 3500);
-    refreshState();
   };
 
   // Live: every deal, product and service is listed already; import only
@@ -131,16 +133,23 @@ export function ClusterSystemScreen({
     refreshState();
   };
 
-  // A cluster error must not re-trigger the refresh loop: the toast's
-  // `refreshState()` re-fetches the same failing request, React Query returns a
-  // fresh error object, this effect runs again — the page then jitters as it
-  // re-renders and its actions stop responding. Show each error once.
-  const errorNotifiedRef = useRef<unknown>(null);
+  // Show each failure once. React Query creates a new error object on every
+  // refetch, so a stable status/message key is used rather than object identity.
+  // A 429 gets a calm, actionable message and no automatic retry.
+  const notifiedErrorKeyRef = useRef<string | null>(null);
   useEffect(() => {
     const error = liveCluster.error;
-    if (!error || errorNotifiedRef.current === error) return;
-    errorNotifiedRef.current = error;
-    showNotification(apiErrorMessage(error, 'Could not load your cluster.'));
+    if (!error) {
+      notifiedErrorKeyRef.current = null;
+      return;
+    }
+    const message = isRateLimitError(error)
+      ? 'Too many requests. Please wait a moment and try again.'
+      : apiErrorMessage(error, 'Could not load your cluster.');
+    const key = `${(error as { status?: number }).status ?? ''}:${message}`;
+    if (notifiedErrorKeyRef.current === key) return;
+    notifiedErrorKeyRef.current = key;
+    showNotification(message);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveCluster.error]);
 
@@ -154,8 +163,10 @@ export function ClusterSystemScreen({
   });
 
   // Filtered showcase items (deals / products / services / profile)
-  const filteredItems = clusterState.showcaseItems.filter((item) => {
-    if (entityFilter !== 'all' && item.entityType !== entityFilter) return false;
+  const entityItems = clusterState.showcaseItems.filter(
+    (item) => entityFilter === 'all' || item.entityType === entityFilter
+  );
+  const filteredItems = entityItems.filter((item) => {
     if (dealFilter === 'in_rotator') return item.showInCluster;
     if (dealFilter === 'hidden') return !item.showInCluster;
     return true;
@@ -235,9 +246,9 @@ export function ClusterSystemScreen({
             }
           }}
           className="text-[11px] font-semibold text-primary bg-surface-tint-blue px-2.5 py-1 rounded-full hover:opacity-90"
-          title="Restart onboarding flow with scenario testing"
+          title={live ? 'Restart cluster setup' : 'Restart onboarding flow with scenario testing'}
         >
-          Flow Demo
+          {live ? 'Cluster Setup' : 'Flow Demo'}
         </button>
       </header>
 
@@ -376,12 +387,12 @@ export function ClusterSystemScreen({
                   </div>
                 </div>
                 <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-semibold">
-                  Active (5/6 slots)
+                  {live ? 'Active' : 'Active (5/6 slots)'}
                 </span>
               </div>
 
               <p className="text-xs text-text-secondary leading-relaxed">
-                Urban Grill &amp; Bistro has{' '}
+                {live ? clusterState.memberRecord?.businessName ?? 'Your business' : 'Urban Grill & Bistro'} has{' '}
                 <strong className="text-text-primary">
                   {myItems.filter((i) => i.showInCluster).length} active items
                 </strong>{' '}
@@ -869,7 +880,7 @@ export function ClusterSystemScreen({
 
             {/* Entity Filters: Deals, Products, Profile */}
             <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
-              {(['all', 'deal', 'product', 'profile'] as const).map((ent) => (
+              {(['all', 'deal', 'product', 'service', 'profile'] as const).map((ent) => (
                 <button
                   key={ent}
                   type="button"
@@ -896,7 +907,7 @@ export function ClusterSystemScreen({
                     : 'bg-surface-subtle text-text-secondary'
                 }`}
               >
-                All ({filteredItems.length})
+                All ({entityItems.length})
               </button>
               <button
                 type="button"

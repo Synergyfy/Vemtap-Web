@@ -9,6 +9,7 @@ import { hasApiConfig } from '../../services/api/client';
 import { offersService, type BusinessOffer } from '../../services/offersService';
 import { catalogueItemsService } from '../../services/catalogueItemsService';
 import { CHANNEL_PLATFORM_BY_ID, isChannelPlatform } from '../../utils/socialChannels';
+import { dealPrimaryImage } from '../../utils/dealImages';
 import { formatNaira } from '../../utils/format';
 
 /** Neutral tile while the business has no cover / item photo. */
@@ -237,7 +238,7 @@ export function BusinessStorefrontPreviewScreen({ onNav, onBack, onEditProfile }
                       {deals.map((deal) => (
                         <div key={deal.id} className="w-[300px] shrink-0 bg-surface-canvas rounded-2xl p-3 shadow-sm flex items-center gap-3">
                           <div className="relative w-24 h-24 rounded-xl overflow-hidden shrink-0 bg-surface-container-high">
-                            <img alt={deal.name} className="w-full h-full object-cover" src={deal.mainImage || NO_IMAGE} />
+                            <img alt={deal.name} className="w-full h-full object-cover" src={dealPrimaryImage(deal) ?? NO_IMAGE} />
                             <span className="absolute top-1.5 left-1.5 bg-badge-discount-bg text-badge-discount-text font-label-sm text-caption px-1.5 py-0.5 rounded font-semibold">
                               {dealBadge(deal)}
                             </span>
