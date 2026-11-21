@@ -6,7 +6,7 @@ import { PosOfflineProvider, usePosOffline } from './context/PosOfflineContext';
 import type { DesktopNavKey } from './components/ui/DesktopChrome';
 import type { AccountTarget } from './components/AccountRows';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { isBusinessRole, type SessionUser } from './services/sessionService';
+import { isBusinessRole, isBusinessDesignated, type SessionUser } from './services/sessionService';
 import { Skeleton, SkeletonGroup } from './components/ui/Skeleton';
 import { useSessionUser } from './hooks/useSessionUser';
 import { ApiError, SESSION_EXPIRED_EVENT } from './services/api/client';
@@ -947,12 +947,16 @@ function entryRoute(rawPath: string, authed: boolean, isDesktop: boolean, resume
     );
   }
   if (direct === undefined && path !== '/') return 'not-found';
-  // Live mode: the customer home is for signed-in users only — "onboarded on
-  // this device before" survives sign-out and expired sessions. An unfinished
-  // business sign-up reopens where it stopped. Signed-in accounts always land on
-  // home: unfinished setup resumes only from "Set up your business on VEMTAP".
+  // Live mode: signed-in accounts always land on home, and "onboarded on this
+  // device before" survives sign-out and expired sessions. The bare vemtap.com
+  // entry (path '/') shows the main landing page too — sign-in and onboarding
+  // are on demand, when the visitor signs up or acts. An unfinished business
+  // sign-up reopens where it stopped.
   if (hasApiConfig()) {
-    if (!authed) return (resume && getBusinessSignup()?.stage) || 'welcome';
+    if (!authed) {
+      if (path === '/') return 'home';
+      return (resume && getBusinessSignup()?.stage) || 'welcome';
+    }
     return 'home';
   }
   return (authed || hasOnboarded()) ? 'home' : 'welcome';
@@ -1707,9 +1711,9 @@ function AppInner() {
       ? sessionUser.businessRole
     : onBusinessPage && sessionUser?.businessRole && sessionUser.role === 'Customer'
       ? sessionUser.businessRole
-      : !onBusinessPage && CUSTOMER_SHELL_ROUTES.has(route) && !passIdFromPath(window.location.pathname) && isBusinessRole(sessionUser?.role)
-        ? 'Customer'
-        : null;
+        : !onBusinessPage && CUSTOMER_SHELL_ROUTES.has(route) && !passIdFromPath(window.location.pathname) && isBusinessRole(sessionUser?.role) && !isBusinessDesignated(sessionUser)
+          ? 'Customer'
+          : null;
   const shellSwitching = shellRoleNeeded !== null && shellSwitchFailed !== route;
   useEffect(() => {
     if (!shellSwitching || !shellRoleNeeded || shellSwitchInFlight.current) return;
@@ -1829,11 +1833,13 @@ function AppInner() {
   }, [authed, route, sessionUser]);
 
   // Opening a portal page signed out (with the API configured) goes to sign in;
-  // customer pages without a session (signed out, expired) go to onboarding.
+  // other customer pages without a session (signed out, expired) go to onboarding.
+  // The main landing page ('home' from '/') stays put: signing in and onboarding
+  // happen on demand, when the visitor signs up or acts.
   useEffect(() => {
     if (!hasApiConfig() || authed) return;
     if (isPortalRoute(route)) setRouteState('sign-in');
-    else if (route === 'home' || SIGNED_IN_ROUTES.has(route)) setRouteState('welcome');
+    else if (SIGNED_IN_ROUTES.has(route)) setRouteState('welcome');
   }, [authed, route]);
 
   useEffect(() => {
@@ -3233,9 +3239,13 @@ function AppInner() {
     if (!replaceTo && resumeReturnPath()) return;
     const go = replaceTo ?? setRoute;
     const saved = await hydrateBusinessSetupFromServer();
+    // A business-designated account operates only in the business environment:
+    // signing in never lands it in the consumer shell, even when it was last
+    // active as a customer.
     const customerShell =
-      user?.lastActiveShell === 'customer' ||
-      (user?.role === 'Owner' && (hasUnfinishedBusinessSetup(saved) || !user.businessId));
+      !isBusinessDesignated(user) &&
+      (user?.lastActiveShell === 'customer' ||
+        (user?.role === 'Owner' && (hasUnfinishedBusinessSetup(saved) || !user.businessId)));
     if (!customerShell) {
       go('business-overview');
       return;
@@ -3332,6 +3342,19 @@ function AppInner() {
     void routeSignedInOwner(sessionUser, setRouteState).finally(() => setReturningToShell(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [returningToShell, sessionUser, sessionQuery.isError]);
+
+  // Business-designated accounts operate only in the business environment:
+  // they sign in in the business shell and are never switched to or left on
+  // the consumer shell or consumer routes.
+  useEffect(() => {
+    if (!authed || !hasApiConfig() || !isBusinessDesignated(sessionUser)) return;
+    if (isBusinessRole(sessionUser?.role)) {
+      if (!onBusinessPage && route !== 'business-overview') setRouteState('business-overview');
+      return;
+    }
+    void switchShell(sessionUser?.businessRole ?? 'Owner');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed, sessionUser, route, onBusinessPage, setRouteState, switchShell]);
 
   /**
    * "Set up your business on VEMTAP": the way back into unfinished setup, on the
