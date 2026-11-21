@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Body,
   Query,
   UseGuards,
@@ -17,6 +18,12 @@ import {
   GenerateCustomerImpersonationTokenDto,
   AuditLogFilterDto,
 } from './dto/administration.dto';
+import { AdminOverviewQueryDto } from './dto/admin-overview.dto';
+import {
+  AdminCustomerFilterDto,
+  AdminUpdateCustomerStatusDto,
+  AdminCustomerNoteDto,
+} from './dto/admin-customer.dto';
 import { AdminNfcGrantDto } from './dto/nfc-grant.dto';
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';
 import {
@@ -37,6 +44,65 @@ import { SkipSubscriptionCheck } from '../subscriptions/decorators/skip-subscrip
 @Controller('administration')
 export class AdministrationController {
   constructor(private readonly adminService: AdministrationService) {}
+
+  @Get('overview')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Admin: Get platform overview telemetry and pulse metrics' })
+  @ApiResponse({ status: 200, description: 'Live platform overview metrics' })
+  async getOverview(@Query() query: AdminOverviewQueryDto) {
+    return this.adminService.getOverview(query);
+  }
+
+  @Get('customers')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Admin: List and search all registered platform customers' })
+  @ApiResponse({ status: 200, description: 'List of customers with statistics and pagination' })
+  async listCustomers(@Query() filter: AdminCustomerFilterDto) {
+    return this.adminService.listCustomers(filter);
+  }
+
+  @Get('customers/:id')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Admin: Get comprehensive customer profile and dossier' })
+  @ApiResponse({ status: 200, description: 'Customer dossier details' })
+  async getCustomer(@Param('id', ParseUUIDPipe) id: string) {
+    return this.adminService.getCustomer(id);
+  }
+
+  @Patch('customers/:id/status')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Admin: Update customer account standing/status' })
+  @ApiResponse({ status: 200, description: 'Customer status updated' })
+  async updateCustomerStatus(
+    @Request() req,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdminUpdateCustomerStatusDto,
+  ) {
+    return this.adminService.updateCustomerStatus(id, req.user.id, dto);
+  }
+
+  @Post('customers/:id/notes')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Admin: Append internal administrative note to customer' })
+  @ApiResponse({ status: 201, description: 'Internal note saved' })
+  async addCustomerNote(
+    @Request() req,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdminCustomerNoteDto,
+  ) {
+    return this.adminService.addCustomerNote(id, req.user.id, dto);
+  }
+
+  @Post('customers/:id/revoke-tokens')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  @ApiOperation({ summary: 'Admin: Revoke active session tokens for a customer' })
+  @ApiResponse({ status: 200, description: 'Sessions revoked' })
+  async revokeCustomerTokens(
+    @Request() req,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.adminService.revokeCustomerTokens(id, req.user.id);
+  }
 
   @Get('agents')
   @Roles(UserRole.ADMIN)

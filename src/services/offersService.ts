@@ -1,8 +1,23 @@
 import { api } from './api/client';
 import type { ComboProduct, DealStudioDraft } from '../scripts/deals/dealStudioShared';
-import { claimLimitPeriod, dealValidityRange, isCurrentPriceDeal, resolveDealPricing } from '../scripts/deals/dealStudioShared';
+import {
+  claimLimitPeriod,
+  dealGalleryUrls,
+  dealValidityRange,
+  isCurrentPriceDeal,
+  mainDealMedia,
+  resolveDealPricing,
+  selectedRegularTotal,
+  structureForStrategy,
+} from '../scripts/deals/dealStudioShared';
 
-export type OfferPricingType = 'sum' | 'percentage_discount' | 'fixed_discount_price' | 'fixed_discount_amount';
+export type OfferPricingType =
+  | 'sum'
+  | 'percentage_discount'
+  | 'fixed_discount_price'
+  | 'fixed_discount_amount'
+  | 'combo'
+  | 'tiered';
 
 /** `GET /catalogue/offers/admin` row — only the fields the web uses. */
 export interface BusinessOffer {
@@ -11,6 +26,7 @@ export interface BusinessOffer {
   name: string;
   description?: string | null;
   mainImage?: string | null;
+  galleryImages?: string[] | null;
   pricingType: OfferPricingType;
   discountValue?: number | null;
   fixedPrice?: number | null;
@@ -52,11 +68,16 @@ export interface CreateOfferInput {
   description?: string;
   sourceProductId?: string;
   itemIds?: string[];
+  /** Main gallery item; a video is stored as a marked URL string (no API video field). */
   mainImage?: string;
+  /** The four additional gallery slots, also as plain URL strings. */
+  galleryImages?: string[];
   quantity?: number;
   pricingType: OfferPricingType;
   discountValue?: number;
   fixedPrice?: number;
+  /** Buy More, Save More: percentage discount that applies at each quantity level. */
+  tiers?: { minQuantity: number; discountValue: number }[];
   branchId: string;
   /** Publish at several branches at once: one offer each, sharing a `dealGroupId`. */
   branchIds?: string[];
@@ -175,20 +196,14 @@ export function toHhMm(value: string): string | undefined {
   return `${String(hours).padStart(2, '0')}:${match[2]}`;
 }
 
-/**
- * The source item plus, for a multi-product bundle, the other catalogue items
- * it pairs (`current` is the source; ids not in the catalogue are dropped).
- */
+/** Every selected live product is linked to the deal; no synthetic ids survive. */
 function dealItemIds(studio: DealStudioDraft, sourceId: string, catalog?: ComboProduct[]) {
-  if (studio.strategy !== 'combo' || studio.combo.mode !== 'bundle' || !catalog) return [sourceId];
-  const known = new Set(catalog.map((product) => product.id));
-  const ids = studio.combo.items
-    .filter((line) => line.productId !== 'current' && known.has(line.productId))
-    .map((line) => line.productId);
-  return [...new Set([sourceId, ...ids])];
+  const known = catalog ? new Set(catalog.map((product) => product.id)) : null;
+  const ids = studio.productIds.filter((id) => id && id !== 'current' && (!known || known.has(id)));
+  return [...new Set(ids.length ? ids : [sourceId])];
 }
 
-/** The deal for one catalogue item, built from the Deal Studio settings. */
+/** The deal for the selected live products, built from the Deal Studio settings. */
 export function studioToOfferInput(
   studio: DealStudioDraft,
   source: { itemId: string; name: string; basePrice: number; mainImage?: string | null },
@@ -196,41 +211,67 @@ export function studioToOfferInput(
   options: { branchIds?: string[]; catalog?: ComboProduct[] } = {},
 ): CreateOfferInput {
   const { start, end } = dealValidityRange(studio);
+  const catalog = options.catalog ?? [];
+  const structure = studio.structure ?? structureForStrategy(studio.strategy);
+  const regularTotal = selectedRegularTotal(studio, catalog) || source.basePrice;
+  const pricing = resolveDealPricing(studio, regularTotal, catalog);
 
-  const pricing = resolveDealPricing(studio, source.basePrice, options.catalog);
   let pricingType: OfferPricingType = 'percentage_discount';
   let discountValue: number | undefined;
   let fixedPrice: number | undefined;
-  let minOrderAmount: number | undefined;
-  let name = source.name;
-  switch (studio.strategy) {
-    case 'current':
-      // No discount: publish the item's own price as a fixed deal price so the
-      // API's calculated price and the customer pay price stay identical.
+  let tiers: { minQuantity: number; discountValue: number }[] | undefined;
+
+  switch (structure) {
+    case 'bundle':
       pricingType = 'fixed_discount_price';
       fixedPrice = Math.round(pricing.dealPrice);
-      name = source.name;
       break;
-    case 'fixed':
-      pricingType = 'fixed_discount_amount';
-      discountValue = studio.fixed.amountOff;
-      minOrderAmount = studio.fixed.minSpend || undefined;
-      name = `₦${studio.fixed.amountOff.toLocaleString('en-NG')} off ${source.name}`;
+    case 'price-slash':
+      if (studio.priceSlash.mode === 'percentage') {
+        pricingType = 'percentage_discount';
+        discountValue = studio.priceSlash.discountPct;
+      } else {
+        pricingType = 'fixed_discount_price';
+        fixedPrice = Math.round(studio.priceSlash.newPrice);
+      }
       break;
-    case 'combo':
+    case 'buy-more-save-more': {
+      pricingType = 'tiered';
+      tiers = [...studio.quantityTiers]
+        .sort((a, b) => a.quantity - b.quantity)
+        .map((tier) => ({
+          minQuantity: tier.quantity,
+          // The API stores a percentage at each quantity level; derive it from
+          // the exact total price the merchant entered so checkout maths agrees.
+          discountValue:
+            regularTotal > 0
+              ? Math.max(0, Math.min(100, Math.round((1 - tier.price / (regularTotal * tier.quantity)) * 100)))
+              : 0,
+        }));
+      break;
+    }
+    case undefined:
+      // Legacy "keep current catalogue price" deals use a fixed price.
       pricingType = 'fixed_discount_price';
-      fixedPrice = Math.round(pricing.dealPrice);
-      name = `${source.name} combo`;
-      break;
-    case 'tiered':
-      discountValue = studio.flash.discountPct;
-      name = `${studio.flash.discountPct}% off ${source.name} (happy hour)`;
+      fixedPrice = Math.round(regularTotal);
       break;
     default:
-      discountValue = studio.discountPct;
-      name = `${studio.discountPct}% off ${source.name}`;
+      // Legacy onboarding strategies still resolve through the shared maths.
+      if (studio.strategy === 'fixed') {
+        pricingType = 'fixed_discount_amount';
+        discountValue = studio.fixed.amountOff;
+      } else if (studio.strategy === 'tiered') {
+        pricingType = 'percentage_discount';
+        discountValue = studio.flash.discountPct;
+      } else if (studio.strategy === 'combo') {
+        pricingType = 'fixed_discount_price';
+        fixedPrice = Math.round(pricing.dealPrice);
+      } else {
+        discountValue = studio.discountPct;
+      }
   }
 
+  const name = studio.title.trim() || source.name;
   const weekdays = (Object.keys(studio.days) as (keyof DealStudioDraft['days'])[]).filter((d) => studio.days[d]).map((d) => WEEKDAY[d]);
   const startTime = toHhMm(studio.redeemStart);
   const endTime = toHhMm(studio.redeemEnd);
@@ -239,24 +280,31 @@ export function studioToOfferInput(
     ...(studio.pickup ? (['takeout'] as const) : []),
     ...(studio.reservation ? (['reservation'] as const) : []),
   ];
+  const terms = [
+    ...studio.terms.filter(Boolean),
+    ...(studio.freeDelivery ? ['Free delivery included'] : []),
+  ];
 
   return {
     name,
-    description: studio.terms[0] ?? name,
+    description: studio.description.trim() || name,
     sourceProductId: source.itemId,
-    itemIds: dealItemIds(studio, source.itemId, options.catalog),
-    mainImage: source.mainImage ?? undefined,
+    itemIds: dealItemIds(studio, source.itemId, catalog),
+    // The deal cover comes from the mandatory Deal Gallery, never from the
+    // source product's photo.
+    mainImage: mainDealMedia(studio)?.url ?? undefined,
+    galleryImages: dealGalleryUrls(studio).length ? dealGalleryUrls(studio) : undefined,
     quantity: studio.vouchers || undefined,
     pricingType,
     discountValue,
     fixedPrice,
-    minOrderAmount,
+    tiers,
     branchId,
     ...(options.branchIds && options.branchIds.length > 1 ? { branchIds: options.branchIds } : {}),
     startDate: start.toISOString(),
     endDate: end?.toISOString(),
     offerType: isCurrentPriceDeal(studio) ? 'Current price' : 'discount',
-    terms: studio.terms.filter(Boolean),
+    terms,
     claimSteps: studio.claimSteps.filter(Boolean).slice(0, 10),
     maxClaimsPerCustomer: studio.claimOnce ? 1 : studio.unlimitedClaims ? undefined : studio.maxClaims,
     claimLimitPeriod: claimLimitPeriod(studio),

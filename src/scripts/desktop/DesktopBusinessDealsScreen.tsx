@@ -7,6 +7,7 @@ import { useOfferMutations, useOffers, useOfferSummary } from '../../hooks/busin
 import { hasApiConfig } from '../../services/api/client';
 import { apiErrorMessage } from '../../services/errorMessages';
 import type { BusinessOffer } from '../../services/offersService';
+import { dealPrimaryImage } from '../../utils/dealImages';
 import { dealBadgeLabel, isOfferPaused, offerClaimStats, offerComparePriceLabel, offerPriceLabel, offerScheduleLabel, offerSlot } from '../catalogueLive';
 
 interface DesktopBusinessDealsScreenProps {
@@ -148,7 +149,7 @@ function offerToCard(offer: BusinessOffer): DealCard {
   return {
     id: offer.id,
     title: offer.name,
-    image: offer.mainImage || LIVE_IMAGE_PLACEHOLDER,
+    image: dealPrimaryImage(offer) ?? LIVE_IMAGE_PLACEHOLDER,
     discount: dealBadgeLabel(offer),
     typeLabel: offer.offerType || 'Deal',
     typeTone: 'bg-surface-canvas/90 text-primary',

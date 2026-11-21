@@ -17,8 +17,8 @@ const UNLOCKED_PERKS = [
 ];
 
 const RESERVED_PERKS = [
-  { icon: 'verified', body: 'Official blue Verified Business checkmark on storefront' },
-  { icon: 'push_pin', body: 'Pinned placement in curated top neighborhood feeds' },
+  { icon: 'verified', body: 'Verified Business badge on your storefront once verified' },
+  { icon: 'push_pin', body: 'Placement in curated feeds once verification is complete' },
 ];
 
 export function VerificationUnregisteredScreen({
@@ -83,9 +83,9 @@ export function VerificationUnregisteredScreen({
                 </span>
               </div>
             </div>
-            <span className="inline-flex items-center gap-space-2xs px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold flex-shrink-0">
-              <Icon name="done" className="text-[13px]" />
-              Verified
+            <span className="inline-flex items-center gap-space-2xs px-space-xs py-0.5 rounded-full bg-surface-tint-blue text-primary font-label-sm text-label-sm font-semibold flex-shrink-0">
+              <Icon name="schedule" className="text-[13px]" />
+              Submitted
             </span>
           </div>
           <div className="flex items-center justify-between p-space-sm rounded-lg bg-surface-container-lowest shadow-sm">

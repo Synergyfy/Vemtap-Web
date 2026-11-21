@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  ForbiddenException,
+  HttpStatus,
   Injectable,
   NotFoundException,
   Logger,
@@ -43,7 +45,15 @@ import { AffiliatesService } from '../affiliates/affiliates.service';
 import { AffiliateSyncService } from '../affiliates/affiliate-sync.service';
 import { QrThriveService } from '../qr-thrive/qr-thrive.service';
 import { AddonsService } from './services/addons.service';
-import { AddOn } from './entities/addon.entity';
+import { AddOn, AddOnType } from './entities/addon.entity';
+import {
+  LocationAccessBranch,
+  LocationAccessSummary,
+  LocationBillingType,
+  LocationBlockedReason,
+  LocationLimit,
+  LocationPurchasedEntitlement,
+} from './types/location-access';
 import {
   SubscriptionTaxService,
   TaxCalculationResult,
@@ -54,6 +64,11 @@ import {
   PromotionValidationResult,
 } from '../coupons/services/coupon-engine.service';
 import { MailService } from '../mail/mail.service';
+import { PLAN_ERRORS } from '../../common/enums/plan-errors.enum';
+import {
+  BusinessAddOn,
+  BusinessAddOnStatus,
+} from './entities/business-addon.entity';
 
 @Injectable()
 export class SubscriptionsService {
@@ -1098,6 +1113,345 @@ export class SubscriptionsService {
     }
   }
 
+  /** The primary location is always free, independent of the active plan. */
+  private static readonly FREE_LOCATION_ALLOWANCE = 1;
+
+  private normalizeLocationLimit(
+    limit: number | null | undefined,
+  ): LocationLimit {
+    if (limit === -1) return 'unlimited';
+    return Math.max(0, Number(limit) || 0);
+  }
+
+  private isLocationCapability(target: string | null | undefined): boolean {
+    const value = (target || '').trim().toLowerCase();
+    return (
+      value === 'branches' ||
+      value === 'branchlimit' ||
+      value === 'locations' ||
+      value === 'locationlimit'
+    );
+  }
+
+  private isPurchasableLocationAddon(addon: AddOn): boolean {
+    return (
+      addon.type === AddOnType.RESOURCE &&
+      this.isLocationCapability(addon.targetCapability)
+    );
+  }
+
+  private addonLocationDetails(businessAddon: BusinessAddOn): {
+    isLocation: boolean;
+    locations: number;
+  } {
+    const target =
+      businessAddon.metadata?.targetCapability ??
+      businessAddon.addon?.targetCapability;
+    const rawLimit = Number(
+      businessAddon.metadata?.additionalLimit ??
+        businessAddon.addon?.additionalLimit ??
+        0,
+    );
+    const quantity = Math.max(1, Number(businessAddon.quantity) || 1);
+    return {
+      isLocation: this.isLocationCapability(target),
+      locations: Math.max(0, Number.isFinite(rawLimit) ? rawLimit : 0) * quantity,
+    };
+  }
+
+  private addonBillingType(addon: AddOn): LocationBillingType {
+    if (addon.isRecurring) return 'recurring';
+    if (addon.isOneTime) return 'one_time';
+    return null;
+  }
+
+  /**
+   * Single source of truth for business-facing location access. It derives
+   * everything from the active plan and active location add-ons so pricing,
+   * limits and purchase terms only change in backend/admin configuration.
+   * Over-limit branches are reported as restricted, never deleted.
+   */
+  async getLocationAccess(businessId: string): Promise<LocationAccessSummary> {
+    const subscription = await this.activeSubscription(businessId);
+    const activePlans = await this.plansService.findAll(true);
+    const plan = subscription?.plan ?? activePlans.find((p) => p.isFree);
+
+    if (!plan) {
+      throw new BadRequestException(
+        'No active plan and no default free plan available',
+      );
+    }
+
+    const branches = await this.branchRepository.find({
+      where: { businessId },
+    });
+    const orderedBranches = [...branches].sort((a, b) => {
+      if (a.isMainBranch !== b.isMainBranch) return a.isMainBranch ? -1 : 1;
+      return (
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+    });
+    const primaryBranchId =
+      orderedBranches.find((branch) => branch.isMainBranch)?.id ??
+      orderedBranches[0]?.id;
+
+    const activeBusinessAddOns =
+      await this.addonsService.getActiveBusinessAddons(businessId);
+    const allBusinessAddOns =
+      await this.addonsService.getBusinessAddons(businessId);
+    const locationEntitlements: LocationPurchasedEntitlement[] =
+      activeBusinessAddOns
+        .map((businessAddon) => ({
+          businessAddon,
+          details: this.addonLocationDetails(businessAddon),
+        }))
+        .filter(({ details }) => details.isLocation && details.locations > 0)
+        .map(({ businessAddon, details }) => ({
+          id: businessAddon.id,
+          name: businessAddon.addon?.name ?? 'Location capacity',
+          locations: details.locations,
+          billingType: businessAddon.addon
+            ? this.addonBillingType(businessAddon.addon)
+            : null,
+          expiresAt: businessAddon.expiresAt ?? null,
+          purchasedAt: businessAddon.purchasedAt,
+        }));
+
+    const purchasedAllowance = locationEntitlements.reduce(
+      (sum, entitlement) => sum + entitlement.locations,
+      0,
+    );
+    const freeAllowance = SubscriptionsService.FREE_LOCATION_ALLOWANCE;
+    const planLimit = plan.branchesEnabled
+      ? this.normalizeLocationLimit(plan.branchLimit)
+      : 0;
+    const subscriptionAllowance: LocationLimit =
+      planLimit === 'unlimited'
+        ? 'unlimited'
+        : Math.max(0, planLimit - freeAllowance);
+    const totalAllowance: LocationLimit =
+      subscriptionAllowance === 'unlimited'
+        ? 'unlimited'
+        : freeAllowance + subscriptionAllowance + purchasedAllowance;
+    const locationsEnabled = Boolean(
+      plan.branchesEnabled || purchasedAllowance > 0,
+    );
+
+    const hasExpiredPurchases = allBusinessAddOns.some((businessAddon) => {
+      const details = this.addonLocationDetails(businessAddon);
+      return (
+        details.isLocation &&
+        details.locations > 0 &&
+        (businessAddon.status !== BusinessAddOnStatus.ACTIVE ||
+          new Date(businessAddon.expiresAt).getTime() < Date.now())
+      );
+    });
+
+    let subscriptionRemaining = subscriptionAllowance;
+    let purchasedRemaining = purchasedAllowance;
+    const accessBranches: LocationAccessBranch[] = orderedBranches.map(
+      (branch) => {
+        let source: LocationAccessBranch['entitlementSource'] = null;
+        let access: LocationAccessBranch['access'] = 'active';
+        let restrictionReason: string | null = null;
+
+        if (branch.id === primaryBranchId) {
+          source = 'free';
+        } else if (!locationsEnabled) {
+          access = 'restricted';
+          restrictionReason =
+            'Locations are not included in your current plan.';
+        } else if (
+          subscriptionRemaining === 'unlimited' ||
+          (typeof subscriptionRemaining === 'number' && subscriptionRemaining > 0)
+        ) {
+          source = 'subscription';
+          if (typeof subscriptionRemaining === 'number') {
+            subscriptionRemaining -= 1;
+          }
+        } else if (purchasedRemaining > 0) {
+          source = 'purchased';
+          purchasedRemaining -= 1;
+        } else {
+          access = 'restricted';
+          restrictionReason = hasExpiredPurchases
+            ? 'The purchased location capacity covering this location has expired.'
+            : 'This location is above the allowance included in your current plan.';
+        }
+
+        if (access === 'active' && branch.isActive === false) {
+          access = 'paused';
+        }
+
+        return {
+          id: branch.id,
+          name: branch.name,
+          isPrimary: branch.id === primaryBranchId,
+          isActive: branch.isActive,
+          access,
+          restrictionReason,
+          entitlementSource: source,
+          isFree: source === 'free',
+          isPurchased: source === 'purchased',
+          address: branch.address ?? null,
+        };
+      },
+    );
+
+    let blockedReason: LocationBlockedReason | null = null;
+    if (!locationsEnabled) {
+      blockedReason = 'PLAN_FEATURE_NOT_INCLUDED';
+    } else if (
+      totalAllowance !== 'unlimited' &&
+      branches.length >= totalAllowance
+    ) {
+      blockedReason = 'PLAN_LIMIT_REACHED';
+    }
+
+    const restrictedCount = accessBranches.filter(
+      (branch) => branch.access === 'restricted',
+    ).length;
+    let notice: string | null = null;
+    if (restrictedCount > 0) {
+      notice =
+        `${restrictedCount} location${restrictedCount === 1 ? ' is' : 's are'} restricted because ` +
+        `${restrictedCount === 1 ? 'it is' : 'they are'} above your current location allowance. ` +
+        'No location records were removed. Upgrade your plan or add location capacity to restore access.';
+    } else if (blockedReason === 'PLAN_FEATURE_NOT_INCLUDED') {
+      notice = 'Your current plan does not include additional locations.';
+    } else if (blockedReason === 'PLAN_LIMIT_REACHED') {
+      notice = 'Your current location allowance is fully used.';
+    }
+
+    const activeAddons = await this.addonsService.findAll(true);
+    const purchaseAddon = activeAddons.find(
+      (addon) =>
+        this.isPurchasableLocationAddon(addon) &&
+        Number(addon.additionalLimit) > 0 &&
+        Number(addon.price) > 0,
+    );
+    const rawMaxPurchasable = purchaseAddon
+      ? ((purchaseAddon as any).maxPurchasable ??
+        (purchaseAddon as any).metadata?.maxPurchasable)
+      : null;
+    const parsedMaxPurchasable = Number(rawMaxPurchasable);
+    const maxPurchasable =
+      Number.isFinite(parsedMaxPurchasable) && parsedMaxPurchasable > 0
+        ? parsedMaxPurchasable
+        : null;
+    const billingType = purchaseAddon
+      ? this.addonBillingType(purchaseAddon)
+      : null;
+
+    return {
+      plan: {
+        id: plan.id,
+        name: plan.name,
+        isActive:
+          subscription?.status === SubscriptionStatus.ACTIVE ||
+          subscription?.status === SubscriptionStatus.TRIAL,
+        isTrial: subscription?.status === SubscriptionStatus.TRIAL,
+      },
+      usage: {
+        total: branches.length,
+        primary: primaryBranchId ? 1 : 0,
+        active: accessBranches.filter((branch) => branch.access === 'active')
+          .length,
+        restricted: restrictedCount,
+        paused: accessBranches.filter((branch) => branch.access === 'paused')
+          .length,
+      },
+      allowance: {
+        free: freeAllowance,
+        subscription: subscriptionAllowance,
+        purchased: purchasedAllowance,
+        total: totalAllowance,
+      },
+      purchases: locationEntitlements,
+      canAddLocation: blockedReason === null,
+      blockedReason,
+      restrictionPolicy: 'restrict',
+      notice,
+      branches: accessBranches,
+      upgradePlans: activePlans.map((availablePlan) => ({
+        id: availablePlan.id,
+        name: availablePlan.name,
+        locationLimit: availablePlan.branchesEnabled
+          ? this.normalizeLocationLimit(availablePlan.branchLimit)
+          : 0,
+        locationsEnabled: Boolean(availablePlan.branchesEnabled),
+        currency: availablePlan.currency,
+        monthlyPrice: Number(availablePlan.monthlyPrice) || 0,
+        quarterlyPrice: Number(availablePlan.quarterlyPrice) || 0,
+        yearlyPrice: Number(availablePlan.yearlyPrice) || 0,
+        isFree: Boolean(availablePlan.isFree),
+        permissionsConfigured: Boolean(
+          availablePlan.isFree || availablePlan.permissionsConfiguredAt,
+        ),
+        isCurrent: availablePlan.id === plan.id,
+      })),
+      purchaseOption: {
+        available: Boolean(purchaseAddon),
+        // Pricing and terms come from the active admin-configured location
+        // add-on; the standalone Paystack checkout uses that same add-on.
+        checkoutEnabled: Boolean(purchaseAddon),
+        addonId: purchaseAddon?.id ?? null,
+        name: purchaseAddon?.name ?? null,
+        description: purchaseAddon?.description ?? null,
+        price: purchaseAddon ? Number(purchaseAddon.price) || 0 : null,
+        currency: purchaseAddon?.currency ?? null,
+        billingType,
+        locationsPerPurchase: purchaseAddon
+          ? Math.max(0, Number(purchaseAddon.additionalLimit) || 0)
+          : 0,
+        maxPurchasable,
+        remainingPurchasable:
+          maxPurchasable === null
+            ? null
+            : Math.max(0, maxPurchasable - purchasedAllowance),
+        expiresAfterDays:
+          purchaseAddon && billingType !== 'one_time'
+            ? purchaseAddon.durationDays || null
+            : null,
+      },
+    };
+  }
+
+  /** Backend gate used by branch creation — never trust a disabled UI button. */
+  async assertCanAddLocation(businessId: string): Promise<void> {
+    const access = await this.getLocationAccess(businessId);
+    if (access.canAddLocation) return;
+
+    throw new ForbiddenException({
+      statusCode: HttpStatus.FORBIDDEN,
+      error: access.blockedReason ?? PLAN_ERRORS.LIMIT_REACHED,
+      message: access.notice ?? 'You cannot add another location.',
+    });
+  }
+
+  /** Backend gate used when opening or editing an individual branch. */
+  async assertLocationAccess(
+    businessId: string,
+    branchId: string,
+  ): Promise<void> {
+    const access = await this.getLocationAccess(businessId);
+    const branch = access.branches.find((item) => item.id === branchId);
+    if (!branch) {
+      throw new NotFoundException(
+        'Branch not found or does not belong to your business',
+      );
+    }
+    if (branch.access === 'restricted') {
+      throw new ForbiddenException({
+        statusCode: HttpStatus.FORBIDDEN,
+        error: PLAN_ERRORS.LIMIT_REACHED,
+        message:
+          branch.restrictionReason ??
+          'This location is restricted by your current plan.',
+      });
+    }
+  }
+
   async getCapabilities(businessId: string): Promise<SubscriptionCapabilities> {
     const sub = await this.activeSubscription(businessId);
 
@@ -1127,7 +1481,10 @@ export class SubscriptionsService {
     const usedTags = await this.deviceRepository.count({
       where: { branchId: In(branchIds) },
     });
-    const usedBranches = branches.filter((b) => !b.isMainBranch).length;
+    // `plan.branchLimit` is a total-location allowance (the seeded plan even
+    // describes it as "1 Branch"), so usage must include the primary location.
+    // Counting only extra branches let a one-location plan create two.
+    const usedBranches = branches.length;
 
     const usedCatalogueItems = await this.catalogueItemRepository.count({
       where: { businessId },
@@ -1170,7 +1527,11 @@ export class SubscriptionsService {
     );
 
     const addonBranches =
-      addonCapabilities['branches'] || addonCapabilities['branchLimit'] || 0;
+      addonCapabilities['branches'] ||
+      addonCapabilities['branchLimit'] ||
+      addonCapabilities['locations'] ||
+      addonCapabilities['locationLimit'] ||
+      0;
     const addonTeamMembers =
       addonCapabilities['teamMembers'] ||
       addonCapabilities['teamMembersLimit'] ||

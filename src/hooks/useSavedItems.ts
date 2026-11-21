@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, getAccessToken, hasApiConfig } from '../services/api/client';
+import { dealPrimaryImage } from '../utils/dealImages';
 import { NO_IMAGE } from '../utils/homeOffer';
 import { dealEndsLabel } from './useDealDetail';
 
@@ -54,7 +55,7 @@ const toSavedItem = (row: unknown): SavedItem | null => {
       id,
       category: 'deals',
       layout: 'large',
-      image: text(item.mainImage) || NO_IMAGE,
+      image: dealPrimaryImage(item) || NO_IMAGE,
       title: text(item.name),
       subtitle: text(item.businessName),
       place: text(item.branchAddress) || text(item.branchName),

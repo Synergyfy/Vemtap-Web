@@ -10,8 +10,23 @@ import { apiErrorMessage } from '../services/errorMessages';
 import { branchAddressLabel, branchHoursLabel, branchOpenLabel } from './branchLive';
 
 import { getAddedBusinessLocations } from './businessLocationsStore';
-import { formatNaira } from './locationPricing';
 import { useBusinessOfferings } from '../context/BusinessOfferingsContext';
+import {
+  useLocationAccess,
+  useLocationCheckout,
+  useLocationCheckoutReturn,
+} from '../hooks/business/useSubscription';
+import type { LocationAccessSummary } from '../services/subscriptionService';
+import {
+  branchAccessLabel,
+  formatLocationLimit,
+  formatLocationMoney,
+  locationAllowanceLabel,
+  locationPlanLabel,
+  locationPurchaseTotal,
+  planLocationLabel,
+  purchaseTermLabel,
+} from './locationAccessUi';
 
 interface BusinessLocationsScreenProps {
   onTab: (tab: BusinessTabKey) => void;
@@ -19,6 +34,12 @@ interface BusinessLocationsScreenProps {
   onAddBranch?: () => void;
   /** Demo: opens the paid add-location flow. */
   onAddLocation?: () => void;
+  /** Live: opens the plan chooser when the current plan cannot add locations. */
+  onUpgradePlan?: () => void;
+  /** Live: opens the standalone location purchase page. */
+  onBuyLocations?: () => void;
+  /** Route mode: show the purchase form immediately. */
+  initialBuyLocations?: boolean;
 }
 
 const LIVE_IMAGE_PLACEHOLDER =
@@ -39,6 +60,7 @@ const BRANCHES: {
   phone: string;
   hours: string;
   status: string;
+  restrictionReason?: string | null;
   cluster: string;
   img: string;
   alt: string;
@@ -79,34 +101,58 @@ const BRANCHES: {
   },
 ];
 
-export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: BusinessLocationsScreenProps) {
+export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation, onUpgradePlan, onBuyLocations, initialBuyLocations = false }: BusinessLocationsScreenProps) {
   // Live: the business's real branches and what each one sells; demo keeps the samples.
   const live = hasApiConfig();
   const branchesQuery = useBranches();
+  const accessQuery = useLocationAccess();
   const liveList = branchesQuery.data ?? [];
+  // Live allowance, usage and restriction state all come from the backend.
+  const access: LocationAccessSummary | null = live ? accessQuery.data ?? null : null;
+  const accessByBranchId = new Map((access?.branches ?? []).map((item) => [item.id, item]));
+  const isRestricted = (branchId: string) => accessByBranchId.get(branchId)?.access === 'restricted';
   const counts = useBranchCatalogueCounts(liveList.map((branch) => branch.id));
   const count = (value: number | null | undefined) => (value == null ? '—' : String(value));
   const branches: typeof BRANCHES = live
-    ? liveList.map((branch, index) => ({
-        id: branch.id,
-        name: branch.name,
-        badge: branch.isMainBranch ? `Branch #${index + 1} • Main` : `Branch #${index + 1}`,
-        badgeClass: branch.isMainBranch ? 'bg-primary-fixed text-on-primary-fixed' : 'bg-surface-container-highest text-on-surface',
-        address: branchAddressLabel(branch),
-        phone: branch.phone || '—',
-        hours: branchHoursLabel(branch),
-        status: branch.isActive === false ? 'Paused' : `Active • ${branchOpenLabel(branch)}`,
-        cluster: branch.district || [branch.city, branch.state].filter(Boolean).join(', ') || '—',
-        img: branch.logoUrl || LIVE_IMAGE_PLACEHOLDER,
-        alt: branch.name,
-        imgHeight: index === 0 ? 'h-32' : 'h-28',
-        pulse: branch.isActive !== false,
-        metrics: {
-          products: count(counts[branch.id]?.products),
-          services: count(counts[branch.id]?.services),
-          deals: count(counts[branch.id]?.deals),
-        },
-      }))
+    ? liveList.map((branch, index) => {
+        const entitlement = accessByBranchId.get(branch.id);
+        const restricted = entitlement?.access === 'restricted';
+        const badgeParts = [`Branch #${index + 1}`];
+        if (branch.isMainBranch || entitlement?.isPrimary) badgeParts.push('Main');
+        if (entitlement?.isFree) badgeParts.push('Free');
+        else if (entitlement?.isPurchased) badgeParts.push('Purchased');
+        else if (entitlement?.entitlementSource === 'subscription') badgeParts.push('Plan');
+        if (restricted) badgeParts.push('Restricted');
+        return {
+          id: branch.id,
+          name: branch.name,
+          badge: badgeParts.join(' • '),
+          badgeClass: restricted
+            ? 'bg-error-container text-on-error-container'
+            : branch.isMainBranch
+              ? 'bg-primary-fixed text-on-primary-fixed'
+              : 'bg-surface-container-highest text-on-surface',
+          address: branchAddressLabel(branch),
+          phone: branch.phone || '—',
+          hours: branchHoursLabel(branch),
+          status: entitlement
+            ? branchAccessLabel(entitlement)
+            : branch.isActive === false
+              ? 'Paused'
+              : `Active • ${branchOpenLabel(branch)}`,
+          restrictionReason: entitlement?.restrictionReason ?? null,
+          cluster: branch.district || [branch.city, branch.state].filter(Boolean).join(', ') || '—',
+          img: branch.logoUrl || LIVE_IMAGE_PLACEHOLDER,
+          alt: branch.name,
+          imgHeight: index === 0 ? 'h-32' : 'h-28',
+          pulse: branch.isActive !== false && !restricted,
+          metrics: {
+            products: count(counts[branch.id]?.products),
+            services: count(counts[branch.id]?.services),
+            deals: count(counts[branch.id]?.deals),
+          },
+        };
+      })
     : BRANCHES;
   const { getEffectiveBranchOfferings } = useBusinessOfferings();
   const { update } = useBranchMutations();
@@ -118,11 +164,18 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
   const [demoOverrides, setDemoOverrides] = useState<Record<string, any>>({});
   const [dismissed, setDismissed] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [showLocationLimitModal, setShowLocationLimitModal] = useState(false);
+  const [showBuyForm, setShowBuyForm] = useState(initialBuyLocations);
+  const [purchaseLocations, setPurchaseLocations] = useState(
+    access?.purchaseOption.locationsPerPurchase || 1,
+  );
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
+  const locationCheckout = useLocationCheckout();
   const toastTimer = useRef<number | null>(null);
   // Locations bought from the dashboard (seeded demo entries match the two
   // cards below, so only real additions are rendered as extra cards).
   const [addedLocations] = useState(() =>
-    getAddedBusinessLocations().filter((location) => !location.id.startsWith('seed-')),
+    live ? [] : getAddedBusinessLocations().filter((location) => !location.id.startsWith('seed-')),
   );
 
   const [editForm, setEditForm] = useState({
@@ -244,6 +297,66 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  useEffect(() => {
+    if (initialBuyLocations) setShowBuyForm(true);
+  }, [initialBuyLocations]);
+
+  const purchaseOption = access?.purchaseOption ?? null;
+  const locationsPerPurchase = purchaseOption?.locationsPerPurchase || 1;
+  useEffect(() => {
+    setPurchaseLocations((current) => (current < locationsPerPurchase ? locationsPerPurchase : current));
+  }, [locationsPerPurchase]);
+
+  // A Paystack return lands back on this same page; confirm it once and refresh
+  // the live allowance before showing the result.
+  useLocationCheckoutReturn(
+    (result) => {
+      if (result.status === 'completed') {
+        setShowBuyForm(false);
+        showToast(`${result.locations} location${result.locations === 1 ? '' : 's'} added to your plan.`);
+      } else {
+        showToast('Payment is still being confirmed. Your locations will appear shortly.');
+      }
+    },
+    (error) => showToast(apiErrorMessage(error, 'Could not confirm this location purchase.')),
+  );
+
+  const openBuyLocations = () => {
+    setPurchaseError(null);
+    if (onBuyLocations) onBuyLocations();
+    else setShowBuyForm(true);
+  };
+
+  const submitLocationPurchase = () => {
+    if (!purchaseOption?.addonId || !purchaseOption.checkoutEnabled) {
+      setPurchaseError('Location checkout is not configured for this account.');
+      return;
+    }
+    const requested = Number(purchaseLocations);
+    if (!Number.isInteger(requested) || requested < locationsPerPurchase) {
+      setPurchaseError(`Choose at least ${locationsPerPurchase} location${locationsPerPurchase === 1 ? '' : 's'}.`);
+      return;
+    }
+    if (requested % locationsPerPurchase !== 0) {
+      setPurchaseError(`Choose a multiple of ${locationsPerPurchase} location${locationsPerPurchase === 1 ? '' : 's'}.`);
+      return;
+    }
+    const remaining = purchaseOption.remainingPurchasable;
+    if (remaining != null && requested > remaining) {
+      setPurchaseError(`You can buy at most ${remaining} more location${remaining === 1 ? '' : 's'}.`);
+      return;
+    }
+    setPurchaseError(null);
+    locationCheckout.mutate(
+      {
+        addonId: purchaseOption.addonId,
+        locations: requested,
+        callbackUrl: window.location.href.split('?')[0],
+      },
+      { onError: (error) => setPurchaseError(apiErrorMessage(error, 'Could not start checkout.')) },
+    );
+  };
+
   return (
     <AppScreen>
       <BusinessHubHeader />
@@ -262,15 +375,159 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
             className="shrink-0 h-[42px] px-space-md bg-primary-container text-on-primary font-button-secondary text-button-secondary rounded-xl flex items-center gap-space-2xs shadow-[0_4px_14px_rgba(6,108,244,0.22)] active:scale-95 transition-all"
             type="button"
             onClick={() => {
+              if (live && !access) {
+                showToast('Checking your location allowance…');
+                return;
+              }
+              if (live && access && !access.canAddLocation) {
+                setShowLocationLimitModal(true);
+                return;
+              }
               if (live && onAddBranch) onAddBranch();
               else if (onAddLocation) onAddLocation();
               else showToast('New branch wizard opening...');
             }}
           >
             <Icon name="add_location_alt" className="text-[19px]" />
-            <span>Add Location</span>
+            <span>Add New Location</span>
           </button>
         </section>
+
+        {/* Backend-derived allowance and usage */}
+        {access && (
+          <section className="px-margin mb-space-md">
+            <div className="bg-surface-container-low rounded-xl p-space-md shadow-sm flex flex-col gap-space-xs">
+              <div className="flex items-start justify-between gap-space-xs">
+                <div className="min-w-0">
+                  <p className="font-caption text-caption text-text-secondary">{locationPlanLabel(access)}</p>
+                  <p className="font-heading-sm text-heading-sm text-text-primary mt-0.5">
+                    {locationAllowanceLabel(access)} locations used
+                  </p>
+                </div>
+                <span className="shrink-0 px-space-xs py-0.5 rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
+                  {access.plan.isActive ? 'Plan active' : 'Free plan'}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-x-space-md gap-y-space-2xs font-caption text-caption text-text-secondary">
+                <span>Free: {access.allowance.free}</span>
+                <span>Plan: {formatLocationLimit(access.allowance.subscription)}</span>
+                <span>Purchased: {access.allowance.purchased}</span>
+              </div>
+              {access.notice && (
+                <p className="font-caption text-caption text-on-error-container bg-error-container rounded-lg px-space-xs py-1.5">
+                  {access.notice}
+                </p>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Backend-derived plan and capacity options */}
+        {access && (access.upgradePlans.length > 0 || access.purchaseOption.available) && (
+          <section className="px-margin mb-space-lg">
+            <div className="bg-surface-canvas rounded-xl shadow-sm border border-border-subtle p-space-md flex flex-col gap-space-sm">
+              <div>
+                <h3 className="font-heading-sm text-heading-sm text-text-primary">Location capacity options</h3>
+                <p className="font-caption text-caption text-text-secondary mt-0.5">
+                  Plans, pricing and purchase terms are supplied by your backend configuration.
+                </p>
+              </div>
+              <div className="flex flex-col gap-space-xs">
+                {access.upgradePlans.map((plan) => (
+                  <div
+                    key={plan.id}
+                    className="flex items-center justify-between gap-space-xs rounded-lg bg-surface-subtle px-space-sm py-space-xs"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-label-md text-label-md text-text-primary font-semibold truncate">
+                        {plan.name}
+                        {plan.isCurrent && <span className="ml-1 text-primary">• Current</span>}
+                      </p>
+                      <p className="font-caption text-caption text-text-secondary">{planLocationLabel(plan)}</p>
+                    </div>
+                    <span className="shrink-0 font-label-sm text-label-sm text-text-primary">
+                      {formatLocationMoney(plan.monthlyPrice, plan.currency)}/mo
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {access.purchaseOption.available && (
+                <div className="rounded-lg bg-surface-subtle px-space-sm py-space-xs flex flex-col gap-space-2xs">
+                  <p className="font-label-md text-label-md text-text-primary font-semibold">
+                    {access.purchaseOption.name ?? 'Additional location capacity'}
+                  </p>
+                  <p className="font-caption text-caption text-text-secondary">
+                    {purchaseTermLabel(access.purchaseOption)}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={openBuyLocations}
+                    disabled={!access.purchaseOption.checkoutEnabled || !access.purchaseOption.addonId}
+                    className="mt-space-2xs h-10 rounded-lg bg-primary text-on-primary font-button-secondary text-button-secondary disabled:bg-surface-container-high disabled:text-text-secondary disabled:cursor-not-allowed"
+                  >
+                    {access.purchaseOption.checkoutEnabled && access.purchaseOption.addonId
+                      ? 'Buy More Location'
+                      : 'Checkout unavailable'}
+                  </button>
+
+                  {showBuyForm && access.purchaseOption.checkoutEnabled && access.purchaseOption.addonId && (
+                    <div className="mt-space-xs rounded-lg border border-border-subtle bg-surface-canvas p-space-sm flex flex-col gap-space-xs">
+                      <label className="font-label-sm text-label-sm text-text-primary" htmlFor="buy-locations-count">
+                        Number of locations
+                      </label>
+                      <input
+                        id="buy-locations-count"
+                        type="number"
+                        min={locationsPerPurchase}
+                        step={locationsPerPurchase}
+                        value={purchaseLocations}
+                        onChange={(event) => setPurchaseLocations(Number(event.target.value))}
+                        className="h-10 w-full rounded-lg bg-surface-subtle border border-border-subtle px-space-sm text-body-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                      <div className="flex items-center justify-between font-label-sm text-label-sm text-text-primary">
+                        <span>Total</span>
+                        <strong>{formatLocationMoney(locationPurchaseTotal(access.purchaseOption, purchaseLocations), access.purchaseOption.currency)}</strong>
+                      </div>
+                      {purchaseError && (
+                        <p className="font-caption text-caption text-on-error-container bg-error-container rounded-lg px-space-xs py-1.5">
+                          {purchaseError}
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        onClick={submitLocationPurchase}
+                        disabled={locationCheckout.isPending}
+                        className="h-10 rounded-lg bg-primary text-on-primary font-button-secondary text-button-secondary disabled:opacity-50"
+                      >
+                        {locationCheckout.isPending ? 'Opening checkout…' : 'Continue to Payment'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {initialBuyLocations && access && !access.purchaseOption.available && (
+          <section className="px-margin mb-space-lg">
+            <div className="rounded-xl border border-border-subtle bg-surface-canvas p-space-md flex flex-col gap-space-xs">
+              <p className="font-label-md text-label-md text-text-primary font-semibold">
+                Location purchases are not configured
+              </p>
+              <p className="font-caption text-caption text-text-secondary">
+                Your backend has no active location add-on. Upgrade your plan to include more locations.
+              </p>
+              <button
+                type="button"
+                onClick={onUpgradePlan}
+                className="h-10 rounded-lg bg-primary text-on-primary font-button-secondary text-button-secondary"
+              >
+                Upgrade
+              </button>
+            </div>
+          </section>
+        )}
 
         {/* Branch Card List */}
         <section className="px-margin flex flex-col gap-space-md">
@@ -289,6 +546,13 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
                     {branch.status}
                   </span>
                 </div>
+                {branch.restrictionReason && (
+                  <div className="absolute bottom-space-xs right-space-xs max-w-[70%]">
+                    <span className="inline-flex px-2 py-0.5 rounded-md bg-error-container/90 text-on-error-container font-caption text-caption">
+                      {branch.restrictionReason}
+                    </span>
+                  </div>
+                )}
                 <div className="absolute bottom-space-xs left-space-xs">
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-canvas/90 backdrop-blur-md text-on-surface font-caption text-caption">
                     <Icon name="distance" className="text-[13px] text-primary" />
@@ -362,8 +626,9 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
                 {/* Action Row */}
                 <div className="flex items-center gap-space-xs mt-space-xs">
                   <button
-                    className="flex-1 h-11 bg-surface-container-low text-primary-container font-button-secondary text-button-secondary rounded-xl flex items-center justify-center gap-1.5 hover:bg-surface-container-high transition-colors font-semibold"
+                    className="flex-1 h-11 bg-surface-container-low text-primary-container font-button-secondary text-button-secondary rounded-xl flex items-center justify-center gap-1.5 hover:bg-surface-container-high transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                     type="button"
+                    disabled={isRestricted(branch.id)}
                     onClick={() => openEdit({ ...branch, ...(demoOverrides[branch.id] ?? {}) })}
                   >
                     <Icon name="edit_location" className="text-[18px]" />
@@ -434,7 +699,7 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
                 <span className="font-caption text-caption text-text-secondary flex items-center gap-1">
                   <Icon name="payments" className="text-[14px] text-primary" />
                   {location.feePaid > 0
-                    ? `${formatNaira(location.feePaid)} one-time location fee paid`
+                    ? `${formatLocationMoney(location.feePaid, 'NGN')} one-time location fee paid`
                     : 'Included with your plan'}
                 </span>
                 <button
@@ -538,7 +803,8 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
               <button
                 type="button"
                 onClick={() => openEdit(optionsBranch)}
-                className="w-full h-11 px-3 rounded-xl bg-surface-container-low hover:bg-surface-container-high text-on-surface font-label-md text-label-md font-semibold flex items-center gap-2.5 transition-colors"
+                disabled={live && isRestricted(optionsBranch.id)}
+                className="w-full h-11 px-3 rounded-xl bg-surface-container-low hover:bg-surface-container-high text-on-surface font-label-md text-label-md font-semibold flex items-center gap-2.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Icon name="edit_location" className="text-[18px] text-primary" />
                 <span>Edit Location</span>
@@ -564,7 +830,8 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
                       switchTo(br.id || br.key || br.name);
                       showToast(`Switched operating view to ${br.name}`);
                     }}
-                    className="w-full h-11 px-3 rounded-xl bg-surface-container-low hover:bg-surface-container-high text-on-surface font-label-md text-label-md font-semibold flex items-center gap-2.5 transition-colors"
+                    disabled={live && isRestricted(optionsBranch.id)}
+                    className="w-full h-11 px-3 rounded-xl bg-surface-container-low hover:bg-surface-container-high text-on-surface font-label-md text-label-md font-semibold flex items-center gap-2.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Icon name="sync_alt" className="text-[18px] text-secondary" />
                     <span>Switch to this Operating View</span>
@@ -579,7 +846,8 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
                   setOptionsBranch(null);
                   setDeactivatingBranch(br);
                 }}
-                className={`w-full h-11 px-3 rounded-xl font-label-md text-label-md font-semibold flex items-center gap-2.5 transition-colors ${
+                disabled={live && isRestricted(optionsBranch.id)}
+                className={`w-full h-11 px-3 rounded-xl font-label-md text-label-md font-semibold flex items-center gap-2.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                   optionsBranch.status === 'Paused'
                     ? 'bg-badge-discount-bg text-badge-discount-text'
                     : 'bg-error-container text-on-error-container'
@@ -745,6 +1013,71 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Location limit / missing entitlement — fail closed to the upgrade or purchase flows. */}
+      {showLocationLimitModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/50 backdrop-blur-xs animate-fade-in"
+          onClick={() => setShowLocationLimitModal(false)}
+          role="presentation"
+        >
+          <div
+            className="relative w-full max-w-md rounded-2xl bg-surface-canvas p-space-md shadow-2xl border border-border-subtle flex flex-col gap-space-sm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="location-limit-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-space-xs">
+              <div className="flex items-center gap-space-xs">
+                <div className="w-9 h-9 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center shrink-0">
+                  <Icon name="add_location_alt" className="text-[20px]" />
+                </div>
+                <h3 id="location-limit-title" className="font-heading-sm text-heading-sm text-text-primary font-bold">
+                  More locations needed
+                </h3>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setShowLocationLimitModal(false)}
+                className="w-7 h-7 rounded-full flex items-center justify-center text-text-tertiary"
+              >
+                <Icon name="close" className="text-[18px]" />
+              </button>
+            </div>
+            <p className="font-body-md text-body-md text-text-secondary leading-normal">
+              {access?.blockedReason === 'PLAN_FEATURE_NOT_INCLUDED'
+                ? 'Your current plan does not include additional locations. Upgrade to a plan that includes them, or buy location capacity directly.'
+                : 'Your current plan does not include additional locations beyond the allowance you have already used. Upgrade to a higher plan, or buy more locations directly.'}
+            </p>
+            <div className="flex flex-col gap-space-2xs pt-space-2xs border-t border-border-subtle">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLocationLimitModal(false);
+                  onUpgradePlan?.();
+                }}
+                className="h-11 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-space-2xs"
+              >
+                <Icon name="arrow_upward" className="text-[17px]" />
+                <span>Upgrade</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLocationLimitModal(false);
+                  onBuyLocations?.();
+                }}
+                className="h-11 rounded-xl bg-surface-subtle text-text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-space-2xs"
+              >
+                <Icon name="shopping_cart" className="text-[17px]" />
+                <span>Buy More Location</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

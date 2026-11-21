@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { hasApiConfig } from '../../services/api/client';
 import { useSessionUser } from '../../hooks/useSessionUser';
-import { useVerificationActions, useVerificationStatus } from '../../hooks/business/useVerification';
+import {
+  useVerificationActions,
+  useVerificationStatus,
+  type BusinessChecksOutcome,
+  type CheckOutcome,
+} from '../../hooks/business/useVerification';
 import { DesktopVerificationIntroScreen } from './DesktopVerificationIntroScreen';
 import { DesktopVerificationIdTypeScreen } from './DesktopVerificationIdTypeScreen';
 import { DesktopVerificationIdFormScreen } from './DesktopVerificationIdFormScreen';
@@ -58,6 +63,8 @@ export function DesktopBusinessVerificationScreen({
   const [step, setStep] = useState<DesktopVerificationStep>('intro');
   // Live: a flow resumed from the intro skips earlier steps, so its Back returns to the intro.
   const [resumedAt, setResumedAt] = useState<DesktopVerificationStep | null>(null);
+  const [idOutcome, setIdOutcome] = useState<CheckOutcome | null>(null);
+  const [cacChecks, setCacChecks] = useState<BusinessChecksOutcome | null>(null);
   const backTo = (resumed: DesktopVerificationStep, previous: DesktopVerificationStep) => () => setStep(resumedAt === resumed ? 'intro' : previous);
   const verificationStatus = useVerificationStatus();
   const session = useSessionUser();
@@ -65,7 +72,7 @@ export function DesktopBusinessVerificationScreen({
   // Live checks start blank (prefilled with the account name); demo keeps sample values.
   const [draft, setDraft] = useState<VerificationDraft>(() =>
     hasApiConfig()
-      ? { ...INITIAL_VERIFICATION_DRAFT, idNumber: '', legalName: '', dateOfBirth: '', entity: '', cacNumber: '', businessName: '' }
+      ? { ...INITIAL_VERIFICATION_DRAFT, idNumber: '', legalName: '', entity: '', cacNumber: '', businessName: '', representativeName: '' }
       : { ...INITIAL_VERIFICATION_DRAFT, entity: '', cacNumber: '' },
   );
 
@@ -97,6 +104,10 @@ export function DesktopBusinessVerificationScreen({
   const idConfig = ID_TYPE_CONFIG[draft.idType];
   const rawId = idConfig.normalize(draft.idNumber);
   const reference = `•••• ${rawId.slice(-4).padStart(4, '0')}`;
+  const sandboxCheck =
+    idOutcome?.check.environment === 'test' ||
+    cacChecks?.business.check.environment === 'test' ||
+    cacChecks?.representative?.check.environment === 'test';
 
   const renderStep = () => {
     switch (step) {
@@ -125,11 +136,15 @@ export function DesktopBusinessVerificationScreen({
     case 'idForm':
       return (
         <DesktopVerificationIdFormScreen
+          key={draft.idType}
           onBrand={onBrand}
           onBack={() => setStep('idType')}
           draft={draft}
           onDraftChange={updateDraft}
-          onResult={(outcome) => setStep(outcome === 'success' ? 'idSuccess' : 'idReview')}
+          onResult={(result) => {
+            setIdOutcome(result);
+            setStep(result.result === 'success' ? 'idSuccess' : 'idReview');
+          }}
         />
       );
     case 'idSuccess':
@@ -140,7 +155,8 @@ export function DesktopBusinessVerificationScreen({
           onContinue={() => setStep('cacStatus')}
           legalName={draft.legalName}
           documentLabel={idConfig.documentLabel}
-          reference={reference}
+          reference={idOutcome?.check.maskedId ?? reference}
+          check={idOutcome?.check}
         />
       );
     case 'idReview':
@@ -150,6 +166,8 @@ export function DesktopBusinessVerificationScreen({
           onBack={() => setStep('idForm')}
           onRetry={() => setStep('idForm')}
           onUseAnotherId={() => setStep('idType')}
+          reasons={idOutcome?.reasons}
+          checkId={idOutcome?.check.id}
         />
       );
     case 'cacStatus':
@@ -170,7 +188,10 @@ export function DesktopBusinessVerificationScreen({
           onBack={() => setStep('cacStatus')}
           draft={draft}
           onDraftChange={updateDraft}
-          onVerified={() => setStep('cacSuccess')}
+          onVerified={(checks) => {
+            setCacChecks(checks);
+            setStep('cacSuccess');
+          }}
           onNotIncorporated={() => setStep('unregistered')}
         />
       );
@@ -183,6 +204,9 @@ export function DesktopBusinessVerificationScreen({
           businessName={draft.businessName}
           cacNumber={draft.cacNumber}
           legalName={draft.legalName}
+          representativeName={draft.representativeName}
+          businessCheck={cacChecks?.business.check}
+          check={cacChecks?.representative?.check ?? cacChecks?.business.check}
         />
       );
     case 'inReview':
@@ -208,6 +232,7 @@ export function DesktopBusinessVerificationScreen({
           legalName={draft.legalName}
           cacNumber={draft.cacNumber}
           businessName={draft.businessName}
+          sandbox={sandboxCheck}
         />
       );
     case 'unregistered':

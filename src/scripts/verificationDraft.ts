@@ -1,4 +1,4 @@
-export type VerificationIdType = 'nin' | 'drivers_license' | 'passport' | 'voters_card';
+export type VerificationIdType = 'nin' | 'drivers_license' | 'passport' | 'voters_card' | 'bvn';
 
 export type CacEntityType = 'BN' | 'RC' | 'IT';
 
@@ -6,11 +6,12 @@ export interface VerificationDraft {
   idType: VerificationIdType;
   idNumber: string;
   legalName: string;
-  dateOfBirth: string;
   cacRegistered: boolean;
   entity: CacEntityType | '';
   cacNumber: string;
   businessName: string;
+  /** Name checked against CAC directors / beneficial owners, separately from the registry lookup. */
+  representativeName: string;
 }
 
 export interface VerificationIdTypeConfig {
@@ -38,6 +39,10 @@ export interface VerificationIdTypeConfig {
   infoBody: string;
   documentLabel: string;
   maxLength: number;
+  /** BVN is a record lookup; every other type uses the hosted selfie check. */
+  selfie: boolean;
+  /** Whether an uploaded document is required, optional or not used. */
+  document: 'required' | 'optional' | 'none';
   normalize: (value: string) => string;
   format: (raw: string) => string;
   isValid: (raw: string) => boolean;
@@ -83,6 +88,8 @@ export const ID_TYPE_CONFIG: Record<VerificationIdType, VerificationIdTypeConfig
     infoBody: 'Your 11-digit NIN is issued by NIMC. We validate your name against government registries for compliance.',
     documentLabel: 'National ID (NIN)',
     maxLength: 11,
+    selfie: true,
+    document: 'optional',
     normalize: (value) => normalizeDigits(value, 11),
     format: formatNin,
     isValid: (raw) => raw.length === 11,
@@ -113,6 +120,8 @@ export const ID_TYPE_CONFIG: Record<VerificationIdType, VerificationIdTypeConfig
       "Your driver's licence is issued by the FRSC. We validate your name against the federal licensing registry for compliance.",
     documentLabel: "Driver's Licence (FRSC)",
     maxLength: 15,
+    selfie: true,
+    document: 'optional',
     normalize: (value) => normalizeCode(value, 15),
     format: (raw) => raw,
     isValid: (raw) => raw.length >= 10,
@@ -133,16 +142,18 @@ export const ID_TYPE_CONFIG: Record<VerificationIdType, VerificationIdTypeConfig
     helperStrong: 'photo page',
     helperTail: ' of your NIS-issued passport.',
     uploadTitle: 'Upload or Snap Passport Bio Page',
-    uploadCaption: 'Make sure the page is clear, well-lit, and all 4 corners are visible.',
+    uploadCaption: 'Required: a clear, well-lit photo of the data page with all 4 corners visible.',
     uploadAction: 'Take Photo or Upload Passport',
     fileName: 'passport_bio_page.jpg',
     submitLabel: 'Verify Identity',
-    loadingLabel: 'Verifying passport with NIS...',
+    loadingLabel: 'Verifying passport document...',
     infoTitle: 'About Passport Verification',
     infoBody:
-      'Your passport is issued by the Nigerian Immigration Service. We validate your name against the NIS registry for compliance.',
+      'Your passport is checked from the uploaded data page and a selfie. We do not run a separate registry lookup for passports.',
     documentLabel: 'International Passport (NIS)',
     maxLength: 9,
+    selfie: true,
+    document: 'required',
     normalize: (value) => normalizeCode(value, 9),
     format: (raw) => raw,
     isValid: (raw) => raw.length >= 8,
@@ -173,9 +184,42 @@ export const ID_TYPE_CONFIG: Record<VerificationIdType, VerificationIdTypeConfig
       'Your voter identification number is issued by INEC. We validate your name against the official voter registry for compliance.',
     documentLabel: "Voter's Card (INEC)",
     maxLength: 19,
+    selfie: true,
+    document: 'optional',
     normalize: (value) => normalizeCode(value, 19),
     format: (raw) => raw,
     isValid: (raw) => raw.length >= 19,
+  },
+  bvn: {
+    key: 'bvn',
+    optionName: 'BVN',
+    icon: 'account_balance',
+    badge: 'No selfie',
+    optionDescription: 'Bank Verification Number record lookup (no selfie required)',
+    pill: 'BVN Verification',
+    heading: 'Enter your BVN details',
+    fieldLabel: 'Bank Verification Number (BVN)',
+    counter: '11 digits',
+    placeholder: 'e.g. 12345678901',
+    inputMode: 'numeric',
+    helperLead: 'Dial ',
+    helperStrong: '*565#',
+    helperTail: ' on your registered SIM to retrieve your BVN.',
+    uploadTitle: '',
+    uploadCaption: '',
+    uploadAction: '',
+    fileName: '',
+    submitLabel: 'Verify BVN',
+    loadingLabel: 'Checking BVN record...',
+    infoTitle: 'About BVN Verification',
+    infoBody: 'Your BVN is matched against the bank record. This is a record lookup only — no selfie is required.',
+    documentLabel: 'Bank Verification Number (BVN)',
+    maxLength: 11,
+    selfie: false,
+    document: 'none',
+    normalize: (value) => normalizeDigits(value, 11),
+    format: (raw) => raw,
+    isValid: (raw) => raw.length === 11,
   },
 };
 
@@ -184,17 +228,18 @@ export const DEFAULT_ID_NUMBERS: Record<VerificationIdType, string> = {
   drivers_license: 'ABC123456789',
   passport: 'A08123456',
   voters_card: '90F3A5B1C2D3E4F5G6H',
+  bvn: '12345678901',
 };
 
 export const INITIAL_VERIFICATION_DRAFT: VerificationDraft = {
   idType: 'nin',
   idNumber: DEFAULT_ID_NUMBERS.nin,
   legalName: 'Zainab Ahmed',
-  dateOfBirth: '14 / 08 / 1989',
   cacRegistered: true,
   entity: 'BN',
   cacNumber: 'BN-3491820',
   businessName: 'Urban Grill & Bistro Ltd',
+  representativeName: 'Zainab Ahmed',
 };
 
 export const isFailedVerificationAttempt = (raw: string) => raw.length > 0 && /^0+$/.test(raw);

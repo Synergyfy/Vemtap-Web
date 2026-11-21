@@ -1,7 +1,12 @@
 import { useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { hasApiConfig } from '../../services/api/client';
-import { subscriptionService, type BillingPeriod } from '../../services/subscriptionService';
+import {
+  subscriptionService,
+  type BillingPeriod,
+  type LocationCheckoutConfirmation,
+  type LocationCheckoutResult,
+} from '../../services/subscriptionService';
 
 /**
  * Live subscription & billing data: plans, the active subscription, invoice
@@ -13,6 +18,7 @@ export const subscriptionKeys = {
   all: ['subscription'] as const,
   plans: ['subscription', 'plans'] as const,
   active: ['subscription', 'active'] as const,
+  locationAccess: ['subscription', 'locations', 'access'] as const,
   billing: ['subscription', 'billing'] as const,
   paymentMethod: ['subscription', 'payment-method'] as const,
   creditPlans: ['subscription', 'credit-plans'] as const,
@@ -37,6 +43,17 @@ export function useActiveSubscription() {
     enabled: hasApiConfig(),
     retry: false,
     staleTime: 60_000,
+  });
+}
+
+/** Config-driven location allowance, usage, restrictions and options. */
+export function useLocationAccess() {
+  return useQuery({
+    queryKey: subscriptionKeys.locationAccess,
+    queryFn: subscriptionService.locationAccess,
+    enabled: hasApiConfig(),
+    staleTime: 60_000,
+    retry: false,
   });
 }
 
@@ -135,6 +152,54 @@ export function useSubscriptionCheckout() {
           return result;
         }),
   });
+}
+
+/** Paystack checkout for standalone location capacity. */
+export function useLocationCheckout() {
+  return useMutation({
+    mutationFn: (input: {
+      addonId: string;
+      locations: number;
+      callbackUrl?: string;
+    }): Promise<LocationCheckoutResult> =>
+      subscriptionService.startLocationCheckout(input).then((result) => {
+        if (result.authorizationUrl) window.location.assign(result.authorizationUrl);
+        return result;
+      }),
+  });
+}
+
+/**
+ * Confirms a location purchase after Paystack redirects back. The reference is
+ * consumed once so a reload cannot award the same add-on twice.
+ */
+export function useLocationCheckoutReturn(
+  onDone: (result: LocationCheckoutConfirmation) => void,
+  onError?: (error: unknown) => void,
+) {
+  const queryClient = useQueryClient();
+  const handled = useRef(false);
+  const doneRef = useRef(onDone);
+  const errorRef = useRef(onError);
+  doneRef.current = onDone;
+  errorRef.current = onError;
+
+  useEffect(() => {
+    if (!hasApiConfig() || handled.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const reference = params.get('reference') ?? params.get('trxref');
+    if (!reference) return;
+    handled.current = true;
+    window.history.replaceState(null, '', window.location.pathname);
+    subscriptionService.confirmLocationCheckout(reference).then(
+      (result) => {
+        void queryClient.invalidateQueries({ queryKey: subscriptionKeys.all });
+        doneRef.current(result);
+      },
+      (error: unknown) => errorRef.current?.(error),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryClient]);
 }
 
 /**

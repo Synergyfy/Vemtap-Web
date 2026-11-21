@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { ProductImage } from '../../components/ui/ProductImage';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { useCart } from '../../context/CartContext';
 import { BusinessChatBox } from '../../components/BusinessChatBox';
@@ -32,6 +33,7 @@ export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenPr
   const live = hasApiConfig();
   const publicBusiness = usePublicBusiness(businessCode);
   const [category, setCategory] = useState(() => new URLSearchParams(window.location.search).get('category') ?? 'all');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [query, setQuery] = useState('');
   const [chatOpen, setChatOpen] = useState(Boolean(startChat));
   const liveItems = [
@@ -73,6 +75,153 @@ export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenPr
 
   const addToCart = (product: CatalogueProduct) => {
     cart.add({ id: product.id, name: product.name, price: product.price, image: product.image, productId: product.id });
+  };
+
+  const renderBadges = (product: CatalogueProduct) => (
+    <>
+      {product.badge && (
+        <span
+          className={`absolute top-3 left-3 px-2 py-0.5 rounded-full font-caption text-caption font-bold shadow-sm ${product.badgeClass ?? ''}`}
+        >
+          {product.badge}
+        </span>
+      )}
+      {product.topRightBadge && (
+        <span
+          className={`absolute top-3 right-3 px-2 py-0.5 rounded-full font-caption text-caption font-semibold shadow-sm ${product.topRightClass ?? ''}`}
+        >
+          {product.topRightBadge}
+        </span>
+      )}
+    </>
+  );
+
+  const renderCartControl = (product: CatalogueProduct) =>
+    cart.qtyOf(product.id) === 0 ? (
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          addToCart(product);
+        }}
+        className="h-9 px-4 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold flex items-center gap-1 active:scale-95 transition-all shadow-sm shrink-0"
+      >
+        <Icon name="add" className="text-[18px]" />
+        <span>Add</span>
+      </button>
+    ) : (
+      <div className="h-9 px-1.5 rounded-xl bg-badge-discount-bg text-badge-discount-text flex items-center gap-1.5 shadow-sm shrink-0">
+        <button
+          aria-label={`Remove one ${product.name}`}
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            cart.decrement(product.id);
+          }}
+          className="w-7 h-7 rounded-lg bg-surface-canvas/70 hover:bg-surface-canvas flex items-center justify-center text-text-primary active:scale-95 transition-all"
+        >
+          <Icon name="remove" className="text-[16px]" />
+        </button>
+        <span className="font-label-sm text-label-sm font-bold min-w-[16px] text-center">{cart.qtyOf(product.id)}</span>
+        <button
+          aria-label={`Add one ${product.name}`}
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            cart.increment(product.id);
+          }}
+          className="w-7 h-7 rounded-lg bg-surface-canvas/70 hover:bg-surface-canvas flex items-center justify-center text-text-primary active:scale-95 transition-all"
+        >
+          <Icon name="add" className="text-[16px]" />
+        </button>
+      </div>
+    );
+
+  const renderRating = (product: CatalogueProduct) =>
+    product.rating || product.reviews ? (
+      <div className="flex items-center gap-1.5">
+        <div className="flex items-center text-primary">
+          <Icon name="star" className="text-[14px]" filled />
+          {product.rating && <span className="font-caption text-caption font-bold ml-0.5 text-on-surface">{product.rating}</span>}
+        </div>
+        {product.reviews && <span className="font-caption text-caption text-text-tertiary">{product.reviews}</span>}
+      </div>
+    ) : null;
+
+  const renderProductCard = (product: CatalogueProduct & { kind: 'product' | 'service' }) => {
+    if (viewMode === 'list') {
+      return (
+        <div
+          key={product.id}
+          onClick={() => onOpenProduct(product.id, product)}
+          className="group flex cursor-pointer gap-4 rounded-2xl bg-surface-canvas p-3 shadow-sm transition-all hover:shadow-md"
+        >
+          <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-xl">
+            <ProductImage
+              alt={product.imageAlt}
+              className="h-full w-full"
+              iconClassName="text-[22px]"
+              imageClassName="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              showLabel={false}
+              src={product.image}
+            />
+            {renderBadges(product)}
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col justify-between gap-2">
+            <div className="min-w-0">
+              {renderRating(product)}
+              <h3 className="font-heading-sm text-heading-sm text-on-surface group-hover:text-primary transition-colors line-clamp-1">
+                {product.name}
+              </h3>
+              <p className="font-caption text-caption text-text-secondary line-clamp-2">{product.desc}</p>
+            </div>
+            <div className="flex items-end justify-between gap-3">
+              <div className="flex items-baseline gap-1.5">
+                <span className="font-heading-sm text-heading-sm text-on-surface font-bold">{naira(product.price)}</span>
+                {product.was && (
+                  <span className="font-caption text-caption text-text-tertiary line-through">{naira(product.was)}</span>
+                )}
+              </div>
+              {renderCartControl(product)}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div
+        key={product.id}
+        onClick={() => onOpenProduct(product.id, product)}
+        className="group bg-surface-canvas rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col cursor-pointer"
+      >
+        <div className="relative h-44 w-full overflow-hidden bg-surface-container">
+          <ProductImage
+            alt={product.imageAlt}
+            className="h-full w-full"
+            imageClassName="h-full w-full object-cover group-hover:scale-105 transition-transform duration-500"
+            src={product.image}
+          />
+          {renderBadges(product)}
+        </div>
+        <div className="p-4 flex flex-col gap-2 flex-1">
+          {renderRating(product)}
+          <h3 className="font-heading-sm text-heading-sm text-on-surface group-hover:text-primary transition-colors line-clamp-1">
+            {product.name}
+          </h3>
+          <p className="font-caption text-caption text-text-secondary line-clamp-2">{product.desc}</p>
+          <div className="mt-auto pt-3 flex items-center justify-between gap-3">
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-heading-sm text-heading-sm text-on-surface font-bold">{naira(product.price)}</span>
+              {product.was && (
+                <span className="font-caption text-caption text-text-tertiary line-through">{naira(product.was)}</span>
+              )}
+            </div>
+            {renderCartControl(product)}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -173,6 +322,34 @@ export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenPr
                 ? `Showing ${products.length} matching items`
                 : `Showing all ${products.length} ${kind === 'service' ? 'services' : 'items'}`}
             </span>
+            <div className="flex items-center gap-1 rounded-xl bg-surface-canvas p-1 shadow-sm">
+              <button
+                aria-label="Switch to list view"
+                aria-pressed={viewMode === 'list'}
+                onClick={() => setViewMode('list')}
+                type="button"
+                className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                  viewMode === 'list'
+                    ? 'bg-primary text-on-primary shadow-sm'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-surface-subtle'
+                }`}
+              >
+                <Icon name="view_list" className="text-[18px]" />
+              </button>
+              <button
+                aria-label="Switch to grid view"
+                aria-pressed={viewMode === 'grid'}
+                onClick={() => setViewMode('grid')}
+                type="button"
+                className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                  viewMode === 'grid'
+                    ? 'bg-primary text-on-primary shadow-sm'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-surface-subtle'
+                }`}
+              >
+                <Icon name="grid_view" className="text-[18px]" />
+              </button>
+            </div>
           </div>
 
           {products.length === 0 ? (
@@ -185,101 +362,13 @@ export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenPr
               </p>
               {!live && <p className="font-caption text-caption text-text-tertiary">Try another dish, cut or ingredient</p>}
             </div>
-          ) : (
+          ) : viewMode === 'grid' ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
-              {products.map((product) => (
-                <div
-                  key={product.id}
-                  onClick={() => onOpenProduct(product.id, product)}
-                  className="group bg-surface-canvas rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col cursor-pointer"
-                >
-                  <div className="relative h-44 w-full overflow-hidden bg-surface-container">
-                    <img
-                      alt={product.imageAlt}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      src={product.image}
-                    />
-                    {product.badge && (
-                      <span
-                        className={`absolute top-3 left-3 px-2 py-0.5 rounded-full font-caption text-caption font-bold shadow-sm ${product.badgeClass ?? ''}`}
-                      >
-                        {product.badge}
-                      </span>
-                    )}
-                    {product.topRightBadge && (
-                      <span
-                        className={`absolute top-3 right-3 px-2 py-0.5 rounded-full font-caption text-caption font-semibold shadow-sm ${product.topRightClass ?? ''}`}
-                      >
-                        {product.topRightBadge}
-                      </span>
-                    )}
-                  </div>
-                  <div className="p-4 flex flex-col gap-2 flex-1">
-                    {(product.rating || product.reviews) && <div className="flex items-center gap-1.5">
-                      <div className="flex items-center text-primary">
-                        <Icon name="star" className="text-[14px]" filled />
-                        {product.rating && <span className="font-caption text-caption font-bold ml-0.5 text-on-surface">{product.rating}</span>}
-                      </div>
-                      {product.reviews && <span className="font-caption text-caption text-text-tertiary">{product.reviews}</span>}
-                    </div>}
-                    <h3 className="font-heading-sm text-heading-sm text-on-surface group-hover:text-primary transition-colors line-clamp-1">
-                      {product.name}
-                    </h3>
-                    <p className="font-caption text-caption text-text-secondary line-clamp-2">{product.desc}</p>
-                    <div className="mt-auto pt-3 flex items-center justify-between gap-3">
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="font-heading-sm text-heading-sm text-on-surface font-bold">{naira(product.price)}</span>
-                        {product.was && (
-                          <span className="font-caption text-caption text-text-tertiary line-through">{naira(product.was)}</span>
-                        )}
-                      </div>
-                        {cart.qtyOf(product.id) === 0 ? (
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              addToCart(product);
-                            }}
-                            className="h-9 px-4 rounded-xl bg-primary hover:bg-primary-container text-on-primary font-label-sm text-label-sm font-semibold flex items-center gap-1 active:scale-95 transition-all shadow-sm shrink-0"
-                          >
-                            <Icon name="add" className="text-[18px]" />
-                            <span>Add</span>
-                          </button>
-                        ) : (
-                          <div
-                            className="h-9 px-1.5 rounded-xl bg-badge-discount-bg text-badge-discount-text flex items-center gap-1.5 shadow-sm shrink-0"
-                          >
-                            <button
-                              aria-label={`Remove one ${product.name}`}
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                cart.decrement(product.id);
-                              }}
-                              className="w-7 h-7 rounded-lg bg-surface-canvas/70 hover:bg-surface-canvas flex items-center justify-center text-text-primary active:scale-95 transition-all"
-                            >
-                              <Icon name="remove" className="text-[16px]" />
-                            </button>
-                            <span className="font-label-sm text-label-sm font-bold min-w-[16px] text-center">
-                              {cart.qtyOf(product.id)}
-                            </span>
-                            <button
-                              aria-label={`Add one ${product.name}`}
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                cart.increment(product.id);
-                              }}
-                              className="w-7 h-7 rounded-lg bg-surface-canvas/70 hover:bg-surface-canvas flex items-center justify-center text-text-primary active:scale-95 transition-all"
-                            >
-                              <Icon name="add" className="text-[16px]" />
-                            </button>
-                          </div>
-                        )}
-                    </div>
-                  </div>
-                </div>
-              ))}
+              {products.map((product) => renderProductCard(product))}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {products.map((product) => renderProductCard(product))}
             </div>
           )}
             </div>
@@ -320,9 +409,11 @@ export function DesktopAllProductsScreen({ onNav, onBack, businessCode, onOpenPr
                   <div className="flex flex-col divide-y divide-surface-subtle max-h-[45vh] overflow-y-auto">
                     {cart.lines.map((line) => (
                       <div key={line.id} className="px-4 py-3 flex items-center gap-3">
-                        <img
+                        <ProductImage
                           alt={line.name}
-                          className="w-12 h-12 rounded-lg object-cover bg-surface-subtle shrink-0"
+                          className="h-12 w-12 shrink-0 rounded-lg"
+                          iconClassName="text-[18px]"
+                          showLabel={false}
                           src={line.image}
                         />
                         <div className="flex-1 min-w-0">

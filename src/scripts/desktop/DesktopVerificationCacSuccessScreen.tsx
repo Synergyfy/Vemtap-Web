@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
+import { maskIdNumber, type VerificationCheck } from '../../services/verificationService';
 import { BusinessVerificationChrome } from './BusinessVerificationChrome';
 
 interface DesktopVerificationCacSuccessScreenProps {
@@ -8,43 +9,39 @@ interface DesktopVerificationCacSuccessScreenProps {
   businessName: string;
   cacNumber: string;
   legalName: string;
+  representativeName?: string;
+  /** Representative/ownership check when available. */
+  check?: VerificationCheck;
+  /** CAC registration check. */
+  businessCheck?: VerificationCheck;
   onBrand?: () => void;
 }
 
-const MERCHANT_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBKkQ31DOVXy9rs6DFYib1J7YhF0HyWeM1YKZ0Um_l3KK8h7CZ5277alLBwVJ_m3jNlZSt5Pv2v7IxkVt5g1-qkSoA5bnQs4WcQOlHQATLNBcoJsDu4mFdWqQXRe7l4CxGLInq-NUqgbT5SwrwCb79rYT16k8rx-kO3aC4z0IAaoAI5H8gF5ApxTANvdpwlOOHzFznZ3mhSJ-tM_LfGSIprf2HLMxoq3zOCasnEzX2Yf9lGdCCl2E2wRw';
+const statusLabel = (check?: VerificationCheck) => {
+  if (!check) return 'Not available';
+  if (check.status === 'verified') return 'Verified';
+  if (check.status === 'needs_review') return 'In review';
+  if (check.status === 'failed') return 'Failed';
+  return 'Pending';
+};
 
-const PLATTER_IMAGE =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuCLzcmg3IVmorz3bvPkpzY53KZEx9DDJVJKLm258isnYOEGlmcoUcb1edJpQ4nR6iJxMKUhqOYrHOmiwHfZH1p-V3nRFWUVEfRA-InDoK5JuH-bRm-1un4PCvbsgrqIuaHCJvhkw6V0l6BIjvSC5li54SFeUFD1NC-__NZ8NtT5hANOx2Wm3rTYICsrGjP54eTp0lcV5jUI3Tr_4R6w7HwW9LGLwwMESNSmMBE1SXv7_OGcBLQ_dFHA2w';
-
-const PRIVILEGES = [
+const NEXT_STEPS = [
   {
-    icon: 'verified',
-    iconClass: 'bg-primary-container text-on-primary',
-    title: 'Verified Operator',
-    body: 'Permanent blue trust insignia',
+    icon: 'fact_check',
+    title: 'Final review',
+    body: 'See the combined status of your identity, registration and representative checks.',
   },
   {
-    icon: 'trending_up',
-    iconClass: 'bg-badge-discount-bg text-badge-discount-text',
-    title: 'Pinned Local Discovery',
-    body: '+340% footfall search boost',
+    icon: 'dashboard',
+    title: 'Status centre',
+    body: 'Track the outcome from your business verification dashboard at any time.',
   },
   {
-    icon: 'local_offer',
-    iconClass: 'bg-surface-tint-blue text-primary',
-    title: 'Instant Deals Engine',
-    body: 'Flash promos go live without delay',
-  },
-  {
-    icon: 'payments',
-    iconClass: 'bg-surface-container-high text-primary',
-    title: 'Multi-Till Settlements',
-    body: 'Direct branch payout routing',
+    icon: 'storefront',
+    title: 'Finish setup',
+    body: 'Continue with catalogue, deals and storefront setup while checks are reviewed.',
   },
 ];
-
-const HASH = '0x9A48C88B97D11432E64A891001FCBD01A9491820F209CAC-NGR-2025';
 
 export function DesktopVerificationCacSuccessScreen({
   onBack,
@@ -52,13 +49,32 @@ export function DesktopVerificationCacSuccessScreen({
   businessName,
   cacNumber,
   legalName,
+  representativeName,
+  check,
+  businessCheck,
   onBrand,
 }: DesktopVerificationCacSuccessScreenProps) {
   const [copied, setCopied] = useState(false);
+  const sandbox = check?.environment === 'test' || businessCheck?.environment === 'test';
+  const environment = sandbox ? 'Sandbox' : check?.environment === 'live' ? 'Live' : 'Demo';
+  const registrationVerified = businessCheck?.status === 'verified';
+  const representativeVerified = check?.kind === 'representative' && check.status === 'verified';
+  const safeRegistration = businessCheck?.maskedId || (check?.environment || businessCheck?.environment ? maskIdNumber(cacNumber) : cacNumber);
+  const auditReference = check?.id ?? businessCheck?.id ?? 'Not available';
+  const recordedAt = check?.createdAt
+    ? new Date(check.createdAt).toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    : null;
+  const initials = businessName.trim().split(/\s+/).slice(0, 2).map((word) => word[0]?.toUpperCase()).join('') || 'BV';
 
-  const copyHash = async () => {
+  const copyReference = async () => {
     try {
-      await navigator.clipboard.writeText(HASH);
+      await navigator.clipboard.writeText(auditReference);
     } catch {
       /* clipboard unavailable */
     }
@@ -71,13 +87,11 @@ export function DesktopVerificationCacSuccessScreen({
       <div className="max-w-6xl mx-auto w-full px-margin py-space-xl flex flex-col gap-space-2xl">
         <div className="relative overflow-hidden rounded-xl bg-surface-container-lowest shadow-md p-space-xl md:p-space-2xl">
           <div className="absolute -right-16 -top-16 w-80 h-80 rounded-full bg-badge-discount-bg/60 blur-3xl pointer-events-none" />
-          <div className="absolute right-1/4 -bottom-20 w-64 h-64 rounded-full bg-primary-fixed/30 blur-2xl pointer-events-none" />
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-space-xl">
             <div className="flex items-start md:items-center gap-space-lg">
               <div className="relative shrink-0">
-                <div className="absolute inset-0 rounded-full bg-badge-discount-text/20 blur-md animate-pulse" />
                 <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-full bg-badge-discount-bg flex items-center justify-center shadow-sm">
-                  <Icon name="verified" filled className="text-[36px] md:text-[44px] text-badge-discount-text" />
+                  <Icon name={sandbox ? 'science' : 'verified'} filled className="text-[36px] md:text-[44px] text-badge-discount-text" />
                 </div>
                 <span className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-surface-container-lowest shadow-sm flex items-center justify-center">
                   <Icon name="shield" filled className="text-[16px] text-primary" />
@@ -86,34 +100,28 @@ export function DesktopVerificationCacSuccessScreen({
               <div className="flex flex-col gap-space-2xs">
                 <div className="flex flex-wrap items-center gap-space-xs">
                   <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold tracking-wide uppercase">
-                    Official Validation Record
+                    Check record
                   </span>
-                  <span className="text-text-tertiary text-caption font-caption">•</span>
-                  <span className="text-text-secondary font-label-sm text-label-sm font-medium">
-                    Federal Republic of Nigeria
-                  </span>
+                  <span className="text-text-secondary font-label-sm text-label-sm font-medium">{environment} result</span>
                 </div>
                 <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight font-bold">
-                  Business registration verified
+                  {sandbox ? 'Sandbox business checks complete' : 'Business checks complete'}
                 </h1>
                 <p className="font-body-md text-body-md text-text-secondary max-w-2xl">
-                  Your business registration has been successfully authenticated against Corporate Affairs Commission
-                  (CAC) registry records.
+                  {sandbox
+                    ? 'These results came from sandbox checks. They are not live verification and must not be used as proof of a verified customer.'
+                    : 'Your registration and representative checks have been recorded against your business account.'}
                 </p>
               </div>
             </div>
             <div className="shrink-0 flex flex-col items-start md:items-end gap-space-xs bg-surface-subtle p-space-md rounded-xl shadow-sm">
               <div className="flex items-center gap-space-xs">
-                <span className="w-2.5 h-2.5 rounded-full bg-badge-discount-text animate-ping" />
-                <span className="font-label-sm text-label-sm font-semibold text-text-primary">Step 2 of 3 Completed</span>
+                <span className="w-2.5 h-2.5 rounded-full bg-badge-discount-text" />
+                <span className="font-label-sm text-label-sm font-semibold text-text-primary">Checks recorded</span>
               </div>
-              <div className="flex items-center gap-space-2xs">
-                <div className="w-28 h-2 rounded-full bg-surface-container overflow-hidden">
-                  <div className="w-full h-full bg-badge-discount-text rounded-full transition-all duration-500" />
-                </div>
-                <span className="font-caption text-caption font-semibold text-badge-discount-text">100% Validated</span>
-              </div>
-              <span className="font-caption text-caption text-text-tertiary">Real-time CAC API match confirmed</span>
+              <span className="font-caption text-caption text-text-tertiary">
+                {recordedAt ? `Recorded ${recordedAt}` : 'Final review is next'}
+              </span>
             </div>
           </div>
         </div>
@@ -123,35 +131,21 @@ export function DesktopVerificationCacSuccessScreen({
             <div className="bg-surface-container-lowest rounded-xl p-space-lg shadow-md flex flex-col gap-space-md relative overflow-hidden">
               <div className="flex items-start justify-between gap-space-md">
                 <div className="flex items-center gap-space-md min-w-0">
-                  <div className="relative w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-surface-container-high shadow-sm">
-                    <img alt="Urban Grill & Bistro interior" className="w-full h-full object-cover" src={MERCHANT_IMAGE} />
+                  <div className="relative w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-surface-tint-blue flex items-center justify-center shadow-sm">
+                    <span className="font-heading-sm text-heading-sm text-primary font-semibold">{initials}</span>
                     <div className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-primary-container text-on-primary flex items-center justify-center shadow-sm">
-                      <Icon name="check" filled className="text-[12px]" />
+                      <Icon name={sandbox ? 'science' : 'check'} filled className="text-[12px]" />
                     </div>
                   </div>
                   <div className="flex flex-col min-w-0">
                     <div className="flex items-center gap-space-xs">
-                      <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">
-                        {businessName || 'Urban Grill & Bistro'}
-                      </h2>
-                      <Icon name="verified" filled className="text-[18px] text-primary shrink-0" />
+                      <h2 className="font-heading-sm text-heading-sm text-text-primary truncate">{businessName}</h2>
                     </div>
                     <p className="font-label-sm text-label-sm text-text-secondary truncate">
-                      Victoria Island Lagos • Wuse II Abuja
+                      {environment} • Registration {statusLabel(businessCheck).toLowerCase()}
                     </p>
-                    <div className="flex items-center gap-space-xs mt-space-2xs">
-                      <span className="px-space-xs py-space-2xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-medium">
-                        Restaurant &amp; Bar
-                      </span>
-                      <span className="px-space-xs py-space-2xs rounded-full bg-surface-subtle text-text-secondary font-caption text-caption">
-                        Dual Branch
-                      </span>
-                    </div>
                   </div>
                 </div>
-                <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center gap-space-2xs shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" /> Live Status
-                </span>
               </div>
             </div>
 
@@ -159,53 +153,38 @@ export function DesktopVerificationCacSuccessScreen({
               <div className="flex items-center justify-between pb-space-xs">
                 <div className="flex items-center gap-space-xs">
                   <Icon name="account_balance" className="text-primary text-[20px]" />
-                  <span className="font-heading-sm text-heading-sm text-text-primary">Corporate Affairs Registry Entry</span>
+                  <span className="font-heading-sm text-heading-sm text-text-primary">Verification records</span>
                 </div>
-                <span className="font-caption text-caption text-text-tertiary font-mono">RC/BN SYNC: OK</span>
+                <span className="font-caption text-caption text-text-tertiary">Check references</span>
               </div>
               <div className="flex flex-col gap-space-xs">
                 <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-space-2xs">
                   <span className="font-label-md text-label-md text-text-secondary">Official Registered Name</span>
-                  <span className="font-label-md text-label-md font-semibold text-text-primary">
-                    {businessName || 'Urban Grill & Bistro Ltd'}
-                  </span>
+                  <span className="font-label-md text-label-md font-semibold text-text-primary">{businessName}</span>
                 </div>
                 <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-space-2xs">
                   <span className="font-label-md text-label-md text-text-secondary">CAC Registration Number</span>
                   <div className="flex items-center gap-space-xs">
                     <span className="font-label-md text-label-md font-mono font-semibold text-text-primary">
-                      {cacNumber || 'BN-3491820'}
+                      {safeRegistration}
                     </span>
-                    <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center gap-space-2xs">
-                      <Icon name="check_circle" className="text-[13px]" />
-                      Live in Registry
+                    <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
+                      {statusLabel(businessCheck)}
                     </span>
                   </div>
                 </div>
                 <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-space-2xs">
-                  <span className="font-label-md text-label-md text-text-secondary">Primary Operator &amp; Signatory</span>
+                  <span className="font-label-md text-label-md text-text-secondary">Account Operator</span>
+                  <span className="font-label-md text-label-md font-semibold text-text-primary">{legalName}</span>
+                </div>
+                <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-space-2xs">
+                  <span className="font-label-md text-label-md text-text-secondary">Representative Check</span>
                   <div className="flex items-center gap-space-xs">
                     <span className="font-label-md text-label-md font-semibold text-text-primary">
-                      {legalName || 'Zainab Ahmed'}
+                      {representativeName || 'Not supplied'}
                     </span>
-                    <span className="px-space-xs py-space-2xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-medium flex items-center gap-space-2xs">
-                      <Icon name="fingerprint" className="text-[13px]" />
-                      Identity Verified (NIN Linked)
-                    </span>
-                  </div>
-                </div>
-                <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-space-2xs">
-                  <span className="font-label-md text-label-md text-text-secondary">Official Registry Date</span>
-                  <span className="font-label-md text-label-md font-medium text-text-primary">
-                    14 May 2021 (4 Years Active)
-                  </span>
-                </div>
-                <div className="p-space-sm rounded-lg bg-surface-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-space-2xs">
-                  <span className="font-label-md text-label-md text-text-secondary">Regulatory Standing</span>
-                  <div className="flex items-center gap-space-xs">
-                    <span className="w-2 h-2 rounded-full bg-badge-discount-text" />
-                    <span className="font-label-md text-label-md font-semibold text-badge-discount-text">
-                      Active • Good Standing
+                    <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
+                      {statusLabel(check)}
                     </span>
                   </div>
                 </div>
@@ -214,25 +193,22 @@ export function DesktopVerificationCacSuccessScreen({
               <div className="mt-space-2xs p-space-md rounded-xl bg-surface-container-high/60 flex flex-col gap-space-xs">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-space-xs">
-                    <Icon name="enhanced_encryption" className="text-text-secondary text-[16px]" />
+                    <Icon name="key" className="text-text-secondary text-[16px]" />
                     <span className="font-caption text-caption font-semibold text-text-secondary uppercase tracking-wider">
-                      NDPR Cryptographic Hash Certificate
+                      Audit Reference
                     </span>
                   </div>
                   <button
                     className="flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-lg bg-surface-container-lowest hover:bg-surface-tint-blue transition-colors text-text-primary font-caption text-caption"
                     type="button"
-                    onClick={copyHash}
+                    onClick={copyReference}
                   >
                     <Icon name="content_copy" className="text-[14px]" />
-                    <span>Copy Key</span>
+                    <span>{copied ? 'Copied!' : 'Copy'}</span>
                   </button>
                 </div>
                 <div className="flex items-center justify-between bg-surface-container-lowest/80 px-space-sm py-space-xs rounded-lg">
-                  <code className="font-caption text-caption font-mono text-text-primary truncate">{HASH}</code>
-                  {copied && (
-                    <span className="font-caption text-caption text-badge-discount-text font-semibold pl-space-xs">Copied!</span>
-                  )}
+                  <code className="font-caption text-caption font-mono text-text-primary truncate">{auditReference}</code>
                 </div>
               </div>
 
@@ -240,11 +216,11 @@ export function DesktopVerificationCacSuccessScreen({
                 <Icon name="verified_user" className="text-badge-discount-text text-[22px] shrink-0 mt-0.5" />
                 <div className="flex flex-col gap-space-2xs">
                   <span className="font-label-sm text-label-sm font-semibold text-text-primary">
-                    Trust Assurance Guarantee
+                    Registry and ownership are separate
                   </span>
                   <p className="font-body-md text-body-md text-text-secondary leading-snug">
-                    Your business will now display the official VEMTAP Verified badge on all storefront listings,
-                    deals, and customer search results.
+                    The CAC lookup does not prove that you operate the business. The representative check is stored
+                    separately and shown in your verification status.
                   </p>
                 </div>
               </div>
@@ -255,92 +231,56 @@ export function DesktopVerificationCacSuccessScreen({
             <div className="bg-surface-container-lowest rounded-xl p-space-lg shadow-md flex flex-col gap-space-md">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-space-xs">
-                  <Icon name="phone_iphone" className="text-primary text-[20px]" />
-                  <span className="font-heading-sm text-heading-sm text-text-primary">Live Storefront Feed Simulation</span>
+                  <Icon name="fact_check" className="text-primary text-[20px]" />
+                  <span className="font-heading-sm text-heading-sm text-text-primary">What happens next</span>
                 </div>
                 <span className="px-space-xs py-space-2xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold">
-                  Abuja &amp; Lagos Viewport
+                  Final review
                 </span>
               </div>
-              <p className="font-caption text-caption text-text-secondary">
-                Here is how your authenticated identity appears on consumer mobile feeds when customers search nearby
-                dining.
-              </p>
-              <div className="p-space-md rounded-xl bg-surface-subtle flex flex-col gap-space-sm transition-all hover:shadow-md">
-                <div className="relative w-full h-36 rounded-lg overflow-hidden bg-surface-container">
-                  <img alt="Gourmet grilled platter at Urban Grill & Bistro" className="w-full h-full object-cover" src={PLATTER_IMAGE} />
-                  <div className="absolute top-2 left-2 px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold flex items-center gap-space-2xs">
-                    <span>15% Tap Discount</span>
-                  </div>
-                  <div className="absolute bottom-2 right-2 px-space-xs py-space-2xs rounded-full bg-surface-container-lowest/90 backdrop-blur-sm text-text-primary font-caption text-caption font-medium flex items-center gap-space-2xs">
-                    <Icon name="near_me" className="text-[14px] text-badge-discount-text" />
-                    <span>0.3 km away</span>
-                  </div>
-                </div>
-                <div className="flex items-start justify-between gap-space-sm pt-space-2xs">
-                  <div className="flex flex-col min-w-0">
-                    <div className="flex items-center gap-space-xs">
-                      <span className="font-heading-sm text-heading-sm text-text-primary font-bold truncate">
-                        {businessName || 'Urban Grill & Bistro'}
-                      </span>
-                      <span className="inline-flex items-center gap-space-2xs px-space-xs py-space-2xs rounded-full bg-primary-container text-on-primary font-caption text-caption font-semibold shrink-0">
-                        <Icon name="verified" filled className="text-[13px]" />
-                        <span>Verified</span>
-                      </span>
+              <div className="flex flex-col gap-space-sm">
+                {NEXT_STEPS.map((step) => (
+                  <div className="p-space-sm rounded-lg bg-surface-subtle flex items-start gap-space-sm" key={step.icon}>
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-primary-container text-on-primary">
+                      <Icon name={step.icon} className="text-[18px]" />
                     </div>
-                    <p className="font-caption text-caption text-text-secondary mt-space-2xs truncate">
-                      Contemporary Dining • Victoria Island, Lagos • Open Now
-                    </p>
+                    <div className="flex flex-col min-w-0">
+                      <span className="font-label-md text-label-md font-semibold text-text-primary">{step.title}</span>
+                      <span className="font-caption text-caption text-text-secondary">{step.body}</span>
+                    </div>
                   </div>
-                  <div className="flex flex-col items-end shrink-0">
-                    <span className="font-label-sm text-label-sm font-bold text-text-primary flex items-center gap-space-2xs">
-                      <Icon name="star" filled className="text-[16px] text-tertiary-container" />
-                      4.9
-                    </span>
-                    <span className="font-caption text-caption text-text-tertiary">(480+ visits)</span>
-                  </div>
-                </div>
-                <div className="pt-space-xs flex items-center justify-between font-caption text-caption text-text-secondary">
-                  <span className="flex items-center gap-space-2xs text-badge-discount-text font-medium">
-                    <Icon name="verified_user" className="text-[15px]" />
-                    CAC Registered Merchant
-                  </span>
-                  <span className="text-primary font-label-sm text-label-sm font-semibold hover:underline cursor-pointer">
-                    Preview in App →
-                  </span>
-                </div>
+                ))}
               </div>
             </div>
 
             <div className="bg-surface-container-lowest rounded-xl p-space-lg shadow-md flex flex-col gap-space-md">
               <div className="flex items-center justify-between">
-                <h3 className="font-heading-sm text-heading-sm text-text-primary font-semibold">Privileges Unlocked</h3>
+                <h3 className="font-heading-sm text-heading-sm text-text-primary font-semibold">Result summary</h3>
                 <span className="px-space-xs py-space-2xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
-                  4 of 4 Active
+                  {environment}
                 </span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-space-sm">
-                {PRIVILEGES.map((privilege) => (
-                  <div className="p-space-sm rounded-lg bg-surface-subtle flex items-start gap-space-sm" key={privilege.icon}>
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${privilege.iconClass}`}>
-                      <Icon name={privilege.icon} className="text-[18px]" />
-                    </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="font-label-md text-label-md font-semibold text-text-primary">{privilege.title}</span>
-                      <span className="font-caption text-caption text-text-secondary">{privilege.body}</span>
-                    </div>
-                  </div>
-                ))}
+              <div className="flex flex-col gap-space-xs">
+                <div className="p-space-sm rounded-lg bg-surface-subtle flex items-center justify-between gap-space-sm">
+                  <span className="font-label-sm text-label-sm text-text-secondary">Registration check</span>
+                  <span className="font-label-sm text-label-sm font-semibold text-text-primary">{statusLabel(businessCheck)}</span>
+                </div>
+                <div className="p-space-sm rounded-lg bg-surface-subtle flex items-center justify-between gap-space-sm">
+                  <span className="font-label-sm text-label-sm text-text-secondary">Representative check</span>
+                  <span className="font-label-sm text-label-sm font-semibold text-text-primary">{statusLabel(check)}</span>
+                </div>
+                <div className="p-space-sm rounded-lg bg-surface-subtle flex items-center justify-between gap-space-sm">
+                  <span className="font-label-sm text-label-sm text-text-secondary">Sandbox result</span>
+                  <span className="font-label-sm text-label-sm font-semibold text-text-primary">
+                    {sandbox ? 'Yes — not live verification' : 'No'}
+                  </span>
+                </div>
               </div>
-              <div className="pt-space-xs flex items-center justify-between gap-space-md">
-                <button
-                  className="w-full h-11 px-space-md rounded-lg bg-surface-subtle hover:bg-surface-tint-blue text-text-primary hover:text-primary transition-colors font-button-secondary text-button-secondary flex items-center justify-center gap-space-xs"
-                  type="button"
-                >
-                  <Icon name="download" className="text-[18px] text-primary" />
-                  <span>Download Official Verification Certificate (PDF)</span>
-                </button>
-              </div>
+              <p className="font-caption text-caption text-text-secondary">
+                {representativeVerified && registrationVerified
+                  ? 'Both checks are recorded. Final verification status depends on your identity check and any review.'
+                  : 'One or more checks are still pending or need review. Your status centre shows the current outcome.'}
+              </p>
             </div>
           </div>
         </div>
@@ -351,29 +291,28 @@ export function DesktopVerificationCacSuccessScreen({
               <Icon name="timer" className="text-[20px]" />
             </div>
             <div className="flex flex-col">
-              <span className="font-label-md text-label-md font-semibold text-text-primary">
-                Step 2 of 3 • Final setup takes less than 1 minute
-              </span>
+              <span className="font-label-md text-label-md font-semibold text-text-primary">Final review is next</span>
               <span className="font-caption text-caption text-text-secondary">
-                Confirm payout bank credentials and launch live storefront campaigns
+                Review your verification status, then continue with storefront setup.
               </span>
             </div>
           </div>
           <div className="flex items-center gap-space-md w-full md:w-auto justify-end">
             <button
-              className="h-12 px-space-lg rounded-xl text-text-secondary hover:text-text-primary font-button-secondary text-button-secondary transition-colors flex items-center justify-center"
+              className="h-12 px-space-lg rounded-xl text-text-secondary hover:text-text-primary font-button-secondary text-button-secondary transition-colors flex items-center justify-center gap-space-xs"
               type="button"
               onClick={onBack}
             >
-              Back to Verification Overview
+              <Icon name="arrow_back" className="text-[18px]" />
+              <span>Back to CAC details</span>
             </button>
             <button
-              className="h-12 px-space-xl rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary hover:bg-surface-tint active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs shadow-md"
+              className="h-12 px-space-xl rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary hover:bg-primary active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs shadow-md"
               type="button"
               onClick={onContinue}
             >
               <span>Continue to Final Review</span>
-              <Icon name="arrow_forward" className="text-[18px]" />
+              <Icon name="arrow_forward" className="text-[20px]" />
             </button>
           </div>
         </div>

@@ -37,7 +37,22 @@ import { sponsoredCampaignsService } from '../services/sponsoredCampaignsService
  * stay empty so the screens can show "—".
  */
 
-export const clusterKeys = { all: ['business-clusters'] as const };
+const CLUSTER_DATA_KEY = ['business-clusters', 'data'] as const;
+
+/** Cluster reads only. Chat has its own root so refreshing reads never polls chat. */
+export const clusterKeys = {
+  all: CLUSTER_DATA_KEY,
+  detect: [...CLUSTER_DATA_KEY, 'detect'] as const,
+  mine: [...CLUSTER_DATA_KEY, 'mine'] as const,
+  members: [...CLUSTER_DATA_KEY, 'members'] as const,
+  showcase: [...CLUSTER_DATA_KEY, 'showcase'] as const,
+};
+
+export const clusterChatKeys = { all: ['business-clusters-chat'] as const };
+
+/** True for Nest's 429 throttler response, so screens can show it without retrying. */
+export const isRateLimitError = (error: unknown) =>
+  typeof error === 'object' && error !== null && (error as { status?: number }).status === 429;
 
 /** Neutral tile for items without a photo, so cards never show a broken image. */
 const NO_IMAGE =
@@ -186,13 +201,8 @@ export function useLiveCluster() {
     validCoordinates(business.data?.latitude, business.data?.longitude);
   const enabled = live && Boolean(activeBranchId);
 
-  const detection = useQuery({
-    queryKey: [...clusterKeys.all, 'detect', scope],
-    queryFn: () => clustersService.detect(activeBranchId),
-    enabled,
-  });
   const mine = useQuery({
-    queryKey: [...clusterKeys.all, 'mine', scope],
+    queryKey: [...clusterKeys.mine, scope],
     // 404 means "not in a cluster yet", which is an answer, not an error.
     queryFn: () => clustersService.mine(activeBranchId).catch((error: { status?: number }) => {
       if (error?.status === 404) return null;
@@ -200,19 +210,37 @@ export function useLiveCluster() {
     }),
     enabled,
   });
+  // Detection is only needed when the business is not already in a cluster.
+  // Running both on every visit was an avoidable extra request that helped
+  // push the page into the API's per-handler throttle.
+  const detection = useQuery({
+    queryKey: [...clusterKeys.detect, scope],
+    queryFn: () => clustersService.detect(activeBranchId),
+    enabled: enabled && mine.isSuccess && !mine.data,
+  });
   const clusterId = mine.data?.id;
   const members = useQuery({
-    queryKey: [...clusterKeys.all, 'members', clusterId],
-    queryFn: () => clustersService.members(clusterId as string, { limit: 100, branchId: activeBranchId }),
+    queryKey: [...clusterKeys.members, clusterId],
+    // The backend validates members limit as 1..50; asking for 100 returns a
+    // 400 that used to seed the page's error-toast refresh loop.
+    queryFn: () => clustersService.members(clusterId as string, { limit: 50, branchId: activeBranchId }),
     enabled: enabled && Boolean(clusterId),
   });
   const showcase = useQuery({
-    queryKey: [...clusterKeys.all, 'showcase', scope],
+    queryKey: [...clusterKeys.showcase, scope],
     queryFn: () => clustersService.showcase(activeBranchId),
     enabled,
   });
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: clusterKeys.all });
+  // A mutation refreshes cluster reads only. Previously this prefix also
+  // invalidated chat queries, which made every toast/page action refetch them.
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: clusterKeys.detect }),
+      queryClient.invalidateQueries({ queryKey: clusterKeys.mine }),
+      queryClient.invalidateQueries({ queryKey: clusterKeys.members }),
+      queryClient.invalidateQueries({ queryKey: clusterKeys.showcase }),
+    ]);
   const businessName = business.data?.name ?? 'Your business';
 
   const cluster = mine.data ? toCluster(mine.data) : null;
@@ -290,7 +318,7 @@ export function useClusterChat(clusterId: string | undefined, otherBranchId: str
   const { activeBranchId } = useBusinessBranch();
   const business = useMyBusiness();
   const queryClient = useQueryClient();
-  const key = [...clusterKeys.all, 'chat', clusterId, otherBranchId];
+  const key = [...clusterChatKeys.all, clusterId, otherBranchId];
   const messages = useQuery({
     queryKey: key,
     queryFn: () => clustersService.chat(clusterId as string, otherBranchId, activeBranchId),

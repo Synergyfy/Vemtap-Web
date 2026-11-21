@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { useVerificationActions } from '../hooks/business/useVerification';
+import { hasApiConfig } from '../services/api/client';
+import { uploadImage } from '../services/uploadService';
+import { useVerificationActions, type CheckOutcome } from '../hooks/business/useVerification';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
@@ -9,13 +11,17 @@ interface VerificationIdFormScreenProps {
   onBack: () => void;
   draft: VerificationDraft;
   onDraftChange: (patch: Partial<VerificationDraft>) => void;
-  onResult: (outcome: 'success' | 'review') => void;
+  onResult: (outcome: CheckOutcome) => void;
   inDashboard?: boolean;
 }
 
 export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResult, inDashboard = false }: VerificationIdFormScreenProps) {
   const config = ID_TYPE_CONFIG[draft.idType];
+  const live = hasApiConfig();
   const [submitting, setSubmitting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [documentUrl, setDocumentUrl] = useState<string | null>(null);
+  const [documentName, setDocumentName] = useState<string | null>(null);
   const [stage, setStage] = useState<'selfie' | 'checking' | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Verification failures show briefly in the screen's toast.
@@ -26,7 +32,7 @@ export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResul
   }, [error]);
   const verification = useVerificationActions();
   const [infoOpen, setInfoOpen] = useState(false);
-  const [uploaded, setUploaded] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const timer = useRef<number | null>(null);
 
   useEffect(
@@ -43,17 +49,41 @@ export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResul
     onDraftChange({ idNumber: config.format(config.normalize(value)) });
   };
 
+  const handleFileSelected = async (file: File | null) => {
+    if (!file) return;
+    setError(null);
+    setUploading(true);
+    try {
+      const url = await uploadImage(file);
+      setDocumentUrl(url);
+      setDocumentName(file.name);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'The document could not be uploaded. Try a smaller clear photo.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleSubmit = () => {
-    if (submitting) return;
+    if (submitting || uploading) return;
+    if (config.document === 'required' && live && !documentUrl) {
+      setError(`Upload a clear photo of your ${config.optionName.toLowerCase()} data page first.`);
+      return;
+    }
     setSubmitting(true);
     setError(null);
     // Called straight from the click so the selfie tab is not popup-blocked.
     verification
       .verifyIdentity(
-        { idType: draft.idType, idNumber: raw, legalName: draft.legalName, dateOfBirth: draft.dateOfBirth },
+        {
+          idType: draft.idType,
+          idNumber: raw,
+          legalName: draft.legalName,
+          documentUrl: config.document === 'required' ? documentUrl ?? undefined : undefined,
+        },
         setStage,
       )
-      .then((outcome) => onResult(outcome.result))
+      .then(onResult)
       .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Verification failed. Please try again.'))
       .finally(() => {
         setSubmitting(false);
@@ -119,7 +149,7 @@ export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResul
             <div className="relative flex items-center">
               <input
                 className={`w-full h-11 px-space-md pr-12 rounded-xl bg-surface-container-lowest text-on-surface font-button-secondary text-button-secondary placeholder:text-text-tertiary focus:outline-none shadow-sm transition-all ${
-                  draft.idType === 'nin' ? 'tracking-wider' : 'tracking-wide'
+                  draft.idType === 'nin' || draft.idType === 'bvn' ? 'tracking-wider' : 'tracking-wide'
                 }`}
                 id="id-number-input"
                 inputMode={config.inputMode}
@@ -166,56 +196,76 @@ export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResul
             </div>
           </div>
 
-          {/* Document Capture / Slip Upload Fallback Card */}
-          <div className="flex flex-col gap-space-xs p-space-sm rounded-xl bg-surface-container-lowest shadow-sm mt-space-xs">
-            <div className="flex items-start gap-space-sm">
-              <div className="w-8 h-8 rounded-lg bg-surface-tint-blue flex items-center justify-center text-primary shrink-0">
-                <Icon name="badge" className="text-[18px]" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-space-2xs">
-                  <h3 className="font-label-sm text-label-sm font-semibold text-on-surface truncate">
-                    {config.uploadTitle}
-                  </h3>
-                  <span className="px-1.5 py-0.5 rounded bg-surface-container text-text-secondary font-caption text-[10px] uppercase font-bold">
-                    Optional
-                  </span>
+          {/* Document Capture / Slip Upload */}
+          {config.document !== 'none' && (
+            <div className="flex flex-col gap-space-xs p-space-sm rounded-xl bg-surface-container-lowest shadow-sm mt-space-xs">
+              <div className="flex items-start gap-space-sm">
+                <div className="w-8 h-8 rounded-lg bg-surface-tint-blue flex items-center justify-center text-primary shrink-0">
+                  <Icon name="badge" className="text-[18px]" />
                 </div>
-                <p className="font-caption text-caption text-text-secondary mt-0.5 leading-relaxed">
-                  {config.uploadCaption}
-                </p>
-              </div>
-            </div>
-            {uploaded ? (
-              <div className="flex items-center justify-between p-space-xs px-space-sm rounded-lg bg-surface-container">
-                <div className="flex items-center gap-space-xs min-w-0">
-                  <Icon name="task_alt" className="text-badge-discount-text text-[18px] shrink-0" />
-                  <span className="font-caption text-caption text-on-surface font-medium truncate max-w-[200px]">
-                    {config.fileName}
-                  </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-space-2xs">
+                    <h3 className="font-label-sm text-label-sm font-semibold text-on-surface truncate">
+                      {config.uploadTitle}
+                    </h3>
+                    <span className="px-1.5 py-0.5 rounded bg-surface-container text-text-secondary font-caption text-[10px] uppercase font-bold">
+                      {config.document === 'required' ? (live ? 'Required' : 'Optional') : 'Optional'}
+                    </span>
+                  </div>
+                  <p className="font-caption text-caption text-text-secondary mt-0.5 leading-relaxed">
+                    {config.uploadCaption}
+                  </p>
                 </div>
-                <button className="text-text-tertiary hover:text-error shrink-0" type="button" onClick={() => setUploaded(false)}>
-                  <Icon name="close" className="text-[16px]" />
+              </div>
+              {documentName ? (
+                <div className="flex items-center justify-between p-space-xs px-space-sm rounded-lg bg-surface-container">
+                  <div className="flex items-center gap-space-xs min-w-0">
+                    <Icon name="task_alt" className="text-badge-discount-text text-[18px] shrink-0" />
+                    <span className="font-caption text-caption text-on-surface font-medium truncate max-w-[200px]">
+                      {documentName}
+                    </span>
+                  </div>
+                  <button
+                    className="text-text-tertiary hover:text-error shrink-0"
+                    type="button"
+                    onClick={() => {
+                      setDocumentName(null);
+                      setDocumentUrl(null);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                  >
+                    <Icon name="close" className="text-[16px]" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className="w-full h-10 px-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container text-text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-space-xs transition-colors"
+                  type="button"
+                  disabled={uploading}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Icon name="photo_camera" className="text-[18px] text-primary" />
+                  <span>{uploading ? 'Uploading…' : config.uploadAction}</span>
                 </button>
-              </div>
-            ) : (
-              <button
-                className="w-full h-10 px-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container text-text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-space-xs transition-colors"
-                type="button"
-                onClick={() => setUploaded(true)}
-              >
-                <Icon name="photo_camera" className="text-[18px] text-primary" />
-                <span>{config.uploadAction}</span>
-              </button>
-            )}
-          </div>
+              )}
+              <input
+                accept="image/*,.pdf"
+                className="hidden"
+                ref={fileInputRef}
+                type="file"
+                onChange={(event) => {
+                  void handleFileSelected(event.target.files?.[0] ?? null);
+                }}
+              />
+            </div>
+          )}
 
-          {/* Official Database Security Banner */}
+          {/* Security Banner */}
           <div className="p-space-sm rounded-xl bg-surface-tint-blue flex items-start gap-space-xs">
             <Icon name="shield_lock" filled className="text-primary text-[18px] shrink-0 mt-0.5" />
             <p className="font-caption text-caption text-on-secondary-container leading-relaxed">
-              Your information is securely encrypted and verified directly with official databases. VEMTAP never shares
-              your sensitive ID records.
+              Your details are encrypted in transit and sent only to our verification provider. VEMTAP never shares
+              your unmasked ID records.
             </p>
           </div>
           {/* Action Section */}
@@ -223,7 +273,7 @@ export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResul
             <button
               className="w-full h-11 rounded-xl bg-primary-container hover:bg-primary active:scale-[0.98] text-on-primary font-button-secondary text-button-secondary flex items-center justify-center gap-space-xs shadow-md transition-all"
               type="submit"
-              disabled={submitting}
+              disabled={submitting || uploading}
             >
               {submitting ? (
                 <>
@@ -238,7 +288,11 @@ export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResul
               )}
             </button>
             <p className="text-center font-caption text-caption text-text-secondary">
-              Instant verification usually takes under 15 seconds.
+              {live
+                ? config.selfie
+                  ? 'The selfie check opens in a new tab. You can return here when it is done.'
+                  : 'This is a record lookup — no selfie is needed.'
+                : 'Instant verification usually takes under 15 seconds.'}
             </p>
           </div>
         </form>
@@ -249,9 +303,9 @@ export function VerificationIdFormScreen({ onBack, draft, onDraftChange, onResul
             <Icon name="help_outline" className="text-[20px] text-primary-fixed shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="font-label-md text-label-md font-semibold text-inverse-on-surface">{config.infoTitle}</p>
-              <p className="font-caption text-caption text-surface-dim mt-0.5">{config.infoBody}</p>
+              <p className="font-caption text-caption text-inverse-on-surface mt-0.5">{config.infoBody}</p>
             </div>
-            <button className="text-surface-dim hover:text-inverse-on-surface" type="button" onClick={() => setInfoOpen(false)}>
+            <button className="text-inverse-on-surface hover:text-primary-fixed" type="button" onClick={() => setInfoOpen(false)}>
               <Icon name="close" className="text-[18px]" />
             </button>
           </div>

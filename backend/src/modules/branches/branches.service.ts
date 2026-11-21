@@ -142,6 +142,11 @@ export class BranchesService {
       });
     }
 
+    // The location-access view is the authoritative entitlement calculation:
+    // free + active plan capacity + purchased add-on capacity. Enforce it here
+    // so a hidden/disabled button in the dashboard can never be the only gate.
+    await this.subscriptionsService.assertCanAddLocation(business.id);
+
     // Find main branch to inherit settings
     const mainBranch = await this.branchesRepository.findOne({
       where: { businessId: business.id, isMainBranch: true },
@@ -228,6 +233,10 @@ export class BranchesService {
         'Branch not found or does not belong to your business',
       );
     }
+
+    // Downgrades and expiry keep the record but restrict access. The same
+    // policy that drives the dashboard badge is enforced on the API here.
+    await this.subscriptionsService.assertLocationAccess(businessId, id);
     return branch;
   }
 

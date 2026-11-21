@@ -1,6 +1,7 @@
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { ScreenHeader } from '../components/ui/ScreenHeader';
+import type { VerificationCheck } from '../services/verificationService';
 
 interface VerificationIdSuccessScreenProps {
   onBack: () => void;
@@ -8,6 +9,7 @@ interface VerificationIdSuccessScreenProps {
   legalName: string;
   documentLabel: string;
   reference: string;
+  check?: VerificationCheck;
 }
 
 export function VerificationIdSuccessScreen({
@@ -16,13 +18,15 @@ export function VerificationIdSuccessScreen({
   legalName,
   documentLabel,
   reference,
+  check,
 }: VerificationIdSuccessScreenProps) {
-  const now = new Date();
-  const verifiedOn = `${now.toLocaleString('en-US', {
+  const sandbox = check?.environment === 'test';
+  const checkedAt = check?.createdAt ? new Date(check.createdAt) : new Date();
+  const verifiedOn = `${checkedAt.toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
-  })} at ${now.toLocaleString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+  })} at ${checkedAt.toLocaleString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
 
   return (
     <AppScreen>
@@ -37,9 +41,13 @@ export function VerificationIdSuccessScreen({
               <Icon name="check" filled className="text-on-primary text-[36px]" />
             </div>
           </div>
-          <h2 className="font-heading-md text-heading-md text-on-surface mb-1">Identity verified</h2>
+          <h2 className="font-heading-md text-heading-md text-on-surface mb-1">
+            {sandbox ? 'Sandbox identity check complete' : 'Identity verified'}
+          </h2>
           <p className="font-label-sm text-label-sm text-on-surface-variant max-w-[320px] leading-relaxed">
-            Your identity has been successfully verified. You're ready to proceed with business details.
+            {sandbox
+              ? 'This result came from a sandbox check and is not live verification. You can continue with business details.'
+              : "Your identity has been successfully verified. You're ready to proceed with business details."}
           </p>
         </div>
 
@@ -49,7 +57,7 @@ export function VerificationIdSuccessScreen({
             <span className="font-caption text-caption text-on-surface-variant">Identity Status</span>
             <div className="flex items-center gap-1.5 px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text">
               <Icon name="verified" filled className="text-[15px]" />
-              <span className="font-label-sm text-label-sm font-semibold">Verified</span>
+              <span className="font-label-sm text-label-sm font-semibold">{sandbox ? 'Sandbox' : 'Verified'}</span>
             </div>
           </div>
           <div className="flex items-center justify-between py-1 mb-1">
@@ -66,7 +74,9 @@ export function VerificationIdSuccessScreen({
           </div>
           <div className="mt-space-xs pt-1 flex items-center justify-center gap-1.5 text-on-surface-variant bg-surface-container-low rounded-lg py-1.5 px-space-xs">
             <Icon name="schedule" className="text-[15px] text-on-surface-variant" />
-            <span className="font-caption text-caption text-on-surface-variant">Verified on {verifiedOn}</span>
+            <span className="font-caption text-caption text-on-surface-variant">
+              {sandbox ? 'Checked on' : 'Verified on'} {verifiedOn}
+            </span>
           </div>
         </div>
 
@@ -108,7 +118,7 @@ export function VerificationIdSuccessScreen({
           <div className="flex items-center justify-center gap-1.5 mt-space-md">
             <Icon name="lock" filled className="text-[15px] text-badge-discount-text" />
             <span className="font-caption text-caption text-on-surface-variant">
-              Encrypted & securely stored via NDPR compliance
+              Your details are handled securely during verification
             </span>
           </div>
         </div>

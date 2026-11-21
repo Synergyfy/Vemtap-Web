@@ -234,7 +234,7 @@ export function AccountScreen({ onTab, onNavigate, onSignOut }: AccountScreenPro
               Sign Out
             </button>
             <p className="font-caption text-caption text-text-tertiary text-center">
-              VEMTAP Consumer • Made with pride in Abuja
+              VEMTAP Customer • Made with pride in Abuja
             </p>
           </section>
         </div>

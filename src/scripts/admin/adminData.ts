@@ -114,6 +114,13 @@ export interface AdminCustomer {
   savedPlacesCount: number;
   savedDealsCount: number;
   lastActive: string;
+  notesHistory?: Array<{
+    id: string;
+    text: string;
+    author: string;
+    time: string;
+  }>;
+  isRegisteredViaBusiness?: boolean;
 }
 
 export interface ClusterNode {

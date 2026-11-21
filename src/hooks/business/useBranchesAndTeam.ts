@@ -5,6 +5,7 @@ import { hasApiConfig } from '../../services/api/client';
 import { branchService, type CreateBranchInput, type UpdateBranchInput } from '../../services/branchService';
 import { teamService, type InviteStaffInput, type UpdateStaffInput } from '../../services/teamService';
 import { myBusinessKeys } from './useMyBusiness';
+import { subscriptionKeys } from './useSubscription';
 
 export const branchKeys = { all: ['branches'] as const };
 export const teamKeys = { all: ['team'] as const };
@@ -20,6 +21,7 @@ export function useBranchMutations() {
     Promise.all([
       queryClient.invalidateQueries({ queryKey: branchKeys.all }),
       queryClient.invalidateQueries({ queryKey: myBusinessKeys.all }),
+      queryClient.invalidateQueries({ queryKey: subscriptionKeys.locationAccess }),
     ]);
   return {
     create: useMutation({ mutationFn: (input: CreateBranchInput) => branchService.create(input), onSuccess: refresh }),

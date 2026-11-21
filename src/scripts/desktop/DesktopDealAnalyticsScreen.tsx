@@ -7,6 +7,7 @@ import { useOfferGroup, useOfferGroupMutations, useOffers } from '../../hooks/bu
 import { DealEndDialog, type DealEndRequest } from '../../components/DealEndDialog';
 import { useCatalogueItems } from '../../hooks/business/useCatalogueItems';
 import { apiErrorMessage } from '../../services/errorMessages';
+import { dealPrimaryImage, safeDealImageUrl } from '../../utils/dealImages';
 import { dealBadgeLabel, isOfferPaused, offerClaimStats, offerSlot, redemptionWindowLabel } from '../catalogueLive';
 
 interface DesktopDealAnalyticsScreenProps {
@@ -210,7 +211,7 @@ export function DesktopDealAnalyticsScreen({
               <div className="relative w-full h-72 bg-surface-container-high overflow-hidden">
                 <img
                   className="w-full h-full object-cover object-center"
-                  src={v(offer?.mainImage || LIVE_IMAGE_PLACEHOLDER, HERO_IMAGE)}
+                  src={v(dealPrimaryImage(offer) ?? LIVE_IMAGE_PLACEHOLDER, HERO_IMAGE)}
                   alt="Close up gourmet photography of a sizzling 250g grilled woodfire ribeye steak garnished with rosemary sprigs alongside a condensation-frosted tall glass passionfruit mojito, warm atmospheric ambient dining lighting, warm mahogany wood background, sharp focus, 8k resolution"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-inverse-surface/80 via-inverse-surface/20 to-transparent" />
@@ -445,7 +446,7 @@ export function DesktopDealAnalyticsScreen({
                   bundled.map((item, index) => (
                     <div key={item?.id ?? index} className="p-space-md rounded-xl bg-surface-subtle flex gap-space-md items-center">
                       <div className="w-16 h-16 rounded-lg bg-surface-container-high overflow-hidden flex-shrink-0">
-                        <img className="w-full h-full object-cover" src={item?.mainImage || LIVE_IMAGE_PLACEHOLDER} alt={item?.name ?? 'Deal item'} />
+                        <img className="w-full h-full object-cover" src={safeDealImageUrl(item?.mainImage) ?? LIVE_IMAGE_PLACEHOLDER} alt={item?.name ?? 'Deal item'} />
                       </div>
                       <div className="flex flex-col min-w-0 flex-1">
                         <div className="flex items-center justify-between">

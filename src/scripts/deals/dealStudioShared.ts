@@ -1,31 +1,98 @@
 /**
- * Shared Deal Studio model — single source of truth for deal types, per-type
- * configuration, pricing math and validation.
+ * Shared Deal Studio model — product-based deals for both mobile and desktop.
  *
- * Used by BOTH the mobile and desktop deal wizards (onboarding flow) and the
- * business-dashboard deal creation entry points, so the flows cannot drift
- * apart. Keep all rules here; screens should only render and dispatch.
+ * First-release structures:
+ * - Bundle Deal: two or more live catalogue products at one combined price.
+ * - Price Slash: a new price or a percentage off the selected products.
+ * - Buy More, Save More: quantity/price tiers for the selected products.
+ *
+ * Free Delivery is an optional extra benefit, not a primary deal structure.
+ * Keep the rules and pricing maths here so the two wizards, live publishing and
+ * pre-publish validation cannot drift apart.
  */
 
-/** `current` is a no-discount deal: the customer pays the item's listed price. */
+/** Backend pricing strategy kept for the legacy onboarding wizard. */
 export type DealStrategy = 'current' | 'percentage' | 'fixed' | 'combo' | 'tiered';
+
+/** Customer-facing structures offered by the new Deal Studio. */
+export type DealStructure = 'bundle' | 'price-slash' | 'buy-more-save-more';
 
 export type DealPriceChoice = 'current' | 'changed';
 
 export type DealDuration = '7-days' | '14-days' | '30-days' | '3-months' | '6-months' | 'forever';
 
-/** The pricing choice made before the discount-strategy step. */
+/* ------------------------------------------------------------------ */
+/* Legacy price-choice helpers (onboarding screens still use these)     */
+/* ------------------------------------------------------------------ */
+
 export const isCurrentPriceDeal = (studio: DealStudioDraft) => studio.strategy === 'current';
 
 export const dealPriceChoiceFor = (studio: DealStudioDraft): DealPriceChoice =>
   isCurrentPriceDeal(studio) ? 'current' : 'changed';
 
-/** Apply a pricing choice without touching the rest of the deal configuration. */
 export const withDealPriceChoice = (studio: DealStudioDraft, choice: DealPriceChoice): DealStudioDraft => ({
   ...studio,
   strategy: choice === 'current' ? 'current' : null,
+  structure: null,
 });
 
+/** Choose a product-based structure and keep the legacy strategy field in sync. */
+export function withDealStructure(studio: DealStudioDraft, structure: DealStructure): DealStudioDraft {
+  const strategy: DealStrategy =
+    structure === 'bundle' ? 'combo' : structure === 'price-slash' ? 'fixed' : 'tiered';
+  return {
+    ...studio,
+    structure,
+    strategy,
+    ...(structure === 'bundle'
+      ? { combo: { ...studio.combo, mode: 'bundle' as const, pricingMode: 'price' as const } }
+      : {}),
+  };
+}
+
+export const structureForStrategy = (strategy: DealStrategy | null): DealStructure | null => {
+  if (strategy === 'combo') return 'bundle';
+  if (strategy === 'fixed' || strategy === 'percentage') return 'price-slash';
+  if (strategy === 'tiered') return 'buy-more-save-more';
+  return null;
+};
+
+/** Keep the selected product list, bundle lines and price suggestions in sync. */
+export function withSelectedProducts(
+  studio: DealStudioDraft,
+  productIds: string[],
+  catalog: ComboProduct[] = [],
+): DealStudioDraft {
+  const ids = [...new Set(productIds.filter(Boolean))];
+  const priceById = new Map(catalog.map((product) => [product.id, product.price]));
+  const total = ids.reduce((sum, id) => sum + (priceById.get(id) ?? 0), 0);
+  const tiers = [...studio.quantityTiers]
+    .sort((a, b) => a.quantity - b.quantity)
+    .map((tier, index) => ({
+      ...tier,
+      price: total > 0 ? Math.floor(total * tier.quantity * (0.9 - index * 0.05)) : 0,
+    }));
+  return {
+    ...studio,
+    productIds: ids,
+    priceSlash: {
+      ...studio.priceSlash,
+      newPrice: total > 0 ? Math.floor(total * 0.8) : 0,
+    },
+    quantityTiers: tiers,
+    combo: {
+      ...studio.combo,
+      mode: 'bundle',
+      pricingMode: 'price',
+      items: ids.map((productId) => ({ productId, qty: 1 })),
+      bundlePromoPrice: total > 0 ? Math.floor(total * 0.75) : 0,
+    },
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Durations                                                           */
+/* ------------------------------------------------------------------ */
 
 export const DEAL_DURATIONS: Array<{ id: DealDuration; label: string; hint: string }> = [
   { id: '7-days', label: '7 Days', hint: 'Quick flash promo' },
@@ -40,59 +107,63 @@ export const dealDurationLabel = (duration: DealDuration) =>
   DEAL_DURATIONS.find((option) => option.id === duration)?.label ?? '14 Days';
 
 /* ------------------------------------------------------------------ */
-/* Deal type catalogue                                                 */
+/* Deal structure catalogue                                            */
 /* ------------------------------------------------------------------ */
 
 export interface DealTypeOption {
-  id: DealStrategy;
+  id: DealStructure;
   icon: string;
   title: string;
   badge: string;
   badgeActive: boolean;
   description: string;
+  /** Shown under the three primary cards as guidance, not as a button. */
+  requires?: string;
 }
 
 export const DEAL_TYPE_OPTIONS: DealTypeOption[] = [
   {
-    id: 'percentage',
-    icon: 'percent',
-    title: 'Percentage Discount (% Off)',
-    badge: 'Recommended',
+    id: 'bundle',
+    icon: 'inventory_2',
+    title: 'Bundle Deal',
+    badge: 'Best value',
     badgeActive: true,
-    description: 'Cut the catalog price by a fixed percentage. Best for driving general foot-traffic.',
+    description: 'Offer two or more products together at one combined price.',
+    requires: 'Choose at least 2 products',
   },
   {
-    id: 'fixed',
-    icon: 'payments',
-    title: 'Fixed Amount Off (₦ Off)',
-    badge: 'Flat cut',
+    id: 'price-slash',
+    icon: 'percent',
+    title: 'Price Slash',
+    badge: 'Simple',
     badgeActive: false,
-    description: 'Flat reduction off the total bill above a minimum spend. Great for high-ticket dining.',
+    description: 'Drop the price of the selected products, either by a new price or a percentage.',
+    requires: 'Choose at least 1 product',
   },
   {
-    id: 'combo',
-    icon: 'ramen_dining',
-    title: 'Combo & Bundle Deal',
-    badge: 'Pair items',
+    id: 'buy-more-save-more',
+    icon: 'local_offer',
+    title: 'Buy More, Save More',
+    badge: 'Volume',
     badgeActive: false,
-    description: 'Buy N Get M free, or pair multiple products at one bundle price. High perceived value.',
-  },
-  {
-    id: 'tiered',
-    icon: 'schedule',
-    title: 'Tiered / Flash Happy Hour',
-    badge: 'Time-locked',
-    badgeActive: false,
-    description:
-      'Deeper promotional price locked to a validity period and quiet hours to turn idle shifts profitable.',
+    description: 'Set quantity levels with a matching deal price for each one.',
+    requires: 'Choose at least 1 product',
   },
 ];
 
-export const dealTypeTitle = (id: DealStrategy | null) =>
-  id === 'current' ? 'Current Price' : DEAL_TYPE_OPTIONS.find((option) => option.id === id)?.title ?? 'Discount Strategy';
+export const dealTypeTitle = (id: DealStructure | DealStrategy | null) => {
+  if (id === 'current') return 'Current Price';
+  return DEAL_TYPE_OPTIONS.find((option) => option.id === id)?.title ?? 'Choose a Deal Structure';
+};
+
+export const dealStructureTitle = (id: DealStructure | null) =>
+  DEAL_TYPE_OPTIONS.find((option) => option.id === id)?.title ?? 'Deal';
+
+export const dealStructureIcon = (id: DealStructure | null) =>
+  DEAL_TYPE_OPTIONS.find((option) => option.id === id)?.icon ?? 'local_offer';
 
 /* ------------------------------------------------------------------ */
-/* Small numeric helpers                                               */
+/* Numeric / date helpers                                              */
 /* ------------------------------------------------------------------ */
 
 export const formatDealAmount = (value: number) =>
@@ -117,7 +188,7 @@ export const formatDealDate = (iso: string) => {
 };
 
 /* ------------------------------------------------------------------ */
-/* Per-type configuration                                              */
+/* Legacy configuration blocks                                         */
 /* ------------------------------------------------------------------ */
 
 export interface FixedDealConfig {
@@ -132,7 +203,6 @@ export const FLASH_DAY_RANGES = ['Tue – Thu', 'Mon – Fri'];
 
 export interface FlashDealConfig {
   discountPct: number;
-  /** Validity period (yyyy-mm-dd) */
   startDate: string;
   endDate: string;
   window: string;
@@ -152,20 +222,105 @@ export const formatFlashValidity = (config: FlashDealConfig) =>
     ? 'Validity period not set'
     : `${formatDealDate(config.startDate)} → ${formatDealDate(config.endDate)}`;
 
+/** Live catalogue product used by the studio. No demo catalogue is injected. */
 export interface ComboProduct {
   id: string;
   name: string;
   price: number;
+  image?: string | null;
 }
 
-/** Default pick-list for bundle building. The current product is injected as `current`. */
-export const DEFAULT_BUNDLE_CATALOG: ComboProduct[] = [
-  { id: 'truffle-fries', name: 'Truffle Parmesan Fries', price: 4500 },
-  { id: 'mocktail', name: 'Craft Botanical Mocktail', price: 6500 },
-  { id: 'jollof-chicken', name: 'Smoked Jollof & Chicken', price: 8000 },
-  { id: 'smash-burger', name: 'Gourmet Smash Burger', price: 7500 },
-  { id: 'molten-cake', name: 'Molten Chocolate Cake', price: 4000 },
-];
+/* ------------------------------------------------------------------ */
+/* Deal gallery                                                        */
+/* ------------------------------------------------------------------ */
+
+export type DealMediaKind = 'image' | 'video';
+/** 0 is the compulsory main slot; 1–4 are the additional gallery slots. */
+export type DealMediaSlot = 0 | 1 | 2 | 3 | 4;
+
+export const DEAL_MEDIA_SLOTS: readonly DealMediaSlot[] = [0, 1, 2, 3, 4];
+export const DEAL_GALLERY_SLOTS: readonly DealMediaSlot[] = [1, 2, 3, 4];
+/** The limits shown in both Deal Gallery views and checked before upload. */
+export const MAX_DEAL_IMAGE_MB = 2;
+export const MAX_DEAL_VIDEO_MB = 5;
+export const MAX_DEAL_VIDEOS = 1;
+
+export interface DealMediaItem {
+  slot: DealMediaSlot;
+  kind: DealMediaKind;
+  url: string;
+  /** Kept for limit checks on restored drafts; not sent to the API. */
+  sizeBytes?: number;
+  name?: string;
+}
+
+/**
+ * Uploads do not always keep the source extension, so gallery video URLs carry
+ * a harmless marker. The backend stores gallery media as plain strings, which
+ * is how the frontend keeps knowing a URL is a video after a reload.
+ */
+const VIDEO_URL_MARKER = 'vemtapMedia=video';
+
+export const withVideoMediaMarker = (url: string): string => {
+  const trimmed = url.trim();
+  if (!trimmed || isVideoMediaUrl(trimmed)) return trimmed;
+  return `${trimmed}${trimmed.includes('?') ? '&' : '?'}${VIDEO_URL_MARKER}`;
+};
+
+export const isVideoMediaUrl = (url: string | null | undefined): boolean => {
+  if (!url?.trim()) return false;
+  const trimmed = url.trim();
+  return /\.(mp4|webm|mov)(?:[?#]|$)/i.test(trimmed) || trimmed.includes(VIDEO_URL_MARKER);
+};
+
+/** Verified facts passed to the AI prompt builder — never invented by the app. */
+export interface DealAiPromptData {
+  title: string;
+  description: string;
+  structure: string;
+  offerLines: string[];
+  products: { name: string; price: number }[];
+  startDate: string;
+  endDate: string;
+  quantity: number;
+  freeDelivery: boolean;
+  branches: string[];
+}
+
+/** Builds the prompt facts from the same live state the merchant configured. */
+export function dealAiPromptData(
+  studio: DealStudioDraft,
+  catalog: ComboProduct[] = DEFAULT_BUNDLE_CATALOG,
+  branchNames: string[] = [],
+): DealAiPromptData {
+  const regularTotal = selectedRegularTotal(studio, catalog);
+  const pricing = resolveDealPricing(studio, regularTotal, catalog);
+  const structure = studio.structure ?? structureForStrategy(studio.strategy);
+  const offerLines = [
+    `Deal structure: ${dealTypeTitle(structure ?? null)}`,
+    `Customer price: ₦${formatDealAmount(pricing.dealPrice)} (regular ₦${formatDealAmount(pricing.originalTotal)}, saving ₦${formatDealAmount(Math.max(pricing.savings, 0))}${
+      pricing.savingsPct > 0 ? ` / ${pricing.savingsPct}%` : ''
+    })`,
+    ...(structure === 'bundle' ? describeComboRules(studio.combo, regularTotal, catalog).slice(0, 1) : []),
+    ...(structure === 'buy-more-save-more' ? describeQuantityTiers(studio, regularTotal) : []),
+    ...(studio.freeDelivery ? ['Free delivery is included'] : []),
+  ];
+  return {
+    title: studio.title.trim() || dealTypeTitle(structure ?? null),
+    description: studio.description.trim(),
+    structure: dealTypeTitle(structure ?? null),
+    offerLines,
+    products: studio.productIds
+      .map((id) => catalog.find((product) => product.id === id))
+      .filter((product): product is ComboProduct => Boolean(product))
+      .map((product) => ({ name: product.name, price: product.price })),
+    startDate: studio.startDate ? formatDealDate(studio.startDate) : '',
+    endDate: studio.endDate ? formatDealDate(studio.endDate) : '',
+    quantity: studio.vouchers,
+    freeDelivery: studio.freeDelivery,
+    branches: branchNames.filter(Boolean),
+  };
+}
 
 export type ComboMode = 'quantity' | 'bundle';
 export type ComboBenefit = 'free-units' | 'percent-off' | 'bundle-price';
@@ -177,43 +332,93 @@ export interface ComboLineItem {
 
 export interface ComboConfig {
   mode: ComboMode;
-  /* Option A — quantity-based promotion */
   buyQty: number;
   benefit: ComboBenefit;
   freeQty: number;
   benefitPct: number;
   bundleQty: number;
   bundlePrice: number;
-  /* Option B — multi-product bundle */
   items: ComboLineItem[];
   pricingMode: 'price' | 'percent';
   bundlePromoPrice: number;
   bundleDiscountPct: number;
-  /* Shared: max units a customer may redeem in a single order (0 = no cap) */
   maxPurchaseLimit: number;
 }
 
 export const DEFAULT_COMBO_CONFIG: ComboConfig = {
-  mode: 'quantity',
+  mode: 'bundle',
   buyQty: 2,
   benefit: 'free-units',
   freeQty: 1,
   benefitPct: 10,
   bundleQty: 3,
   bundlePrice: 5000,
-  items: [{ productId: 'current', qty: 1 }],
+  items: [],
   pricingMode: 'price',
-  bundlePromoPrice: 15000,
+  bundlePromoPrice: 0,
   bundleDiscountPct: 20,
   maxPurchaseLimit: 0,
 };
+
+/* ------------------------------------------------------------------ */
+/* New product-based configuration                                     */
+/* ------------------------------------------------------------------ */
+
+export type PriceSlashMode = 'price' | 'percentage';
+
+export interface PriceSlashConfig {
+  mode: PriceSlashMode;
+  newPrice: number;
+  discountPct: number;
+}
+
+export const DEFAULT_PRICE_SLASH_CONFIG: PriceSlashConfig = {
+  mode: 'price',
+  newPrice: 0,
+  discountPct: 20,
+};
+
+export interface QuantityPriceTier {
+  id: string;
+  quantity: number;
+  price: number;
+}
+
+export const DEFAULT_QUANTITY_TIERS: QuantityPriceTier[] = [
+  { id: 'tier-2', quantity: 2, price: 0 },
+  { id: 'tier-3', quantity: 3, price: 0 },
+];
+
+/** Never ship a mock catalogue into live mode. Live products come from the API. */
+export const DEFAULT_BUNDLE_CATALOG: ComboProduct[] = [];
 
 /* ------------------------------------------------------------------ */
 /* Studio draft                                                        */
 /* ------------------------------------------------------------------ */
 
 export interface DealStudioDraft {
+  /** New product-based flow. */
+  structure: DealStructure | null;
+  /** Legacy/backend pricing strategy; kept in sync with `structure`. */
   strategy: DealStrategy | null;
+  /** Live catalogue product IDs selected for this deal. */
+  productIds: string[];
+  /** Deal-specific content. The main gallery slot is compulsory in the studio. */
+  title: string;
+  description: string;
+  /** Five explicit slots: main + four additional images/videos. */
+  dealMedia?: DealMediaItem[];
+  /** Mirrors the API's `galleryImages`; kept for restored older drafts. */
+  galleryImages?: string[];
+  /** Main media URL, derived from `dealMedia` for backwards compatibility. */
+  imageUrl?: string;
+  startDate: string;
+  endDate: string;
+  freeDelivery: boolean;
+  priceSlash: PriceSlashConfig;
+  quantityTiers: QuantityPriceTier[];
+
+  /** Legacy fields below remain for the existing onboarding wizard. */
   discountPct: number;
   fixed: FixedDealConfig;
   combo: ComboConfig;
@@ -221,10 +426,8 @@ export interface DealStudioDraft {
   /** Quantity Limit — total promotional stock / entitlements released. */
   vouchers: number;
   claimOnce: boolean;
-  /** Multiple-claims option: cap per customer is unlimited. */
   unlimitedClaims: boolean;
   maxClaims: number;
-  /** Max units a customer may redeem in a single order. */
   maxUnitsPerOrder: number;
   gifting: boolean;
   otpVerify: boolean;
@@ -233,13 +436,9 @@ export interface DealStudioDraft {
   pickup: boolean;
   reservation: boolean;
   autoPause: boolean;
-  /** Demo outlets only; live deals use `branchIds`. */
   branches: { wuseII: boolean; garkiII: boolean; maitama: boolean };
-  /** Live: the business's branches the deal runs at (unset = the active branch). */
   branchIds?: string[];
-  /** Live: the deal group this draft already published — publishing again updates it. */
   publishedDealGroupId?: string;
-  /** Live: the branches it was published at, so a re-publish can add or pause branches. */
   publishedBranchIds?: string[];
   days: { mon: boolean; tue: boolean; wed: boolean; thu: boolean; fri: boolean; sat: boolean; sun: boolean };
   redeemAllDay: boolean;
@@ -251,10 +450,22 @@ export interface DealStudioDraft {
 }
 
 export const INITIAL_DEAL_STUDIO_DRAFT: DealStudioDraft = {
+  structure: null,
   strategy: null,
+  productIds: [],
+  title: '',
+  description: '',
+  dealMedia: [],
+  galleryImages: [],
+  imageUrl: undefined,
+  startDate: isoDate(0),
+  endDate: isoDate(14),
+  freeDelivery: false,
+  priceSlash: { ...DEFAULT_PRICE_SLASH_CONFIG },
+  quantityTiers: DEFAULT_QUANTITY_TIERS.map((tier) => ({ ...tier })),
   discountPct: 20,
   fixed: { ...DEFAULT_FIXED_CONFIG },
-  combo: { ...DEFAULT_COMBO_CONFIG },
+  combo: { ...DEFAULT_COMBO_CONFIG, items: [] },
   flash: { ...DEFAULT_FLASH_CONFIG },
   vouchers: 50,
   claimOnce: true,
@@ -270,31 +481,23 @@ export const INITIAL_DEAL_STUDIO_DRAFT: DealStudioDraft = {
   autoPause: true,
   branches: { wuseII: true, garkiII: true, maitama: false },
   days: { mon: true, tue: true, wed: true, thu: true, fri: true, sat: false, sun: false },
-  redeemAllDay: false,
+  redeemAllDay: true,
   redeemStart: '12:00 PM',
   redeemEnd: '5:00 PM',
   duration: '14-days',
   claimSteps: [
-    'Show your digital VEMTAP voucher pass at checkout or counter',
-    'Enjoy your purchase with the deal discount applied to eligible items',
-    'Settle remaining balance directly with the business via Card, Cash or Transfer',
+    'Show your VEMTAP voucher pass at checkout or counter',
+    'The deal price is applied to the selected products',
+    'Pay any balance directly to the business',
   ],
-  terms: [
-    'Show voucher code before placing order',
-    'In-store and pickup only. Not combinable with other promotions',
-    'Valid only during specified operating hours (12:00 PM – 5:00 PM)',
-  ],
+  terms: ['Show voucher code before checkout', 'Not combinable with other promotions'],
 };
 
-/**
- * Live starting point: same rules as the sample, but claim steps and terms that
- * fit any business (no restaurant wording or fixed hours) for the owner to edit.
- */
 export const LIVE_DEAL_STUDIO_DRAFT: DealStudioDraft = {
   ...INITIAL_DEAL_STUDIO_DRAFT,
   claimSteps: [
     'Show your VEMTAP voucher at the counter before you pay',
-    'The deal price is applied to the eligible item',
+    'The deal price is applied to the selected products',
     'Pay any balance directly with the business',
   ],
   terms: ['Show your voucher code before you pay', 'Not combinable with other promotions'],
@@ -319,71 +522,70 @@ const endOfDay = (date: Date) => {
   return copy;
 };
 
-/**
- * When the deal runs if published now: happy-hour deals use their own dates,
- * the rest start today and last the chosen duration (no end when "forever").
- */
 export function dealValidityRange(studio: DealStudioDraft, now = new Date()): { start: Date; end?: Date } {
-  const start = studio.strategy === 'tiered' && studio.flash.startDate ? new Date(`${studio.flash.startDate}T00:00:00`) : now;
-  if (studio.strategy === 'tiered' && studio.flash.endDate) return { start, end: endOfDay(new Date(`${studio.flash.endDate}T00:00:00`)) };
+  // The new Deal Studio asks for explicit start/end dates.
+  if (studio.startDate || studio.endDate) {
+    const start = studio.startDate ? new Date(`${studio.startDate}T00:00:00`) : now;
+    const end = studio.endDate ? endOfDay(new Date(`${studio.endDate}T00:00:00`)) : undefined;
+    return { start: Number.isNaN(start.getTime()) ? now : start, end };
+  }
+  // Legacy happy-hour deals use their own date range.
+  if (studio.strategy === 'tiered' && studio.flash.startDate) {
+    const start = new Date(`${studio.flash.startDate}T00:00:00`);
+    if (studio.flash.endDate) return { start, end: endOfDay(new Date(`${studio.flash.endDate}T00:00:00`)) };
+  }
   const days = DEAL_DURATION_DAYS[studio.duration];
-  return { start, end: days === null ? undefined : endOfDay(new Date(start.getTime() + days * 86_400_000)) };
+  return { start: now, end: days === null ? undefined : endOfDay(new Date(now.getTime() + days * 86_400_000)) };
 }
 
-/** "29 Oct – 12 Nov 2026 (14 Days)" / "Always On — No Fixed Expiry". */
 export function formatDealValidity(studio: DealStudioDraft, now = new Date()) {
   const { start, end } = dealValidityRange(studio, now);
   if (!end) return 'Always On — No Fixed Expiry';
   const day = (date: Date, withYear: boolean) =>
     date.toLocaleDateString('en-NG', { day: 'numeric', month: 'short', ...(withYear ? { year: 'numeric' } : {}) });
-  const label = studio.strategy === 'tiered' ? 'Happy hour' : dealDurationLabel(studio.duration);
-  return `${day(start, start.getFullYear() !== end.getFullYear())} – ${day(end, true)} (${label})`;
+  return `${day(start, start.getFullYear() !== end.getFullYear())} – ${day(end, true)}`;
 }
 
-/** Customer-facing claim restriction label (distinct from quantity & per-order limits). */
+/* ------------------------------------------------------------------ */
+/* Customer-facing labels                                              */
+/* ------------------------------------------------------------------ */
+
 export const claimLimitLabel = (studio: DealStudioDraft) => {
   if (studio.claimOnce) return '1 Per Customer';
   if (studio.unlimitedClaims) return 'Unlimited Per Customer';
   return `${studio.maxClaims} Per Customer / Month`;
 };
 
-/**
- * The window the per-customer cap is counted over, as the API names it:
- * "once" is once ever, a numeric cap is per calendar month (as the studio shows).
- */
 export const claimLimitPeriod = (studio: DealStudioDraft): 'lifetime' | 'month' | undefined =>
   studio.claimOnce ? 'lifetime' : studio.unlimitedClaims ? undefined : 'month';
 
-/** The headline badge customers see for this deal ("20% Off", "₦2,500 Off", …). */
 export function dealBadgeLabel(studio: DealStudioDraft, savingsPct?: number) {
-  switch (studio.strategy) {
-    case 'current':
-      return 'Current Price';
-    case 'fixed':
-      return `₦${formatDealAmount(studio.fixed.amountOff)} Off`;
-    case 'combo':
-      return savingsPct && savingsPct > 0 ? `Combo • Save ${savingsPct}%` : 'Combo Deal';
-    case 'tiered':
-      return `${studio.flash.discountPct}% Off Happy Hour`;
+  const suffix = studio.freeDelivery ? ' • Free Delivery' : '';
+  switch (studio.structure ?? structureForStrategy(studio.strategy)) {
+    case 'bundle':
+      return `Bundle${savingsPct && savingsPct > 0 ? ` • Save ${savingsPct}%` : ' Deal'}${suffix}`;
+    case 'price-slash':
+      return studio.priceSlash.mode === 'percentage'
+        ? `${studio.priceSlash.discountPct}% Off${suffix}`
+        : `₦${formatDealAmount(studio.priceSlash.newPrice)} Deal Price${suffix}`;
+    case 'buy-more-save-more':
+      return `Buy More, Save More${suffix}`;
     default:
-      return `${studio.discountPct}% Off`;
+      return `Deal${suffix}`;
   }
 }
 
-/** Minimum bill for the deal, when it has one (only fixed-amount deals do). */
-export const dealMinSpend = (studio: DealStudioDraft) =>
-  studio.strategy === 'fixed' && studio.fixed.minSpend > 0 ? studio.fixed.minSpend : 0;
+export const dealMinSpend = (_studio: DealStudioDraft) => 0;
 
-/** "Dine-in • Pickup • Reservation" from the redemption modes switched on. */
 export const redemptionModesLabel = (studio: DealStudioDraft) =>
   [studio.dineIn && 'Dine-in', studio.pickup && 'Pickup', studio.reservation && 'Reservation'].filter(Boolean).join(' • ');
 
 /* ------------------------------------------------------------------ */
-/* Pricing math                                                        */
+/* Pricing maths                                                       */
 /* ------------------------------------------------------------------ */
 
 export interface DealPricing {
-  /** Regular combined / catalog price before the deal. */
+  /** Regular combined price before the deal. */
   originalTotal: number;
   /** What the customer pays for the qualifying set. */
   dealPrice: number;
@@ -393,12 +595,65 @@ export interface DealPricing {
   valid: boolean;
 }
 
-/** Catalog for bundle building with the current product injected (id `current`). */
-export function resolveBundleCatalog(basePrice: number, catalog: ComboProduct[] = DEFAULT_BUNDLE_CATALOG): ComboProduct[] {
-  const merged = catalog.map((product) => (product.id === 'current' ? { ...product, price: basePrice } : product));
-  return merged.some((product) => product.id === 'current')
-    ? merged
-    : [{ id: 'current', name: 'This catalog item', price: basePrice }, ...merged];
+/** Live products are already the catalogue; there is no placeholder entry. */
+export function resolveBundleCatalog(_basePrice: number, catalog: ComboProduct[] = DEFAULT_BUNDLE_CATALOG): ComboProduct[] {
+  return catalog;
+}
+
+/** Regular combined price of every product selected for the deal. */
+export function selectedRegularTotal(studio: DealStudioDraft, catalog: ComboProduct[] = DEFAULT_BUNDLE_CATALOG): number {
+  const priceById = new Map(catalog.map((product) => [product.id, product.price]));
+  return studio.productIds.reduce((sum, id) => sum + (priceById.get(id) ?? 0), 0);
+}
+
+/**
+ * Media in slot order. Older drafts only had `imageUrl`/`galleryImages`, so
+ * they are migrated here instead of losing their uploaded media.
+ */
+export function dealMediaItems(studio: DealStudioDraft): DealMediaItem[] {
+  if (studio.dealMedia?.length) {
+    return [...studio.dealMedia].sort((a, b) => a.slot - b.slot);
+  }
+  const items: DealMediaItem[] = [];
+  if (studio.imageUrl?.trim()) {
+    items.push({ slot: 0, kind: isVideoMediaUrl(studio.imageUrl) ? 'video' : 'image', url: studio.imageUrl.trim() });
+  }
+  (studio.galleryImages ?? []).slice(0, 4).forEach((url, index) => {
+    if (!url?.trim()) return;
+    items.push({
+      slot: (index + 1) as DealMediaSlot,
+      kind: isVideoMediaUrl(url) ? 'video' : 'image',
+      url: url.trim(),
+    });
+  });
+  return items;
+}
+
+export const mainDealMedia = (studio: DealStudioDraft): DealMediaItem | null =>
+  dealMediaItems(studio).find((item) => item.slot === 0) ?? null;
+
+export const galleryDealMedia = (studio: DealStudioDraft): DealMediaItem[] =>
+  dealMediaItems(studio).filter((item) => item.slot !== 0);
+
+export const dealGalleryUrls = (studio: DealStudioDraft): string[] =>
+  galleryDealMedia(studio).map((item) => item.url);
+
+/** Replaces one slot (or clears it with `null`) and keeps the API fields in sync. */
+export function withDealMediaSlot(
+  studio: DealStudioDraft,
+  slot: DealMediaSlot,
+  item: Omit<DealMediaItem, 'slot'> | null,
+): DealStudioDraft {
+  const remaining = dealMediaItems(studio).filter((media) => media.slot !== slot);
+  const next = item ? [...remaining, { ...item, slot }] : remaining;
+  const main = next.find((media) => media.slot === 0);
+  const gallery = next.filter((media) => media.slot !== 0).sort((a, b) => a.slot - b.slot);
+  return {
+    ...studio,
+    dealMedia: [...next].sort((a, b) => a.slot - b.slot),
+    galleryImages: gallery.map((media) => media.url),
+    imageUrl: main?.url,
+  };
 }
 
 export function resolveComboPricing(
@@ -407,6 +662,7 @@ export function resolveComboPricing(
   catalog: ComboProduct[] = DEFAULT_BUNDLE_CATALOG,
 ): DealPricing {
   const products = resolveBundleCatalog(basePrice, catalog);
+  const priceOf = (id: string) => products.find((product) => product.id === id)?.price ?? 0;
 
   if (combo.mode === 'quantity') {
     const unit = basePrice;
@@ -433,7 +689,7 @@ export function resolveComboPricing(
         dealPrice: originalTotal - savings,
         savings,
         savingsPct: percentOf(savings, originalTotal),
-        valid: unit > 0 && combo.benefitPct >= 1 && combo.benefitPct <= 90,
+        valid: unit > 0 && pct >= 1 && pct <= 90,
       };
     }
     const units = Math.max(2, combo.bundleQty);
@@ -449,7 +705,7 @@ export function resolveComboPricing(
   }
 
   const originalTotal = combo.items.reduce(
-    (sum, item) => sum + (products.find((product) => product.id === item.productId)?.price ?? 0) * Math.max(1, item.qty),
+    (sum, item) => sum + priceOf(item.productId) * Math.max(1, item.qty),
     0,
   );
   const totalUnits = combo.items.reduce((sum, item) => sum + Math.max(1, item.qty), 0);
@@ -474,56 +730,65 @@ export function resolveComboPricing(
   };
 }
 
-/** Pricing for whatever type the draft has selected (falls back to percentage). */
+export function resolvePriceSlashPricing(studio: DealStudioDraft, basePrice: number): DealPricing {
+  const { mode, newPrice, discountPct } = studio.priceSlash;
+  if (mode === 'percentage') {
+    const pct = clampNumber(discountPct, 1, 90);
+    const savings = Math.round((basePrice * pct) / 100);
+    return {
+      originalTotal: basePrice,
+      dealPrice: Math.max(basePrice - savings, 0),
+      savings,
+      savingsPct: pct,
+      valid: basePrice > 0 && pct >= 1 && pct <= 90,
+    };
+  }
+  const savings = basePrice - newPrice;
+  return {
+    originalTotal: basePrice,
+    dealPrice: Math.max(newPrice, 0),
+    savings,
+    savingsPct: percentOf(Math.max(savings, 0), basePrice),
+    valid: basePrice > 0 && newPrice > 0 && newPrice < basePrice,
+  };
+}
+
+/** First quantity tier is the headline price; all tiers are shown in the UI. */
+export function resolveQuantityPricing(studio: DealStudioDraft, basePrice: number): DealPricing {
+  const tiers = [...studio.quantityTiers].sort((a, b) => a.quantity - b.quantity);
+  const first = tiers[0];
+  if (!first) {
+    return { originalTotal: 0, dealPrice: 0, savings: 0, savingsPct: 0, valid: false };
+  }
+  const originalTotal = basePrice * Math.max(1, first.quantity);
+  const savings = originalTotal - first.price;
+  return {
+    originalTotal,
+    dealPrice: Math.max(first.price, 0),
+    savings,
+    savingsPct: percentOf(Math.max(savings, 0), originalTotal),
+    valid: tiers.length >= 2 && originalTotal > 0 && first.price > 0 && first.price < originalTotal,
+  };
+}
+
+/** Pricing for the new structure, with a legacy fallback for onboarding drafts. */
 export function resolveDealPricing(
   studio: DealStudioDraft,
   basePrice: number,
   catalog: ComboProduct[] = DEFAULT_BUNDLE_CATALOG,
 ): DealPricing {
-  switch (studio.strategy ?? 'percentage') {
-    case 'current':
-      return {
-        originalTotal: basePrice,
-        dealPrice: basePrice,
-        savings: 0,
-        savingsPct: 0,
-        valid: basePrice > 0,
-      };
-    case 'percentage': {
-      const pct = clampNumber(studio.discountPct, 1, 90);
-      const savings = Math.round((basePrice * pct) / 100);
-      return {
-        originalTotal: basePrice,
-        dealPrice: Math.max(basePrice - savings, 0),
-        savings,
-        savingsPct: pct,
-        valid: basePrice > 0 && pct >= 1 && pct <= 90,
-      };
-    }
-    case 'fixed': {
-      const { amountOff } = studio.fixed;
-      const savings = Math.min(Math.max(amountOff, 0), basePrice);
-      return {
-        originalTotal: basePrice,
-        dealPrice: Math.max(basePrice - amountOff, 0),
-        savings,
-        savingsPct: percentOf(savings, basePrice),
-        valid: basePrice > 0 && amountOff > 0 && amountOff < basePrice,
-      };
-    }
-    case 'tiered': {
-      const pct = clampNumber(studio.flash.discountPct, 1, 90);
-      const savings = Math.round((basePrice * pct) / 100);
-      return {
-        originalTotal: basePrice,
-        dealPrice: Math.max(basePrice - savings, 0),
-        savings,
-        savingsPct: pct,
-        valid: basePrice > 0 && pct >= 1 && pct <= 90,
-      };
-    }
-    case 'combo':
+  switch (studio.structure ?? structureForStrategy(studio.strategy)) {
+    case 'bundle':
       return resolveComboPricing(studio.combo, basePrice, catalog);
+    case 'price-slash':
+      return resolvePriceSlashPricing(studio, basePrice);
+    case 'buy-more-save-more':
+      return resolveQuantityPricing(studio, basePrice);
+    default:
+      return resolvePriceSlashPricing(
+        { ...studio, priceSlash: { mode: 'percentage', newPrice: 0, discountPct: studio.discountPct } },
+        basePrice,
+      );
   }
 }
 
@@ -575,42 +840,105 @@ export function validateComboDeal(
           `Bundle price must be below the ₦${formatDealAmount(basePrice * Math.max(2, combo.bundleQty))} regular combined price.`,
         );
     }
-  } else {
-    const products = resolveBundleCatalog(basePrice, catalog);
-    const totalUnits = combo.items.reduce((sum, item) => sum + Math.max(1, item.qty), 0);
-    if (combo.items.length === 0) errors.push('Add at least one product to the bundle.');
-    if (totalUnits < 2)
-      errors.push('A multi-product bundle must contain at least 2 units (two products, or one product × 2).');
-    if (combo.items.some((item) => !products.some((product) => product.id === item.productId)))
-      errors.push('Every bundle line must reference an available product.');
-    if (combo.pricingMode === 'price') {
-      const { originalTotal } = resolveComboPricing(combo, basePrice, catalog);
-      if (combo.bundlePromoPrice <= 0) errors.push('Enter the bundle price the customer pays.');
-      else if (originalTotal > 0 && combo.bundlePromoPrice >= originalTotal)
-        errors.push(`Bundle price must be below the ₦${formatDealAmount(originalTotal)} regular combined price.`);
-    } else if (combo.bundleDiscountPct < 1 || combo.bundleDiscountPct > 90)
-      errors.push('Bundle discount must be between 1% and 90%.');
+    return errors;
+  }
+
+  const products = resolveBundleCatalog(basePrice, catalog);
+  const totalUnits = combo.items.reduce((sum, item) => sum + Math.max(1, item.qty), 0);
+  if (combo.items.length < 2) errors.push('A bundle needs at least 2 products.');
+  if (totalUnits < 2) errors.push('A bundle must contain at least 2 units.');
+  if (combo.items.some((item) => !products.some((product) => product.id === item.productId)))
+    errors.push('Every bundle line must reference an available product.');
+  const pricing = resolveComboPricing(combo, basePrice, catalog);
+  if (combo.pricingMode === 'price') {
+    if (combo.bundlePromoPrice <= 0) errors.push('Enter the combined bundle price the customer pays.');
+    else if (pricing.originalTotal > 0 && combo.bundlePromoPrice >= pricing.originalTotal)
+      errors.push(`Bundle price must be below the ₦${formatDealAmount(pricing.originalTotal)} regular combined price.`);
+  } else if (combo.bundleDiscountPct < 1 || combo.bundleDiscountPct > 90) {
+    errors.push('Bundle discount must be between 1% and 90%.');
   }
   return errors;
 }
 
-/** Validation for whatever type the draft has selected. */
+export function validatePriceSlashDeal(studio: DealStudioDraft, basePrice: number): string[] {
+  const { mode, newPrice, discountPct } = studio.priceSlash;
+  if (basePrice <= 0) return ['Select at least one product with a valid price.'];
+  if (mode === 'percentage') return validatePercentageDeal(discountPct);
+  const errors: string[] = [];
+  if (newPrice <= 0) errors.push('Enter the new deal price the customer pays.');
+  else if (newPrice >= basePrice)
+    errors.push(`New price must be below the ₦${formatDealAmount(basePrice)} regular price.`);
+  return errors;
+}
+
+export function validateQuantityTiers(studio: DealStudioDraft, basePrice: number): string[] {
+  const errors: string[] = [];
+  if (basePrice <= 0) return ['Select at least one product with a valid price.'];
+  if (studio.quantityTiers.length < 2) errors.push('Add at least two quantity levels.');
+
+  const tiers = [...studio.quantityTiers].sort((a, b) => a.quantity - b.quantity);
+  tiers.forEach((tier, index) => {
+    if (tier.quantity < 2) errors.push('Each quantity level must be at least 2 units.');
+    if (tier.price <= 0) errors.push(`Enter a deal price for the ${tier.quantity}-unit level.`);
+    if (tier.price >= basePrice * tier.quantity)
+      errors.push(`The ${tier.quantity}-unit price must be below its ₦${formatDealAmount(basePrice * tier.quantity)} regular total.`);
+    if (index > 0) {
+      const previous = tiers[index - 1];
+      if (tier.quantity <= previous.quantity)
+        errors.push('Each quantity level must be higher than the one before it.');
+      if (tier.price / tier.quantity >= previous.price / previous.quantity)
+        errors.push(`The ${tier.quantity}-unit level should save more per unit than ${previous.quantity} units.`);
+    }
+  });
+  return [...new Set(errors)];
+}
+
+export function validateDealInformation(studio: DealStudioDraft): string[] {
+  const errors: string[] = [];
+  if (!studio.title.trim()) errors.push('Enter a deal title.');
+  if (!studio.startDate || !studio.endDate) errors.push('Set a start date and an end date.');
+  else if (studio.endDate < studio.startDate) errors.push('The end date must be on or after the start date.');
+  if (studio.vouchers <= 0) errors.push('Set the deal quantity to at least 1.');
+  return errors;
+}
+
+/** The Deal Gallery is mandatory: 1 main photo/video + up to 4 more, at most 1 video. */
+export function validateDealGallery(studio: DealStudioDraft): string[] {
+  const errors: string[] = [];
+  const media = dealMediaItems(studio);
+  if (!media.some((item) => item.slot === 0)) errors.push('Add a main deal image or video.');
+  if (media.length > DEAL_MEDIA_SLOTS.length) errors.push('A deal can have one main media item and four additional items only.');
+  if (media.some((item) => !item.url.trim())) errors.push('Every filled media slot needs a valid uploaded file.');
+  if (media.filter((item) => item.kind === 'video').length > MAX_DEAL_VIDEOS) {
+    errors.push('Only one video can be added to a deal.');
+  }
+  if (media.some((item) => item.kind === 'video' && (item.sizeBytes ?? 0) > MAX_DEAL_VIDEO_MB * 1024 * 1024)) {
+    errors.push(`Videos must be ${MAX_DEAL_VIDEO_MB}MB or smaller.`);
+  }
+  if (media.some((item) => item.kind === 'image' && (item.sizeBytes ?? 0) > MAX_DEAL_IMAGE_MB * 1024 * 1024)) {
+    errors.push(`Images must be ${MAX_DEAL_IMAGE_MB}MB or smaller.`);
+  }
+  return errors;
+}
+
 export function validateDealConfiguration(
   studio: DealStudioDraft,
   basePrice: number,
   catalog: ComboProduct[] = DEFAULT_BUNDLE_CATALOG,
 ): string[] {
-  switch (studio.strategy ?? 'percentage') {
-    case 'current':
-      return basePrice > 0 ? [] : ['Set the item price before creating a current-price deal.'];
-    case 'percentage':
-      return validatePercentageDeal(studio.discountPct);
-    case 'fixed':
-      return validateFixedDeal(studio.fixed, basePrice);
-    case 'tiered':
-      return validateFlashDeal(studio.flash);
-    case 'combo':
+  const structure = studio.structure ?? structureForStrategy(studio.strategy);
+  if (!structure) return ['Choose what kind of deal you want to create.'];
+  if (studio.productIds.length === 0) return ['Choose at least one product for this deal.'];
+  if (structure === 'bundle' && studio.productIds.length < 2)
+    return ['A Bundle Deal needs at least 2 products.'];
+
+  switch (structure) {
+    case 'bundle':
       return validateComboDeal(studio.combo, basePrice, catalog);
+    case 'price-slash':
+      return validatePriceSlashDeal(studio, basePrice);
+    case 'buy-more-save-more':
+      return validateQuantityTiers(studio, basePrice);
   }
 }
 
@@ -618,20 +946,19 @@ export function validateDealConfiguration(
 /* Customer-facing rule copy                                           */
 /* ------------------------------------------------------------------ */
 
-/** First entry is the headline; the rest are supporting detail lines. */
 export function describeComboRules(
   combo: ComboConfig,
   basePrice: number,
   catalog: ComboProduct[] = DEFAULT_BUNDLE_CATALOG,
 ): string[] {
   const products = resolveBundleCatalog(basePrice, catalog);
-  const nameOf = (id: string) => products.find((product) => product.id === id)?.name ?? 'Unknown item';
+  const nameOf = (id: string) => products.find((product) => product.id === id)?.name ?? 'Selected product';
 
   if (combo.mode === 'quantity') {
     if (combo.benefit === 'free-units')
       return [
         `Buy ${combo.buyQty}, get ${combo.freeQty} free`,
-        `Customer pays for ${combo.buyQty} unit(s) and receives ${combo.freeQty} extra ${nameOf('current')} free.`,
+        `Customer pays for ${combo.buyQty} unit(s) and receives ${combo.freeQty} extra free.`,
       ];
     if (combo.benefit === 'percent-off')
       return [
@@ -640,7 +967,7 @@ export function describeComboRules(
       ];
     return [
       `${combo.bundleQty} for ₦${formatDealAmount(combo.bundlePrice)}`,
-      `Customer buys ${combo.bundleQty} units for a fixed ₦${formatDealAmount(combo.bundlePrice)} instead of the regular combined price.`,
+      `Customer buys ${combo.bundleQty} units for one fixed price instead of the regular combined price.`,
     ];
   }
 
@@ -658,7 +985,15 @@ export function describeComboRules(
   ];
 }
 
-/** Short human summary of the three distinct limits (stock vs claims vs per-order). */
+export function describeQuantityTiers(studio: DealStudioDraft, basePrice: number): string[] {
+  const tiers = [...studio.quantityTiers].sort((a, b) => a.quantity - b.quantity);
+  return tiers.map((tier) => {
+    const regular = basePrice * tier.quantity;
+    const saved = Math.max(0, regular - tier.price);
+    return `Buy ${tier.quantity} for ₦${formatDealAmount(tier.price)} — save ₦${formatDealAmount(saved)}`;
+  });
+}
+
 export function describeQuantityRules(studio: DealStudioDraft): string[] {
   return [
     `Quantity Limit: ${studio.vouchers} promotional entitlements in total.`,

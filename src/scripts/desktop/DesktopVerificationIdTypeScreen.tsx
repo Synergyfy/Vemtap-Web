@@ -13,61 +13,12 @@ interface DesktopVerificationIdTypeScreenProps {
   dashboardNav?: (key: string) => void;
 }
 
-const ID_OPTIONS: {
-  key: VerificationIdType;
-  name: string;
-  badge: string | null;
-  badgeClass: string;
-  description: string;
-  metaIcon1: string;
-  metaText1: string;
-  metaIcon2: string;
-  metaText2: string;
-}[] = [
-  {
-    key: 'nin',
-    name: 'NIN (National Identification Number)',
-    badge: 'Recommended • Instant',
-    badgeClass: 'bg-badge-discount-bg text-badge-discount-text',
-    description: 'Fast digital verification via official NIMC database. Immediate biometric & NIN slip lookup.',
-    metaIcon1: 'account_circle',
-    metaText1: '11-digit Slip',
-    metaIcon2: 'timer',
-    metaText2: '~15 seconds',
-  },
-  {
-    key: 'drivers_license',
-    name: "Driver's Licence",
-    badge: 'Standard',
-    badgeClass: 'bg-surface-container text-text-secondary',
-    description: 'Federal Road Safety Corps (FRSC) issued licence with digital record check and photo verification.',
-    metaIcon1: 'badge',
-    metaText1: 'Valid FRSC Licence',
-    metaIcon2: 'timer',
-    metaText2: '~45 seconds',
-  },
-  {
-    key: 'passport',
-    name: 'International Passport',
-    badge: 'Biometric',
-    badgeClass: 'bg-surface-container text-text-secondary',
-    description: 'Nigerian Immigration Service (NIS) passport with biometric validation and MRZ barcode capture.',
-    metaIcon1: 'public',
-    metaText1: 'Data Page Scan',
-    metaIcon2: 'timer',
-    metaText2: '~30 seconds',
-  },
-  {
-    key: 'voters_card',
-    name: "Voter's Card (VIN / INEC)",
-    badge: 'Registry',
-    badgeClass: 'bg-surface-container text-text-secondary',
-    description: 'Official INEC voter registry lookup via 19-character Voter Identification Number.',
-    metaIcon1: 'how_to_vote',
-    metaText1: 'Permanent Voter Card (PVC)',
-    metaIcon2: 'timer',
-    metaText2: '~60 seconds',
-  },
+const ID_OPTIONS: { key: VerificationIdType; name: string }[] = [
+  { key: 'nin', name: 'NIN' },
+  { key: 'drivers_license', name: "Driver's Licence" },
+  { key: 'passport', name: 'International Passport' },
+  { key: 'voters_card', name: "Voter's Card" },
+  { key: 'bvn', name: 'BVN' },
 ];
 
 export function DesktopVerificationIdTypeScreen({
@@ -79,18 +30,14 @@ export function DesktopVerificationIdTypeScreen({
   inDashboard = false,
   dashboardNav,
 }: DesktopVerificationIdTypeScreenProps) {
-  const selected = ID_OPTIONS.find((option) => option.key === idType) ?? ID_OPTIONS[0];
-  // Live: what each ID really needs, the name it must match and the last attempt;
-  // sample timings, certifications and the "virtual slip" shortcut are demo-only.
+  // Live: what each ID really needs and the last attempt. The dropdown keeps
+  // the existing step while removing demo-only badges and timing claims.
   const step = useIdTypeStep();
-  const live = step.live;
-  const options = live
-    ? ID_OPTIONS.map((option) => ({
-        ...option,
-        badge: option.key === 'nin' ? 'Recommended' : option.key === 'passport' ? 'Photo check' : 'Registry check',
-        description: ID_TYPE_REQUIREMENTS[option.key],
-      }))
-    : ID_OPTIONS;
+  const options = ID_OPTIONS.map((option) => ({
+    ...option,
+    description: ID_TYPE_REQUIREMENTS[option.key],
+  }));
+  const selected = options.find((option) => option.key === idType) ?? options[0];
 
   return (
     <BusinessVerificationChrome activeNav="trust" onBrand={onBrand} inDashboard={inDashboard} dashboardNav={dashboardNav}>
@@ -155,68 +102,35 @@ export function DesktopVerificationIdTypeScreen({
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-space-xl items-start">
           <div className="lg:col-span-7 flex flex-col gap-space-md">
-            <div className="text-text-tertiary font-label-sm text-caption uppercase tracking-wider font-semibold">
+            <label className="text-text-tertiary font-label-sm text-caption uppercase tracking-wider font-semibold" htmlFor="desktop-id-type-select">
               Select Identity Document
+            </label>
+            <div className="relative flex items-center">
+              <select
+                className="w-full h-12 appearance-none rounded-xl bg-surface-canvas px-space-md pr-space-xl text-text-primary font-heading-sm text-heading-sm shadow-sm focus:outline-none"
+                id="desktop-id-type-select"
+                value={idType}
+                onChange={(event) => onIdTypeChange(event.target.value as VerificationIdType)}
+              >
+                {options.map((option) => (
+                  <option className="bg-surface-canvas text-text-primary" key={option.key} value={option.key}>
+                    {option.name}
+                    {step.lastAttempt?.idType === option.key ? ' (last tried)' : ''}
+                  </option>
+                ))}
+              </select>
+              <Icon name="expand_more" className="pointer-events-none absolute right-space-md text-[20px] text-text-secondary" />
             </div>
-            <div className="flex flex-col gap-space-sm" role="radiogroup" aria-label="Identity document type">
-              {options.map((option) => {
-                const active = option.key === idType;
-                return (
-                  <button
-                    key={option.key}
-                    type="button"
-                    role="radio"
-                    aria-checked={active}
-                    onClick={() => onIdTypeChange(option.key)}
-                    className={`relative flex items-start gap-space-md p-space-lg rounded-xl cursor-pointer transition-all duration-200 text-left ${
-                      active ? 'bg-surface-tint-blue/30 shadow-md' : 'bg-surface-canvas shadow-sm hover:shadow-md'
-                    }`}
-                  >
-                    <div
-                      className={`w-6 h-6 rounded-full flex items-center justify-center mt-0.5 shrink-0 ${
-                        active ? 'bg-primary text-on-primary' : 'bg-surface-container text-transparent'
-                      }`}
-                    >
-                      <Icon name="check" className="text-[16px]" />
-                    </div>
-                    <div className="flex flex-col gap-space-2xs flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center justify-between gap-space-xs">
-                        <span className="font-heading-sm text-heading-sm text-text-primary flex items-center gap-space-xs">
-                          {option.name}
-                          {step.lastAttempt?.idType === option.key && (
-                            <span className="px-space-xs py-0.5 rounded-full bg-surface-container text-text-secondary font-caption text-caption">
-                              Last tried
-                            </span>
-                          )}
-                        </span>
-                        <div
-                          className={`flex items-center gap-1.5 px-space-xs py-0.5 rounded-full font-label-sm text-caption font-semibold ${option.badgeClass}`}
-                        >
-                          {option.badge === 'Recommended • Instant' && (
-                            <Icon name="bolt" className="text-[14px]" />
-                          )}
-                          <span>{option.badge}</span>
-                        </div>
-                      </div>
-                      <p className="font-body-md text-body-md text-text-secondary">{option.description}</p>
-                      <div className="flex flex-wrap items-center gap-space-sm pt-space-2xs text-text-tertiary font-label-sm text-caption">
-                        <span className="flex items-center gap-1">
-                          <Icon name={option.metaIcon1} className="text-[14px]" /> {option.metaText1}
-                        </span>
-                        {/* Sample timings — no live measure behind them. */}
-                        {!live && (
-                          <>
-                            <span>•</span>
-                            <span className="flex items-center gap-1">
-                              <Icon name={option.metaIcon2} className="text-[14px]" /> {option.metaText2}
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
+            <div className="p-space-lg rounded-xl bg-surface-canvas shadow-sm flex flex-col gap-space-2xs">
+              <div className="flex items-center gap-space-xs">
+                <span className="font-heading-sm text-heading-sm text-text-primary">{selected.name}</span>
+                {step.lastAttempt?.idType === selected.key && (
+                  <span className="px-space-xs py-0.5 rounded-full bg-surface-container text-text-secondary font-caption text-caption">
+                    Last tried
+                  </span>
+                )}
+              </div>
+              <p className="font-body-md text-body-md text-text-secondary">{selected.description}</p>
             </div>
           </div>
 
@@ -231,34 +145,23 @@ export function DesktopVerificationIdTypeScreen({
                 </div>
                 <div className="flex flex-col min-w-0">
                   <span className="font-label-md text-label-md text-primary font-semibold">
-                    Accredited Registry Gateway
+                    Registry-backed check
                   </span>
                   <span className="font-caption text-caption text-text-secondary mt-0.5">
-                    {live
-                      ? 'NIN, licence and voter’s card are checked against the official registry with a face match; passports are checked from the photo.'
-                      : 'Connected directly with accredited verification services (NIMC & NIBSS licensed).'}
+                    NIN, licence and voter’s card are checked against the registry with a face match; passports are checked from the uploaded data page.
                   </span>
                 </div>
               </div>
-              {!live && (
-                <div className="flex items-center justify-between gap-space-sm p-space-sm bg-badge-discount-bg text-badge-discount-text rounded-lg flex-wrap">
-                  <div className="flex items-center gap-space-xs font-label-md text-label-md font-semibold">
-                    <Icon name="electric_bolt" className="text-[20px]" />
-                    <span>Instant identity verification in under 30 seconds</span>
-                  </div>
-                  <Icon name="check_circle" className="text-[16px]" />
-                </div>
-              )}
               <div className="flex flex-col gap-space-sm">
                 <div className="flex items-start gap-space-xs">
                   <Icon name="lock" className="text-primary text-[20px] shrink-0 mt-0.5" />
                   <div className="flex flex-col gap-0.5">
                     <span className="font-label-md text-label-md text-text-primary font-semibold">
-                      256-Bit Bank-Grade Encryption
+                      Encrypted handling
                     </span>
                     <p className="font-body-md text-caption text-text-secondary">
-                      Your personal identity information is protected by 256-bit bank-grade encryption and only used
-                      for account authentication and regulatory compliance under NDPR.
+                      Your personal identity information is handled securely and only used for verification and
+                      account authentication.
                     </p>
                   </div>
                 </div>
@@ -266,52 +169,27 @@ export function DesktopVerificationIdTypeScreen({
                   <Icon name="shield_with_heart" className="text-badge-discount-text text-[20px] shrink-0 mt-0.5" />
                   <div className="flex flex-col gap-0.5">
                     <span className="font-label-md text-label-md text-text-primary font-semibold">
-                      Zero Financial Intrusion
+                      Minimal ID Data
                     </span>
                     <p className="font-body-md text-caption text-text-secondary">
-                      Your BVN or private banking credentials are never requested or stored during this onboarding
-                      stage.
+                      Only the ID details you enter are sent for verification. We never ask for banking passwords or card PINs.
                     </p>
                   </div>
                 </div>
               </div>
               <div className="pt-space-xs flex flex-wrap items-center gap-space-xs">
-                {!live && (
-                  <>
-                    <div className="px-space-xs py-1 rounded bg-surface-container text-on-surface font-caption text-caption flex items-center gap-1">
-                      <Icon name="check" className="text-[14px] text-badge-discount-text" />
-                      <span>NDPR Certified</span>
-                    </div>
-                    <div className="px-space-xs py-1 rounded bg-surface-container text-on-surface font-caption text-caption flex items-center gap-1">
-                      <Icon name="security" className="text-[14px] text-primary" />
-                      <span>TLS 1.3 Strict</span>
-                    </div>
-                  </>
-                )}
                 <div className="px-space-xs py-1 rounded bg-surface-container text-on-surface font-caption text-caption flex items-center gap-1">
-                  <Icon name="fingerprint" className="text-[14px] text-tertiary" />
-                  <span>Biometric Matching</span>
+                  <Icon name={selected.key === 'bvn' ? 'account_balance' : 'fingerprint'} className="text-[14px] text-tertiary" />
+                  <span>{selected.key === 'bvn' ? 'Record Lookup' : 'Biometric Matching'}</span>
                 </div>
               </div>
             </div>
-            {live ? (
-              <div className="p-space-md rounded-xl bg-surface-subtle flex items-center gap-space-xs text-text-secondary">
-                <Icon name="contact_support" className="text-[18px] shrink-0" />
-                <span className="font-caption text-caption">
-                  Don't have your card on hand? You only need the number for NIN, licence or voter's card. Dial *346# to get your NIN.
-                </span>
-              </div>
-            ) : (
-              <div className="p-space-md rounded-xl bg-surface-subtle flex items-center justify-between gap-space-sm text-text-secondary flex-wrap">
-                <div className="flex items-center gap-space-xs min-w-0">
-                  <Icon name="contact_support" className="text-[18px] shrink-0" />
-                  <span className="font-caption text-caption">Don't have your physical card on hand?</span>
-                </div>
-                <button className="font-label-sm text-caption text-primary hover:underline font-semibold" type="button">
-                  Use Virtual Slip →
-                </button>
-              </div>
-            )}
+            <div className="p-space-md rounded-xl bg-surface-subtle flex items-center gap-space-xs text-text-secondary">
+              <Icon name="contact_support" className="text-[18px] shrink-0" />
+              <span className="font-caption text-caption">
+                You only need the number for NIN, BVN, licence or voter's card. For a passport, upload the data page.
+              </span>
+            </div>
           </div>
         </div>
 

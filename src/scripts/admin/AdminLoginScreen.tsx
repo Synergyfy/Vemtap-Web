@@ -1,5 +1,8 @@
-import { useState } from 'react';
-import { setAdminSession, SUPER_ADMIN_USER } from './adminAuth';
+import { useState, useEffect } from 'react';
+import { getAdminSession, clearAdminSession, adminSessionFromUser, type AdminUser } from './adminAuth';
+import { useAuth } from '../../context/AuthContext';
+import { resolveAccountDestination } from '../../services/accountRouting';
+import vemtapLogo from '../../hooks/VEMTAP LOGO NEW PNG.png';
 
 interface AdminLoginScreenProps {
   onLoginSuccess: () => void;
@@ -7,39 +10,63 @@ interface AdminLoginScreenProps {
 }
 
 export function AdminLoginScreen({ onLoginSuccess, onBackToApp }: AdminLoginScreenProps) {
-  const [email, setEmail] = useState('michael.o@vemtap.com');
-  const [password, setPassword] = useState('••••••••••••');
-  const [twoFactorCode, setTwoFactorCode] = useState('482910');
+  const { signIn, signOut } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [twoFactorCode, setTwoFactorCode] = useState('');
   const [rememberTerminal, setRememberTerminal] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeSession, setActiveSession] = useState<AdminUser | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    setActiveSession(getAdminSession());
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) {
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
       setError('Please provide your admin email or identity token.');
       return;
     }
+    if (!password) {
+      setError('Please provide your admin password.');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
-    setTimeout(() => {
-      setIsLoading(false);
-      setAdminSession({
-        ...SUPER_ADMIN_USER,
-        email: email.trim(),
+    try {
+      const user = await signIn({
+        identifier: cleanEmail,
+        password,
+        twoFactorCode: twoFactorCode.trim() || undefined,
       });
+
+      const adminUser = adminSessionFromUser(user);
+      if (resolveAccountDestination(user) !== 'admin' || !adminUser) {
+        await signOut().catch(() => undefined);
+        setError('Access denied: Account does not have administrative privileges.');
+        return;
+      }
+
+      setActiveSession(adminUser);
       onLoginSuccess();
-    }, 600);
+    } catch (err: any) {
+      const msg = err?.message || err?.error || 'Authentication failed. Please verify your credentials.';
+      setError(msg);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleQuickDemo = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      setAdminSession(SUPER_ADMIN_USER);
-      onLoginSuccess();
-    }, 400);
+  const handleClearSession = () => {
+    clearAdminSession();
+    void signOut().catch(() => undefined);
+    setActiveSession(null);
   };
 
   return (
@@ -47,9 +74,7 @@ export function AdminLoginScreen({ onLoginSuccess, onBackToApp }: AdminLoginScre
       {/* Top Header */}
       <div className="max-w-6xl w-full mx-auto flex items-center justify-between py-2">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#0055c4] to-[#066cf4] flex items-center justify-center text-white font-bold text-lg shadow-lg">
-            V
-          </div>
+          <img src={vemtapLogo} alt="VEMTAP" className="w-9 h-9 object-contain shrink-0" />
           <div className="flex flex-col">
             <div className="flex items-center gap-1.5">
               <span className="font-bold text-[15px] tracking-tight text-white leading-tight">VEMTAP</span>
@@ -84,9 +109,45 @@ export function AdminLoginScreen({ onLoginSuccess, onBackToApp }: AdminLoginScre
             </div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">Admin Authentication</h1>
             <p className="text-slate-400 text-[12px] mt-1.5 leading-relaxed">
-              Authorized personnel command terminal for VEMTAP commercial nodes, telemetry, and payments.
+              Authorized personnel command terminal for VEMTAP commercial nodes, telemetry, and management.
             </p>
           </div>
+
+          {/* Active Session Notification */}
+          {activeSession && (
+            <div className="mb-4 p-3.5 rounded-xl bg-blue-950/60 border border-blue-500/40 text-blue-200 text-[12px] space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-white flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[16px] text-emerald-400">check_circle</span>
+                  Active Session Detected
+                </span>
+                <span className="text-[11px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 font-mono">
+                  {activeSession.role}
+                </span>
+              </div>
+              <p className="text-slate-300 text-[11.5px] truncate">
+                Signed in as <strong className="text-white">{activeSession.email}</strong>
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={onLoginSuccess}
+                  className="flex-1 py-1.5 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[11.5px] font-semibold transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <span>Go to Command Grid</span>
+                  <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearSession}
+                  className="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-[11.5px] transition-colors"
+                  title="Sign Out"
+                >
+                  Switch
+                </button>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-[12px] flex items-center gap-2">
@@ -120,28 +181,35 @@ export function AdminLoginScreen({ onLoginSuccess, onBackToApp }: AdminLoginScre
                 <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
                   Password
                 </label>
-                <a href="#reset" className="text-[11px] text-blue-400 hover:underline">
-                  Terminal Reset
-                </a>
               </div>
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3 top-2.5 text-[17px] text-slate-400">
                   lock
                 </span>
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-[13px] bg-slate-800/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all font-mono"
+                  className="w-full pl-9 pr-10 py-2 text-[13px] bg-slate-800/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all font-mono"
                   placeholder="••••••••••••"
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  className="absolute right-3 top-2.5 text-slate-400 hover:text-white transition-colors focus:outline-none"
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  <span className="material-symbols-outlined text-[18px]">
+                    {showPassword ? 'visibility_off' : 'visibility'}
+                  </span>
+                </button>
               </div>
             </div>
 
             <div>
               <label className="block text-[11px] font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                2FA Hardware Authenticator Token
+                2FA Hardware Authenticator Token <span className="text-slate-500 normal-case">(optional)</span>
               </label>
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3 top-2.5 text-[17px] text-slate-400">
@@ -188,18 +256,6 @@ export function AdminLoginScreen({ onLoginSuccess, onBackToApp }: AdminLoginScre
               )}
             </button>
           </form>
-
-          {/* Quick Demo Action for Pairing */}
-          <div className="mt-5 pt-4 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={handleQuickDemo}
-              className="w-full py-2 px-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-slate-200 text-[12px] font-medium flex items-center justify-center gap-2 transition-colors"
-            >
-              <span className="material-symbols-outlined text-[16px] text-emerald-400">verified_user</span>
-              <span>1-Click Demo Login as Super Admin (Michael O.)</span>
-            </button>
-          </div>
         </div>
 
         {/* Security Disclaimers */}
@@ -226,4 +282,3 @@ export function AdminLoginScreen({ onLoginSuccess, onBackToApp }: AdminLoginScre
     </div>
   );
 }
-

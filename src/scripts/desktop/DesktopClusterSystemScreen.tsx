@@ -10,8 +10,8 @@ import {
 import { countLiveBoosts, getFeaturedCampaignSlot, hasActiveBoostForItem, isItemBoostEligible } from '../clusterBoostData';
 import { hasApiConfig } from '../../services/api/client';
 import { apiErrorMessage } from '../../services/errorMessages';
-import { useSponsoredCampaigns } from '../../hooks/business/useSponsored';
-import { liveBoostHelpers, useLiveCluster } from '../clusterLive';
+import { useBoostList } from '../../hooks/business/useSponsored';
+import { isRateLimitError, liveBoostHelpers, useLiveCluster } from '../clusterLive';
 import { ClusterQrCode } from '../../components/ClusterQrCode';
 import { ClusterMemberProfileModal } from '../../components/ClusterMemberProfileModal';
 import { ClusterMemberChatModal } from '../../components/ClusterMemberChatModal';
@@ -64,9 +64,9 @@ export function DesktopClusterSystemScreen({
   const [activeTab, setActiveTab] = useState<DesktopClusterTab>('overview');
   const live = hasApiConfig();
   const liveCluster = useLiveCluster();
-  const sponsored = useSponsoredCampaigns();
+  const boostCampaigns = useBoostList();
   const boosts = live
-    ? liveBoostHelpers(sponsored.data ?? [])
+    ? liveBoostHelpers(boostCampaigns.data ?? [])
     : { count: 0, hasActiveBoostForItem, isItemBoostEligible };
   const [localState, setClusterState] = useState(getClusterState());
   const clusterState = live ? liveCluster.state : localState;
@@ -83,7 +83,8 @@ export function DesktopClusterSystemScreen({
   // Search & Filters
   const [bizSearch, setBizSearch] = useState('');
   const [bizCategory, setBizCategory] = useState<string>('all');
-  const [entityFilter, setEntityFilter] = useState<'all' | 'deal' | 'product' | 'profile'>('all');
+  const [entityFilter, setEntityFilter] = useState<'all' | 'deal' | 'product' | 'service' | 'profile'>('all');
+  const [dealFilter, setDealFilter] = useState<'all' | 'in_rotator' | 'hidden'>('all');
 
   // Modals for Member Profiles & In-App Chat
   const [selectedMemberProfile, setSelectedMemberProfile] = useState<ClusterBusinessMember | null>(
@@ -100,10 +101,12 @@ export function DesktopClusterSystemScreen({
     else setClusterState(getClusterState());
   };
 
+  // Notifications display state; they never refetch it. Previously every
+  // message (including load errors) invalidated the whole cluster query tree,
+  // which recreated the same error and produced a request burst.
   const showNotification = (msg: string) => {
     setSubmitToast(msg);
     setTimeout(() => setSubmitToast(null), 3500);
-    refreshState();
   };
 
   const handleToggleShow = (id: string) => {
@@ -129,16 +132,23 @@ export function DesktopClusterSystemScreen({
     setShowImportModal(true);
   };
 
-  // A cluster error must not re-trigger the refresh loop: the toast's
-  // `refreshState()` re-fetches the same failing request, React Query returns a
-  // fresh error object, this effect runs again — the page then jitters as it
-  // re-renders and its actions stop responding. Show each error once.
-  const errorNotifiedRef = useRef<unknown>(null);
+  // Show each failure once. React Query creates a new error object on every
+  // refetch, so a stable status/message key is used rather than object identity.
+  // A 429 gets a calm, actionable message and no automatic retry.
+  const notifiedErrorKeyRef = useRef<string | null>(null);
   useEffect(() => {
     const error = liveCluster.error;
-    if (!error || errorNotifiedRef.current === error) return;
-    errorNotifiedRef.current = error;
-    showNotification(apiErrorMessage(error, 'Could not load your cluster.'));
+    if (!error) {
+      notifiedErrorKeyRef.current = null;
+      return;
+    }
+    const message = isRateLimitError(error)
+      ? 'Too many requests. Please wait a moment and try again.'
+      : apiErrorMessage(error, 'Could not load your cluster.');
+    const key = `${(error as { status?: number }).status ?? ''}:${message}`;
+    if (notifiedErrorKeyRef.current === key) return;
+    notifiedErrorKeyRef.current = key;
+    showNotification(message);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveCluster.error]);
 
@@ -151,8 +161,12 @@ export function DesktopClusterSystemScreen({
     return matchesSearch && matchesCategory;
   });
 
-  const filteredItems = clusterState.showcaseItems.filter((item) => {
-    if (entityFilter !== 'all' && item.entityType !== entityFilter) return false;
+  const entityItems = clusterState.showcaseItems.filter(
+    (item) => entityFilter === 'all' || item.entityType === entityFilter
+  );
+  const filteredItems = entityItems.filter((item) => {
+    if (dealFilter === 'in_rotator') return item.showInCluster;
+    if (dealFilter === 'hidden') return !item.showInCluster;
     return true;
   });
 
@@ -226,10 +240,10 @@ export function DesktopClusterSystemScreen({
                 }
               }}
               className="px-3.5 py-2 rounded-xl bg-surface-subtle hover:bg-surface-container border border-border-subtle text-xs font-semibold text-text-secondary flex items-center gap-1.5 transition-colors"
-              title="Test onboarding screens with simulated scenario"
+              title={live ? 'Restart cluster setup' : 'Test onboarding screens with simulated scenario'}
             >
               <Icon name="refresh" className="text-[16px] text-primary" />
-              <span>Restart Onboarding Demo</span>
+              <span>{live ? 'Cluster Setup' : 'Restart Onboarding Demo'}</span>
             </button>
 
             <button
@@ -428,7 +442,7 @@ export function DesktopClusterSystemScreen({
                     </div>
                   </div>
                   <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold">
-                    Active (5/6 slots)
+                    {live ? 'Active' : 'Active (5/6 slots)'}
                   </span>
                 </div>
 
@@ -857,21 +871,46 @@ export function DesktopClusterSystemScreen({
           <div className="space-y-4">
             {/* Header & Filter Controls */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
-                {(['all', 'deal', 'product', 'profile'] as const).map((ent) => (
-                  <button
-                    key={ent}
-                    type="button"
-                    onClick={() => setEntityFilter(ent)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-colors ${
-                      entityFilter === ent
-                        ? 'bg-primary-container text-white'
-                        : 'bg-surface-subtle text-text-secondary hover:text-text-primary'
-                    }`}
-                  >
-                    {ent === 'all' ? 'All Items' : `${ent}s`}
-                  </button>
-                ))}
+              <div className="flex flex-col lg:flex-row items-center gap-2 w-full">
+                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                  {(['all', 'deal', 'product', 'service', 'profile'] as const).map((ent) => (
+                    <button
+                      key={ent}
+                      type="button"
+                      onClick={() => setEntityFilter(ent)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-colors whitespace-nowrap ${
+                        entityFilter === ent
+                          ? 'bg-primary-container text-white'
+                          : 'bg-surface-subtle text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      {ent === 'all' ? 'All Items' : `${ent}s`}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {(
+                    [
+                      ['all', `All (${entityItems.length})`],
+                      ['in_rotator', 'Shown in Rotator'],
+                      ['hidden', 'Hidden'],
+                    ] as const
+                  ).map(([status, label]) => (
+                    <button
+                      key={status}
+                      type="button"
+                      onClick={() => setDealFilter(status)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors ${
+                        dealFilter === status
+                          ? 'bg-primary-container text-white'
+                          : 'bg-surface-subtle text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="flex items-center gap-3">

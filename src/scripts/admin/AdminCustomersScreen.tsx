@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { ADMIN_CUSTOMERS, type AdminCustomer } from './adminData';
 import { AdminChatModal } from './AdminChatModal';
 import { Icon } from '../../components/ui/Icon';
+import { adminService, type AdminCustomerListResponse } from '../../services/adminService';
 
 interface AdminCustomersScreenProps {
   onNavigate: (path: string) => void;
@@ -10,8 +11,12 @@ interface AdminCustomersScreenProps {
 type CustomerTab = 'profile' | 'wallet' | 'saved' | 'history' | 'support';
 
 export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) {
-  const [customers, setCustomers] = useState<AdminCustomer[]>(ADMIN_CUSTOMERS);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>(ADMIN_CUSTOMERS[0].id);
+  const [customers, setCustomers] = useState<AdminCustomer[]>([]);
+  const [stats, setStats] = useState<AdminCustomerListResponse['stats'] | null>(null);
+  const [pagination, setPagination] = useState({ page: 1, limit: 20, total: 0, totalPages: 1 });
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [isProfileView, setIsProfileView] = useState<boolean>(false);
   const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<CustomerTab>('profile');
@@ -46,9 +51,70 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
     },
   ]);
 
+  const loadCustomers = useCallback(
+    async (
+      page: number = 1,
+      search: string = searchQuery,
+      cluster: string = clusterFilter,
+      status: string = statusFilter,
+      joined: string = joinedFilter
+    ) => {
+      try {
+        setIsLoading(true);
+        setLoadError(null);
+        const res = await adminService.listCustomers({
+          page,
+          limit: 20,
+          search: search.trim() || undefined,
+          cluster: cluster === 'all' ? undefined : cluster,
+          status: status === 'all' ? undefined : status,
+          joined: joined === 'all' ? undefined : joined,
+        });
+
+        setCustomers(res.data);
+        setStats(res.stats);
+        setPagination(res.pagination);
+
+        if (res.data.length > 0) {
+          setSelectedCustomerId((prev) => {
+            const exists = res.data.some((c) => c.id === prev);
+            return exists ? prev : res.data[0].id;
+          });
+        }
+      } catch (err: any) {
+        console.error('Failed to load customers from live API:', err);
+        setLoadError(err?.message || 'Failed to load live customers registry');
+        // Graceful fallback to default mock registry so page does not break
+        setCustomers(ADMIN_CUSTOMERS);
+        setSelectedCustomerId((prev) => prev || ADMIN_CUSTOMERS[0].id);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [searchQuery, clusterFilter, statusFilter, joinedFilter]
+  );
+
+  useEffect(() => {
+    loadCustomers(1);
+  }, [searchQuery, clusterFilter, statusFilter, joinedFilter, loadCustomers]);
+
   const selectedCustomer = useMemo(() => {
-    return customers.find((c) => c.id === selectedCustomerId) ?? customers[0];
+    return customers.find((c) => c.id === selectedCustomerId) ?? customers[0] ?? null;
   }, [customers, selectedCustomerId]);
+
+  // Load customer dossier notes when entering profile view
+  useEffect(() => {
+    if (selectedCustomer?.id && isProfileView) {
+      adminService
+        .getCustomer(selectedCustomer.id)
+        .then((cust) => {
+          if (cust?.notesHistory && cust.notesHistory.length > 0) {
+            setNotesHistory(cust.notesHistory);
+          }
+        })
+        .catch((err) => console.error('Error fetching customer dossier:', err));
+    }
+  }, [selectedCustomer?.id, isProfileView]);
 
   const filteredCustomers = useMemo(() => {
     return customers.filter((c) => {
@@ -71,20 +137,54 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
     });
   }, [customers, searchQuery, clusterFilter, statusFilter]);
 
-  const handleToggleCustomerStatus = (custId: string) => {
-    setCustomers((prev) =>
-      prev.map((c) => {
-        if (c.id !== custId) return c;
-        const newStatus = c.status === 'Suspended' ? 'Active' : 'Suspended';
-        setActionNotice(`Customer ${c.name} account status updated to ${newStatus}.`);
-        setTimeout(() => setActionNotice(null), 3500);
-        return {
-          ...c,
-          status: newStatus,
-          restrictionStatus: newStatus === 'Suspended' ? 'Suspended (Admin Action)' : 'None (Clean standing)',
-        };
-      })
-    );
+  const handleToggleCustomerStatus = async (custId: string) => {
+    const cust = customers.find((c) => c.id === custId);
+    if (!cust) return;
+    const newStatus = cust.status === 'Suspended' ? 'Active' : 'Suspended';
+    try {
+      await adminService.updateCustomerStatus(custId, newStatus);
+      setCustomers((prev) =>
+        prev.map((c) => {
+          if (c.id !== custId) return c;
+          return {
+            ...c,
+            status: newStatus,
+            restrictionStatus:
+              newStatus === 'Suspended' ? 'Suspended (Admin Action)' : 'None (Clean standing)',
+          };
+        })
+      );
+      setActionNotice(`Customer ${cust.name} account status updated to ${newStatus}.`);
+      setTimeout(() => setActionNotice(null), 3500);
+    } catch (err: any) {
+      setActionNotice(`Failed to update status: ${err?.message || 'Server error'}`);
+      setTimeout(() => setActionNotice(null), 4000);
+    }
+  };
+
+  const handleRevokeTokens = async (custId: string) => {
+    try {
+      await adminService.revokeCustomerTokens(custId);
+      setActionNotice('Device authentication tokens revoked. Consumer will be prompted for OTP on next launch.');
+      setTimeout(() => setActionNotice(null), 3500);
+    } catch (err: any) {
+      setActionNotice(`Failed to revoke sessions: ${err?.message || 'Server error'}`);
+      setTimeout(() => setActionNotice(null), 4000);
+    }
+  };
+
+  const handleAddNote = async () => {
+    if (!adminNote.trim() || !selectedCustomer) return;
+    try {
+      const res = await adminService.addCustomerNote(selectedCustomer.id, adminNote.trim());
+      setNotesHistory((prev) => [res, ...prev]);
+      setAdminNote('');
+      setActionNotice('Internal note added to customer dossier.');
+      setTimeout(() => setActionNotice(null), 3000);
+    } catch (err: any) {
+      setActionNotice(`Failed to save note: ${err?.message || 'Server error'}`);
+      setTimeout(() => setActionNotice(null), 4000);
+    }
   };
 
   const handleExportCsv = () => {
@@ -170,19 +270,6 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
     setTimeout(() => setActionNotice(null), 3500);
   };
 
-  const handleAddNote = () => {
-    if (!adminNote.trim()) return;
-    const newEntry = {
-      id: `n_${Date.now()}`,
-      text: adminNote.trim(),
-      author: 'Super Admin',
-      time: 'Just now',
-    };
-    setNotesHistory((prev) => [newEntry, ...prev]);
-    setActionNotice('Internal note added to customer dossier.');
-    setTimeout(() => setActionNotice(null), 3000);
-  };
-
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-[1600px] w-full mx-auto pb-16">
       {/* Action Toast Notice */}
@@ -197,6 +284,22 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
             className="text-emerald-600 hover:text-emerald-900 transition-colors p-1"
           >
             <span className="material-symbols-outlined text-[16px]">close</span>
+          </button>
+        </div>
+      )}
+
+      {/* Error Notice */}
+      {loadError && (
+        <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-[12px] flex items-center justify-between shadow-2xs">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[17px] text-amber-600">warning</span>
+            <span>{loadError}</span>
+          </div>
+          <button
+            onClick={() => loadCustomers(pagination.page)}
+            className="text-amber-800 underline font-medium hover:text-amber-950"
+          >
+            Retry
           </button>
         </div>
       )}
@@ -1070,10 +1173,7 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                 <h3 className="font-bold text-[13px] text-slate-900">Governance & Security Interventions</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[12px]">
                   <button
-                    onClick={() => {
-                      setActionNotice('Device authentication tokens revoked. Consumer will be prompted for OTP on next launch.');
-                      setTimeout(() => setActionNotice(null), 3500);
-                    }}
+                    onClick={() => selectedCustomer && handleRevokeTokens(selectedCustomer.id)}
                     className="p-3 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-left transition-colors cursor-pointer"
                   >
                     <span className="font-bold text-slate-800 block">Revoke Active Device Tokens</span>
@@ -1182,17 +1282,23 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
               <div className="pt-4 mt-4 flex items-center gap-4 border-t border-slate-100">
                 <div>
                   <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Coverage</span>
-                  <span className="font-bold text-[14px] text-slate-900">4 Hubs</span>
+                  <span className="font-bold text-[14px] text-slate-900">{stats?.coverageHubs ?? '4 Hubs'}</span>
                 </div>
                 <div className="w-px h-7 bg-slate-200"></div>
                 <div>
                   <span className="text-[10px] text-slate-400 uppercase tracking-wider block">NFC Hardware Taps</span>
-                  <span className="font-bold text-[14px] text-[#0055c4]">84.6k mtd</span>
+                  <span className="font-bold text-[14px] text-[#0055c4]">
+                    {stats?.nfcHardwareTaps
+                      ? stats.nfcHardwareTaps > 1000
+                        ? `${(stats.nfcHardwareTaps / 1000).toFixed(1)}k mtd`
+                        : `${stats.nfcHardwareTaps} mtd`
+                      : '84.6k mtd'}
+                  </span>
                 </div>
                 <div className="w-px h-7 bg-slate-200"></div>
                 <div>
                   <span className="text-[10px] text-slate-400 uppercase tracking-wider block">Platform Index</span>
-                  <span className="font-bold text-[14px] text-slate-900">99.98%</span>
+                  <span className="font-bold text-[14px] text-slate-900">{stats?.platformIndex ?? '99.98%'}</span>
                 </div>
               </div>
             </div>
@@ -1207,7 +1313,9 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   </div>
                 </div>
                 <div className="mt-2">
-                  <div className="text-2xl font-bold text-slate-900 tracking-tight">142,850</div>
+                  <div className="text-2xl font-bold text-slate-900 tracking-tight">
+                    {isLoading ? '...' : (stats?.totalCustomers ?? pagination.total).toLocaleString()}
+                  </div>
                   <div className="flex items-center gap-1 mt-1">
                     <span className="material-symbols-outlined text-[#0055c4] text-[14px]">trending_up</span>
                     <span className="text-[11px] font-semibold text-[#0055c4]">+12.4%</span>
@@ -1227,7 +1335,9 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   </div>
                 </div>
                 <div className="mt-2">
-                  <div className="text-2xl font-bold text-slate-900 tracking-tight">98,240</div>
+                  <div className="text-2xl font-bold text-slate-900 tracking-tight">
+                    {isLoading ? '...' : (stats?.activeThisMonth ?? 0).toLocaleString()}
+                  </div>
                   <div className="flex items-center gap-1 mt-1">
                     <span className="material-symbols-outlined text-emerald-600 text-[14px]">check_circle</span>
                     <span className="text-[11px] font-semibold text-emerald-600">68.7%</span>
@@ -1247,7 +1357,9 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   </div>
                 </div>
                 <div className="mt-2">
-                  <div className="text-2xl font-bold text-slate-900 tracking-tight">348,900</div>
+                  <div className="text-2xl font-bold text-slate-900 tracking-tight">
+                    {isLoading ? '...' : (stats?.totalSavedItems ?? 348900).toLocaleString()}
+                  </div>
                   <div className="flex items-center gap-1 mt-1">
                     <span className="text-[11px] font-bold text-slate-800">2.44</span>
                     <span className="text-[11px] text-slate-400">saved items / user</span>
@@ -1268,7 +1380,9 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
                   </div>
                 </div>
                 <div className="mt-2">
-                  <div className="text-2xl font-bold text-slate-900 tracking-tight">64.2%</div>
+                  <div className="text-2xl font-bold text-slate-900 tracking-tight">
+                    {stats?.repeatVisitRate ?? '64.2%'}
+                  </div>
                   <div className="flex items-center gap-1 mt-1">
                     <span className="material-symbols-outlined text-emerald-600 text-[14px]">storefront</span>
                     <span className="text-[11px] text-slate-400">across merchant nodes</span>
@@ -1361,7 +1475,7 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
               <div className="flex items-center gap-2.5">
                 <span className="font-bold text-[14px] text-slate-900">Registered Consumers</span>
                 <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-[#0055c4] text-[10px] font-bold border border-blue-100">
-                  142,850 Records
+                  {isLoading ? 'Loading...' : `${(pagination.total || filteredCustomers.length).toLocaleString()} Records`}
                 </span>
               </div>
               <span className="text-slate-400 text-[12px]">Filtered Results: {filteredCustomers.length}</span>
@@ -1514,21 +1628,25 @@ export function AdminCustomersScreen({ onNavigate }: AdminCustomersScreenProps) 
 
             {/* Table Footer */}
             <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-slate-500">
-              <span>Displaying {filteredCustomers.length} of 142,850 verified consumer accounts</span>
+              <span>
+                Displaying {filteredCustomers.length} of {(pagination.total || filteredCustomers.length).toLocaleString()} verified consumer accounts
+              </span>
               <div className="flex items-center gap-1">
                 <button
-                  className="w-7 h-7 rounded bg-white border border-slate-200 flex items-center justify-center disabled:opacity-40"
-                  disabled
+                  onClick={() => pagination.page > 1 && loadCustomers(pagination.page - 1)}
+                  className="w-7 h-7 rounded bg-white border border-slate-200 flex items-center justify-center disabled:opacity-40 cursor-pointer"
+                  disabled={pagination.page <= 1 || isLoading}
                 >
                   <span className="material-symbols-outlined text-[15px]">chevron_left</span>
                 </button>
-                <button className="w-7 h-7 rounded bg-[#0055c4] text-white font-bold flex items-center justify-center">
-                  1
-                </button>
-                <button className="w-7 h-7 rounded bg-white border border-slate-200 text-slate-700 flex items-center justify-center hover:bg-slate-50">
-                  2
-                </button>
-                <button className="w-7 h-7 rounded bg-white border border-slate-200 text-slate-700 flex items-center justify-center hover:bg-slate-50">
+                <span className="px-2.5 py-1 rounded bg-[#0055c4] text-white font-bold text-[11px]">
+                  {pagination.page} / {pagination.totalPages}
+                </span>
+                <button
+                  onClick={() => pagination.page < pagination.totalPages && loadCustomers(pagination.page + 1)}
+                  className="w-7 h-7 rounded bg-white border border-slate-200 text-slate-700 flex items-center justify-center hover:bg-slate-50 disabled:opacity-40 cursor-pointer"
+                  disabled={pagination.page >= pagination.totalPages || isLoading}
+                >
                   <span className="material-symbols-outlined text-[15px]">chevron_right</span>
                 </button>
               </div>

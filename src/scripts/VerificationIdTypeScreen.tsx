@@ -12,35 +12,12 @@ interface VerificationIdTypeScreenProps {
   onContinue: () => void;
 }
 
-const ID_OPTIONS: { key: VerificationIdType; icon: string; name: string; badge: string | null; description: string }[] = [
-  {
-    key: 'nin',
-    icon: 'fingerprint',
-    name: 'NIN',
-    badge: 'Recommended • Instant',
-    description: 'Fast digital verification via official NIMC database',
-  },
-  {
-    key: 'drivers_license',
-    icon: 'directions_car',
-    name: "Driver's Licence",
-    badge: null,
-    description: 'Federal Road Safety Corps (FRSC) issued licence',
-  },
-  {
-    key: 'passport',
-    icon: 'menu_book',
-    name: 'International Passport',
-    badge: null,
-    description: 'Nigerian Immigration Service (NIS) passport',
-  },
-  {
-    key: 'voters_card',
-    icon: 'how_to_vote',
-    name: "Voter's Card",
-    badge: null,
-    description: 'Official INEC voter registry lookup via 19-character VIN',
-  },
+const ID_OPTIONS: { key: VerificationIdType; name: string }[] = [
+  { key: 'nin', name: 'NIN' },
+  { key: 'drivers_license', name: "Driver's Licence" },
+  { key: 'passport', name: 'International Passport' },
+  { key: 'voters_card', name: "Voter's Card" },
+  { key: 'bvn', name: 'BVN' },
 ];
 
 export function VerificationIdTypeScreen({
@@ -54,13 +31,11 @@ export function VerificationIdTypeScreen({
   // Live: what each ID really needs, the name it must match and the last attempt.
   const step = useIdTypeStep();
   const live = step.live;
-  const options = live
-    ? ID_OPTIONS.map((option) => ({
-        ...option,
-        badge: option.key === 'nin' ? 'Recommended' : null,
-        description: ID_TYPE_REQUIREMENTS[option.key],
-      }))
-    : ID_OPTIONS;
+  const options = ID_OPTIONS.map((option) => ({
+    ...option,
+    description: ID_TYPE_REQUIREMENTS[option.key],
+  }));
+  const selected = options.find((option) => option.key === idType) ?? options[0];
 
   useEffect(
     () => () => {
@@ -134,7 +109,7 @@ export function VerificationIdTypeScreen({
             <Icon name="verified_user" filled className="text-primary text-[18px]" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="font-label-sm text-label-sm text-on-surface">Official Identity Registry</p>
+            <p className="font-label-sm text-label-sm text-on-surface">Identity check</p>
             <p className="font-caption text-caption text-on-surface-variant">
               {live ? 'Registry check with a selfie face match' : 'Connected with accredited verification services'}
             </p>
@@ -142,63 +117,31 @@ export function VerificationIdTypeScreen({
           <div className="w-2 h-2 rounded-full bg-badge-discount-text shrink-0 animate-pulse" />
         </div>
 
-        {/* ID Options List */}
-        <div className="flex flex-col space-y-2.5">
-          {options.map((option) => {
-            const active = option.key === idType;
-            return (
-              <button
-                key={option.key}
-                type="button"
-                onClick={() => onIdTypeChange(option.key)}
-                className={`w-full text-left p-3 rounded-xl shadow-sm transition-all duration-200 ${
-                  active ? 'bg-surface-container-low' : 'bg-surface-container-lowest'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3 flex-1 min-w-0">
-                    <div
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm transition-colors ${
-                        active ? 'bg-primary-container text-on-primary' : 'bg-surface-container text-on-surface-variant'
-                      }`}
-                    >
-                      <Icon name={option.icon} className="text-[20px]" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
-                        <span className="font-label-md text-label-md text-on-surface font-semibold">{option.name}</span>
-                        {step.lastAttempt?.idType === option.key && (
-                          <span className="px-2 py-0.5 rounded-full bg-surface-container text-on-surface-variant font-caption text-caption">
-                            Last tried
-                          </span>
-                        )}
-                        {option.badge && (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption">
-                            <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
-                            {option.badge}
-                          </span>
-                        )}
-                      </div>
-                      <p className="font-caption text-caption text-on-surface-variant leading-relaxed">
-                        {option.description}
-                      </p>
-                    </div>
-                  </div>
-                  <div
-                    className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 transition-colors mt-0.5 ${
-                      active ? 'bg-primary-container' : 'bg-surface-container-high'
-                    }`}
-                  >
-                    {active ? (
-                      <Icon name="check" className="text-on-primary text-[18px]" />
-                    ) : (
-                      <span className="w-2.5 h-2.5 rounded-full bg-transparent" />
-                    )}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
+        {/* ID type dropdown */}
+        <div className="flex flex-col gap-space-2xs">
+          <label className="font-label-sm text-label-sm font-medium text-on-surface" htmlFor="id-type-select">
+            Identity document type
+          </label>
+          <div className="relative flex items-center">
+            <select
+              className="w-full h-11 appearance-none rounded-xl bg-surface-container-lowest px-space-md pr-space-xl text-on-surface font-button-secondary text-button-secondary shadow-sm focus:outline-none"
+              id="id-type-select"
+              value={idType}
+              onChange={(event) => onIdTypeChange(event.target.value as VerificationIdType)}
+            >
+              {options.map((option) => (
+                <option className="bg-surface-container-lowest text-on-surface" key={option.key} value={option.key}>
+                  {option.name}
+                  {step.lastAttempt?.idType === option.key ? ' (last tried)' : ''}
+                </option>
+              ))}
+            </select>
+            <Icon name="expand_more" className="pointer-events-none absolute right-space-md text-[20px] text-text-secondary" />
+          </div>
+          <div className="p-3 mt-space-2xs rounded-xl bg-surface-container-low shadow-sm">
+            <p className="font-label-md text-label-md text-on-surface font-semibold">{selected.name}</p>
+            <p className="font-caption text-caption text-on-surface-variant leading-relaxed mt-0.5">{selected.description}</p>
+          </div>
         </div>
 
         {/* Security & Privacy Reassurance Notice */}
@@ -208,9 +151,8 @@ export function VerificationIdTypeScreen({
           </div>
           <div className="flex-1">
             <p className="font-caption text-caption text-on-surface-variant leading-relaxed">
-              Your personal identity information is protected by{' '}
-              <span className="font-semibold text-on-surface">256-bit bank-grade encryption</span> and only used for
-              account authentication and regulatory compliance.
+              Your personal identity information is handled securely and only used for verification and account
+              authentication.
             </p>
           </div>
         </div>

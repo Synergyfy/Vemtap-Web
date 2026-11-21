@@ -13,6 +13,7 @@ import { AddonsService } from './services/addons.service';
 import { CreateAddonDto } from './dto/addons/create-addon.dto';
 import { UpdateAddonDto } from './dto/addons/update-addon.dto';
 import { PurchaseAddonDto } from './dto/addons/purchase-addon.dto';
+import { StartLocationCheckoutDto } from './dto/addons/location-checkout.dto';
 import {
   ApiTags,
   ApiOperation,
@@ -167,6 +168,50 @@ export class AddonsController {
   ) {
     const businessId = req.user.businessId;
     return this.addonsService.purchaseAddons(dto, businessId, req.user.id);
+  }
+
+  @Post('location-checkout')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @ApiBearerAuth()
+  @SkipSubscriptionCheck()
+  @ApiOperation({
+    summary: 'Start a standalone location purchase',
+    description:
+      'Uses the active admin-configured location add-on to price the requested number of locations and returns a Paystack checkout.',
+  })
+  startLocationCheckout(
+    @Request() req: RequestWithUser,
+    @Body() dto: StartLocationCheckoutDto,
+  ) {
+    return this.addonsService.startLocationCheckout(
+      {
+        id: req.user.id,
+        email: req.user.email,
+        businessId: req.user.businessId,
+      },
+      dto,
+    );
+  }
+
+  @Post('location-checkout/:reference/confirm')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.OWNER, UserRole.ADMIN)
+  @ApiBearerAuth()
+  @SkipSubscriptionCheck()
+  @ApiOperation({
+    summary: 'Confirm a standalone location purchase',
+    description:
+      'Safe to repeat: verifies the Paystack reference and grants the location add-on exactly once.',
+  })
+  confirmLocationCheckout(
+    @Request() req: RequestWithUser,
+    @Param('reference') reference: string,
+  ) {
+    return this.addonsService.confirmLocationCheckout(
+      req.user.businessId,
+      reference,
+    );
   }
 
   @Get('')

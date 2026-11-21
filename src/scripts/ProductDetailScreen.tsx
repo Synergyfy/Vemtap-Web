@@ -3,6 +3,7 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { SaveToggle } from '../components/SaveToggle';
 import { useCart } from '../context/CartContext';
 import { Icon } from '../components/ui/Icon';
+import { ProductImage } from '../components/ui/ProductImage';
 import { Skeleton, SkeletonGroup } from '../components/ui/Skeleton';
 import { SheetShell } from '../components/sheets/SheetShell';
 import { naira } from './catalogueData';
@@ -174,11 +175,13 @@ export function ProductDetailScreen({ itemId, businessCode, onBack, onOpenBusine
             <div className="flex flex-col w-full pb-32">
               <div className="relative w-full overflow-hidden bg-surface-container-low">
                 <div className="relative w-full aspect-[4/3] overflow-hidden flex items-center justify-center">
-                  {item.images[photo] ?? item.images[0] ? (
-                    <img className="w-full h-full object-cover" alt={item.name} src={item.images[photo] ?? item.images[0]} />
-                  ) : (
-                    <Icon name={isService ? 'room_service' : 'inventory_2'} className="text-[64px] text-outline" />
-                  )}
+                  <ProductImage
+                    alt={item.name}
+                    className="h-full w-full"
+                    iconClassName="text-[42px]"
+                    showLabel={false}
+                    src={item.images[photo] ?? item.images[0]}
+                  />
                   <div className="absolute inset-0 bg-gradient-to-t from-surface via-transparent to-black/20 pointer-events-none" />
 
                   <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-10">
@@ -224,7 +227,13 @@ export function ProductDetailScreen({ itemId, businessCode, onBack, onOpenBusine
                         onClick={() => setPhoto(index)}
                         className={`w-14 h-14 rounded-xl overflow-hidden shrink-0 ring-2 ${index === photo ? 'ring-primary' : 'ring-transparent opacity-80'}`}
                       >
-                        <img alt="" className="w-full h-full object-cover" src={src} />
+                        <ProductImage
+                          alt={`${item.name} image ${index + 1}`}
+                          className="h-full w-full"
+                          iconClassName="text-[16px]"
+                          showLabel={false}
+                          src={src}
+                        />
                       </button>
                     ))}
                   </div>

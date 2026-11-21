@@ -1,6 +1,6 @@
 /** Response shapes from https://www.bytid.com/docs (fields we use). */
 
-export type BytidIdentityType = 'nin' | 'drivers_license' | 'voters_card';
+export type BytidIdentityType = 'nin' | 'drivers_license' | 'voters_card' | 'bvn';
 
 export interface BytidEnvelope<T> {
   success: boolean;
@@ -12,6 +12,7 @@ export interface BytidEnvelope<T> {
 export interface BytidIdentityCheck {
   id: string;
   reference: string;
+  /** `test` for sandbox keys; surfaced to the app so sandbox results are labelled. */
   environment: 'live' | 'test';
   /** Found = verified (charged); not_found; failed = registry unreachable. */
   status: 'verified' | 'not_found' | 'failed';
@@ -42,6 +43,7 @@ export interface BytidCacCheck {
   id: string;
   reference: string;
   status: 'verified' | 'not_found' | 'failed';
+  environment?: 'live' | 'test';
   id_number?: string;
   data: {
     legal_name?: string;

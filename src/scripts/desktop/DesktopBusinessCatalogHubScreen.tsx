@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { hasApiConfig } from '../../services/api/client';
 import { useCatalogueItemMutations, useCatalogueItems } from '../../hooks/business/useCatalogueItems';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
@@ -15,9 +16,18 @@ import { apiErrorMessage } from '../../services/errorMessages';
 import { planErrorMessage } from '../../services/planErrors';
 import { formatNaira } from '../../utils/format';
 import { useCatalogueCategories, useCategoryMutation } from '../../hooks/business/useCatalogueCategories';
+import { useOffers } from '../../hooks/business/useOffers';
+import type { BusinessOffer } from '../../services/offersService';
 import { useStorefrontPreview } from '../../hooks/business/useStorefrontPreview';
 import { uploadDataUrlImage } from '../../services/uploadService';
 import { Icon } from '../../components/ui/Icon';
+import { ProductImage } from '../../components/ui/ProductImage';
+import { CatalogProductInfoPanel } from '../../components/CatalogProductInfoPanel';
+import { useAnchoredPanel } from '../../hooks/useAnchoredPanel';
+import { CATALOG_PAGE_SIZE, CATALOG_SORT_CHOICES, paginateCatalogueRecords, sortCatalogueRecords, type CatalogSortKey } from '../catalogSort';
+import { activeDealFor, dealBadgeLabel, firstUsableItemImage } from '../catalogueLive';
+import { copyTextToClipboard } from '../referralData';
+import { parseMoney } from '../productImport/importRecords';
 import { MerchantShell } from './MerchantShell';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { DesktopAddProductStep1Screen } from './DesktopAddProductStep1Screen';
@@ -124,6 +134,8 @@ interface CatalogRow {
   };
   sync: boolean;
   filters: CatalogChip[];
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 /* ------------------------------------------------------------------ *
@@ -491,11 +503,8 @@ const BRANCH_DOT: Record<CatalogRow['branchDot'], string> = {
   tertiary: 'bg-text-tertiary',
 };
 
-const ITEM_PLACEHOLDER =
-  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 3'><rect width='4' height='3' fill='%23eef2ff'/></svg>";
-
 /** A live catalogue item in the hub's row shape. */
-function itemToRow(item: CatalogueItem): CatalogRow {
+function itemToRow(item: CatalogueItem, offers: BusinessOffer[] = []): CatalogRow {
   const isService = item.itemType === 'service';
   const price = toPrice(item.price ?? undefined);
   const was = toPrice(item.compareAtPrice ?? undefined);
@@ -503,10 +512,14 @@ function itemToRow(item: CatalogueItem): CatalogRow {
   const low = stock !== null && item.minStock !== null && item.minStock !== undefined && stock <= item.minStock;
   const published = item.status === 'active' || item.status === 'published';
   const branchCount = item.branches?.length ?? 1;
+  const deal = activeDealFor(item, offers);
+  const modes = item.fulfillmentModes ?? [];
+  const dineIn = modes.includes('dine_in') || /dine/i.test(item.serviceMode ?? '');
+  const takeaway = modes.includes('pickup') || /take|pickup/i.test(item.serviceMode ?? '');
   return {
     id: item.id,
     name: item.name,
-    image: item.mainImage || ITEM_PLACEHOLDER,
+    image: firstUsableItemImage(item) ?? '',
     alt: item.name,
     draft: !published,
     hidden: item.isSuspended === true,
@@ -531,9 +544,16 @@ function itemToRow(item: CatalogueItem): CatalogRow {
     filters: [
       'all',
       ...(published ? (['published'] as CatalogChip[]) : []),
+      // A deal-linked product stays in the public catalogue; the deal is only an extra filter/badge.
+      ...(deal ? (['deals'] as CatalogChip[]) : []),
       ...(low ? (['low'] as CatalogChip[]) : []),
+      ...(dineIn ? (['dinein'] as CatalogChip[]) : []),
+      ...(takeaway ? (['takeaway'] as CatalogChip[]) : []),
       ...(stock === 0 ? (['oos'] as CatalogChip[]) : []),
     ],
+    dealBadge: deal ? `Deal Active • ${dealBadgeLabel(deal)}` : undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
   };
 }
 
@@ -542,7 +562,7 @@ function importedProductToRow(product: ImportedProduct): CatalogRow {
   const onSale = product.salePrice !== null && product.price !== null && product.salePrice < product.price;
   // Own image first; category image only as a fallback, resolved live so
   // category edits propagate (never copied onto the product).
-  const image = resolveProductDisplayImage(product, getCategoryImageByName) ?? ROWS[0].image;
+  const image = resolveProductDisplayImage(product, getCategoryImageByName) ?? '';
   const baseFilters: CatalogChip[] = product.status === 'published' ? ['all', 'published'] : ['all'];
   return {
     id: product.id,
@@ -632,6 +652,155 @@ function withDealLinked(row: CatalogRow, linked: boolean): CatalogRow {
   };
 }
 
+/** Demo/import rows still open the same details panel, using their own display data. */
+function rowToCatalogueItem(row: CatalogRow): CatalogueItem {
+  return {
+    id: row.id,
+    name: row.name,
+    price: parseMoney(row.price) ?? undefined,
+    compareAtPrice: parseMoney(row.was ?? '') ?? undefined,
+    mainImage: row.image,
+    category: row.category ? { id: row.category, name: row.category } : null,
+    status: row.draft ? 'inactive' : 'active',
+    itemType: 'product',
+    sku: row.sku,
+    barcode: row.barcode ?? undefined,
+    shortDescription: row.sub,
+    description: row.alt,
+    isSuspended: row.hidden,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+interface CatalogRowActionMenuProps {
+  hidden: boolean;
+  iconClassName?: string;
+  canMakeDeal?: boolean;
+  onViewDetails: () => void;
+  onEdit: () => void;
+  onBranchPricing?: () => void;
+  onCopyUrl: () => void;
+  onShowQr: () => void;
+  onMakeDeal: () => void;
+  onDuplicate: () => void;
+  onToggleHide: () => void;
+  onDelete: () => void;
+}
+
+/**
+ * Portalled row menu. `preferAbove` makes it float over the table instead of
+ * opening beneath the row, where the table's scroll container clipped it.
+ */
+function CatalogRowActionMenu({
+  hidden,
+  iconClassName = 'text-[20px]',
+  canMakeDeal = false,
+  onViewDetails,
+  onEdit,
+  onBranchPricing,
+  onCopyUrl,
+  onShowQr,
+  onMakeDeal,
+  onDuplicate,
+  onToggleHide,
+  onDelete,
+}: CatalogRowActionMenuProps) {
+  const { open, setOpen, triggerRef, panelRef, style } = useAnchoredPanel({
+    width: 224,
+    preferAbove: true,
+  });
+  const run = (action: () => void) => () => {
+    setOpen(false);
+    action();
+  };
+  const itemClass =
+    'flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-text-primary transition-colors hover:bg-surface-container';
+  const iconClass = 'text-[16px] shrink-0';
+
+  return (
+    <>
+      <button
+        aria-expanded={open}
+        aria-label="More product options"
+        className={`rounded-lg p-space-2xs text-text-secondary transition-colors hover:bg-surface-container hover:text-on-surface ${
+          open ? 'bg-surface-container text-primary' : ''
+        }`}
+        onClick={() => setOpen((current) => !current)}
+        ref={triggerRef}
+        title="More Options"
+        type="button"
+      >
+        <Icon name="more_vert" className={iconClassName} />
+      </button>
+      {open &&
+        createPortal(
+          <>
+            <div aria-hidden="true" className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
+            <div
+              className="z-[61] animate-fade-in overflow-y-auto rounded-xl border border-border-subtle bg-surface-canvas py-1.5 text-left text-text-primary shadow-xl"
+              ref={panelRef}
+              role="menu"
+              style={style}
+            >
+              <button className={itemClass} onClick={run(onViewDetails)} role="menuitem" type="button">
+                <Icon name="visibility" className={`${iconClass} text-primary`} />
+                <span>View Details</span>
+              </button>
+              <button className={itemClass} onClick={run(onEdit)} role="menuitem" type="button">
+                <Icon name="edit" className={`${iconClass} text-primary`} />
+                <span>Edit Details</span>
+              </button>
+              {onBranchPricing && (
+                <button className={itemClass} onClick={run(onBranchPricing)} role="menuitem" type="button">
+                  <Icon name="tune" className={`${iconClass} text-primary`} />
+                  <span>Branch Pricing Matrix</span>
+                </button>
+              )}
+              <button className={itemClass} onClick={run(onCopyUrl)} role="menuitem" type="button">
+                <Icon name="content_copy" className={`${iconClass} text-secondary`} />
+                <span>Copy Public URL</span>
+              </button>
+              <button className={itemClass} onClick={run(onShowQr)} role="menuitem" type="button">
+                <Icon name="qr_code_2" className={`${iconClass} text-secondary`} />
+                <span>View QR Code</span>
+              </button>
+              {canMakeDeal && (
+                <button className={itemClass} onClick={run(onMakeDeal)} role="menuitem" type="button">
+                  <Icon name="local_offer" className={`${iconClass} text-badge-discount-text`} />
+                  <span>Make a Deal</span>
+                </button>
+              )}
+              <div className="my-1 border-t border-border-subtle" />
+              <button className={itemClass} onClick={run(onDuplicate)} role="menuitem" type="button">
+                <Icon name="content_copy" className={`${iconClass} text-secondary`} />
+                <span>Duplicate Item</span>
+              </button>
+              <button className={itemClass} onClick={run(onToggleHide)} role="menuitem" type="button">
+                <Icon
+                  name={hidden ? 'visibility' : 'visibility_off'}
+                  className={`${iconClass} text-text-secondary`}
+                />
+                <span>{hidden ? 'Show on Storefront' : 'Hide from Storefront'}</span>
+              </button>
+              <div className="my-1 border-t border-border-subtle" />
+              <button
+                className={`${itemClass} text-error hover:bg-error-container`}
+                onClick={run(onDelete)}
+                role="menuitem"
+                type="button"
+              >
+                <Icon name="delete" className={iconClass} />
+                <span>Delete Item</span>
+              </button>
+            </div>
+          </>,
+          document.body,
+        )}
+    </>
+  );
+}
+
 export function DesktopBusinessCatalogHubScreen({
   onNav,
   onOpenBranchPricing,
@@ -652,14 +821,15 @@ export function DesktopBusinessCatalogHubScreen({
   const { activeBranchId, branches } = useBusinessBranch();
   const productItems = useCatalogueItems('product');
   const serviceItems = useCatalogueItems('service');
+  const offersQuery = useOffers();
   const itemMutations = useCatalogueItemMutations();
   const [productRows, setProductRows] = useState<CatalogRow[]>(live ? [] : ROWS);
   const [serviceRows, setServiceRows] = useState<CatalogRow[]>(live ? [] : SERVICES_ROWS);
   useEffect(() => {
-    if (live && productItems.data) setProductRows(productItems.data.map(itemToRow));
-  }, [live, productItems.data]);
+    if (live && productItems.data) setProductRows(productItems.data.map((item) => itemToRow(item, offersQuery.data ?? [])));
+  }, [live, productItems.data, offersQuery.data]);
   useEffect(() => {
-    if (live && serviceItems.data) setServiceRows(serviceItems.data.map(itemToRow));
+    if (live && serviceItems.data) setServiceRows(serviceItems.data.map((item) => itemToRow(item)));
   }, [live, serviceItems.data]);
   const liveCategories = useCatalogueCategories('product');
   const importedProducts = useImportedProducts();
@@ -879,6 +1049,10 @@ export function DesktopBusinessCatalogHubScreen({
 
   const [query, setQuery] = useState('');
   const [chip, setChip] = useState<CatalogChip>('all');
+  const [sort, setSort] = useState<CatalogSortKey>('newest');
+  const [page, setPage] = useState(1);
+  const [detailItem, setDetailItem] = useState<CatalogueItem | null>(null);
+  const [detailShowQr, setDetailShowQr] = useState(false);
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [selected, setSelected] = useState<string[]>([]);
   /** Set while a bulk Delete is waiting for confirmation. */
@@ -894,6 +1068,11 @@ export function DesktopBusinessCatalogHubScreen({
     if (!live) return;
     setSync((prev) => ({ ...prev, ...Object.fromEntries([...productRows, ...serviceRows].map((row) => [row.id, row.sync])) }));
   }, [live, productRows, serviceRows]);
+
+  // A changed search/filter/sort always returns to the first page.
+  useEffect(() => {
+    setPage(1);
+  }, [query, chip, sort, advanced, activeTab]);
 
   const showToast = (message: string) => {
     setToastMessage(message);
@@ -1088,8 +1267,6 @@ export function DesktopBusinessCatalogHubScreen({
   };
 
   // Item Action & Edit State
-  const [actionMenuRowId, setActionMenuRowId] = useState<string | null>(null);
-
   // Leaving the add/edit sub-flows must always return to the catalog list.
   const exitSubFlow = () => {
     setEditingRowId(null);
@@ -1105,7 +1282,6 @@ export function DesktopBusinessCatalogHubScreen({
   const isServiceRow = (_row: CatalogRow) => false;
 
   const handleOpenEditItem = (row: CatalogRow) => {
-    setActionMenuRowId(null);
     // Bulk-imported products are edited in the dedicated import review panel.
     if (row.id.startsWith('imp_')) {
       setSubFlow('importReview');
@@ -1153,9 +1329,43 @@ export function DesktopBusinessCatalogHubScreen({
     }
   };
 
+  const openProductDetails = (item: CatalogueItem, showQr = false) => {
+    setDetailShowQr(showQr);
+    setDetailItem(item);
+  };
+
+  const openRowDetails = (row: CatalogRow, showQr = false) => {
+    const item = live ? liveItem(row.id) ?? rowToCatalogueItem(row) : rowToCatalogueItem(row);
+    openProductDetails(item, showQr);
+  };
+
+  const productPublicUrl = (itemId: string) =>
+    storefront.publicUrl ? `${storefront.publicUrl}?product=${encodeURIComponent(itemId)}&src=prod-qr` : '';
+
+  const copyRowPublicUrl = async (row: CatalogRow) => {
+    const url = productPublicUrl(row.id);
+    if (!url) return showToast('The public product link is still loading.');
+    const copied = await copyTextToClipboard(url);
+    showToast(copied ? 'Public product URL copied.' : 'Could not copy the link. Open the product panel to copy it manually.');
+  };
+
+  const editDetailItem = () => {
+    const item = detailItem;
+    setDetailItem(null);
+    if (!item) return;
+    const row = allProductRows.find((entry) => entry.id === item.id);
+    if (row) handleOpenEditItem(row);
+  };
+
+  const makeDealFromDetail = () => {
+    const item = detailItem;
+    setDetailItem(null);
+    if (item && live && onMakeDeal) onMakeDeal(item);
+    else onNav('deals');
+  };
+
   /** Live: set an item's status and report the outcome. */
   const setLiveStatus = (row: CatalogRow, status: 'active' | 'inactive', message: string) => {
-    setActionMenuRowId(null);
     itemMutations.update.mutate(
       { id: row.id, input: { status } },
       { onSuccess: () => showToast(message), onError: (e) => showToast(apiErrorMessage(e, 'Could not update the item.')) },
@@ -1163,7 +1373,6 @@ export function DesktopBusinessCatalogHubScreen({
   };
 
   const handleDuplicateItem = (row: CatalogRow) => {
-    setActionMenuRowId(null);
     if (row.id.startsWith('imp_')) {
       setToastMessage('Imported products are managed from the review panel.');
       setSubFlow('importReview');
@@ -1208,7 +1417,6 @@ export function DesktopBusinessCatalogHubScreen({
   const handleToggleHideItem = (row: CatalogRow) => {
     if (live) return setLiveStatus(row, row.sync ? 'inactive' : 'active', `"${row.name}" is now ${row.sync ? 'hidden from' : 'visible in'} storefront.`);
     const nextHidden = !row.hidden;
-    setActionMenuRowId(null);
     if (row.id.startsWith('imp_')) {
       setToastMessage(
         nextHidden ? 'Imported product hidden — publish it from the review panel to show it.' : 'Imported product will show once published.',
@@ -1224,13 +1432,11 @@ export function DesktopBusinessCatalogHubScreen({
       setServiceRows(updater);
     }
 
-    setActionMenuRowId(null);
     setToastMessage(`"${row.name}" is now ${nextHidden ? 'hidden from storefront' : 'visible in storefront'}.`);
     setTimeout(() => setToastMessage(null), 3000);
   };
 
   const handleDeleteItem = (row: CatalogRow) => {
-    setActionMenuRowId(null);
     if (row.id.startsWith('imp_')) {
       removeImportedProducts([row.id]);
       setToastMessage(`"${row.name}" removed from imported products.`);
@@ -1485,9 +1691,16 @@ export function DesktopBusinessCatalogHubScreen({
       row.name.toLowerCase().includes(needle) ||
       row.sku.toLowerCase().includes(needle) ||
       (row.barcode ?? '').toLowerCase().includes(needle) ||
-      row.category.toLowerCase().includes(needle);
+      row.category.toLowerCase().includes(needle) ||
+      row.sub.toLowerCase().includes(needle);
     return matchesChip && matchesQuery && rowMatchesAdvancedFilters(row, advanced, sync[row.id] === true);
   });
+
+  // Default: newest products first. All ordering happens on the full filtered
+  // set so pagination never mixes rows between sort modes.
+  const sortedRows = sortCatalogueRecords(visibleRows, sort);
+  const pagination = paginateCatalogueRecords(sortedRows, page, CATALOG_PAGE_SIZE);
+  const pagedRows = pagination.rows;
 
   /** Everything the "More Filters" panel can offer, drawn from the live rows. */
   const categoryOptions = Array.from(new Set(currentDataset.map((row) => row.category))).sort();
@@ -1500,10 +1713,10 @@ export function DesktopBusinessCatalogHubScreen({
   const groupLabelClass = 'font-caption text-caption text-text-secondary font-semibold';
 
   /**
-   * Select-all is scoped to the *filtered* rows only. Rows hidden by a chip
-   * or the search box are never silently added to the selection.
+   * Select-all is scoped to the rows on the current page. Rows on other pages
+   * or hidden by a chip/search are never silently added to the selection.
    */
-  const visibleIds = visibleRows.map((row) => row.id);
+  const visibleIds = pagedRows.map((row) => row.id);
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.includes(id));
   const toggleAll = () =>
     setSelected((prev) => {
@@ -1516,7 +1729,7 @@ export function DesktopBusinessCatalogHubScreen({
    * Ids left over from another tab, chip or search are never acted on, so the
    * "N selected" count always matches exactly what will change.
    */
-  const visibleSelectedRows = visibleRows.filter((row) => selected.includes(row.id));
+  const visibleSelectedRows = pagedRows.filter((row) => selected.includes(row.id));
   const bulkNoun = activeTab === 'products' ? 'products' : 'services';
   const bulkSingular = activeTab === 'products' ? 'product' : 'service';
 
@@ -2064,27 +2277,44 @@ export function DesktopBusinessCatalogHubScreen({
           <>
             {/* Filter & Search Console */}
             <div className="flex flex-col gap-space-sm bg-surface-container-lowest p-space-md rounded-xl shadow-sm">
-          <div className="relative w-full">
-            <Icon name="search" className="absolute left-4 top-1/2 -translate-y-1/2 text-text-tertiary text-[20px]" />
-            <input
-              type="text"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search items, SKU, category or tags... (⌘K)"
-              className="w-full h-[48px] bg-surface-container-low rounded-xl pl-12 pr-28 text-on-surface font-body-md text-body-md placeholder-text-tertiary outline-none focus:bg-surface-canvas focus:shadow-[0_0_0_2px_#066cf4] transition-all"
-            />
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-space-2xs">
-              <kbd className="px-space-xs py-space-2xs rounded bg-surface-container text-text-secondary font-caption text-caption shadow-xs">
-                ⌘K
-              </kbd>
-              <button
-                type="button"
-                title="Voice Search"
-                className="p-space-2xs text-text-secondary hover:text-primary transition-colors"
-              >
-                <Icon name="mic" className="text-[18px]" />
-              </button>
+          <div className="flex flex-col gap-space-sm md:flex-row md:items-center">
+            <div className="relative w-full md:flex-1">
+              <Icon name="search" className="absolute left-4 top-1/2 -translate-y-1/2 text-text-tertiary text-[20px]" />
+              <input
+                type="text"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search items, SKU, category or tags... (⌘K)"
+                className="w-full h-[48px] bg-surface-container-low rounded-xl pl-12 pr-28 text-on-surface font-body-md text-body-md placeholder-text-tertiary outline-none focus:bg-surface-canvas focus:shadow-[0_0_0_2px_#066cf4] transition-all"
+              />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-space-2xs">
+                <kbd className="px-space-xs py-space-2xs rounded bg-surface-container text-text-secondary font-caption text-caption shadow-xs">
+                  ⌘K
+                </kbd>
+                <button
+                  type="button"
+                  title="Voice Search"
+                  className="p-space-2xs text-text-secondary hover:text-primary transition-colors"
+                >
+                  <Icon name="mic" className="text-[18px]" />
+                </button>
+              </div>
             </div>
+            <label className="flex items-center gap-space-2xs md:w-56">
+              <span className="whitespace-nowrap font-label-sm text-label-sm font-semibold text-text-secondary">Sort by</span>
+              <select
+                aria-label="Sort products"
+                className={selectClass}
+                onChange={(event) => setSort(event.target.value as CatalogSortKey)}
+                value={sort}
+              >
+                {CATALOG_SORT_CHOICES.map((choice) => (
+                  <option key={choice.value} value={choice.value}>
+                    {choice.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
           {/* Quick Chips Bar */}
@@ -2346,7 +2576,7 @@ export function DesktopBusinessCatalogHubScreen({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-container-low text-on-surface font-body-md text-body-md">
-                  {visibleRows.map((row) => {
+                  {pagedRows.map((row) => {
                     const syncOn = sync[row.id];
                     return (
                       <tr
@@ -2364,10 +2594,19 @@ export function DesktopBusinessCatalogHubScreen({
                         </td>
                         <td className="py-space-md px-space-md">
                           <div className="flex items-center gap-space-md">
-                            <div className="relative w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-surface-container">
-                              <img
+                            <button
+                              aria-label={`View ${row.name} details`}
+                              className="relative block w-14 h-14 rounded-lg overflow-hidden shrink-0 bg-surface-container"
+                              onClick={() => openRowDetails(row)}
+                              title="View product information"
+                              type="button"
+                            >
+                              <ProductImage
                                 alt={row.alt}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                className="h-full w-full"
+                                iconClassName="text-[20px]"
+                                imageClassName="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                showLabel={false}
                                 src={row.image}
                               />
                               {row.kitchenLabel && (
@@ -2382,15 +2621,17 @@ export function DesktopBusinessCatalogHubScreen({
                                   <Icon name="visibility_off" className="text-white text-[18px]" />
                                 </div>
                               )}
-                            </div>
+                            </button>
                             <div className="min-w-0">
                               <div className="flex items-center gap-space-2xs">
-                                <a
+                                <button
                                   className="font-label-md text-label-md font-bold text-on-surface hover:text-primary transition-colors truncate"
-                                  href="#"
+                                  onClick={() => openRowDetails(row)}
+                                  title="View product information"
+                                  type="button"
                                 >
                                   {row.name}
-                                </a>
+                                </button>
                                 {row.verified && (
                                   <span title="Best Seller">
                                     <Icon name="verified" className="text-badge-discount-text text-[16px]" />
@@ -2540,73 +2781,24 @@ export function DesktopBusinessCatalogHubScreen({
                           </button>
                         </td>
                         <td className="py-space-md px-space-md text-right">
-                          <div className="flex items-center justify-end gap-space-2xs relative">
-                            <button
-                              type="button"
-                              title="Edit Item"
-                              onClick={() => handleOpenEditItem(row)}
-                              className="p-space-2xs rounded-lg hover:bg-surface-container text-text-secondary hover:text-primary transition-colors"
-                            >
-                              <Icon name="edit" className="text-[20px]" />
-                            </button>
-                            <button
-                              type="button"
-                              title="Branch Pricing Matrix"
-                              onClick={() => onOpenBranchPricing?.(live ? row.id : undefined)}
-                              className="p-space-2xs rounded-lg hover:bg-surface-container text-text-secondary hover:text-primary transition-colors"
-                            >
-                              <Icon name="tune" className="text-[20px]" />
-                            </button>
-                            <div className="relative">
-                              <button
-                                type="button"
-                                title="More Options"
-                                onClick={() => setActionMenuRowId((cur) => (cur === row.id ? null : row.id))}
-                                className={`p-space-2xs rounded-lg hover:bg-surface-container text-text-secondary hover:text-on-surface transition-colors ${
-                                  actionMenuRowId === row.id ? 'bg-surface-container text-primary' : ''
-                                }`}
-                              >
-                                <Icon name="more_vert" className="text-[20px]" />
-                              </button>
-
-                              {actionMenuRowId === row.id && (
-                                <div className="absolute right-0 top-full mt-1 w-48 bg-surface-canvas rounded-xl shadow-xl border border-border-subtle py-1.5 z-40 text-left animate-fade-in">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenEditItem(row)}
-                                    className="w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center gap-2 transition-colors"
-                                  >
-                                    <Icon name="edit" className="text-[16px] text-primary" />
-                                    <span>Edit Details</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDuplicateItem(row)}
-                                    className="w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center gap-2 transition-colors"
-                                  >
-                                    <Icon name="content_copy" className="text-[16px] text-secondary" />
-                                    <span>Duplicate Item</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleToggleHideItem(row)}
-                                    className="w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center gap-2 transition-colors"
-                                  >
-                                    <Icon name={row.hidden ? 'visibility' : 'visibility_off'} className="text-[16px] text-text-secondary" />
-                                    <span>{row.hidden ? 'Show on Storefront' : 'Hide from Storefront'}</span>
-                                  </button>
-                                  <div className="my-1 border-t border-border-subtle" />
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteItem(row)}
-                                    className="w-full px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-2 transition-colors"
-                                  >
-                                    <Icon name="delete" className="text-[16px]" />
-                                    <span>Delete Item</span>
-                                  </button>
-                                </div>
-                              )}
-                            </div>
+                          <div className="flex items-center justify-end relative">
+                            <CatalogRowActionMenu
+                              canMakeDeal={live && Boolean(onMakeDeal)}
+                              hidden={Boolean(row.hidden)}
+                              onBranchPricing={onOpenBranchPricing ? () => onOpenBranchPricing(live ? row.id : undefined) : undefined}
+                              onCopyUrl={() => void copyRowPublicUrl(row)}
+                              onDelete={() => handleDeleteItem(row)}
+                              onDuplicate={() => handleDuplicateItem(row)}
+                              onEdit={() => handleOpenEditItem(row)}
+                              onMakeDeal={() => {
+                                const item = liveItem(row.id);
+                                if (item && onMakeDeal) onMakeDeal(item);
+                                else onNav('deals');
+                              }}
+                              onShowQr={() => openRowDetails(row, true)}
+                              onToggleHide={() => handleToggleHideItem(row)}
+                              onViewDetails={() => openRowDetails(row)}
+                            />
                           </div>
                         </td>
                       </tr>
@@ -2618,7 +2810,7 @@ export function DesktopBusinessCatalogHubScreen({
           ) : (
             /* Grid View */
             <div className="p-space-lg grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-space-lg">
-              {visibleRows.map((row) => {
+              {pagedRows.map((row) => {
                 const syncOn = sync[row.id];
                 return (
                   <div
@@ -2628,9 +2820,11 @@ export function DesktopBusinessCatalogHubScreen({
                     <div>
                       {/* Media Card Thumbnail */}
                       <div className="relative w-full h-44 rounded-lg overflow-hidden bg-surface-container mb-space-sm">
-                        <img
+                        <ProductImage
                           alt={row.alt}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          className="h-full w-full"
+                          iconClassName="text-[30px]"
+                          imageClassName="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
                           src={row.image}
                         />
                         {/* Overlay Controls */}
@@ -2680,9 +2874,14 @@ export function DesktopBusinessCatalogHubScreen({
                       {/* Title & Metadata */}
                       <div className="flex items-start justify-between gap-space-sm">
                         <div className="min-w-0 flex-1">
-                          <h3 className="font-label-lg text-label-lg font-bold text-on-surface group-hover:text-primary transition-colors truncate">
+                          <button
+                            className="font-label-lg text-label-lg font-bold text-on-surface group-hover:text-primary transition-colors truncate"
+                            onClick={() => openRowDetails(row)}
+                            title="View product information"
+                            type="button"
+                          >
                             {row.name}
-                          </h3>
+                          </button>
                           <div className="flex items-center gap-space-xs mt-1 font-caption text-caption text-text-secondary">
                             <span className="font-mono bg-surface-container px-1.5 py-0.5 rounded text-[11px] font-semibold">
                               {row.sku}{row.barcode ? ` · ${row.barcode}` : ''}
@@ -2803,73 +3002,25 @@ export function DesktopBusinessCatalogHubScreen({
                         </button>
                       </div>
 
-                      <div className="flex items-center gap-1 relative">
-                        <button
-                          type="button"
-                          title="Edit Item"
-                          onClick={() => handleOpenEditItem(row)}
-                          className="p-1.5 rounded-lg hover:bg-surface-container text-text-secondary hover:text-primary transition-colors"
-                        >
-                          <Icon name="edit" className="text-[18px]" />
-                        </button>
-                        <button
-                          type="button"
-                          title="Branch Pricing Matrix"
-                          onClick={() => onOpenBranchPricing?.(live ? row.id : undefined)}
-                          className="p-1.5 rounded-lg hover:bg-surface-container text-text-secondary hover:text-primary transition-colors"
-                        >
-                          <Icon name="tune" className="text-[18px]" />
-                        </button>
-                        <div className="relative">
-                          <button
-                            type="button"
-                            title="More Options"
-                            onClick={() => setActionMenuRowId((cur) => (cur === row.id ? null : row.id))}
-                            className={`p-1.5 rounded-lg hover:bg-surface-container text-text-secondary hover:text-on-surface transition-colors ${
-                              actionMenuRowId === row.id ? 'bg-surface-container text-primary' : ''
-                            }`}
-                          >
-                            <Icon name="more_vert" className="text-[18px]" />
-                          </button>
-
-                          {actionMenuRowId === row.id && (
-                            <div className="absolute right-0 bottom-full mb-1 w-48 bg-surface-canvas rounded-xl shadow-xl border border-border-subtle py-1.5 z-40 text-left animate-fade-in">
-                              <button
-                                type="button"
-                                onClick={() => handleOpenEditItem(row)}
-                                className="w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center gap-2 transition-colors"
-                              >
-                                <Icon name="edit" className="text-[16px] text-primary" />
-                                <span>Edit Details</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDuplicateItem(row)}
-                                className="w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center gap-2 transition-colors"
-                              >
-                                <Icon name="content_copy" className="text-[16px] text-secondary" />
-                                <span>Duplicate Item</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleToggleHideItem(row)}
-                                className="w-full px-3 py-2 text-xs font-semibold text-text-primary hover:bg-surface-container flex items-center gap-2 transition-colors"
-                              >
-                                <Icon name={row.hidden ? 'visibility' : 'visibility_off'} className="text-[16px] text-text-secondary" />
-                                <span>{row.hidden ? 'Show on Storefront' : 'Hide from Storefront'}</span>
-                              </button>
-                              <div className="my-1 border-t border-border-subtle" />
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteItem(row)}
-                                className="w-full px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-2 transition-colors"
-                              >
-                                <Icon name="delete" className="text-[16px]" />
-                                <span>Delete Item</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                      <div className="flex items-center justify-end relative">
+                        <CatalogRowActionMenu
+                          canMakeDeal={live && Boolean(onMakeDeal)}
+                          hidden={Boolean(row.hidden)}
+                          iconClassName="text-[18px]"
+                          onBranchPricing={onOpenBranchPricing ? () => onOpenBranchPricing(live ? row.id : undefined) : undefined}
+                          onCopyUrl={() => void copyRowPublicUrl(row)}
+                          onDelete={() => handleDeleteItem(row)}
+                          onDuplicate={() => handleDuplicateItem(row)}
+                          onEdit={() => handleOpenEditItem(row)}
+                          onMakeDeal={() => {
+                            const item = liveItem(row.id);
+                            if (item && onMakeDeal) onMakeDeal(item);
+                            else onNav('deals');
+                          }}
+                          onShowQr={() => openRowDetails(row, true)}
+                          onToggleHide={() => handleToggleHideItem(row)}
+                          onViewDetails={() => openRowDetails(row)}
+                        />
                       </div>
                     </div>
                   </div>
@@ -2882,46 +3033,31 @@ export function DesktopBusinessCatalogHubScreen({
           <div className="p-space-md bg-surface-container-low flex flex-col md:flex-row items-center justify-between gap-space-md">
             <div className="flex items-center gap-space-md text-text-secondary font-caption text-caption">
               <span>
-                Showing <strong className="text-on-surface">1–{visibleRows.length}</strong> of{' '}
-                <strong className="text-on-surface">{currentDataset.length}</strong> {activeTab}
+                Showing <strong className="text-on-surface">{pagination.from}–{pagination.to}</strong> of{' '}
+                <strong className="text-on-surface">{visibleRows.length}</strong> matching {activeTab}
               </span>
               <div className="h-4 w-px bg-outline-variant" />
-              <div className="flex items-center gap-space-xs">
-                <span>Rows per page:</span>
-                <select className="bg-surface-container-lowest px-space-xs py-1 rounded text-on-surface font-semibold outline-none cursor-pointer">
-                  <option value="6">6</option>
-                  <option value="12">12</option>
-                  <option value="24">24</option>
-                  <option value="50">50</option>
-                </select>
-              </div>
+              <span className="font-semibold text-on-surface">{CATALOG_PAGE_SIZE} per page</span>
             </div>
             <div className="flex items-center gap-space-xs">
               <button
+                aria-label="Previous products page"
+                disabled={pagination.page <= 1}
+                className="p-space-2xs rounded-lg bg-surface-container-lowest text-text-secondary hover:text-on-surface disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+                onClick={() => setPage(pagination.page - 1)}
                 type="button"
-                disabled
-                className="p-space-2xs rounded-lg bg-surface-container-lowest text-text-secondary hover:text-on-surface disabled:opacity-40 transition-colors shadow-sm"
               >
                 <Icon name="chevron_left" className="text-[20px]" />
               </button>
+              <span className="min-w-24 text-center font-label-sm text-label-sm font-bold text-on-surface">
+                Page {pagination.page} of {pagination.totalPages}
+              </span>
               <button
+                aria-label="Next products page"
+                disabled={pagination.page >= pagination.totalPages}
+                className="p-space-2xs rounded-lg bg-surface-container-lowest text-text-secondary hover:text-on-surface disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-sm"
+                onClick={() => setPage(pagination.page + 1)}
                 type="button"
-                className="w-8 h-8 rounded-lg bg-primary text-on-primary font-label-sm text-label-sm font-bold shadow-sm"
-              >
-                1
-              </button>
-              {(live ? [] : ['2', '3', '4']).map((page) => (
-                <button
-                  key={page}
-                  type="button"
-                  className="w-8 h-8 rounded-lg bg-surface-container-lowest text-text-secondary hover:bg-surface-container hover:text-on-surface font-label-sm text-label-sm font-semibold transition-colors shadow-sm"
-                >
-                  {page}
-                </button>
-              ))}
-              <button
-                type="button"
-                className="p-space-2xs rounded-lg bg-surface-container-lowest text-text-secondary hover:text-on-surface transition-colors shadow-sm"
               >
                 <Icon name="chevron_right" className="text-[20px]" />
               </button>
@@ -3134,11 +3270,22 @@ export function DesktopBusinessCatalogHubScreen({
 
         {/* Toast Notification Alert */}
         {toastMessage && (
-          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-space-sm bg-inverse-surface text-inverse-on-surface px-space-md py-space-sm rounded-xl shadow-xl border border-outline-variant animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <div className="fixed bottom-6 right-6 z-[90] flex items-center gap-space-sm bg-inverse-surface text-inverse-on-surface px-space-md py-space-sm rounded-xl shadow-xl border border-outline-variant animate-in fade-in slide-in-from-bottom-3 duration-200">
             <Icon name="check_circle" className="text-badge-discount-text text-[20px]" />
             <span className="font-label-md text-label-md font-semibold">{toastMessage}</span>
           </div>
         )}
+
+        <CatalogProductInfoPanel
+          item={detailItem}
+          offers={offersQuery.data ?? []}
+          branchCount={branches.filter((branch) => branch.id).length}
+          initialShowQr={detailShowQr}
+          onClose={() => setDetailItem(null)}
+          onEdit={editDetailItem}
+          onMakeDeal={live && onMakeDeal ? makeDealFromDetail : undefined}
+          onNotify={showToast}
+        />
 
         {/* Bulk delete confirmation — desktop modal / mobile sheet from one body */}
         <ConfirmActionDialog

@@ -1,4 +1,5 @@
 import { api } from './api/client';
+import { safeDealImageUrl } from '../utils/dealImages';
 import type { OrderLine, OrderStatus, PaymentMethod, PaymentStatus } from '../scripts/orderData';
 
 export interface OrderApiItem {
@@ -156,7 +157,7 @@ const normalizeLines = (source?: OrderApiItem[]): OrderLine[] => {
     name: item.name ?? item.title ?? item.item?.name ?? item.offer?.name ?? 'Order item',
     price: asNumber(item.price ?? item.unitPrice ?? item.priceAtOrder ?? 0),
     qty: Math.max(1, Number(item.quantity ?? item.qty ?? 1)),
-    image: item.image ?? item.item?.mainImage ?? item.offer?.mainImage ?? '',
+    image: safeDealImageUrl(item.image ?? item.item?.mainImage ?? item.offer?.mainImage) ?? '',
     options: item.options,
     instructions: item.instructions,
   }));
