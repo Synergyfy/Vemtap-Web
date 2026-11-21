@@ -5,6 +5,8 @@ import { useLiveDealPublish } from '../hooks/business/useLiveDealPublish';
 import { toPrice, type CatalogueItem } from '../services/catalogueItemsService';
 import { INITIAL_DEAL_STUDIO_DRAFT, LIVE_DEAL_STUDIO_DRAFT, type DealStudioDraft } from './dealStudio';
 import { INITIAL_PRODUCT_DRAFT, type ProductDraft } from './productDraft';
+import { DealPriceChoiceModal } from './deals/DealPriceChoiceModal';
+import { dealPriceChoiceFor, withDealPriceChoice, type DealPriceChoice } from './deals/dealStudioShared';
 import { BusinessDealStudioStep1Screen } from './BusinessDealStudioStep1Screen';
 import { BusinessDealStudioStep2Screen } from './BusinessDealStudioStep2Screen';
 import { BusinessDealStudioStep3Screen } from './BusinessDealStudioStep3Screen';
@@ -17,6 +19,8 @@ interface BusinessDealStudioFlowProps {
   initialStudio?: DealStudioDraft;
   /** Live: the real catalogue item this deal is for (from the item's "Make deal"). */
   sourceItem?: CatalogueItem | null;
+  /** Set when the caller already showed the price-choice dialog after publishing. */
+  priceChoice?: DealPriceChoice;
   onExit: () => void;
   onComplete: () => void;
 }
@@ -33,6 +37,7 @@ export function BusinessDealStudioFlow({
   initialDraft,
   initialStudio,
   sourceItem = null,
+  priceChoice,
   onExit,
   onComplete,
 }: BusinessDealStudioFlowProps) {
@@ -60,15 +65,40 @@ export function BusinessDealStudioFlow({
     const timer = window.setTimeout(liveDeal.clearError, 4000);
     return () => window.clearTimeout(timer);
   }, [liveDeal.error]);
-  const [studio, setStudio] = useState<DealStudioDraft>(
-    initialStudio ?? (hasApiConfig() ? LIVE_DEAL_STUDIO_DRAFT : INITIAL_DEAL_STUDIO_DRAFT),
+  const [studio, setStudio] = useState<DealStudioDraft>(() =>
+    priceChoice
+      ? withDealPriceChoice(
+          initialStudio ?? (hasApiConfig() ? LIVE_DEAL_STUDIO_DRAFT : INITIAL_DEAL_STUDIO_DRAFT),
+          priceChoice,
+        )
+      : initialStudio ?? (hasApiConfig() ? LIVE_DEAL_STUDIO_DRAFT : INITIAL_DEAL_STUDIO_DRAFT),
   );
-  const [step, setStep] = useState(1);
+  const [choice, setChoice] = useState<DealPriceChoice | null>(() => priceChoice ?? dealPriceChoiceFor(studio));
+  const [step, setStep] = useState(() =>
+    hasApiConfig() && sourceItem && !priceChoice && studio.strategy !== 'current' ? 0 : 1,
+  );
   // The steps read the deal's item (branches it's sold at, bundle partners) from here.
   const wrap = (node: ReactNode) => <DealSourceContext.Provider value={liveDeal.source}>{node}</DealSourceContext.Provider>;
 
   const handleStudioChange = (patch: Partial<DealStudioDraft>) =>
     setStudio((previous) => ({ ...previous, ...patch }));
+
+  const handleChoosePrice = (next: DealPriceChoice) => {
+    setChoice(next);
+    setStudio((previous) => withDealPriceChoice(previous, next));
+    setStep(next === 'current' ? 2 : 1);
+  };
+
+  if (step === 0)
+    return wrap(
+      <DealPriceChoiceModal
+        open
+        itemName={draft.title}
+        priceLabel={draft.basePrice ? draft.basePrice.replace(/[^0-9]/g, '') : undefined}
+        onClose={onExit}
+        onChoose={handleChoosePrice}
+      />,
+    );
 
   if (step === 1)
     return wrap(
@@ -88,7 +118,7 @@ export function BusinessDealStudioFlow({
         draft={draft}
         studio={studio}
         onStudioChange={handleStudioChange}
-        onBack={() => setStep(1)}
+        onBack={() => setStep(choice === 'current' ? 0 : 1)}
         onNext={() => setStep(3)}
         onSaveDraft={onExit}
       />
@@ -112,7 +142,7 @@ export function BusinessDealStudioFlow({
         draft={draft}
         studio={studio}
         onBack={() => setStep(3)}
-        onEditOffer={() => setStep(1)}
+        onEditOffer={() => setStep(choice === 'current' ? 0 : 1)}
         onEditRules={() => setStep(2)}
         onEditLocations={() => setStep(3)}
         onPublish={onComplete}

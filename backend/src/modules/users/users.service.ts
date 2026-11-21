@@ -526,6 +526,10 @@ export class UsersService {
           : UserRole.STAFF;
     }
 
+    if (updates.jobTitle !== undefined) {
+      user.jobTitle = updates.jobTitle.trim();
+    }
+
     if (updates.permissions) {
       user.permissions = updates.permissions;
     }

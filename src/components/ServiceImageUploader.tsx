@@ -1,6 +1,16 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Icon } from './ui/Icon';
 import { CreateWithAiButton } from './CreateWithAiButton';
+import { ImageCropControl } from './media/ImageCropControl';
+import {
+  imageFileError,
+  pickAndUploadVideo,
+  uploadImage,
+  MAX_IMAGE_UPLOAD_MB,
+  MAX_VIDEO_UPLOAD_MB,
+} from '../services/uploadService';
+import { apiErrorMessage } from '../services/errorMessages';
+import { hasApiConfig } from '../services/api/client';
 import type { AiPromptContext } from '../scripts/aiDesignAssistant';
 
 export const SERVICE_PRESET_GALLERY = [];
@@ -9,6 +19,10 @@ interface ServiceImageUploaderProps {
   currentImage: string;
   onImageChange: (imageUrl: string) => void;
   aspectRatio?: '4/3' | '16/9' | 'square';
+  /** Live service video URLs, shown beside the cover photo. */
+  videos?: string[];
+  /** Receives the updated video list after an upload or removal. */
+  onVideosChange?: (videos: string[]) => void;
   /**
    * Service facts for the contextual "Create with AI" prompt (title,
    * description, classification). Business-level facts are resolved by the
@@ -21,24 +35,57 @@ export function ServiceImageUploader({
   currentImage,
   onImageChange,
   aspectRatio = '4/3',
+  videos = [],
+  onVideosChange,
   aiContext,
 }: ServiceImageUploaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [videoBusy, setVideoBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const showVideos = Boolean(onVideosChange) && hasApiConfig();
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (dataUrl) {
-        onImageChange(dataUrl);
-      }
-    };
-    reader.readAsDataURL(file);
     // Reset file input so same file can be re-selected if desired
     e.target.value = '';
+    if (!file) return;
+    const problem = imageFileError(file);
+    if (problem) {
+      setError(problem);
+      return;
+    }
+    setError(null);
+    setPendingFile(file);
+  };
+
+  const useCroppedFile = async (file: File) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const url = await uploadImage(file);
+      onImageChange(url);
+      setPendingFile(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not upload this image.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addVideo = async () => {
+    if (!onVideosChange || videoBusy) return;
+    setVideoBusy(true);
+    setError(null);
+    try {
+      const url = await pickAndUploadVideo();
+      if (url) onVideosChange([...videos, url]);
+    } catch (cause) {
+      setError(apiErrorMessage(cause, 'Could not upload this video.'));
+    } finally {
+      setVideoBusy(false);
+    }
   };
 
   const aspectClass =
@@ -54,7 +101,7 @@ export function ServiceImageUploader({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept="image/png,image/jpeg,image/webp"
         onChange={handleFileSelect}
         className="hidden"
       />
@@ -98,15 +145,67 @@ export function ServiceImageUploader({
         </div>
       </div>
 
+      <p className="font-caption text-caption text-text-secondary">
+        JPG, PNG or WEBP up to {MAX_IMAGE_UPLOAD_MB}MB. Crop the photo before it is uploaded.
+      </p>
+
+      {showVideos && (
+        <div className="flex flex-wrap gap-2">
+          {videos.map((video, index) => (
+            <div
+              key={`${video}-${index}`}
+              className="relative h-16 w-24 rounded-xl overflow-hidden bg-surface-container-high shadow-sm"
+            >
+              <video src={video} muted playsInline className="h-full w-full object-cover" />
+              <button
+                type="button"
+                aria-label={`Remove video ${index + 1}`}
+                onClick={() => onVideosChange?.(videos.filter((_, i) => i !== index))}
+                className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-inverse-surface/85 text-inverse-on-surface"
+              >
+                <Icon name="close" className="text-[12px]" />
+              </button>
+              <span className="absolute bottom-1 left-1 rounded bg-inverse-surface/80 px-1 text-[9px] font-bold text-inverse-on-surface">
+                V{index + 1}
+              </span>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={addVideo}
+            disabled={videoBusy}
+            className="flex h-16 w-24 flex-col items-center justify-center gap-0.5 rounded-xl bg-surface-container-low text-text-secondary transition-colors hover:bg-surface-container disabled:opacity-60"
+          >
+            <Icon name="videocam" className="text-[18px]" />
+            <span className="text-[10px] font-medium">{videoBusy ? 'Uploading…' : 'Add Video'}</span>
+            <span className="text-[9px] text-text-tertiary">MP4 • ≤{MAX_VIDEO_UPLOAD_MB}MB</span>
+          </button>
+        </div>
+      )}
+
+      {error && <p className="font-caption text-caption text-error font-semibold">{error}</p>}
+
+      {pendingFile && (
+        <ImageCropControl
+          file={pendingFile}
+          onApply={useCroppedFile}
+          onCancel={() => {
+            setError(null);
+            setPendingFile(null);
+          }}
+        />
+      )}
+
       {/* Contextual AI option — the upload action above stays unchanged */}
       <div>
         <CreateWithAiButton
           aspectRatio={aspectRatio}
           assetType="service"
           context={aiContext}
-          fileHint="Image files (JPG, PNG, WEBP)"
+          fileHint={`JPG, PNG or WEBP up to ${MAX_IMAGE_UPLOAD_MB}MB`}
         />
       </div>
+      {busy && <p className="font-caption text-caption text-primary">Uploading cropped image…</p>}
     </div>
   );
 }

@@ -462,7 +462,7 @@ export function DesktopPosDisplayReceiptScreen({ onDone }: DesktopPosDisplayRece
                   >
                     <div className="flex items-center gap-space-sm">
                       <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-badge-discount-bg text-badge-discount-text">
-                        <Icon name="chat" className="text-[20px]" />
+                        <Icon name="whatsapp" className="text-[20px]" />
                       </div>
                       <div>
                         <div className="flex items-center gap-1.5 font-label-md text-label-md font-semibold text-on-surface">

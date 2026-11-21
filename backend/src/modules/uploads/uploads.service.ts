@@ -34,9 +34,9 @@ function uploadErrorHttpCode(error: unknown): number | undefined {
 }
 
 /**
- * Cloudinary-backed image uploads for the business wizard (logo, cover,
- * gallery). Mirrors the web app's `/api/upload` route, but behind JWT so the
- * mobile client uploads with the owner's session.
+ * Cloudinary-backed image and video uploads for business media (logo, cover,
+ * gallery, product videos). Mirrors the web app's `/api/upload` route, but
+ * behind JWT so the mobile client uploads with the owner's session.
  *
  * `folderOverride` lets a non-business caller (chat media) keep its uploads
  * out of the business and onboarding folders.
@@ -47,16 +47,32 @@ export class UploadsService {
   private readonly configured: boolean;
 
   constructor(private readonly configService: ConfigService) {
-    const cloudName = this.configService.get<string>('CLOUDINARY_CLOUD_NAME');
-    const apiKey = this.configService.get<string>('CLOUDINARY_API_KEY');
-    const apiSecret = this.configService.get<string>('CLOUDINARY_API_SECRET');
+    let cloudName = this.configService.get<string>('CLOUDINARY_CLOUD_NAME');
+    let apiKey = this.configService.get<string>('CLOUDINARY_API_KEY');
+    let apiSecret = this.configService.get<string>('CLOUDINARY_API_SECRET');
+
+    // Some local setups export only CLOUDINARY_URL (the format Cloudinary
+    // itself documents). Accept it as a fallback instead of throwing
+    // "Media uploads are not configured" from a server that does have valid
+    // credentials. The three named variables still take precedence.
+    if (!(cloudName && apiKey && apiSecret)) {
+      const cloudinaryUrl =
+        this.configService.get<string>('CLOUDINARY_URL') ?? process.env.CLOUDINARY_URL;
+      if (cloudinaryUrl) {
+        cloudinary.config(cloudinaryUrl);
+        const config = cloudinary.config();
+        cloudName = config.cloud_name ?? cloudName;
+        apiKey = config.api_key ?? apiKey;
+        apiSecret = config.api_secret ?? apiSecret;
+      }
+    }
 
     this.configured = Boolean(cloudName && apiKey && apiSecret);
     if (this.configured) {
       cloudinary.config({
-        cloud_name: cloudName,
-        api_key: apiKey,
-        api_secret: apiSecret,
+        cloud_name: cloudName!,
+        api_key: apiKey!,
+        api_secret: apiSecret!,
       });
     }
   }
@@ -79,10 +95,15 @@ export class UploadsService {
       folderOverride ??
       (businessId ? `vemtap/businesses/${businessId}` : 'vemtap_onboarding');
 
-    // Cloudinary rejects a PDF under `resource_type: 'image'`; verification
-    // documents need `raw`. The controller has already whitelisted the mime,
-    // so this is a pure mapping rather than a second gate.
-    const resourceType = file.mimetype === 'application/pdf' ? 'raw' : 'image';
+    // Cloudinary rejects a PDF under `resource_type: 'image'` and videos need
+    // `resource_type: 'video'`. The controller has already whitelisted the
+    // mime, so this is a pure mapping rather than a second gate.
+    const resourceType =
+      file.mimetype === 'application/pdf'
+        ? 'raw'
+        : file.mimetype.startsWith('video/')
+          ? 'video'
+          : 'image';
 
     try {
       const uploaded = await new Promise<UploadApiResponse>(
@@ -117,7 +138,9 @@ export class UploadsService {
           'Media storage rejected the upload credentials or permissions',
         );
       }
-      throw new BadRequestException('Image upload failed');
+      throw new BadRequestException(
+        file.mimetype.startsWith('video/') ? 'Video upload failed' : 'Image upload failed',
+      );
     }
   }
 }

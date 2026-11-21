@@ -1,6 +1,8 @@
 import { Icon } from './ui/Icon';
 import { useNavBadges } from '../hooks/business/useNavBadges';
 import { useBusinessFeatures } from '../context/BusinessFeaturesContext';
+import { useSessionUser } from '../hooks/useSessionUser';
+import { canAccessPage } from '../scripts/staffPageAccess';
 
 export type BusinessTabKey = 'overview' | 'orders' | 'messages' | 'business' | 'more';
 
@@ -14,7 +16,7 @@ const TABS: { key: BusinessTabKey; icon: string; label: string; badge?: string; 
   { key: 'orders', icon: 'receipt_long', label: 'Orders', badge: '3', badgeClass: 'bg-primary-container text-on-primary' },
   {
     key: 'messages',
-    icon: 'chat_bubble',
+    icon: 'vemtap-chat',
     label: 'Messages',
     badge: '2',
     badgeClass: 'bg-tertiary-container text-on-tertiary',
@@ -26,9 +28,17 @@ const TABS: { key: BusinessTabKey; icon: string; label: string; badge?: string; 
 export function BusinessTabBar({ active = 'orders', onTab }: BusinessTabBarProps) {
   const badgeFor = useNavBadges();
   const { features } = useBusinessFeatures();
-  // Tabs for tools the business switched off disappear (Orders needs POS,
-  // Messages needs at least one channel).
+  const session = useSessionUser().data;
+  // Tabs for switched-off tools and pages this staff account cannot open disappear.
+  const tabPages: Record<BusinessTabKey, string> = {
+    overview: 'overview',
+    orders: 'orders-all',
+    messages: 'messages',
+    business: 'business',
+    more: 'more',
+  };
   const visibleTabs = TABS.filter((tab) => {
+    if (!canAccessPage(session, tabPages[tab.key])) return false;
     if (tab.key === 'orders') return Boolean(features.pos);
     if (tab.key === 'messages') return Boolean(features.chat || features.sms || features.email);
     return true;

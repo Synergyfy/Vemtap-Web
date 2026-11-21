@@ -126,9 +126,12 @@ export function DesktopBusinessPosOrdersScreen({
       return;
     }
     if (!window.confirm(`Close the register on ${pos.tillName} and end this shift?`)) return;
+    const answer = window.prompt('Counted cash left in the drawer (₦)', String(expectedCash));
+    if (answer === null) return;
+    const countedCash = Number(answer.replace(/[^\d.]/g, '')) || expectedCash;
     setShiftState('closing');
     pos.mutations.closeRegister.mutate(
-      {},
+      { countedCash },
       {
         onSuccess: (session) => {
           setShiftState('printed');
@@ -398,7 +401,7 @@ export function DesktopBusinessPosOrdersScreen({
                     </button>
                   </div>
                 )}
-                {live && filter === 'deals' && (
+                {filter === 'deals' && (
                   <div className="p-space-md">
                     <DealClaimsLedger title="Deal vouchers" limit={100} search={search} allowRedeem />
                   </div>

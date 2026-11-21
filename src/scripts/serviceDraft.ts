@@ -11,6 +11,10 @@ export interface ServiceDraft {
   description: string;
   highlights: Array<{ text: string; active: boolean }>;
   image: string; // cover image URL (saved & displayed consistently)
+  /** Uploaded video URLs (live), saved with the catalogue item. */
+  videos?: string[];
+  /** Live catalogue service category chosen or created in the add-service form. */
+  categoryId?: string;
   standardPrice: string; // standard per-session price (between base & compare)
   basePrice: string;    // entry-level / base session price
   comparePrice: string;

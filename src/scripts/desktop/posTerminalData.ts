@@ -13,6 +13,8 @@ export interface PosTerminalLine {
   modifierIds?: string[];
   /** Reference of the store order this line was loaded from, if any. */
   sourceOrderRef?: string;
+  /** Attached loyalty points earned per unit. */
+  loyaltyPoints?: number;
 }
 
 export const VAT_RATE = 0.075;
@@ -85,6 +87,7 @@ export interface PosCatalogItem {
   badgeTone: 'neutral' | 'promo' | 'low' | 'ready' | 'express' | 'chef' | 'keg';
   stock: string;
   stockTone?: 'default' | 'low';
+  itemType?: 'product' | 'service';
 }
 
 export const POS_CATALOG: PosCatalogItem[] = [

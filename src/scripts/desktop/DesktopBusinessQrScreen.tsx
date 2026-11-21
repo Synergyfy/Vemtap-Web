@@ -135,8 +135,14 @@ export function DesktopBusinessQrScreen({ onContinue }: DesktopBusinessQrScreenP
                         </svg>
                         )}
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center shadow-lg transform rotate-3">
-                            <Icon name="bolt" className="text-on-primary text-[24px]" />
+                          <div className="w-12 h-12 bg-surface-canvas rounded-xl flex items-center justify-center shadow-lg border border-border-subtle p-1 overflow-hidden">
+                            {qr.logo ? (
+                              <img src={qr.logo} alt={businessName} className="w-full h-full object-cover rounded-lg" />
+                            ) : (
+                              <div className="w-full h-full bg-primary rounded-lg flex items-center justify-center font-bold text-on-primary text-[18px]">
+                                {businessName.charAt(0).toUpperCase() || 'V'}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -358,7 +364,7 @@ export function DesktopBusinessQrScreen({ onContinue }: DesktopBusinessQrScreenP
                     type="button"
                     className="inline-flex items-center gap-space-2xs text-text-secondary hover:text-text-primary font-button-secondary text-button-secondary transition-colors"
                   >
-                    <Icon name="chat" className="text-[18px] text-badge-discount-text" />
+                    <Icon name="whatsapp" className="text-[18px] text-badge-discount-text" />
                     <span>Share link via WhatsApp</span>
                   </button>
                   <span className="text-text-tertiary">•</span>

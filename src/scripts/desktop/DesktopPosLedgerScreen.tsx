@@ -208,7 +208,7 @@ export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerS
       `${printKvTable('Shift', [
         ['Range', rangeLabel],
         ['Date', new Date().toLocaleDateString('en-NG')],
-        ['Till', live ? (pos.isOpen ? `${pos.tillName} (${pos.branchName})` : '—') : 'Till 01 (Wuse II)'],
+        ['Register', live ? (pos.isOpen ? `${pos.tillName} (${pos.branchName})` : '—') : 'Register 01 (Wuse II)'],
       ])}
        ${printKvTable(
          'Summary',
@@ -265,7 +265,7 @@ export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerS
                 ? pos.session
                   ? `Shift #${pos.session.id.slice(0, 6).toUpperCase()} • ${pos.cashierName} • ${pos.tillName} • Opened ${timeLabel(pos.session.openedAt)}`
                   : `No open shift • ${pos.cashierName}`
-                : 'Shift #SH-4092 • Emeka Okafor • Till #01 • Opened 08:30 AM WAT'}
+                : 'Shift #SH-4092 • Emeka Okafor • Register #01 • Opened 08:30 AM WAT'}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-space-xs">
@@ -543,7 +543,9 @@ export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerS
 
           <div className="px-space-md py-space-sm bg-surface flex flex-wrap items-center justify-between gap-space-sm">
             <span className="font-caption text-caption text-text-secondary">
-              Showing 12 of 142 shift transactions • Auto-refreshed 6s ago
+              {live
+                ? `Showing ${visibleTxns.length} of ${TXNS.length} shift transactions`
+                : `Showing ${visibleTxns.length} of ${DEMO_TXNS.length} shift transactions • Auto-refreshed 6s ago`}
             </span>
             <div className="flex items-center gap-space-xs">
               <button
@@ -552,7 +554,9 @@ export function DesktopPosLedgerScreen({ onNav, onOpenOrder }: DesktopPosLedgerS
               >
                 <Icon name="chevron_left" className="text-[18px]" />
               </button>
-              <span className="font-caption text-caption font-semibold text-text-primary">Page 1 of 12</span>
+              <span className="font-caption text-caption font-semibold text-text-primary">
+                {live ? `Page 1 of ${Math.max(1, Math.ceil(visibleTxns.length / 20))}` : 'Page 1 of 12'}
+              </span>
               <button
                 type="button"
                 className="w-8 h-8 rounded-lg bg-surface-canvas shadow-sm text-text-secondary hover:text-text-primary flex items-center justify-center transition-colors"

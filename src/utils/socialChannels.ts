@@ -85,7 +85,7 @@ export const CHANNEL_PLATFORMS: ChannelPlatform[] = [
   {
     id: 'whatsapp',
     label: 'WhatsApp',
-    icon: 'chat',
+    icon: 'whatsapp',
     iconClass: 'bg-badge-discount-text text-on-primary',
     kind: 'phone',
     placeholder: '0803 555 9821',

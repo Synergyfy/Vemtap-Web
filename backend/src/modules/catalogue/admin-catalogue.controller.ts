@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -54,9 +55,18 @@ export class AdminCatalogueController {
   @Get('categories')
   @Roles(UserRole.OWNER, UserRole.MANAGER, UserRole.ADMIN, UserRole.STAFF)
   @Permissions('inventory')
-  @ApiOperation({ summary: 'List all catalogue categories' })
-  async listCategories(@Req() req: any) {
-    return this.catalogueService.findAllCategories(req.user.businessId);
+  @ApiOperation({ summary: 'List catalogue categories, optionally by kind' })
+  async listCategories(
+    @Req() req: any,
+    @Query('kind') kind?: string,
+  ) {
+    if (kind && kind !== 'product' && kind !== 'service') {
+      throw new BadRequestException('kind must be "product" or "service"');
+    }
+    return this.catalogueService.findAllCategories(
+      req.user.businessId,
+      kind as 'product' | 'service' | undefined,
+    );
   }
 
   // Declared before categories/:id so the literal path wins over the param.

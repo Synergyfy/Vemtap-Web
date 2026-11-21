@@ -87,7 +87,7 @@ export class StoreOrderingController {
   @Patch('orders/:id/status')
   @ApiOperation({
     summary: 'Move a store order to another stage',
-    description: `new → accepted → preparing → ready → awaiting-payment/completed, with partially-fulfilled, rejected and cancelled. "paid" comes only from recording a payment and "completed" needs one first (400). An illegal move is 409. The catalogue status follows (stock, loyalty, customer notifications). ${ACCESS}`,
+    description: `new → accepted → preparing → ready → awaiting-payment/completed, with partially-fulfilled, rejected and cancelled. "paid" comes only from recording a payment and "completed" needs one first (400) plus an assigned staff member (400). The completion history names the assigned person. An illegal move is 409. The catalogue status follows (stock, loyalty, customer notifications). ${ACCESS}`,
   })
   updateStatus(
     @Req() req: BusinessRequest,
@@ -135,7 +135,7 @@ export class StoreOrderingController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Record a counter payment',
-    description: `Amount defaults to the amount due. Full payment → paid (or completed with markCompleted); less → awaiting-payment. Cash records change. Already paid or closed → 409. ${ACCESS}`,
+    description: `Amount defaults to the amount due. Full payment → paid (or completed with markCompleted, which requires an assigned staff member); less → awaiting-payment. Cash records change. Already paid or closed → 409. ${ACCESS}`,
   })
   recordPayment(
     @Req() req: BusinessRequest,
@@ -149,7 +149,7 @@ export class StoreOrderingController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Hand the order over (complete it)',
-    description: `Needs a recorded payment (400 otherwise); idempotent once completed. ${ACCESS}`,
+    description: `Needs a recorded payment and an assigned staff member (400 otherwise); idempotent once completed. ${ACCESS}`,
   })
   collect(@Req() req: BusinessRequest, @Param('id', ParseUUIDPipe) id: string) {
     return this.store.collect(req.user.businessId, req.user, id);
@@ -159,7 +159,7 @@ export class StoreOrderingController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Complete an order paid on VEMTAP POS',
-    description: `Links the POS sale (must belong to the business, else 404) as the payment and completes the order. ${ACCESS}`,
+    description: `Links the POS sale (must belong to the business, else 404) as the payment and completes the order. Requires an assigned staff member (400 otherwise). ${ACCESS}`,
   })
   completeFromPos(
     @Req() req: BusinessRequest,

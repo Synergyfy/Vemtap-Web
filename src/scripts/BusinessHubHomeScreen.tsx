@@ -9,6 +9,8 @@ import { hasApiConfig } from '../services/api/client';
 import { useBusinessOfferings } from '../context/BusinessOfferingsContext';
 import { useBusinessFeatures } from '../context/BusinessFeaturesContext';
 import type { FeatureId } from './businessFeatures';
+import { useSessionUser } from '../hooks/useSessionUser';
+import { canAccessPage } from './staffPageAccess';
 
 export type HubModuleKey = 'deals' | 'catalog' | 'services' | 'customers' | 'loyalty' | 'locations' | 'staff' | 'profile' | 'referrals';
 
@@ -31,9 +33,9 @@ const MENU_CARDS: {
     key: 'catalog',
     icon: 'inventory_2',
     iconBox: 'bg-secondary-fixed text-on-secondary-fixed-variant',
-    title: 'Products & Services',
-    desc: 'Manage your central catalogue & branch inventory',
-    chips: [{ label: '42 Items • 8 Services', chipClass: 'bg-surface-container text-on-secondary-container font-medium' }],
+    title: 'My Products',
+    desc: 'Manage your product catalogue & branch inventory',
+    chips: [{ label: '42 Products', chipClass: 'bg-surface-container text-on-secondary-container font-medium' }],
   },
   {
     key: 'deals',
@@ -75,7 +77,7 @@ const MENU_CARDS: {
     key: 'locations',
     icon: 'location_on',
     iconBox: 'bg-surface-container-high text-primary',
-    title: 'Locations & Branches',
+    title: 'Locations',
     desc: 'Manage branches and where the business operates',
     chips: [{ label: '3 Branches (2 Active)', chipClass: 'bg-surface-container text-on-secondary-container font-medium' }],
   },
@@ -102,8 +104,12 @@ export function BusinessHubHomeScreen({ onTab, onOpenModule }: BusinessHubHomeSc
   // Branch switching lives only in the header's MobileLocationMenu.
   const { branch, branches } = useBusinessBranch();
   const hubCounts = useHubModuleCounts();
-  const { offerings, mode } = useBusinessOfferings();
+  const { offerings, mode: storedMode } = useBusinessOfferings();
+  // Product-only rollout: stale saved modes never re-introduce service cards.
+  const mode = 'products' as const;
+  void storedMode;
   const { features } = useBusinessFeatures();
+  const session = useSessionUser().data;
 
   // Cards for tools the business has switched off are dropped (Business Profile
   // is always available).
@@ -115,12 +121,25 @@ export function BusinessHubHomeScreen({ onTab, onOpenModule }: BusinessHubHomeSc
     locations: 'locations',
     referrals: 'referrals',
   };
+  const CARD_PAGE: Partial<Record<HubModuleKey, string[]>> = {
+    deals: ['business-deals'],
+    catalog: ['business-catalog', 'business-services'],
+    services: ['business-services'],
+    customers: ['business-customers'],
+    loyalty: ['business-loyalty'],
+    locations: ['business-locations'],
+    staff: ['business-staff'],
+    profile: ['business-profile'],
+    referrals: ['business-referrals'],
+  };
   const visibleCards = MENU_CARDS.filter((card) => {
     // The catalogue card covers Products *and* Services — at least one of the
     // two always stays on, so this card never disappears.
-    if (card.key === 'catalog') return Boolean(features.products || features.services);
+    if (card.key === 'catalog' && !(features.products || features.services)) return false;
     const feature = CARD_FEATURE[card.key];
-    return feature === undefined || Boolean(features[feature]);
+    if (feature !== undefined && !features[feature]) return false;
+    const pages = CARD_PAGE[card.key];
+    return !pages?.length || pages.some((page) => canAccessPage(session, page));
   });
 
   const menuCards = visibleCards.map((card) => {
@@ -252,7 +271,7 @@ export function BusinessHubHomeScreen({ onTab, onOpenModule }: BusinessHubHomeSc
           </div>
         </div>
 
-        {/* Enable Services Banner */}
+        {/* Product-only rollout: the Enable Services banner is hidden.
         {!offerings.hasServices && (
           <div className="mt-space-xs p-2.5 rounded-xl bg-gradient-to-r from-surface-tint-blue/80 via-surface-container-lowest to-surface-canvas border border-primary/20 flex items-center justify-between gap-2.5 shadow-sm">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -275,6 +294,7 @@ export function BusinessHubHomeScreen({ onTab, onOpenModule }: BusinessHubHomeSc
             </button>
           </div>
         )}
+        */}
 
         {/* Enable Products Banner */}
         {!offerings.hasProducts && (

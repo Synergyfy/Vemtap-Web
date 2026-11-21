@@ -21,7 +21,7 @@ const FEATURES = [
     body: 'Display branded tabletop stands and direct links to your online menu and catalog.',
   },
   {
-    icon: 'chat',
+    icon: 'vemtap-chat',
     title: 'Receive direct customer chats & reservations',
     body: 'Take inquiries, confirm table slots, and retain customer histories in your merchant inbox.',
   },

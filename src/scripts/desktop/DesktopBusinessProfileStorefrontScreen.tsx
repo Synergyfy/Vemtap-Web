@@ -554,7 +554,17 @@ export function DesktopBusinessProfileStorefrontScreen({
                     <label className="font-label-sm text-label-sm font-semibold text-text-primary">
                       Storefront Public Bio
                     </label>
-                    <span className="font-caption text-caption text-text-tertiary">{profile.form.description.length} / 240 chars</span>
+                    <div className="flex items-center gap-space-sm">
+                      <span className="font-caption text-caption text-text-tertiary">{profile.form.description.length} / 240 chars</span>
+                      <CreateWithAiButton
+                        assetType="description"
+                        context={{
+                          businessName: aiProfileContext.businessName,
+                          category: profile.category,
+                        }}
+                        label="Write your Description with AI"
+                      />
+                    </div>
                   </div>
                   <textarea
                     className="w-full p-3.5 rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas focus:ring-2 focus:ring-primary-container outline-none resize-none transition-all"

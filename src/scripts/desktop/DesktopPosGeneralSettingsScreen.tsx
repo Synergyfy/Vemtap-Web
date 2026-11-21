@@ -15,7 +15,7 @@ interface DesktopPosGeneralSettingsScreenProps {
 
 const SETTINGS_TABS = [
   { key: 'business', label: 'Business', icon: 'storefront' },
-  { key: 'tills', label: 'Registers & Tills', icon: 'point_of_sale' },
+  { key: 'tills', label: 'Cash Registers', icon: 'point_of_sale' },
   { key: 'receipt', label: 'Receipt', icon: 'receipt_long' },
   { key: 'tax', label: 'Tax & Pricing', icon: 'percent' },
   { key: 'alerts', label: 'Alerts', icon: 'notifications' },
@@ -233,8 +233,15 @@ export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSett
       taxRate: data.taxRate ?? prev.taxRate,
       taxLabel: data.taxLabel ?? prev.taxLabel,
       pricesIncludeTax: data.pricesIncludeTax ?? prev.pricesIncludeTax,
+      loyaltyEnabled: data.loyaltyEnabled ?? prev.loyaltyEnabled,
+      redemptionThreshold: data.loyaltyRedeemThreshold ?? prev.redemptionThreshold,
+      lowStockAlerts: data.lowStockAlerts ?? prev.lowStockAlerts,
+      dailySalesSummary: data.dailySalesSummary ?? prev.dailySalesSummary,
+      newOrderAlert: data.newOrderAlert ?? prev.newOrderAlert,
+      staffActivityAlerts: data.staffActivityAlerts ?? prev.staffActivityAlerts,
     }));
     if (typeof data.taxRate === 'number') setRateText(String(data.taxRate));
+    if (typeof data.loyaltyRedeemThreshold === 'number') setThresholdText(String(data.loyaltyRedeemThreshold));
     if (data.receiptAddress) s.setBusinessAddress(data.receiptAddress);
     if (data.receiptPhone) s.setBusinessPhone(data.receiptPhone);
     if (data.receiptHeader) s.setReceiptHeader(data.receiptHeader);
@@ -243,6 +250,12 @@ export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSett
     if (typeof data.showLogo === 'boolean') s.setShowBusinessLogo(data.showLogo);
     if (typeof data.taxRate === 'number') s.setTaxRate(data.taxRate);
     if (data.taxLabel) s.setTaxLabel(data.taxLabel);
+    if (typeof data.loyaltyEnabled === 'boolean') s.setLoyaltyEnabled(data.loyaltyEnabled);
+    if (typeof data.loyaltyRedeemThreshold === 'number') s.setRedemptionThreshold(data.loyaltyRedeemThreshold);
+    if (typeof data.lowStockAlerts === 'boolean') s.setLowStockAlerts(data.lowStockAlerts);
+    if (typeof data.dailySalesSummary === 'boolean') s.setDailySalesSummary(data.dailySalesSummary);
+    if (typeof data.newOrderAlert === 'boolean') s.setNewOrderAlert(data.newOrderAlert);
+    if (typeof data.staffActivityAlerts === 'boolean') s.setStaffActivityAlerts(data.staffActivityAlerts);
     // Tax flags go through the context's exclusive setters — enable-tax first,
     // then prices-include-tax, so the last writer wins as designed.
     if (typeof data.taxEnabled === 'boolean') s.setTaxEnabled(data.taxEnabled);
@@ -292,8 +305,7 @@ export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSett
 
   const save = () => {
     if (live) {
-      // Only the receipt/tax fields live on the API — PATCH those, and keep
-      // business identity, alerts and loyalty in the local till context.
+      // Persist all settings tabs to the live API
       updateMutation.mutate(
         {
           receiptHeader: draft.receiptHeader,
@@ -306,6 +318,12 @@ export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSett
           taxRate: draft.taxRate,
           taxLabel: draft.taxLabel,
           pricesIncludeTax: draft.pricesIncludeTax,
+          loyaltyEnabled: draft.loyaltyEnabled,
+          loyaltyRedeemThreshold: draft.redemptionThreshold,
+          lowStockAlerts: draft.lowStockAlerts,
+          dailySalesSummary: draft.dailySalesSummary,
+          newOrderAlert: draft.newOrderAlert,
+          staffActivityAlerts: draft.staffActivityAlerts,
         },
         {
           onSuccess: () => {
@@ -425,18 +443,18 @@ export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSett
             <div className="bg-surface-tint-blue/80 rounded-2xl p-space-md border border-primary/20 flex flex-col gap-space-xs shadow-sm">
               <div className="flex items-center gap-space-xs text-primary font-heading-sm text-heading-sm font-bold">
                 <Icon name="point_of_sale" className="text-[20px]" />
-                <span>Branch Registers &amp; Physical Tills Configuration</span>
+                <span>Branch Cash Registers &amp; Checkout Stations</span>
               </div>
               <p className="font-body-md text-body-md text-text-primary leading-relaxed">
-                Configure your checkout counters and cash drawer stations for this branch. Each till manages its own starting cash float, receipt printers, and shift audit.
+                Configure your checkout counters and cash drawer stations for this branch. Each cash register manages its own cash drawer, receipt printers, and shift audit.
               </p>
             </div>
 
             <Card>
               <div className="p-space-md border-b border-border-subtle flex items-center justify-between">
                 <div className="flex flex-col">
-                  <span className="font-heading-sm text-heading-sm font-bold text-text-primary">Configured Branch Tills</span>
-                  <span className="font-caption text-caption text-text-secondary">Wuse II Branch • 3 Checkout Stations Setup</span>
+                  <span className="font-heading-sm text-heading-sm font-bold text-text-primary">Configured Cash Registers</span>
+                  <span className="font-caption text-caption text-text-secondary">Wuse II Branch • Checkout Stations Setup</span>
                 </div>
                 <button
                   type="button"
@@ -444,19 +462,19 @@ export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSett
                   className="px-space-md py-2 rounded-xl bg-primary text-on-primary font-label-md text-label-md font-semibold flex items-center gap-space-xs shadow-sm hover:bg-primary-container active:scale-95 transition-all"
                 >
                   <Icon name={showAddTill ? 'close' : 'add'} className="text-[18px]" />
-                  <span>{showAddTill ? 'Cancel' : 'Add Till Station'}</span>
+                  <span>{showAddTill ? 'Cancel' : 'Add Cash Register'}</span>
                 </button>
               </div>
 
               {showAddTill && (
                 <div className="p-space-md bg-surface-container-low flex flex-col gap-space-md border-b border-border-subtle">
-                  <span className="font-label-md text-label-md font-bold text-text-primary">New Register / Till Setup</span>
+                  <span className="font-label-md text-label-md font-bold text-text-primary">New Cash Register Setup</span>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-space-sm">
                     <div>
-                      <label className="font-caption text-caption text-text-secondary block mb-1">Till Identifier</label>
+                      <label className="font-caption text-caption text-text-secondary block mb-1">Cash Register Name</label>
                       <input
                         type="text"
-                        placeholder="e.g. Till 04, VIP Bar Till"
+                        placeholder="e.g. Register 01, Front Checkout"
                         value={newTillName}
                         onChange={(e) => setNewTillName(e.target.value)}
                         className="w-full h-10 px-3 rounded-lg border border-border-subtle text-body-md bg-surface-canvas text-text-primary focus:outline-none focus:border-primary"
@@ -509,7 +527,7 @@ export function DesktopPosGeneralSettingsScreen({ onNav }: DesktopPosGeneralSett
                     }}
                     className="self-end px-space-md py-2 rounded-xl bg-primary text-on-primary text-label-md font-semibold"
                   >
-                    Save New Till
+                    Save Cash Register
                   </button>
                 </div>
               )}

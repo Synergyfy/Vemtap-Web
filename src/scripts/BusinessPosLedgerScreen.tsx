@@ -175,7 +175,7 @@ export function BusinessPosLedgerScreen({ onNav, onOpenOrder }: BusinessPosLedge
         <div className="px-margin pt-space-xs pb-space-2xs flex items-center justify-between gap-space-xs">
           <span className="h-7 px-space-xs rounded-full bg-surface-tint-blue text-primary font-caption text-caption font-semibold flex items-center gap-1 min-w-0">
             <Icon name="storefront" className="text-[13px]" />
-            <span className="truncate">{live ? `${branch.shortName} · ${pos.isOpen ? pos.tillName : 'No till open'}` : 'Wuse II · Till 01'}</span>
+            <span className="truncate">{live ? `${branch.shortName} · ${pos.isOpen ? pos.tillName : 'No register open'}` : 'Wuse II · Register 01'}</span>
           </span>
           <span className="h-7 px-space-xs rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold flex items-center gap-1 shrink-0">
             <span className="w-1.5 h-1.5 rounded-full bg-badge-discount-text" />
@@ -217,8 +217,8 @@ export function BusinessPosLedgerScreen({ onNav, onOpenOrder }: BusinessPosLedge
               <Icon name="point_of_sale" className="text-primary text-[15px]" />
               <span className="font-caption text-caption text-text-secondary truncate">
                 {live
-                  ? `${pos.isOpen ? pos.tillName : 'No till open'} · Drawer float ${naira(Number(pos.zReport?.openingCash ?? 0))}`
-                  : 'Till 01 · Drawer float ₦45,000'}
+                  ? `${pos.isOpen ? pos.tillName : 'No register open'} · Drawer float ${naira(Number(pos.zReport?.openingCash ?? 0))}`
+                  : 'Register 01 · Drawer float ₦45,000'}
               </span>
             </span>
             <span className="font-caption text-caption text-on-surface shrink-0">{live ? ledger.tickets : 42} tickets</span>

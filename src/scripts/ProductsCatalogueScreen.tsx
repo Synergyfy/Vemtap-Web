@@ -3,6 +3,7 @@ import { FilterMenu } from '../components/FilterMenu';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { CartSheet } from '../components/sheets/CartSheet';
+import { BusinessChatBox } from '../components/BusinessChatBox';
 import { useCart } from '../context/CartContext';
 import { naira, nairaToNumber, PRODUCT_ID_BY_KEY, type CatalogueProduct } from './catalogueData';
 import { UserAvatar } from '../components/ui/UserAvatar';
@@ -15,6 +16,10 @@ interface ProductsCatalogueScreenProps {
   onOpenProduct: (productId: string, display?: Partial<CatalogueProduct>) => void;
   onCheckout: () => void;
   businessCode?: string;
+  /** Which live catalogue the "See All" page shows. `all` keeps the legacy combined list. */
+  kind?: 'product' | 'service' | 'all';
+  startChat?: boolean;
+  onChatStarted?: (branchId: string) => void;
 }
 
 interface ProductCardModel {
@@ -192,19 +197,25 @@ function initialCategorySlug(): string {
   return param ?? 'all';
 }
 
-export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onCheckout, businessCode }: ProductsCatalogueScreenProps) {
+export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onCheckout, businessCode, kind = 'all', startChat, onChatStarted }: ProductsCatalogueScreenProps) {
   const [categorySlug, setCategorySlug] = useState<string>(initialCategorySlug);
   const [searchQuery, setSearchQuery] = useState('');
   const [minRating, setMinRating] = useState('');
   const [cartOpen, setCartOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(Boolean(startChat));
   const [toast, setToast] = useState<string | null>(null);
   const cart = useCart();
   const live = hasApiConfig();
   const publicBusiness = usePublicBusiness(businessCode);
+  // See All Products / See All Services show only what the business actually listed in that section.
+  const liveItems = [
+    ...(kind === 'service' ? [] : publicBusiness.products),
+    ...(kind === 'product' ? [] : publicBusiness.services),
+  ];
   const products: ProductCardModel[] = live
-    ? [...publicBusiness.products, ...publicBusiness.services].map((item) => ({
+    ? liveItems.map((item) => ({
         id: item.id,
-        cartId: item.kind === 'product' ? item.id : '',
+        cartId: item.id,
         kind: item.kind,
         category: item.categoryId ?? item.category ?? '',
         name: item.name,
@@ -237,13 +248,14 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
     ? [
         { label: 'All Items', slug: 'all' },
         ...[...new Map(
-          [...publicBusiness.products, ...publicBusiness.services]
+          liveItems
             .filter((item) => item.categoryId || item.category)
             .map((item) => [item.categoryId ?? item.category ?? '', { label: item.category ?? 'Category', slug: item.categoryId ?? item.category ?? '' }]),
         ).values()],
       ]
     : CATEGORIES;
 
+  const sectionLabel = kind === 'service' ? 'Services' : kind === 'product' ? 'Products' : 'Products & Services';
   const showToast = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(null), 2400);
@@ -283,7 +295,7 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
             >
               <Icon name="arrow_back_ios_new" className="text-[22px]" />
             </button>
-            <h1 className="font-heading-sm text-heading-sm text-text-primary truncate">Merchant Details</h1>
+            <h1 className="font-heading-sm text-heading-sm text-text-primary truncate">{live ? sectionLabel : 'Merchant Details'}</h1>
           </div>
           <div className="flex items-center gap-space-xs shrink-0 pr-space-xs">
             <button
@@ -311,10 +323,21 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
                   </span>
               </div>
                 <p className="font-caption text-caption text-text-secondary truncate">
-                  Full Catalogue • {live ? products.length : 42} Items
+                  {sectionLabel} • {live ? products.length : 42} Items
                 </p>
             </div>
             <div className="flex items-center gap-space-xs shrink-0">
+              {live && publicBusiness.business ? (
+                <button
+                  aria-label={chatOpen ? 'Close chat with business' : 'Chat with business'}
+                  aria-pressed={chatOpen}
+                  type="button"
+                  onClick={() => setChatOpen((open) => !open)}
+                  className={`w-9 h-9 rounded-full flex items-center justify-center transition-colors ${chatOpen ? 'bg-primary text-on-primary' : 'bg-surface-subtle text-primary hover:text-text-primary'}`}
+                >
+                  <Icon name={chatOpen ? 'vemtap-chat-white' : 'vemtap-chat'} className="text-[20px]" />
+                </button>
+              ) : null}
               <button
                 aria-label="Toggle grid layout"
                 type="button"
@@ -381,7 +404,7 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
               <div className="flex items-center gap-1 shrink-0">
                 <span className="font-caption text-caption text-text-secondary font-medium">
                   Showing{' '}
-                  <strong className="text-text-primary font-semibold">{filteredProducts.length}</strong> deals
+                  <strong className="text-text-primary font-semibold">{filteredProducts.length}</strong> items
                 </span>
                 <div className="flex items-center p-0.5 rounded-lg bg-surface-subtle ml-1">
                   <button
@@ -403,6 +426,12 @@ export function ProductsCatalogueScreen({ onBack, onListView, onOpenProduct, onC
               </div>
             </div>
           </div>
+
+          {chatOpen && publicBusiness.business ? (
+            <div className="px-margin pt-space-sm">
+              <BusinessChatBox business={publicBusiness.business} onClose={() => setChatOpen(false)} onStarted={onChatStarted} />
+            </div>
+          ) : null}
 
           <div className="flex items-center gap-space-2xs overflow-x-auto no-scrollbar py-0.5 -mx-margin px-margin">
             {categories.map((cat) => (

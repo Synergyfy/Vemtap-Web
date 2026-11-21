@@ -259,7 +259,7 @@ export function BusinessProfileBasicScreen({
                   <CreateWithAiButton
                     assetType="description"
                     context={descriptionContext}
-                    label="Write your description AI"
+                    label="Write your Description with AI"
                   />
                 </div>
               </div>

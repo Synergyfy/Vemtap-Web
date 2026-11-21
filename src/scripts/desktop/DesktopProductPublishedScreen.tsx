@@ -7,10 +7,12 @@ import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import type { ProductDraft } from './desktopProductDraft';
 import { draftImage, draftImageAlt } from './draftImage';
 import { hasApiConfig } from '../../services/api/client';
+import { DealPriceChoiceModal } from '../deals/DealPriceChoiceModal';
+import type { DealPriceChoice } from '../deals/dealStudioShared';
 
 interface DesktopProductPublishedScreenProps {
   draft: ProductDraft;
-  onMakeDeal: () => void;
+  onMakeDeal: (choice: DealPriceChoice) => void;
   onViewCatalog: () => void;
   onAddAnother: () => void;
   /** Live, per-branch pricing: opens Branch pricing for the item just published. */
@@ -52,6 +54,7 @@ export function DesktopProductPublishedScreen({
   const live = hasApiConfig();
   const [mode, setMode] = useState<'live' | 'draft'>('live');
   const [dealState, setDealState] = useState<'idle' | 'importing' | 'success'>('idle');
+  const [priceChoiceOpen, setPriceChoiceOpen] = useState(false);
   const timers = useRef<number[]>([]);
 
   useEffect(
@@ -72,10 +75,13 @@ export function DesktopProductPublishedScreen({
 
   const handleMakeDeal = () => {
     if (dealState !== 'idle') return;
-    if (live) return onMakeDeal();
+    if (live) {
+      setPriceChoiceOpen(true);
+      return;
+    }
     setDealState('importing');
     timers.current.push(window.setTimeout(() => setDealState('success'), 900));
-    timers.current.push(window.setTimeout(() => onMakeDeal(), 2100));
+    timers.current.push(window.setTimeout(() => setPriceChoiceOpen(true), 2100));
   };
 
   return (
@@ -312,16 +318,22 @@ export function DesktopProductPublishedScreen({
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
-                        20% OFF Suggested
+                      {!live && (
+                        <span className="px-2 py-0.5 rounded bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-bold">
+                          20% OFF Suggested
+                        </span>
+                      )}
+                      <span className="font-caption text-caption text-text-secondary">
+                        {live ? 'Ready for Deal Studio' : 'Flash Weekend Voucher'}
                       </span>
-                      <span className="font-caption text-caption text-text-secondary">Flash Weekend Voucher</span>
                     </div>
                     <p className="font-label-md text-label-md text-on-surface font-semibold truncate mt-1">
-                      Woodfire Aged Ribeye Steak Tasting Voucher
+                      {live ? `${draft.title || 'This item'} deal` : 'Woodfire Aged Ribeye Steak Tasting Voucher'}
                     </p>
                     <p className="font-caption text-caption text-text-secondary">
-                      Target price: ₦15,600 (Save ₦3,900)
+                      {live
+                        ? `Listed price: ₦${priceMin.toLocaleString('en-US')}`
+                        : 'Target price: ₦15,600 (Save ₦3,900)'}
                     </p>
                   </div>
                   <Icon name="arrow_forward" className="text-outline-variant text-[24px] hidden sm:block" />
@@ -398,6 +410,17 @@ export function DesktopProductPublishedScreen({
           </div>
         </div>
       </div>
+
+      <DealPriceChoiceModal
+        open={priceChoiceOpen}
+        itemName={draft.title}
+        priceLabel={priceMin > 0 ? priceMin.toLocaleString('en-US') : undefined}
+        onClose={() => setPriceChoiceOpen(false)}
+        onChoose={(choice) => {
+          setPriceChoiceOpen(false);
+          onMakeDeal(choice);
+        }}
+      />
     </Shell>
   );
 }

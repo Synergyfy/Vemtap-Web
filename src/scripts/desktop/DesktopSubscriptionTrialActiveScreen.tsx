@@ -343,7 +343,7 @@ export function DesktopSubscriptionTrialActiveScreen({
 
             <section className="rounded-xl bg-surface-tint-blue p-space-md shadow-sm flex items-start gap-space-sm">
               <div className="w-9 h-9 rounded-full bg-primary-fixed flex items-center justify-center shrink-0">
-                <Icon name="support_agent" className="text-primary text-[20px]" />
+                <Icon name="whatsapp" className="text-badge-discount-text text-[20px]" />
               </div>
               <div className="flex flex-col">
                 <span className="font-label-md text-label-md text-text-primary font-semibold">Need a hand?</span>

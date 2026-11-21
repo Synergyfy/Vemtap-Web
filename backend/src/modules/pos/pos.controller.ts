@@ -325,13 +325,16 @@ export class PosController {
   }
 
   @Get('register/history')
-  @Roles(UserRole.OWNER, UserRole.MANAGER, UserRole.ADMIN)
-  @ApiOperation({ summary: 'Get register session history' })
+  @Roles(UserRole.OWNER, UserRole.MANAGER, UserRole.ADMIN, UserRole.STAFF)
+  @ApiOperation({
+    summary: 'Get register session history',
+    description: 'Cashiers see their own drawer records; owners/managers see the business history.',
+  })
   async getRegisterHistory(
     @Query() query: RegisterHistoryQueryDto,
     @Req() req: RequestWithUser,
   ) {
-    return this.posService.getRegisterHistory(req.user.businessId, query);
+    return this.posService.getRegisterHistory(req.user.businessId, query, req.user);
   }
 
   @Get('dashboard')

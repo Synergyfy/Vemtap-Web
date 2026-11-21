@@ -10,6 +10,8 @@ import { useHomeDealCategories } from '../../hooks/useHomeDealCategories';
 import { matchesClientFilters, useDealFilters } from '../../context/DealFiltersContext';
 import { useDealFeedControls, DEAL_PAGE_SIZE as PAGE_SIZE, type DealSortBy } from '../../hooks/useDealFeedControls';
 import { Skeleton, SkeletonGroup } from '../../components/ui/Skeleton';
+import { BusinessChatBox } from '../../components/BusinessChatBox';
+import { usePublicBusiness } from '../../hooks/usePublicBusiness';
 import {
   firstString,
   isVerifiedOffer,
@@ -18,6 +20,7 @@ import {
   offerEndsLabel,
   offerImage,
   offerLocationLabel,
+  offerMatchesBusiness,
   realOfferId,
 } from '../../utils/homeOffer';
 
@@ -58,6 +61,8 @@ interface DesktopDealsScreenProps {
   onHowToClaim?: () => void;
   /** Pre-fills the search (e.g. "See all deals for …" from the navbar search). */
   initialSearch?: string;
+  /** Business-specific "See All Deals": only this business's public offers are shown. */
+  businessCode?: string | null;
 }
 
 interface DiscoveryDeal {
@@ -279,7 +284,7 @@ function FeaturedDealSkeleton() {
   );
 }
 
-export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpenDeal, onOpenComments, onClaim, onHowToClaim, initialSearch }: DesktopDealsScreenProps) {
+export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpenDeal, onOpenComments, onClaim, onHowToClaim, initialSearch, businessCode }: DesktopDealsScreenProps) {
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [locationOpen, setLocationOpen] = useState(false);
   const { district, city, radius, setLocation } = useLocation();
@@ -307,6 +312,8 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
   const toastTimer = useRef<number | undefined>(undefined);
   const claimTimers = useRef<Record<string, number>>({});
   const apiReady = hasApiConfig();
+  const businessProfile = usePublicBusiness(businessCode);
+  const [chatOpen, setChatOpen] = useState(false);
 
   // Nearest first within the radius once the customer has a location (unless another sort is chosen).
   const { feedParams, isLoadingMorePage, limit } = feed;
@@ -349,7 +356,10 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
     };
   }, [feedParams, isLoadingMorePage, limit]);
 
-  const usableOffers = useMemo(() => publicOffers.filter(isUsableOffer).filter((offer) => matchesClientFilters(offer, dealFilters)), [publicOffers, dealFilters]);
+  const usableOffers = useMemo(
+    () => publicOffers.filter(isUsableOffer).filter((offer) => offerMatchesBusiness(offer, businessCode)).filter((offer) => matchesClientFilters(offer, dealFilters)),
+    [publicOffers, dealFilters, businessCode],
+  );
   const discoveryDeals = useMemo(() => usableOffers.map(toDiscoveryDeal), [usableOffers]);
   const catalogDeals = useMemo(() => usableOffers.map(toCatalogDeal), [usableOffers]);
   const featuredDeal = catalogDeals[0] ?? null;
@@ -446,6 +456,21 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
     window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(false), 2500);
   };
+
+  const businessChatBlock = businessCode && businessProfile.business ? (
+    <div className="max-w-7xl w-full mx-auto px-6 lg:px-12 pt-4">
+      <button
+        type="button"
+        aria-pressed={chatOpen}
+        onClick={() => setChatOpen((open) => !open)}
+        className="h-10 px-4 rounded-full border border-border-subtle text-primary font-label-md text-label-md font-semibold flex items-center gap-1.5"
+      >
+        <Icon name="vemtap-chat" className="text-[18px]" />
+        {chatOpen ? 'Hide chat' : `Chat with ${businessProfile.business.name}`}
+      </button>
+      {chatOpen ? <div className="max-w-xl"><BusinessChatBox business={businessProfile.business} onClose={() => setChatOpen(false)} /></div> : null}
+    </div>
+  ) : null;
 
   const claimToast = toast ? (
     <div className="fixed bottom-6 right-6 z-50 flex items-center gap-space-sm bg-inverse-surface text-inverse-on-surface p-space-sm px-space-md rounded-2xl shadow-xl">
@@ -827,11 +852,12 @@ export function DesktopDealsScreen({ onNav, onOpenFilters, onOpenFeatured, onOpe
   return (
     <>
       <DesktopPage activeNav="deals" onNav={onNav} withFooter withHeader>
+        {businessChatBlock}
         {/* Page heading (not a second navbar): the navbar above already has search and location. */}
         <div className="max-w-7xl mx-auto px-margin pt-space-xl w-full flex flex-col sm:flex-row sm:items-end justify-between gap-space-sm">
           <div className="space-y-space-2xs min-w-0">
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
-              {feed.search ? <>Results for “{feed.search}”</> : 'Deals & Offers'}
+              {feed.search ? <>Results for “{feed.search}”</> : businessCode ? `${businessProfile.business?.name ?? 'Business'} Deals` : 'Deals & Offers'}
             </h1>
             <p className="font-body-md text-body-md text-text-secondary flex flex-wrap items-center gap-x-space-xs">
               <span>

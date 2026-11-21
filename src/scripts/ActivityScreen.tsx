@@ -52,12 +52,12 @@ export function ActivityScreen({
   };
 
   const openRow = (row: ActivityRow) => {
-    if (row.kind === 'order' || row.kind === 'booking') onOpenOrders();
+    if (row.kind === 'order') onOpenOrders();
     else if (row.kind === 'claim' || row.kind === 'review') onOpenDeal({ id: row.refId, title: row.detail, business: row.merchant });
     else if (row.businessCode) onOpenBusiness({ code: row.businessCode, name: row.merchant });
   };
   const rowAction = (row: ActivityRow) =>
-    row.kind === 'order' ? 'View Receipt' : row.kind === 'booking' ? 'View Booking' : row.kind === 'claim' ? 'View Deal' : row.businessCode ? 'View Business' : null;
+    row.kind === 'order' ? 'View Receipt' : row.kind === 'claim' ? 'View Deal' : row.businessCode ? 'View Business' : null;
 
   const showVisits = (tab === 'all' || tab === 'visits');
   const showRecent = (tab === 'all' || tab === 'recent');

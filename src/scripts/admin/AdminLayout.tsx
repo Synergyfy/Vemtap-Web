@@ -74,7 +74,7 @@ const NAV_ITEMS: NavItem[] = [
     path: '/admin/orders',
     sectionLabel: 'Commercial Module',
     children: [
-      { id: 'orders-bookings', label: 'Orders & Bookings', path: '/admin/orders' },
+      { id: 'orders-bookings', label: 'Orders', path: '/admin/orders' },
       { id: 'transactions-exceptions', label: 'Transactions & Exceptions', path: '/admin/orders/transactions', badge: '42' },
       { id: 'pos-terminals', label: 'POS Monitoring', path: '/admin/orders/terminals' },
     ],

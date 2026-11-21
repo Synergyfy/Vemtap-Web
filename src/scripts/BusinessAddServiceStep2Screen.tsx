@@ -392,7 +392,8 @@ export function BusinessAddServiceStep2Screen({
                   <span className="font-label-md text-label-md text-text-primary font-semibold">
                     Advance consultation confirmation
                   </span>
-                  <span className="bg-badge-discount-bg text-badge-discount-text font-caption text-caption px-1.5 py-0.2 rounded font-medium">
+                  <span className="bg-badge-discount-bg text-badge-discount-text font-caption text-caption px-1.5 py-0.2 rounded font-medium inline-flex items-center gap-1">
+                    <Icon name="whatsapp" className="text-[12px]" />
                     WhatsApp
                   </span>
                 </div>

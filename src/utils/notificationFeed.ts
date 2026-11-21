@@ -39,7 +39,7 @@ export const NOTIFICATION_FEED: NotificationFeedItem[] = [
   },
   {
     id: 'n4',
-    icon: 'forum',
+    icon: 'vemtap-chat',
     iconClass: 'bg-surface-container-high text-on-surface-variant',
     title: 'New customer message',
     time: '3h ago',

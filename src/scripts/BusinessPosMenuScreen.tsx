@@ -2,7 +2,9 @@ import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { useBusinessFeatures } from '../context/BusinessFeaturesContext';
+import { useSessionUser } from '../hooks/useSessionUser';
 import { getNavKeyFeature } from './businessFeatures';
+import { canAccessPage } from './staffPageAccess';
 
 interface BusinessPosMenuScreenProps {
   /** Navigates to a POS page (keys match the desktop sidebar config). */
@@ -24,7 +26,6 @@ const POS_ROWS: PosRow[] = [
   { key: 'pos-home', icon: 'dashboard', title: 'POS Overview', sub: 'Today’s sales, till status & quick stats' },
   { key: 'pos-sale', icon: 'add_shopping_cart', title: 'New Sale', sub: 'Open the register and ring up a sale' },
   { key: 'orders-all', icon: 'receipt_long', title: 'Orders', sub: 'All dine-in, pickup & delivery tickets', badge: '4', badgeClass: 'bg-primary-container text-on-primary' },
-  { key: 'orders-bookings', icon: 'calendar_month', title: 'Bookings', sub: 'Reservations & table assignments' },
   { key: 'pos-transactions', icon: 'receipt', title: 'Transactions', sub: 'Receipts, refunds & payment history' },
   { key: 'pos-settings', icon: 'settings', title: 'POS Settings', sub: 'Business info, receipts, tax, alerts & loyalty' },
 ];
@@ -88,9 +89,11 @@ function PosMenuSection({
  */
 export function BusinessPosMenuScreen({ onOpenPage, onBack, onTab }: BusinessPosMenuScreenProps) {
   const { features } = useBusinessFeatures();
+  const session = useSessionUser().data;
 
-  // Rows for tools the business has switched off are dropped.
+  // Rows for switched-off tools and pages this staff account cannot open are dropped.
   const rowVisible = (row: PosRow) => {
+    if (!canAccessPage(session, row.key)) return false;
     const feature = getNavKeyFeature(row.key);
     return feature === undefined || Boolean(features[feature]);
   };

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { apiErrorMessage } from '../services/errorMessages';
 import { planErrorMessage } from '../services/planErrors';
 import type { useLivePos } from './posLive';
+import { useRegisterHistory } from '../hooks/business/usePos';
 
 const amount = (value: string) => Number(value.replace(/[^\d.]/g, '')) || 0;
 
@@ -12,6 +13,7 @@ const amount = (value: string) => Number(value.replace(/[^\d.]/g, '')) || 0;
  */
 export function useRegisterShift(pos: ReturnType<typeof useLivePos>, notify: (message: string) => void) {
   const live = pos.live;
+  const drawerHistory = useRegisterHistory(live);
   const [demoOpen, setDemoOpen] = useState(true);
   const [demoFloat, setDemoFloat] = useState(50000);
   const [openRegisterModal, setOpenRegisterModal] = useState(false);
@@ -29,15 +31,18 @@ export function useRegisterShift(pos: ReturnType<typeof useLivePos>, notify: (me
   const openingFloat = live ? liveFloat : demoFloat;
   const cashSales = live ? liveCash : 92400;
   const cardSales = live ? Math.max(0, pos.breakdownTotal - liveCash) : 179050;
-  const expectedCashInDrawer = live ? liveExpected : demoFloat + 92400;
+  const expectedCashInDrawer = live
+    ? (pos.isOpen ? liveExpected : 0)
+    : (demoOpen ? demoFloat + 92400 : 0);
 
-  const confirmOpen = async () => {
+  const confirmOpen = async (onSuccess?: () => void) => {
     const float = amount(openFloatInput);
     if (!live) {
       setDemoFloat(float || 50000);
       setDemoOpen(true);
       setOpenRegisterModal(false);
       notify(`Shift started! Opening float: ₦${(float || 50000).toLocaleString()}`);
+      onSuccess?.();
       return;
     }
     setBusy(true);
@@ -46,6 +51,7 @@ export function useRegisterShift(pos: ReturnType<typeof useLivePos>, notify: (me
       setOpenRegisterModal(false);
       setOpenFloatInput('');
       notify(`Register open · float ₦${float.toLocaleString()}`);
+      onSuccess?.();
     } catch (error) {
       notify(planErrorMessage(error) ?? apiErrorMessage(error, 'Could not open the register.'));
     } finally {
@@ -85,7 +91,7 @@ export function useRegisterShift(pos: ReturnType<typeof useLivePos>, notify: (me
     cardSales,
     expectedCashInDrawer,
     shiftLabel: live ? pos.tillName : 'Shift #0842',
-    tillLabel: live ? `${pos.branchArea || pos.branchName} • ${pos.tillName}` : 'Wuse II • Till 01',
+    tillLabel: live ? `${pos.branchArea || pos.branchName} • ${pos.tillName}` : 'Wuse II • Register 01',
     cashierLabel: live ? pos.cashierName : 'Emeka O.',
     openRegisterModal,
     setOpenRegisterModal,
@@ -97,6 +103,7 @@ export function useRegisterShift(pos: ReturnType<typeof useLivePos>, notify: (me
     setCountedCashInput,
     closeNotes,
     setCloseNotes,
+    drawerHistory,
     lastZReport,
     busy,
     confirmOpen,

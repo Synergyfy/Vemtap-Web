@@ -93,8 +93,8 @@ export function OrderDetailScreen({ orderRef, onBack, onChat, onReorder, onSuppo
   const steps = [
     { label: 'Order Received', meta: formatOrderTime(order.submittedAt) },
     {
-      label: order.status === 'payment-pending' ? 'Awaiting Payment' : 'In the Kitchen',
-      meta: order.status === 'payment-pending' ? 'Payment not verified yet' : `${order.merchantName} is on it`,
+      label: order.status === 'payment-pending' ? 'Awaiting Payment' : 'In Preparation',
+      meta: order.status === 'payment-pending' ? 'Payment not verified yet' : `${order.merchantName} is preparing your order`,
     },
     { label: 'Ready for Pickup', meta: `Estimated by ${readyByLabel}` },
     { label: order.fulfillment === 'delivery' ? 'Delivered' : 'Picked Up', meta: 'Show your code at the counter' },
@@ -262,7 +262,7 @@ export function OrderDetailScreen({ orderRef, onBack, onChat, onReorder, onSuppo
               onClick={() => onChat(order.merchantId)}
               className="h-10 rounded-xl bg-surface-container text-text-secondary font-label-sm text-label-sm font-semibold flex items-center justify-center gap-1 hover:bg-surface-container-high transition-colors"
             >
-              <Icon name="chat" className="text-[16px]" />
+              <Icon name="vemtap-chat" className="text-[16px]" />
               <span>Chat</span>
             </button>
             {directionsUrl ? (

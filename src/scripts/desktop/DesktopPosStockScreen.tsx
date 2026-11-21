@@ -37,7 +37,7 @@ const STATUS_META: Record<StockStatus, { label: string; className: string; dot: 
   },
   low: { label: 'Low Stock', className: 'bg-tertiary-fixed text-tertiary', dot: 'bg-tertiary' },
   critical: { label: 'Critical', className: 'bg-error-container text-error', dot: 'bg-error' },
-  'eighty-sixed': { label: "86'd", className: 'bg-inverse-surface text-inverse-on-surface', dot: 'bg-error' },
+  'eighty-sixed': { label: 'Sold Out', className: 'bg-inverse-surface text-inverse-on-surface', dot: 'bg-error' },
 };
 
 const STOCK_ROWS: StockRow[] = [
@@ -178,7 +178,7 @@ type FilterKey = 'all' | 'low' | 'eighty-sixed' | 'food' | 'bar';
 const FILTERS: Array<{ key: FilterKey; label: string }> = [
   { key: 'all', label: 'All Items (184)' },
   { key: 'low', label: `Low Stock (${STOCK_ROWS.filter((r) => r.status === 'low' || r.status === 'critical').length})` },
-  { key: 'eighty-sixed', label: `86'd (${STOCK_ROWS.filter((r) => r.status === 'eighty-sixed').length})` },
+  { key: 'eighty-sixed', label: `Sold Out (${STOCK_ROWS.filter((r) => r.status === 'eighty-sixed').length})` },
   { key: 'food', label: 'Food' },
   { key: 'bar', label: 'Bar & Drinks' },
 ];
@@ -257,8 +257,8 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
       }
     }
     liveStock
-      .setQuantity(row.id, quantity, isEightySixed ? 'Restocked at the till' : '86’d at the till')
-      .then(() => showToast(isEightySixed ? `${row.name} restored · ${quantity} on hand` : `${row.name} 86’d`))
+      .setQuantity(row.id, quantity, isEightySixed ? 'Restocked at the till' : 'Marked sold out at the till')
+      .then(() => showToast(isEightySixed ? `${row.name} restored · ${quantity} on hand` : `${row.name} marked sold out`))
       .catch((error: unknown) => showToast(apiErrorMessage(error, 'Could not update stock.')));
   };
 
@@ -288,14 +288,14 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
     ? [
         { label: 'Total Live SKUs', value: String(stockRows.length), meta: `Across ${Math.max(0, liveStock.categories.length - 1)} categories`, tone: 'text-text-primary' },
         { label: 'Low / Critical', value: String(lowCount), meta: 'Reorder suggested', tone: 'text-tertiary' },
-        { label: "86'd Today", value: String(eightySixed.length), meta: 'Out of stock', tone: 'text-error' },
+        { label: 'Sold Out Today', value: String(eightySixed.length), meta: 'Out of stock', tone: 'text-error' },
         { label: 'Stock Value (Cost)', value: `₦${(totalValue / 1000).toFixed(1)}k`, meta: 'At selling price', tone: 'text-text-primary' },
         { label: 'Shift Units Sold', value: '—', meta: pos.session ? 'This shift' : 'No open shift', tone: 'text-primary' },
       ]
     : [
     { label: 'Total Live SKUs', value: '184', meta: 'Across 5 categories', tone: 'text-text-primary' },
     { label: 'Low / Critical', value: '6', meta: 'Reorder suggested', tone: 'text-tertiary' },
-    { label: "86'd Today", value: '2', meta: 'Kitchen flagged', tone: 'text-error' },
+    { label: 'Sold Out Today', value: '2', meta: 'Kitchen flagged', tone: 'text-error' },
     { label: 'Stock Value (Cost)', value: `₦${(totalValue / 1000).toFixed(1)}k`, meta: 'At cost valuation', tone: 'text-text-primary' },
     { label: 'Shift Units Sold', value: '312', meta: 'Since 08:30 AM', tone: 'text-primary' },
       ];
@@ -314,8 +314,8 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
             </div>
             <p className="font-caption text-caption text-text-secondary mt-0.5">
               {live
-                ? `Realtime on-hand, reorder levels and 86'd control • ${pos.branchName}`
-                : "Realtime on-hand, reorder levels and 86'd control • Synced from mesh node #WUSE2-01"}
+                ? `Realtime on-hand, reorder levels and sold out control • ${pos.branchName}`
+                : "Realtime on-hand, reorder levels and sold out control • Synced from mesh node #WUSE2-01"}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-space-xs">
@@ -363,7 +363,7 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
         </div>
       </section>
 
-      {/* Kitchen 86'd alert banner */}
+      {/* Kitchen Sold Out alert banner */}
       {alertOpen && (!live || eightySixed.length > 0) ? (
         <section className="w-full pb-space-md">
           <div className="w-full rounded-xl bg-error-container p-space-md flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm shadow-sm">
@@ -373,7 +373,7 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
               </div>
               <div>
                 <span className="font-label-md text-label-md font-bold text-on-error-container block">
-                  {live ? `Kitchen alert: ${eightySixed.length} items are 86'd` : "Kitchen alert: 2 items toggled 86'd this shift"}
+                  {live ? `Kitchen alert: ${eightySixed.length} items are sold out` : "Kitchen alert: 2 items marked sold out this shift"}
                 </span>
                 <span className="font-caption text-caption text-on-error-container/80">
                   {live
@@ -388,7 +388,7 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
                 onClick={() => openProduct()}
                 className="px-space-md py-2 rounded-lg bg-surface-canvas text-error font-button-secondary text-button-secondary font-semibold hover:bg-surface-container transition-colors"
               >
-                Review 86'd Items
+                Review Sold Out Items
               </button>
               <button
                 type="button"
@@ -509,14 +509,14 @@ export function DesktopPosStockScreen({ onNav, onOpenProduct, onOpenCatalogue }:
                           <button
                             type="button"
                             onClick={() => toggleEightySix(row, isEightySixed)}
-                            title={isEightySixed ? "Restore item to menu" : "Toggle 86'd"}
+                            title={isEightySixed ? "Restore item to menu" : "Mark Sold Out"}
                             className={`px-2.5 py-1.5 rounded-lg font-caption text-caption font-semibold transition-colors ${
                               isEightySixed
                                 ? 'bg-surface-tint-blue text-primary hover:bg-surface-container-high'
                                 : 'bg-surface-container text-text-secondary hover:bg-surface-container-high'
                             }`}
                           >
-                            {isEightySixed ? 'Restore' : "86"}
+                            {isEightySixed ? 'Restore' : "Sold Out"}
                           </button>
                           <button
                             type="button"

@@ -1,12 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Icon } from '../components/ui/Icon';
 import { Logo } from '../components/ui/Logo';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessMobileDrawer } from '../components/BusinessMobileDrawer';
 import { OrderQrArt } from '../components/ui/OrderQrArt';
 import { useStoreOrdering } from '../context/StoreOrderingContext';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { useTeam } from '../hooks/business/useBranchesAndTeam';
+import { hasApiConfig } from '../services/api/client';
+import { usePrimaryStoreQrLinks } from '../hooks/business/usePrimaryStoreQrLinks';
 import {
   STORE_ORDER_STATUS_CONFIG,
+  completedByLabel,
   type StoreOrder,
 } from './storeOrderingData';
 
@@ -32,11 +37,26 @@ export function StoreOrderingScreen({
     staffValueFor,
     qrCodes,
     settings,
+    settingsLoading,
+    settingsSaving,
     updateSettings,
     toggleQrActive,
     lastError,
     clearLastError,
   } = useStoreOrdering();
+
+  const primaryQr = usePrimaryStoreQrLinks();
+  const [primaryQrTab, setPrimaryQrTab] = useState<'store' | 'category' | 'product'>('store');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [selectedProductId, setSelectedProductId] = useState<string>('');
+  useEffect(() => {
+    if (primaryQr.categories.length && !primaryQr.categories.some((category) => category.id === selectedCategoryId)) {
+      setSelectedCategoryId(primaryQr.categories[0].id);
+    }
+    if (primaryQr.products.length && !primaryQr.products.some((product) => product.id === selectedProductId)) {
+      setSelectedProductId(primaryQr.products[0].id);
+    }
+  }, [primaryQr.categories, primaryQr.products, selectedCategoryId, selectedProductId]);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [subTab, setSubTab] = useState<'dashboard' | 'qr' | 'settings'>(initialSubTab);
@@ -46,17 +66,79 @@ export function StoreOrderingScreen({
   // Keyed (not object) state so the sheet keeps reflecting live assignment/status changes.
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const selectedOrder = orders.find((o) => o.id === selectedOrderId || o.orderRef === selectedOrderId) ?? null;
+  const enabledPaymentMethods = settings.paymentMethods.filter((method) => method.enabled);
+
+  // Settings use the same live data as desktop: branches and staff come from the
+  // real business queries, and the draft is seeded from GET /store-ordering/settings.
+  const live = hasApiConfig();
+  const { branches, isLive: branchesLoaded } = useBusinessBranch();
+  const team = useTeam();
+  const [settingsDraft, setSettingsDraft] = useState(settings);
+  useEffect(() => setSettingsDraft(settings), [settings]);
+
+  const branchCards = live
+    ? (branchesLoaded ? branches : []).map((b) => ({ key: b.id ?? b.key, name: b.name, address: b.area }))
+    : [
+        { key: 'wuse-2', name: 'Wuse II Flagship', address: 'Plot 1428 Adetokunbo Ademola Cres, Abuja' },
+        { key: 'maitama', name: 'Maitama Heights', address: 'Plot 14 Amazon Street, Maitama, Abuja' },
+        { key: 'garki', name: 'Garki Branch', address: 'Area 11 Commercial District, Abuja' },
+      ];
+  const staffOptions = live
+    ? (team.data ?? []).map((member) => {
+        const name = [member.firstName, member.lastName].filter(Boolean).join(' ') || member.email || 'Team member';
+        const role = member.roleTag || member.jobTitle || member.role;
+        return { key: member.id, label: role ? `${name} (${role})` : name };
+      })
+    : ['Chef Adebayo (Head Chef)', 'Musa Danladi (Store Manager)', 'Grace Udoh (Front Desk)', 'Ibrahim Bello (Kitchen Lead)'].map(
+        (label) => ({ key: label, label }),
+      );
+  const isBranchActive = (key: string) => (live ? settingsDraft.activeBranches[key] !== false : Boolean(settingsDraft.activeBranches[key]));
+
+  const patchSettingsDraft = (patch: Partial<typeof settingsDraft>) =>
+    setSettingsDraft((prev) => ({ ...prev, ...patch }));
+
+  const handleBranchToggle = (branchKey: string) =>
+    patchSettingsDraft({
+      activeBranches: {
+        ...settingsDraft.activeBranches,
+        [branchKey]: !isBranchActive(branchKey),
+      },
+    });
+
+  const handlePaymentMethodToggle = (methodId: string) =>
+    patchSettingsDraft({
+      paymentMethods: settingsDraft.paymentMethods.map((method) =>
+        method.id === methodId ? { ...method, enabled: !method.enabled } : method,
+      ),
+    });
+
+  const handleSettingsSave = async () => {
+    if (settingsLoading || settingsSaving) return;
+    const result = await updateSettings(settingsDraft);
+    showToast(result.message);
+  };
 
   // Quick Action confirmation
   const [paymentModalOrder, setPaymentModalOrder] = useState<StoreOrder | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'pos-terminal' | 'cash' | 'bank-transfer'>('pos-terminal');
+  const [paymentMethod, setPaymentMethod] = useState('');
   const [paymentRef, setPaymentRef] = useState('');
 
   const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
   const showToast = (msg: string) => {
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     setToast(msg);
-    window.setTimeout(() => setToast(null), 2500);
+    toastTimer.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimer.current = null;
+    }, 2500);
   };
+  useEffect(
+    () => () => {
+      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!lastError) return;
@@ -100,7 +182,7 @@ export function StoreOrderingScreen({
    * detail sheet (where the picker lives) instead of being completed.
    */
   const requireCompleter = (order: StoreOrder) => {
-    if (order.assignedStaff) return true;
+    if (order.assignedStaff || order.assignedStaffId) return true;
     setSelectedOrderId(order.id);
     showToast(
       `Order ${order.orderRef}: assign the person completing this order under "Assigned Staff Member" first.`,
@@ -108,8 +190,7 @@ export function StoreOrderingScreen({
     return false;
   };
 
-  const completedBy = (order: StoreOrder) =>
-    order.statusHistory.find((h) => h.status === 'completed')?.staffName || order.assignedStaff || '';
+  const completedBy = (order: StoreOrder) => completedByLabel(order);
 
   const handleAction = (order: StoreOrder, action: 'accept' | 'prep' | 'ready' | 'pay' | 'collect') => {
     if (action === 'accept') {
@@ -123,7 +204,8 @@ export function StoreOrderingScreen({
       showToast(res.ok ? `Order ${order.id} is ready for pickup.` : res.message);
     } else if (action === 'pay') {
       if (!requireCompleter(order)) return;
-      setPaymentRef(`POS-${Math.floor(10000 + Math.random() * 89999)}`);
+      setPaymentMethod(enabledPaymentMethods[0]?.id ?? '');
+      setPaymentRef('');
       setPaymentModalOrder(order);
     } else if (action === 'collect') {
       if (!requireCompleter(order)) return;
@@ -133,7 +215,7 @@ export function StoreOrderingScreen({
   };
 
   const handleConfirmPayment = () => {
-    if (!paymentModalOrder) return;
+    if (!paymentModalOrder || !paymentMethod) return;
     const res = recordStorePayment(paymentModalOrder.id, paymentMethod, paymentRef);
     showToast(res.message);
     setPaymentModalOrder(null);
@@ -293,7 +375,7 @@ export function StoreOrderingScreen({
                 onClick={() => setStatusFilter(statusFilter === 'completed' ? 'all' : 'completed')}
                 className={`px-3 py-2 rounded-xl border shrink-0 flex items-center gap-2 transition-all ${
                   statusFilter === 'completed'
-                    ? 'bg-on-surface text-surface border-on-surface font-bold shadow-xs'
+                    ? 'bg-on-surface text-inverse-on-surface border-on-surface font-bold shadow-xs'
                     : 'bg-surface-canvas text-text-secondary border-border-subtle'
                 }`}
               >
@@ -456,6 +538,86 @@ export function StoreOrderingScreen({
         {/* Sub-tab: QR Touchpoints */}
         {subTab === 'qr' && (
           <div className="space-y-3">
+            <div className="rounded-2xl bg-surface-canvas border border-border-subtle shadow-xs overflow-hidden">
+              <div className="px-3.5 pt-3.5 pb-2.5 flex items-start gap-2">
+                <Icon name="qr_code_2" className="text-primary text-[20px] shrink-0" />
+                <div className="min-w-0">
+                  <h4 className="font-bold text-text-primary text-[14px]">Primary QR Destinations</h4>
+                  <p className="text-caption text-text-secondary">Stable links that open the live storefront, a category or a product.</p>
+                </div>
+              </div>
+              <div className="flex border-b border-border-subtle px-3.5 gap-1">
+                {(['store', 'category', 'product'] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setPrimaryQrTab(tab)}
+                    className={`px-3 py-2 font-semibold capitalize border-b-2 -mb-px text-[13px] transition-colors ${
+                      primaryQrTab === tab ? 'border-primary text-primary' : 'border-transparent text-text-secondary'
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+              {(() => {
+                const url =
+                  primaryQrTab === 'store'
+                    ? primaryQr.storeUrl
+                    : primaryQrTab === 'category'
+                      ? primaryQr.categoryUrl(selectedCategoryId)
+                      : primaryQr.productUrl(selectedProductId);
+                return (
+                  <div className="p-3.5 flex flex-col gap-3">
+                    {primaryQrTab === 'category' ? (
+                      <select
+                        aria-label="Select category"
+                        value={selectedCategoryId}
+                        onChange={(event) => setSelectedCategoryId(event.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border-subtle text-body-md text-on-surface"
+                      >
+                        {primaryQr.categories.map((category) => (
+                          <option key={category.id} value={category.id}>{category.name}</option>
+                        ))}
+                      </select>
+                    ) : null}
+                    {primaryQrTab === 'product' ? (
+                      <select
+                        aria-label="Select product"
+                        value={selectedProductId}
+                        onChange={(event) => setSelectedProductId(event.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border-subtle text-body-md text-on-surface"
+                      >
+                        {primaryQr.products.map((product) => (
+                          <option key={product.id} value={product.id}>{product.name}</option>
+                        ))}
+                      </select>
+                    ) : null}
+                    <div className="flex flex-col items-center gap-2 rounded-xl bg-white p-3">
+                      {url ? (
+                        <OrderQrArt value={url} alt={`${primaryQrTab} QR code`} size={128} />
+                      ) : (
+                        <p role="status" className="font-caption text-caption text-text-secondary">Loading QR link…</p>
+                      )}
+                      {url ? <p className="w-full break-all text-center font-caption text-caption text-text-secondary">{url}</p> : null}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!url}
+                      onClick={() => {
+                        navigator.clipboard?.writeText(url);
+                        showToast(`${primaryQrTab} QR link copied!`);
+                      }}
+                      className="h-10 w-full rounded-xl border border-border-subtle text-primary font-label-md text-label-md font-semibold disabled:opacity-50 flex items-center justify-center gap-1.5"
+                    >
+                      <Icon name="content_copy" className="text-[16px]" />
+                      Copy Link
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+
             <div className="flex items-center justify-between">
               <span className="font-bold text-text-primary text-[14px]">Physical Touchpoints</span>
               <span className="text-caption text-text-secondary">{qrCodes.length} active</span>
@@ -517,61 +679,163 @@ export function StoreOrderingScreen({
         {/* Sub-tab: Settings */}
         {subTab === 'settings' && (
           <div className="space-y-4 bg-surface-canvas p-4 rounded-2xl border border-border-subtle shadow-xs">
-            <h4 className="font-bold text-text-primary text-[15px]">Store Front Rules</h4>
+            <div className="flex items-center justify-between gap-3">
+              <h4 className="font-bold text-text-primary text-[15px]">Store Front Rules</h4>
+              <button
+                type="button"
+                onClick={handleSettingsSave}
+                disabled={settingsLoading || settingsSaving}
+                className="px-3 py-1.5 rounded-xl bg-primary text-on-primary font-semibold text-caption disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {settingsSaving ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
 
-            <label className="flex items-center justify-between py-2 border-b border-border-subtle cursor-pointer">
-              <span className="text-body-sm font-medium">Accept Store Orders</span>
+            <div className="flex items-center justify-between py-2 border-b border-border-subtle">
+              <div className="flex flex-col">
+                <span className="text-body-sm font-medium">Accept Store Orders</span>
+                <span className="text-[11px] text-text-tertiary">
+                  {settingsDraft.enabled ? 'Store and QR ordering is active' : 'Store and QR ordering is disabled'}
+                </span>
+              </div>
               <input
                 type="checkbox"
-                checked={settings.enabled}
-                onChange={(e) => updateSettings({ enabled: e.target.checked })}
+                checked={settingsDraft.enabled}
+                onChange={(e) => patchSettingsDraft({ enabled: e.target.checked })}
                 className="w-5 h-5 text-primary rounded"
               />
-            </label>
+            </div>
 
-            <label className="flex items-center justify-between py-2 border-b border-border-subtle cursor-pointer">
-              <span className="text-body-sm font-medium">Allow Immediate Pickup</span>
+            <div className="flex items-center justify-between py-2 border-b border-border-subtle">
+              <div className="flex flex-col max-w-[72%]">
+                <span className="text-body-sm font-medium">VEMTAP POS Completion Mode</span>
+                <span className="text-[11px] text-text-tertiary">
+                  {settingsDraft.usePosForCompletion
+                    ? 'Ready orders continue in POS register'
+                    : 'Complete and take payment inside Store Front'}
+                </span>
+              </div>
               <input
                 type="checkbox"
-                checked={settings.immediatePickup}
-                onChange={(e) => updateSettings({ immediatePickup: e.target.checked })}
+                checked={settingsDraft.usePosForCompletion}
+                onChange={(e) => patchSettingsDraft({ usePosForCompletion: e.target.checked })}
                 className="w-5 h-5 text-primary rounded"
               />
-            </label>
+            </div>
 
-            <label className="flex items-center justify-between py-2 border-b border-border-subtle cursor-pointer">
-              <span className="text-body-sm font-medium">Allow Guest Checkout</span>
-              <input
-                type="checkbox"
-                checked={settings.guestOrderingAllowed}
-                onChange={(e) => updateSettings({ guestOrderingAllowed: e.target.checked })}
-                className="w-5 h-5 text-primary rounded"
-              />
-            </label>
+            <div className="p-3 rounded-xl border border-border-subtle bg-surface-subtle space-y-2">
+              <span className="text-caption font-semibold text-text-primary">Accepted Counter Payment Methods</span>
+              {settingsDraft.paymentMethods.map((method) => (
+                <label key={method.id} className="flex items-center justify-between gap-2 cursor-pointer">
+                  <span className="text-body-sm text-text-secondary">{method.label}</span>
+                  <input
+                    type="checkbox"
+                    checked={method.enabled}
+                    onChange={() => handlePaymentMethodToggle(method.id)}
+                    className="w-4 h-4 text-primary rounded"
+                  />
+                </label>
+              ))}
+              {settingsDraft.paymentMethods.length === 0 && (
+                <p className="text-[11px] text-text-secondary">No payment methods are configured for this business yet.</p>
+              )}
+            </div>
 
-            <label className="flex items-center justify-between py-2 border-b border-border-subtle cursor-pointer">
-              <span className="text-body-sm font-medium">Allow Item Substitutions</span>
-              <input
-                type="checkbox"
-                checked={settings.allowSubstitutions}
-                onChange={(e) => updateSettings({ allowSubstitutions: e.target.checked })}
-                className="w-5 h-5 text-primary rounded"
-              />
-            </label>
+            <div className="space-y-2">
+              <span className="text-caption font-semibold text-text-primary">Participating Branches</span>
+              {branchCards.map((branch) => {
+                const isChecked = isBranchActive(branch.key);
+                return (
+                  <label
+                    key={branch.key}
+                    className="flex items-center justify-between gap-3 p-3 rounded-xl border border-border-subtle bg-surface-subtle cursor-pointer"
+                  >
+                    <span className="flex flex-col">
+                      <span className="text-body-sm font-medium text-text-primary">{branch.name}</span>
+                      <span className="text-[11px] text-text-tertiary">{branch.address}</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => handleBranchToggle(branch.key)}
+                      className="w-4 h-4 text-primary rounded"
+                    />
+                  </label>
+                );
+              })}
+              {live && branchesLoaded && branchCards.length === 0 && (
+                <p className="text-[11px] text-text-secondary">Add a branch under Locations to accept store orders.</p>
+              )}
+            </div>
+
+            <div className="space-y-1 border-t border-border-subtle pt-2">
+              {[
+                { key: 'immediatePickup' as const, label: 'Allow Immediate Pickup' },
+                { key: 'scheduledPreOrder' as const, label: 'Allow Pre-orders / Scheduled Pickup' },
+                { key: 'guestOrderingAllowed' as const, label: 'Allow Guest Checkout' },
+                { key: 'acceptOrdersOutsideHours' as const, label: 'Accept Orders After Closing Hours' },
+              ].map((item) => (
+                <label key={item.key} className="flex items-center justify-between py-1.5 cursor-pointer">
+                  <span className="text-body-sm text-text-primary">{item.label}</span>
+                  <input
+                    type="checkbox"
+                    checked={settingsDraft[item.key]}
+                    onChange={(e) => patchSettingsDraft({ [item.key]: e.target.checked })}
+                    className="w-4 h-4 text-primary rounded"
+                  />
+                </label>
+              ))}
+            </div>
 
             <div className="space-y-1 pt-2">
               <label className="text-caption font-semibold text-text-primary">Pickup Directions</label>
               <textarea
                 rows={3}
-                value={settings.pickupInstructions}
-                onChange={(e) => updateSettings({ pickupInstructions: e.target.value })}
+                value={settingsDraft.pickupInstructions}
+                onChange={(e) => patchSettingsDraft({ pickupInstructions: e.target.value })}
                 className="w-full p-2.5 rounded-xl bg-surface-subtle border border-border text-caption"
               />
+              <div className="p-3 rounded-xl bg-surface-subtle text-[11px] text-text-secondary">
+                {settingsDraft.usePosForCompletion
+                  ? 'Customers are told payment is processed in VEMTAP POS when the order is ready.'
+                  : 'Customers are told payment is collected at the store counter upon handover.'}
+              </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-surface-subtle text-[11px] text-text-secondary">
-              Notice: Payment is collected directly at the store counter upon customer handover.
+            <div className="space-y-2 border-t border-border-subtle pt-3">
+              <label htmlFor="mobile-staff-alert-recipient" className="text-caption font-semibold text-text-primary block">
+                Staff Order Alert Recipient
+              </label>
+              <select
+                id="mobile-staff-alert-recipient"
+                value={settingsDraft.notifiedStaff[0] || 'all'}
+                onChange={(e) =>
+                  patchSettingsDraft({
+                    notifiedStaff: e.target.value === 'all' ? ['all'] : [e.target.value],
+                  })
+                }
+                className="w-full p-2.5 rounded-xl bg-surface-subtle border border-border text-body-sm text-text-primary font-medium"
+              >
+                <option value="all">All Staff Members (Storewide Alert)</option>
+                {staffOptions.map((staff) => (
+                  <option key={staff.key} value={staff.key}>
+                    {staff.label}
+                  </option>
+                ))}
+              </select>
+              {live && team.isSuccess && staffOptions.length === 0 && (
+                <p className="text-[11px] text-text-secondary">Invite staff from Team &amp; Access to choose alert recipients.</p>
+              )}
             </div>
+
+            <button
+              type="button"
+              onClick={handleSettingsSave}
+              disabled={settingsLoading || settingsSaving}
+              className="w-full py-2.5 rounded-xl bg-primary text-on-primary font-semibold text-caption disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {settingsSaving ? 'Saving…' : 'Save Changes'}
+            </button>
           </div>
         )}
       </main>
@@ -691,7 +955,12 @@ export function StoreOrderingScreen({
                           <span className="text-text-tertiary font-mono">{hist.timestamp}</span>
                         </div>
                         {hist.note && <span className="text-text-secondary block">{hist.note}</span>}
-                        {hist.staffName && <span className="text-text-tertiary block">By {hist.staffName}</span>}
+                        {hist.staffName && (
+                          <span className="text-text-tertiary block">
+                            By {hist.staffName}
+                            {hist.staffRole ? ` (${hist.staffRole})` : ''}
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -737,19 +1006,27 @@ export function StoreOrderingScreen({
 
             <div className="p-2.5 rounded-lg bg-surface-subtle text-[11px] text-text-secondary">
               <span className="font-semibold text-text-primary">Completed by: </span>
-              {paymentModalOrder.assignedStaff || 'Unassigned'}
+              {completedBy(paymentModalOrder) || 'Unassigned'}
             </div>
 
             <div className="space-y-1">
               <label className="text-[11px] font-semibold text-text-primary">Tender</label>
               <select
                 value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value as any)}
+                onChange={(e) => setPaymentMethod(e.target.value)}
                 className="w-full p-2 rounded-xl bg-surface-subtle border border-border text-body-sm"
               >
-                <option value="pos-terminal">POS Card Terminal</option>
-                <option value="cash">Cash</option>
-                <option value="bank-transfer">Bank Transfer</option>
+                {enabledPaymentMethods.length > 0 ? (
+                  enabledPaymentMethods.map((method) => (
+                    <option key={method.id} value={method.id}>
+                      {method.label}
+                    </option>
+                  ))
+                ) : (
+                  <option value="" disabled>
+                    No payment methods configured
+                  </option>
+                )}
               </select>
             </div>
 
@@ -764,7 +1041,8 @@ export function StoreOrderingScreen({
               <button
                 type="button"
                 onClick={handleConfirmPayment}
-                className="px-4 py-1.5 rounded-xl bg-emerald-600 text-white font-semibold text-caption"
+                disabled={!paymentMethod}
+                className="px-4 py-1.5 rounded-xl bg-emerald-600 text-white font-semibold text-caption disabled:opacity-50"
               >
                 Confirm Payment
               </button>
@@ -799,7 +1077,7 @@ export function StoreOrderingScreen({
 
       {/* Toast Notification */}
       {toast && (
-        <div className="fixed bottom-24 z-50 bg-on-surface text-surface px-4 py-2.5 rounded-xl font-label-md text-caption shadow-xl">
+        <div className="fixed bottom-24 z-50 bg-on-surface text-inverse-on-surface px-4 py-2.5 rounded-xl font-label-md text-caption shadow-xl">
           {toast}
         </div>
       )}

@@ -335,7 +335,7 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim, 
                 onClick={onContact}
                 className="h-11 rounded-xl bg-surface-container-low text-primary font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 active:bg-surface-container"
               >
-                <Icon name="chat" className="text-[18px]" />
+                <Icon name="vemtap-chat-white" className="text-[18px]" />
                 <span>Direct Chat</span>
               </button>
               {directionsUrl ? (
@@ -470,7 +470,7 @@ export function ClaimedDealScreen({ onBack, onContact, onReview, onCancelClaim, 
                 onClick={onContact}
                 className="h-10 rounded-xl bg-surface-container-low text-on-surface font-button-secondary text-button-secondary flex items-center justify-center gap-1.5 active:bg-surface-container"
               >
-                <Icon name="forum" className="text-[18px] text-primary" />
+                <Icon name="vemtap-chat" className="text-[18px] text-primary" />
                 <span>In-App Chat</span>
               </button>
             </div>

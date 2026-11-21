@@ -6,8 +6,11 @@ import { useBusinessLocationLookup } from '../../hooks/business/useBusinessLocat
 import type { BusinessProfileDraft } from './DesktopBusinessOnboardingScreen';
 
 export interface BusinessLocationResult {
+  /** The owner's name for this physical location, not a generated default. */
+  branchName?: string;
   address: string;
   /** Resolved from the GPS fix or the typed address when the API could name it. */
+  district?: string;
   city?: string;
   state?: string;
   latitude?: number;
@@ -32,6 +35,9 @@ export function DesktopBusinessLocationScreen({ draft, onBack, onComplete, onSav
   // Live setup starts empty; the sample address is demo-only.
   const live = hasApiConfig();
   const [address, setAddress] = useState(live ? '' : 'Plot 1428, Adetokunbo Ademola Crescent');
+  // Pre-fill with the business name the owner already typed; it is editable so the
+  // first branch is never forced to a generated "Main Branch" label.
+  const [branchName, setBranchName] = useState(draft.name.trim() || (live ? '' : 'Wuse 2 Flagship'));
   const [street, setStreet] = useState(live ? '' : 'Plot 1428, Adetokunbo Ademola Crescent');
   const [landmark, setLandmark] = useState(live ? '' : 'Opposite Cubana Suites, Ground Floor (Suite 4)');
   const lookup = useBusinessLocationLookup(address);
@@ -268,6 +274,25 @@ export function DesktopBusinessLocationScreen({ draft, onBack, onComplete, onSav
                 <div className="flex flex-col gap-space-2xs">
                   <label
                     className="font-label-md text-label-md text-text-primary font-medium"
+                    htmlFor="branch-name"
+                  >
+                    Branch / Location Name
+                  </label>
+                  <input
+                    id="branch-name"
+                    type="text"
+                    value={branchName}
+                    onChange={(event) => setBranchName(event.target.value)}
+                    placeholder="e.g. Wuse II Branch, Main Store"
+                    className="w-full h-[52px] px-space-md rounded-xl bg-surface-subtle text-text-primary font-body-md text-body-md focus:bg-surface-canvas transition-all outline-none focus:ring-2 focus:ring-primary-container"
+                  />
+                  <p className="font-caption text-caption text-text-tertiary">
+                    This is the name customers see when choosing where to shop.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-space-2xs">
+                  <label
+                    className="font-label-md text-label-md text-text-primary font-medium"
                     htmlFor="street-address"
                   >
                     Street / Building Address
@@ -466,7 +491,9 @@ export function DesktopBusinessLocationScreen({ draft, onBack, onComplete, onSav
               type="button"
               onClick={() =>
                 onComplete({
+                  ...(branchName.trim() ? { branchName: branchName.trim() } : {}),
                   address: [street.trim() || address.trim(), landmark.trim()].filter(Boolean).join(' — '),
+                  ...(lookup.place?.district ? { district: lookup.place.district } : {}),
                   ...(lookup.place?.city ? { city: lookup.place.city } : {}),
                   ...(lookup.place?.state ? { state: lookup.place.state } : {}),
                   ...(lookup.coords ?? {}),

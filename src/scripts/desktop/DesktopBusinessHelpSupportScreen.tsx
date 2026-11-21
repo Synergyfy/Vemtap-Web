@@ -112,7 +112,7 @@ const CHANNELS: {
 }[] = [
   {
     id: 'chat',
-    icon: 'support_agent',
+    icon: 'vemtap-chat',
     iconClass: 'bg-badge-discount-bg text-badge-discount-text',
     title: 'Live merchant chat',
     meta: 'Mon–Sat · 8:00–22:00 WAT',
@@ -121,7 +121,7 @@ const CHANNELS: {
   },
   {
     id: 'whatsapp',
-    icon: 'forum',
+    icon: 'whatsapp',
     iconClass: 'bg-badge-discount-bg text-badge-discount-text',
     title: 'WhatsApp Business',
     meta: '+234 700 VEMTAP',

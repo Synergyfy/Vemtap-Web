@@ -407,7 +407,6 @@ export function DesktopServicesCategoriesDemoScreen({
     { value: 'hide', label: 'Hide from Storefront' },
     { value: 'show', label: 'Show on Storefront' },
     { value: 'addToDeals', label: 'Link with Deals' },
-    { value: 'removeFromDeals', label: 'Remove from Deals' },
     { value: 'delete', label: 'Delete Services' },
   ];
 

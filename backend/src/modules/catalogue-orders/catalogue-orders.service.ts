@@ -259,7 +259,7 @@ export class CatalogueOrderService {
           itemId: newItem.id,
           quantity: itemDto.quantity,
           priceAtOrder: newItem.price,
-          loyaltyPointsAtOrder: newItem.loyaltyPoints,
+          loyaltyPointsAtOrder: newItem.loyaltyPointsValue ?? newItem.loyaltyPoints ?? null,
         });
         orderItems.push(orderItem);
         totalAmount += Number(newItem.price) * itemDto.quantity;
@@ -308,7 +308,7 @@ export class CatalogueOrderService {
           itemId: item.id,
           quantity: itemDto.quantity,
           priceAtOrder: unitPrice,
-          loyaltyPointsAtOrder: item.loyaltyPoints,
+          loyaltyPointsAtOrder: item.loyaltyPointsValue ?? item.loyaltyPoints ?? null,
         });
         orderItems.push(orderItem);
         totalAmount += unitPrice * itemDto.quantity;
@@ -522,18 +522,20 @@ export class CatalogueOrderService {
     });
     if (!order) throw new NotFoundException('Order not found');
 
-    // Record who handled the order. Forward steps of the fulfilment flow always
-    // attribute the order, and any transition *into* completed attributes the
-    // staff member who closed it (staff may complete without marking ready).
+    // Record who handled ordinary app orders. Store orders are different: their
+    // assigned person comes only from the dashboard's explicit assignment, so a
+    // forward status move must never silently attribute them to the signed-in
+    // account before completion.
     if (
-      (order.status === CatalogueOrderStatus.NEW &&
+      !order.source &&
+      ((order.status === CatalogueOrderStatus.NEW &&
         status === CatalogueOrderStatus.PROCESSING) ||
       (order.status === CatalogueOrderStatus.PROCESSING &&
         status === CatalogueOrderStatus.READY) ||
       (order.status === CatalogueOrderStatus.READY &&
         status === CatalogueOrderStatus.COMPLETED) ||
       (status === CatalogueOrderStatus.COMPLETED &&
-        order.status !== CatalogueOrderStatus.COMPLETED)
+        order.status !== CatalogueOrderStatus.COMPLETED))
     ) {
       order.attendedById = staff.id;
     }

@@ -31,7 +31,7 @@ const ACTIVITY_ROWS: AccountRow[] = [
     target: 'my-deals',
   },
   {
-    icon: 'chat',
+    icon: 'vemtap-chat',
     iconClass: 'bg-surface-container-high text-primary-container',
     label: 'Messages',
     badge: { text: '2 New', className: 'bg-primary text-on-primary' },
@@ -40,7 +40,7 @@ const ACTIVITY_ROWS: AccountRow[] = [
   {
     icon: 'receipt_long',
     iconClass: 'bg-surface-container-high text-secondary',
-    label: 'Orders & Bookings',
+    label: 'Orders',
     badge: { text: '1 Pending', className: 'bg-secondary-fixed text-on-secondary-fixed' },
     target: 'orders',
   },

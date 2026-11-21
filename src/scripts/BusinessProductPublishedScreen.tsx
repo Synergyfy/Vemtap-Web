@@ -5,10 +5,12 @@ import { isVariantProduct, getActiveVariants } from './productVariants';
 import type { ProductDraft } from './productDraft';
 import { draftImage, draftImageAlt } from './desktop/draftImage';
 import { UserAvatar } from '../components/ui/UserAvatar';
+import { DealPriceChoiceModal } from './deals/DealPriceChoiceModal';
+import type { DealPriceChoice } from './deals/dealStudioShared';
 
 interface BusinessProductPublishedScreenProps {
   draft: ProductDraft;
-  onMakeDeal: () => void;
+  onMakeDeal: (choice: DealPriceChoice) => void;
   onViewCatalog: () => void;
   onAddAnother: () => void;
 }
@@ -31,6 +33,7 @@ export function BusinessProductPublishedScreen({
   onAddAnother,
 }: BusinessProductPublishedScreenProps) {
   const [status, setStatus] = useState<'live' | 'draft'>('live');
+  const [priceChoiceOpen, setPriceChoiceOpen] = useState(false);
   const isLive = status === 'live';
 
   const activeBranchCount = Object.values(draft.branches).filter(Boolean).length;
@@ -239,7 +242,7 @@ export function BusinessProductPublishedScreen({
             <button
               className="w-full h-[52px] mt-space-2xs rounded-xl bg-primary-container text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-space-xs active:scale-[0.98] transition-all shadow-[0_8px_24px_-4px_rgba(6,108,244,0.30)] hover:bg-primary"
               type="button"
-              onClick={onMakeDeal}
+              onClick={() => setPriceChoiceOpen(true)}
             >
               <span>Make as a Deal 🔥</span>
               <Icon name="arrow_forward" className="text-[20px]" />
@@ -266,6 +269,17 @@ export function BusinessProductPublishedScreen({
           </div>
         </div>
       </div>
+
+      <DealPriceChoiceModal
+        open={priceChoiceOpen}
+        itemName={draft.title}
+        priceLabel={lowPrice > 0 ? formatAmount(lowPrice) : undefined}
+        onClose={() => setPriceChoiceOpen(false)}
+        onChoose={(choice) => {
+          setPriceChoiceOpen(false);
+          onMakeDeal(choice);
+        }}
+      />
     </AppScreen>
   );
 }

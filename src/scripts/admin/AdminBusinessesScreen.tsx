@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { ADMIN_BUSINESSES, type AdminBusiness } from './adminData';
 import { AdminChatModal } from './AdminChatModal';
+import { Icon } from '../../components/ui/Icon';
 
 interface AdminBusinessesScreenProps {
   onNavigate: (path: string) => void;
@@ -162,7 +163,7 @@ export function AdminBusinessesScreen({ onNavigate }: AdminBusinessesScreenProps
               onClick={() => setIsChatOpen(true)}
               className="bg-[#0055c4] hover:bg-[#066cf4] text-white px-3.5 py-1.5 rounded-lg text-[12px] font-semibold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
             >
-              <span className="material-symbols-outlined text-[16px]">forum</span>
+              <Icon name="vemtap-chat-white" className="text-[16px]" />
               <span>Chat with Business</span>
             </button>
 

@@ -515,7 +515,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error,
                       onClick={shareWhatsApp}
                       className="h-10 px-space-sm rounded-lg bg-surface-subtle hover:bg-surface-container text-text-primary font-label-sm text-label-sm flex items-center gap-1.5 transition-colors"
                     >
-                      <Icon name="chat" className="text-[18px] text-[#25D366]" />
+                      <Icon name="whatsapp" className="text-[18px] text-[#25D366]" />
                       <span>WhatsApp</span>
                     </button>
                     <button
@@ -937,7 +937,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error,
                         onClick={openChat}
                         className="flex-1 h-10 rounded-lg bg-surface-subtle hover:bg-surface-container text-text-secondary hover:text-text-primary font-label-sm text-label-sm flex items-center justify-center gap-1.5 transition-colors"
                       >
-                        <Icon name="forum" className="text-[16px] text-primary" />
+                        <Icon name="vemtap-chat" className="text-[16px] text-primary" />
                         <span>In-App Chat</span>
                       </button>
                       {whatsapp && (
@@ -947,7 +947,7 @@ export function DesktopDealDetailScreen({ onNav, onBack, detail, loading, error,
                           target="_blank"
                           rel="noreferrer"
                         >
-                          <Icon name="chat" className="text-[16px] shrink-0" />
+                          <Icon name="whatsapp" className="text-[16px] shrink-0" />
                           <span className="truncate">WhatsApp {dealBusiness}</span>
                         </a>
                       )}

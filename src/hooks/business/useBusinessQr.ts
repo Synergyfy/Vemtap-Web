@@ -30,6 +30,7 @@ export function useBusinessQr() {
     category: business.data?.subcategory?.name ?? business.data?.category?.name ?? null,
     area: [business.data?.address, business.data?.city].filter(Boolean).join(', ') || null,
     cover: business.data?.coverImage ?? null,
+    logo: business.data?.logoUrl ?? null,
     downloadKit: () => kit.mutate(),
     downloading: kit.isPending,
     kitError: kit.isError,

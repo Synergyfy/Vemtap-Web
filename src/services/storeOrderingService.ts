@@ -47,7 +47,7 @@ interface ApiStoreOrder {
   /** Account id behind `assignedStaff` in live mode (`attendedById` on the API). */
   assignedStaffId?: string;
   customerNotes?: string;
-  statusHistory: Array<{ status: StoreOrderStatus; timestamp: string; note?: string; staffName?: string }>;
+  statusHistory: Array<{ status: StoreOrderStatus; timestamp: string; note?: string; staffName?: string; staffRole?: string }>;
   payment: StoreOrder['payment'];
 }
 

@@ -349,6 +349,62 @@ export class ReferralsService {
   }
 
   /**
+   * Look up the referrer's first name, last name, and code.
+   * Resolves personal customer/user codes, business unique codes, and agent referral codes.
+   */
+  async lookup(rawCode: string) {
+    const code = (rawCode || '').trim();
+    if (!code) throw new NotFoundException('Referral code is required');
+
+    // 1. Check personal user referral code
+    const user = await this.userRepository
+      .createQueryBuilder('user')
+      .where('LOWER(user.myReferralCode) = LOWER(:code)', { code })
+      .getOne();
+
+    if (user) {
+      return {
+        code: user.myReferralCode || code.toUpperCase(),
+        firstName: user.firstName || 'Vemtap',
+        lastName: user.lastName || 'Member',
+        fullName: `${user.firstName || 'Vemtap'} ${user.lastName || 'Member'}`.trim(),
+      };
+    }
+
+    // 2. Check business uniqueCode or business referralCode
+    const business = await this.dataSource
+      .getRepository(Business)
+      .createQueryBuilder('biz')
+      .where('LOWER(biz.uniqueCode) = LOWER(:code) OR LOWER(biz.referralCode) = LOWER(:code)', { code })
+      .getOne();
+
+    if (business) {
+      const owner = await this.userRepository.findOne({ where: { id: business.ownerId } });
+      const firstName = owner?.firstName || business.name;
+      const lastName = owner?.lastName || '(Business)';
+      return {
+        code: business.uniqueCode || code.toUpperCase(),
+        firstName,
+        lastName,
+        fullName: owner ? `${owner.firstName} ${owner.lastName}`.trim() : business.name,
+      };
+    }
+
+    // 3. Check affiliate profile
+    const affiliate = await this.affiliatesService.findByReferralCode(code);
+    if (affiliate?.user) {
+      return {
+        code: affiliate.referralCode || code.toUpperCase(),
+        firstName: affiliate.user.firstName || 'Vemtap',
+        lastName: affiliate.user.lastName || 'Partner',
+        fullName: `${affiliate.user.firstName || 'Vemtap'} ${affiliate.user.lastName || 'Partner'}`.trim(),
+      };
+    }
+
+    throw new NotFoundException('Referral code not found');
+  }
+
+  /**
    * Returns the user's personal code, generating one with up to five tries
    * when a concurrent claim grabs the same random code.
    */

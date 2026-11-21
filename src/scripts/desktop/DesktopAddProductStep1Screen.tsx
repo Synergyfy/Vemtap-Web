@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLiveItemEditor } from '../../hooks/business/useLiveItemEditor';
+import { useMyBusiness } from '../../hooks/business/useMyBusiness';
 import { Icon } from '../../components/ui/Icon';
 import { BusinessSetupChrome } from './BusinessSetupChrome';
 import { MerchantShell } from './MerchantShell';
@@ -47,7 +48,7 @@ const CONDITION_OPTIONS: Array<{
   {
     value: 'surplus',
     label: 'Surplus / Flash Batch',
-    hint: 'Limited daily kitchen allotment or end-of-day flash meal at promotional rates.',
+    hint: 'Limited daily inventory batch or promotional items at discounted rates.',
     badge: { text: 'Special', className: 'bg-tertiary-fixed text-on-tertiary-fixed-variant font-semibold' },
   },
 ];
@@ -61,6 +62,7 @@ export function DesktopAddProductStep1Screen({
   onNav,
 }: DesktopAddProductStep1ScreenProps) {
   const Shell = onNav ? MerchantShell : BusinessSetupChrome;
+  const myBusiness = useMyBusiness();
   // Live: real categories, real photo uploads and no sample tags.
   const editor = useLiveItemEditor('product');
   // The chips are the product's tags, kept on the draft so they're saved with it.
@@ -263,7 +265,7 @@ export function DesktopAddProductStep1Screen({
             <section className="bg-surface-canvas rounded-xl shadow-sm p-space-xl flex flex-col gap-space-md">
               <div className="flex items-center gap-space-xs">
                 <Icon name="badge" className="text-primary text-[22px]" />
-                <h2 className="font-heading-sm text-heading-sm text-text-primary">Title &amp; Producer Identification</h2>
+                <h2 className="font-heading-sm text-heading-sm text-text-primary">Product Title</h2>
               </div>
               <div className="flex flex-col gap-space-2xs">
                 <div className="flex items-center justify-between">
@@ -276,7 +278,7 @@ export function DesktopAddProductStep1Screen({
                   <input
                     className="w-full h-[52px] px-space-md rounded-xl bg-surface-canvas text-body-md font-body-md text-text-primary shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-container"
                     id="product-title"
-                    placeholder="e.g. Sizzling Ribeye Steak with Herb Butter"
+                    placeholder="e.g. Premium Leather Bag, Wireless Headphones, or Item Name"
                     type="text"
                     value={draft.title}
                     onChange={(event) => onDraftChange({ title: event.target.value })}
@@ -289,37 +291,8 @@ export function DesktopAddProductStep1Screen({
                   ) : null}
                 </div>
                 <p className="font-caption text-caption text-text-secondary">
-                  Keep it appetizing, concise, and clear for search algorithms and receipt printouts.
+                  Keep it concise and clear for catalog search, storefront display, and receipt printouts.
                 </p>
-              </div>
-              <div className="flex flex-col gap-space-2xs pt-space-xs">
-                <label className="font-label-md text-label-md font-semibold text-text-primary" htmlFor="producer-name">
-                  Kitchen Producer or Brand Line
-                </label>
-                <div className="relative">
-                  <Icon
-                    name="outdoor_grill"
-                    className="absolute left-space-md top-1/2 -translate-y-1/2 text-text-tertiary text-[20px]"
-                  />
-                  <input
-                    className="w-full h-[52px] pl-12 pr-space-md rounded-xl bg-surface-canvas text-body-md font-body-md text-text-primary shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-container"
-                    id="producer-name"
-                    type="text"
-                    value={draft.producer}
-                    onChange={(event) => onDraftChange({ producer: event.target.value })}
-                  />
-                </div>
-                <label className="flex items-center gap-space-xs pt-space-2xs cursor-pointer select-none">
-                  <input
-                    checked={draft.unbranded}
-                    className="w-4 h-4 rounded text-primary focus:ring-primary-container"
-                    type="checkbox"
-                    onChange={(event) => onDraftChange({ unbranded: event.target.checked })}
-                  />
-                  <span className="font-label-sm text-label-sm text-text-secondary">
-                    This item is artisanal, fresh house-prepared, or made in-kitchen
-                  </span>
-                </label>
               </div>
             </section>
 
@@ -520,7 +493,7 @@ export function DesktopAddProductStep1Screen({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-space-xs">
                   <Icon name="description" className="text-primary text-[22px]" />
-                  <h2 className="font-heading-sm text-heading-sm text-text-primary">Culinary Description</h2>
+                  <h2 className="font-heading-sm text-heading-sm text-text-primary">Product Description</h2>
                 </div>
                 <button
                   type="button"
@@ -533,7 +506,7 @@ export function DesktopAddProductStep1Screen({
               <div className="relative">
                 <textarea
                   className="w-full p-space-md rounded-xl bg-surface-canvas text-body-md font-body-md text-text-primary shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-container resize-none"
-                  placeholder="Describe flavors, cooking method, ingredients, and recommended side pairings..."
+                  placeholder="Provide details, specifications, key features, and highlights about this product..."
                   rows={5}
                   value={draft.description}
                   onChange={(event) => onDraftChange({ description: event.target.value })}
@@ -662,7 +635,7 @@ export function DesktopAddProductStep1Screen({
                   <div className="flex items-center justify-between">
                     <span className="font-caption text-caption text-text-secondary flex items-center gap-1">
                       <Icon name="storefront" className="text-[14px] text-primary" />
-                      {draft.producer} • Wuse II
+                      {myBusiness.data?.name || 'Your Business'}
                     </span>
                     <span className="font-caption text-caption text-badge-discount-text font-semibold flex items-center">
                       <Icon name="star" className="text-[14px] text-badge-discount-text" filled />

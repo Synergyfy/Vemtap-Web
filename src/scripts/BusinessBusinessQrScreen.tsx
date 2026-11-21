@@ -187,10 +187,14 @@ export function BusinessBusinessQrScreen({ onBack, onContinue }: { onBack: () =>
               <rect height="6" rx="1" width="6" x="112" y="144" />
             </svg>
             )}
-            <div className="absolute inset-0 m-auto w-12 h-12 rounded-xl bg-surface-canvas shadow-lg flex items-center justify-center p-1">
-              <div className="w-full h-full bg-primary-container rounded-lg flex items-center justify-center">
-                <Icon name="electric_bolt" className="text-on-primary text-[24px]" />
-              </div>
+            <div className="absolute inset-0 m-auto w-12 h-12 rounded-xl bg-surface-canvas shadow-lg flex items-center justify-center p-1 overflow-hidden border border-border-subtle">
+              {qr.logo ? (
+                <img src={qr.logo} alt={businessName} className="w-full h-full object-cover rounded-lg" />
+              ) : (
+                <div className="w-full h-full bg-primary-container rounded-lg flex items-center justify-center font-bold text-on-primary text-[18px]">
+                  {businessName.charAt(0).toUpperCase() || 'V'}
+                </div>
+              )}
             </div>
           </div>
           <div className="mt-space-md text-center flex flex-col items-center w-full">
@@ -354,7 +358,7 @@ export function BusinessBusinessQrScreen({ onBack, onContinue }: { onBack: () =>
             type="button"
             onClick={() => showToast('Share link copied — paste in WhatsApp or socials')}
           >
-            <Icon name="share" className="text-[18px] text-primary" />
+            <Icon name="whatsapp" className="text-[18px] text-badge-discount-text" />
             <span>Share digital link via WhatsApp or socials</span>
           </button>
         </div>

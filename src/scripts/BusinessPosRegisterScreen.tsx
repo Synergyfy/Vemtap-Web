@@ -6,8 +6,9 @@ import { cartCount, cartTotals, type PosCartLine } from './posCartData';
 import { PosOfflineBar } from '../components/ui/PosOfflineBar';
 import { hasApiConfig } from '../services/api/client';
 import { apiErrorMessage } from '../services/errorMessages';
-import { useBusinessBranch } from '../context/BusinessBranchContext';
 import { isCustomLine, useHeldTicket, useLivePos, usePosCartMirror, usePosProducts } from './posLive';
+import { useRegisterHistory } from '../hooks/business/usePos';
+import { drawerDateTime, drawerMoney } from './posDrawerFormat';
 import { UserAvatar } from '../components/ui/UserAvatar';
 
 interface BusinessPosRegisterScreenProps {
@@ -65,13 +66,95 @@ export function BusinessPosRegisterScreen({
   };
 
   const live = hasApiConfig();
-  const { branch } = useBusinessBranch();
   const pos = useLivePos();
   const catalogue = usePosProducts();
   const heldTicket = useHeldTicket();
   usePosCartMirror(cart);
-  const allProducts = live ? catalogue.mobile : URBAN_PRODUCTS;
-  const categories = live ? catalogue.categories : CATEGORIES;
+
+  const [catalogTab] = useState<'product' | 'service'>('product');
+
+  const liveFloat = Number(pos.zReport?.openingCash ?? 0);
+  const liveExpected = Number(pos.zReport?.expectedCash ?? liveFloat);
+  const expectedCashInDrawer = live
+    ? (pos.isOpen ? liveExpected : 0)
+    : 142400;
+
+  const drawerHistory = useRegisterHistory(live);
+  const [drawerModalOpen, setDrawerModalOpen] = useState(false);
+  const [floatInput, setFloatInput] = useState(live ? '' : '50,000');
+  const [closingCashInput, setClosingCashInput] = useState('');
+  const [openingBusy, setOpeningBusy] = useState(false);
+  const [closingBusy, setClosingBusy] = useState(false);
+  const promptedRef = useRef(false);
+
+  useEffect(() => {
+    // If live and register has not been opened yet, prompt user immediately upon opening the register
+    if (live && pos.tillsLoaded && !pos.isOpen && !promptedRef.current) {
+      promptedRef.current = true;
+      setDrawerModalOpen(true);
+    }
+  }, [live, pos.tillsLoaded, pos.isOpen]);
+
+  const handleConfirmFloat = async () => {
+    const floatAmount = Number(floatInput.replace(/[^\d.]/g, '')) || 0;
+    if (!live) {
+      setDrawerModalOpen(false);
+      showToast(`Shift started! Opening float: ₦${(floatAmount || 50000).toLocaleString()}`);
+      return;
+    }
+    setOpeningBusy(true);
+    try {
+      await pos.openOnTill(undefined, floatAmount);
+      setDrawerModalOpen(false);
+      showToast(`Register opened! Float set to ₦${floatAmount.toLocaleString()}`);
+    } catch (err) {
+      showToast(apiErrorMessage(err, 'Could not open cash drawer.'));
+    } finally {
+      setOpeningBusy(false);
+    }
+  };
+
+  const handleRecordClosing = async () => {
+    const counted = Number(closingCashInput.replace(/[^\d.]/g, '')) || expectedCashInDrawer;
+    setClosingBusy(true);
+    try {
+      await pos.mutations.closeRegister.mutateAsync({ countedCash: counted });
+      setDrawerModalOpen(false);
+      setClosingCashInput('');
+      showToast(`Drawer closed and counted at ${drawerMoney(counted)}.`);
+    } catch (err) {
+      showToast(apiErrorMessage(err, 'Could not record the closing drawer count.'));
+    } finally {
+      setClosingBusy(false);
+    }
+  };
+
+  // Product-only rollout: never switch to the service catalogue.
+  // useEffect(() => {
+  //   if (live && !catalogue.hasProducts && catalogue.hasServices) {
+  //     setCatalogTab('service');
+  //   }
+  // }, [live, catalogue.hasProducts, catalogue.hasServices]);
+
+  // Product-only rollout: never show or fall back to the service catalogue.
+  const showBothTabs = false;
+
+  const currentMobileList = useMemo(() => {
+    if (!live) return URBAN_PRODUCTS;
+    if (showBothTabs) {
+      return catalogTab === 'service' ? catalogue.servicesMobile : catalogue.productsMobile;
+    }
+    return catalogue.productsMobile.length > 0 ? catalogue.productsMobile : catalogue.mobile;
+  }, [live, showBothTabs, catalogTab, catalogue.servicesMobile, catalogue.productsMobile, catalogue.mobile, catalogue.hasProducts, catalogue.hasServices]);
+
+  const allProducts = currentMobileList;
+  const categories = useMemo(() => {
+    if (!live) return CATEGORIES;
+    if (showBothTabs) {
+      return catalogTab === 'service' ? catalogue.serviceCategories : catalogue.productCategories;
+    }
+    return catalogue.productCategories.length > 0 ? catalogue.productCategories : catalogue.categories;
+  }, [live, showBothTabs, catalogTab, catalogue.serviceCategories, catalogue.productCategories, catalogue.categories, catalogue.hasProducts, catalogue.hasServices]);
 
   useEffect(() => {
     if (live && catalogue.error) showToast(apiErrorMessage(catalogue.error, 'Could not load your catalogue.'));
@@ -228,7 +311,7 @@ export function BusinessPosRegisterScreen({
               Register Catalog
             </span>
             <span className="font-caption text-caption text-text-secondary leading-none">
-              {live ? `${pos.isOpen ? pos.tillName : 'No till open'} · ${branch.shortName}` : 'Register #02 · Wuse II'}
+              {live ? (pos.isOpen ? pos.tillName : 'No register open') : 'Register #02'}
             </span>
           </div>
           <div className="flex items-center gap-space-2xs shrink-0">
@@ -252,6 +335,32 @@ export function BusinessPosRegisterScreen({
               <UserAvatar textClassName="text-on-primary text-[13px]" />
             </div>
           </div>
+        </div>
+
+        {/* Cash in Drawer Strip */}
+        <div className="px-margin pb-2 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setDrawerModalOpen(true)}
+            className={`flex-1 py-1 px-2.5 rounded-lg flex items-center justify-between text-[12px] font-semibold transition-colors ${
+              (live ? pos.isOpen : true)
+                ? 'bg-surface-container text-text-primary hover:bg-surface-container-high'
+                : 'bg-amber-100 text-amber-900 border border-amber-300 animate-pulse'
+            }`}
+          >
+            <div className="flex items-center gap-1.5">
+              <Icon name="payments" className="text-primary text-[16px]" />
+              <span>Cash in Drawer:</span>
+              <strong className="text-text-primary">
+                ₦{(live ? (pos.isOpen ? expectedCashInDrawer : 0) : expectedCashInDrawer).toLocaleString()}
+              </strong>
+            </div>
+            {live && !pos.isOpen && (
+              <span className="text-[10px] font-bold text-amber-800 bg-amber-200 px-1.5 py-0.5 rounded">
+                Set Float
+              </span>
+            )}
+          </button>
         </div>
 
         {/* Search + Barcode & QR code scanner */}
@@ -321,6 +430,43 @@ export function BusinessPosRegisterScreen({
             <Icon name="pin" className="text-primary text-[18px]" />
           </button>
         </div>
+
+        {/* Product-only rollout: the product/service switcher is hidden.
+        {showBothTabs && (
+          <div className="px-margin pb-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setCatalogTab('product');
+                setCategory('all');
+              }}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-label-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${
+                catalogTab === 'product'
+                  ? 'bg-primary text-on-primary shadow-xs'
+                  : 'bg-surface-container text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <Icon name="inventory_2" className="text-[16px]" />
+              <span>Products ({catalogue.productsMobile.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCatalogTab('service');
+                setCategory('all');
+              }}
+              className={`flex-1 py-1.5 px-3 rounded-lg text-label-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${
+                catalogTab === 'service'
+                  ? 'bg-primary text-on-primary shadow-xs'
+                  : 'bg-surface-container text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <Icon name="design_services" className="text-[16px]" />
+              <span>Services ({catalogue.servicesMobile.length})</span>
+            </button>
+          </div>
+        )}
+        */}
 
         {/* Category pills */}
         <div className="px-margin pb-space-xs flex gap-space-2xs overflow-x-auto no-scrollbar">
@@ -880,6 +1026,186 @@ export function BusinessPosRegisterScreen({
           })}
         </div>
       </nav>
+
+      {/* Mobile Cash Drawer Float Modal */}
+      {drawerModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-sm bg-surface-canvas rounded-2xl p-5 shadow-2xl border border-border-subtle flex flex-col gap-3">
+            <div className="flex items-center justify-between pb-2 border-b border-border-subtle">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-surface-tint-blue text-primary flex items-center justify-center">
+                  <Icon name="point_of_sale" className="text-[20px]" />
+                </div>
+                <div>
+                  <h3 className="font-heading-sm text-[15px] font-bold text-text-primary">
+                    {live ? (pos.isOpen ? 'Cash Drawer Details' : 'Set Cash Drawer Float') : 'Cash Drawer Details'}
+                  </h3>
+                  <span className="font-caption text-[11px] text-text-secondary">
+                    {live ? (pos.isOpen ? `${pos.tillName} · Shift Active` : 'Count physical cash before selling') : 'Shift #0842 · Morning'}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDrawerModalOpen(false)}
+                className="w-7 h-7 rounded-full flex items-center justify-center text-text-secondary hover:bg-surface-container"
+              >
+                <Icon name="close" className="text-[18px]" />
+              </button>
+            </div>
+
+            {pos.isOpen || !live ? (
+              <div className="p-3 rounded-xl bg-surface-container-low border border-border-subtle flex items-center justify-between text-[12px]">
+                <div className="flex items-center gap-1.5">
+                  <Icon name="payments" className="text-primary text-[18px]" />
+                  <span className="text-text-secondary">Current Money in Drawer:</span>
+                </div>
+                <strong className="text-text-primary font-bold">
+                  ₦{expectedCashInDrawer.toLocaleString()}
+                </strong>
+              </div>
+            ) : (
+              <div className="p-3 rounded-xl bg-surface-tint-blue border border-primary/20 text-[11px] text-primary space-y-0.5">
+                <p className="font-semibold flex items-center gap-1 text-[12px]">
+                  <Icon name="info" className="text-[15px]" />
+                  <span>Initial Cash Drawer Float</span>
+                </p>
+                <p className="text-text-secondary leading-tight">
+                  The cash drawer float has not been set. Count the physical cash in your drawer and enter your starting float before ringing up sales.
+                </p>
+              </div>
+            )}
+
+            {live && pos.isOpen && (
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div className="p-2 rounded-xl bg-surface-subtle border border-border-subtle">
+                  <span className="block text-text-secondary">Recorded by</span>
+                  <strong className="text-text-primary">{pos.cashierName || 'Signed-in cashier'}</strong>
+                </div>
+                <div className="p-2 rounded-xl bg-surface-subtle border border-border-subtle">
+                  <span className="block text-text-secondary">Opened at</span>
+                  <strong className="text-text-primary">{drawerDateTime(pos.session?.openedAt)}</strong>
+                </div>
+              </div>
+            )}
+
+            {live && (
+              <div className="rounded-xl border border-border-subtle overflow-hidden">
+                <div className="px-2.5 py-1.5 bg-surface-container-low flex items-center justify-between">
+                  <span className="font-semibold text-text-primary">Drawer records</span>
+                  <span className="text-[10px] text-text-secondary">Newest first</span>
+                </div>
+                <div className="max-h-32 overflow-y-auto divide-y divide-border-subtle">
+                  {drawerHistory.data?.length ? (
+                    drawerHistory.data.map((record) => (
+                      <div key={record.id} className="px-2.5 py-1.5 flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="block text-[11px] text-text-primary font-medium">
+                            {record.cashierName} · {drawerDateTime(record.openedAt)}
+                          </span>
+                          <span className="block text-[10px] text-text-secondary">
+                            Opened {drawerMoney(record.openingCash)} · Closed {record.countedCash != null ? drawerMoney(record.countedCash) : 'Not counted'}
+                          </span>
+                        </div>
+                        <span className={`text-[10px] font-semibold ${record.status === 'open' ? 'text-primary' : 'text-text-secondary'}`}>
+                          {record.status === 'open' ? 'Open' : 'Closed'}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="px-2.5 py-2 text-[11px] text-text-secondary">
+                      {drawerHistory.isLoading ? 'Loading drawer records…' : 'No drawer records yet.'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {(!pos.isOpen && live) && (
+              <div className="flex flex-col gap-1.5">
+                <label className="font-caption text-[11px] font-semibold text-text-primary">
+                  Starting Cash Drawer Float (₦)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-[14px] font-bold text-text-secondary">₦</span>
+                  <input
+                    type="text"
+                    value={floatInput}
+                    onChange={(e) => setFloatInput(e.target.value)}
+                    placeholder="0"
+                    autoFocus
+                    className="w-full h-10 pl-7 pr-3 rounded-xl border border-border-subtle text-[14px] font-bold bg-surface-subtle text-text-primary focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <p className="font-caption text-[10px] text-text-tertiary">
+                  Verify currency notes and coins physically inside your till.
+                </p>
+              </div>
+            )}
+
+            {(pos.isOpen && live) && (
+              <div className="flex flex-col gap-1.5">
+                <label className="font-caption text-[11px] font-semibold text-text-primary">
+                  Closing Cash Count (₦)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-[14px] font-bold text-text-secondary">₦</span>
+                  <input
+                    type="text"
+                    value={closingCashInput}
+                    onChange={(e) => setClosingCashInput(e.target.value)}
+                    placeholder={expectedCashInDrawer.toLocaleString()}
+                    className="w-full h-10 pl-7 pr-3 rounded-xl border border-border-subtle text-[14px] font-bold bg-surface-subtle text-text-primary focus:outline-none focus:border-primary"
+                  />
+                </div>
+                <p className="font-caption text-[10px] text-text-tertiary">
+                  Count the drawer before closing. The count, recorder and time are saved.
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setDrawerModalOpen(false)}
+                className="h-10 rounded-xl bg-surface-container text-text-secondary text-[12px] font-semibold"
+              >
+                Close
+              </button>
+              {(!pos.isOpen && live) ? (
+                <button
+                  type="button"
+                  onClick={() => void handleConfirmFloat()}
+                  disabled={openingBusy}
+                  className="h-10 rounded-xl bg-primary text-on-primary text-[12px] font-semibold flex items-center justify-center gap-1 shadow-sm disabled:opacity-50"
+                >
+                  <Icon name="check" className="text-[16px]" />
+                  <span>{openingBusy ? 'Opening…' : 'Confirm & Open'}</span>
+                </button>
+              ) : pos.isOpen && live ? (
+                <button
+                  type="button"
+                  onClick={() => void handleRecordClosing()}
+                  disabled={closingBusy}
+                  className="h-10 rounded-xl bg-primary text-on-primary text-[12px] font-semibold flex items-center justify-center gap-1 shadow-sm disabled:opacity-50"
+                >
+                  <Icon name="check" className="text-[16px]" />
+                  <span>{closingBusy ? 'Saving…' : 'Record Closing Count'}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setDrawerModalOpen(false)}
+                  className="h-10 rounded-xl bg-primary text-on-primary text-[12px] font-semibold flex items-center justify-center gap-1 shadow-sm"
+                >
+                  <Icon name="check" className="text-[16px]" />
+                  <span>Done</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div className="fixed bottom-44 left-1/2 -translate-x-1/2 w-full max-w-[430px] px-margin z-40 pointer-events-none">

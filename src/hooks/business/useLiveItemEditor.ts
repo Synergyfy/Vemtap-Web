@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { hasApiConfig } from '../../services/api/client';
 import { categoriesService, type CatalogueCategory, type CategoryDetails } from '../../services/categoriesService';
-import { pickAndUploadImage } from '../../services/uploadService';
+import { pickImage, uploadImage } from '../../services/uploadService';
 import { useCatalogueCategories } from './useCatalogueCategories';
 import { categoriesKeys } from './useCatalogueCategories';
 import type { CentralCategory } from '../../scripts/catalogueData';
@@ -22,6 +22,23 @@ const toCentral = (category: CatalogueCategory, type: 'product' | 'service'): Ce
   stats: { scans: 0, uniqueScans: 0, ordersCount: 0, unitsOrdered: 0, totalRevenue: 0 },
 });
 
+const uploadImageSafe = async (
+  file: File,
+  setUploadError: (message: string | null) => void,
+  setUploading: (busy: boolean) => void,
+): Promise<string | null> => {
+  setUploadError(null);
+  setUploading(true);
+  try {
+    return await uploadImage(file);
+  } catch (error) {
+    setUploadError(error instanceof Error ? error.message : 'Upload failed. Please try again.');
+    return null;
+  } finally {
+    setUploading(false);
+  }
+};
+
 /**
  * Live add-item editors: the business's real categories (created through the
  * API when added inline) and photo uploads. Demo mode keeps the sample data.
@@ -29,7 +46,7 @@ const toCentral = (category: CatalogueCategory, type: 'product' | 'service'): Ce
 export function useLiveItemEditor(type: 'product' | 'service') {
   const live = hasApiConfig();
   const queryClient = useQueryClient();
-  const categories = useCatalogueCategories();
+  const categories = useCatalogueCategories(type);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
@@ -46,18 +63,12 @@ export function useLiveItemEditor(type: 'product' | 'service') {
     uploading,
     uploadError,
     clearUploadError: () => setUploadError(null),
+    /** Uploads an already-picked (and optionally cropped) image. */
+    uploadFile: (file: File) => uploadImageSafe(file, setUploadError, setUploading),
     /** Picks an image and uploads it; resolves with its URL, or null when cancelled or failed. */
     uploadPhoto: async (): Promise<string | null> => {
-      setUploadError(null);
-      setUploading(true);
-      try {
-        return await pickAndUploadImage();
-      } catch (error) {
-        setUploadError(error instanceof Error ? error.message : 'Upload failed. Please try again.');
-        return null;
-      } finally {
-        setUploading(false);
-      }
+      const file = await pickImage();
+      return file ? uploadImageSafe(file, setUploadError, setUploading) : null;
     },
   };
 }

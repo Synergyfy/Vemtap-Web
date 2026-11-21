@@ -403,7 +403,7 @@ export function DesktopCustomerProfileScreen({ onNav, onBack, customerId }: Desk
               className="h-10 px-space-lg rounded-lg bg-primary hover:bg-primary-container text-on-primary shadow-md hover:shadow-lg transition-all flex items-center gap-space-2xs font-button-primary text-button-primary"
               onClick={() => onNav('messages')}
             >
-              <Icon name="chat_bubble" className="text-[18px]" />
+              <Icon name="vemtap-chat-white" className="text-[18px]" />
               <span>Start In-App Chat</span>
             </button>
             <button

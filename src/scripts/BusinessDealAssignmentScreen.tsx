@@ -558,7 +558,7 @@ export function BusinessDealAssignmentScreen({ dealGroupId, onBack }: BusinessDe
                   <div className="flex items-center gap-space-xs min-w-0">
                     <Icon name="handyman" className="text-tertiary text-[18px] shrink-0" />
                     <span className="font-caption text-caption text-text-secondary truncate">
-                      Kitchen maintenance until next month
+                      Facility maintenance until next month
                     </span>
                   </div>
                   <span className="font-caption text-caption text-text-tertiary shrink-0">Deal Paused</span>

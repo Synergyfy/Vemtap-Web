@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AppScreen } from '../components/ui/AppScreen';
 import { Icon } from '../components/ui/Icon';
 import { Logo } from '../components/ui/Logo';
-import { findBusinessBySlug } from './businessData';
-import { registerCustomerViaInvite, type InviteRegistrationResult } from './customerInviteService';
+import { lookupCustomerInvite, registerCustomerViaInvite, type InviteRegistrationResult } from './customerInviteService';
 
 interface CustomerInviteJoinScreenProps {
   /** Business slug parsed from /join/{slug} by the router. */
@@ -19,13 +18,14 @@ const inputClass =
 
 /**
  * Public invite registration page — reached from a customer invite link
- * (/join/{business-slug}?invite=TOKEN). Works signed-out. Frontend-only mock:
- * nothing is persisted and no email is sent; see customerInviteService.ts for
- * the backend integration points.
+ * (/join/{business-slug}?invite=TOKEN). Works signed-out.
+ * When an API is configured, the token is validated via
+ * `GET /public/customer-invites/:token` and registration hits the live endpoint.
  */
 export function CustomerInviteJoinScreen({ businessSlug, inviteToken }: CustomerInviteJoinScreenProps) {
-  const business = findBusinessBySlug(businessSlug);
-  const linkValid = Boolean(business && inviteToken);
+  const [resolving, setResolving] = useState(true);
+  const [linkValid, setLinkValid] = useState(false);
+  const [businessName, setBusinessName] = useState('');
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -39,6 +39,31 @@ export function CustomerInviteJoinScreen({ businessSlug, inviteToken }: Customer
   useEffect(() => {
     window.scrollTo(0, 0);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setResolving(true);
+    lookupCustomerInvite(businessSlug, inviteToken)
+      .then((lookup) => {
+        if (cancelled) return;
+        if (lookup && lookup.valid) {
+          setLinkValid(true);
+          setBusinessName(lookup.businessName || 'this business');
+        } else {
+          setLinkValid(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLinkValid(false);
+      })
+      .finally(() => {
+        if (!cancelled) setResolving(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [businessSlug, inviteToken]);
 
   useEffect(() => {
     if (focusEmail) {
@@ -97,6 +122,25 @@ export function CustomerInviteJoinScreen({ businessSlug, inviteToken }: Customer
     </div>
   );
 
+  /* ── Loading verification ──────────────────────────────────────────────── */
+  if (resolving) {
+    return (
+      <AppScreen>
+        <div className="flex-1 flex flex-col items-center justify-center px-margin pb-24">
+          <div className="w-full max-w-[440px] bg-surface-canvas rounded-2xl shadow-sm border border-border-subtle p-space-lg flex flex-col items-center gap-space-sm text-center">
+            <span className="w-14 h-14 rounded-2xl bg-surface-subtle flex items-center justify-center text-primary">
+              <Icon name="progress_activity" className="text-[28px] animate-spin" />
+            </span>
+            <h1 className="font-heading-md text-heading-md text-on-surface">Verifying Invite Link…</h1>
+            <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
+              Checking invitation with the business. One moment please.
+            </p>
+          </div>
+        </div>
+      </AppScreen>
+    );
+  }
+
   /* ── Invalid / incomplete link ─────────────────────────────────────────── */
   if (!linkValid) {
     return (
@@ -116,9 +160,6 @@ export function CustomerInviteJoinScreen({ businessSlug, inviteToken }: Customer
     );
   }
 
-  const businessName = business!.name;
-
-
   /* ── Success: email provided ───────────────────────────────────────────── */
   if (result?.outcome === 'email-invite-pending') {
     return (
@@ -135,9 +176,6 @@ export function CustomerInviteJoinScreen({ businessSlug, inviteToken }: Customer
               {businessName} has received your details. We&apos;ll send an email invitation to{' '}
               <span className="font-semibold text-on-surface">{email.trim()}</span> so you can finish setting up your
               account and access your VEMTAP customer dashboard.
-            </p>
-            <p className="font-caption text-caption text-text-tertiary leading-relaxed">
-              Preview state — no email is sent until the backend invite service is connected.
             </p>
             <button
               type="button"
@@ -298,8 +336,7 @@ export function CustomerInviteJoinScreen({ businessSlug, inviteToken }: Customer
               )}
             </button>
             <p className="font-caption text-caption text-text-tertiary text-center leading-relaxed">
-              By continuing you agree to share these details with {businessName}. This is a preview — nothing is
-              submitted until the backend invite service is connected.
+              By continuing you agree to share these details with {businessName} to receive notifications and offers.
             </p>
           </form>
         </div>

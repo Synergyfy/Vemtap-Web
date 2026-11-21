@@ -134,9 +134,9 @@ export class CatalogueService {
     return this.categoryRepository.remove(category);
   }
 
-  async findAllCategories(businessId: string) {
+  async findAllCategories(businessId: string, kind?: 'product' | 'service') {
     return this.categoryRepository.find({
-      where: { businessId },
+      where: kind ? { businessId, kind } : { businessId },
       order: { sortOrder: 'ASC', name: 'ASC' },
     });
   }

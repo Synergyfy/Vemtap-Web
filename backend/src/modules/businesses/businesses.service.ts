@@ -81,6 +81,7 @@ export class BusinessesService {
       longitude?: number;
       whatsappNumber?: string;
       officialEmail?: string;
+      branchName?: string;
       engagement?: Record<string, any>;
     },
   ): Promise<Business> {
@@ -112,6 +113,7 @@ export class BusinessesService {
       whatsappNumber,
       officialEmail,
       phone,
+      branchName,
       engagement,
       ...businessBaseData
     } = businessData;
@@ -132,11 +134,14 @@ export class BusinessesService {
     } as Partial<Business>);
     const savedBusiness = await this.businessesRepository.save(business);
 
-    // Automatically create Main Branch
+    // The first branch takes the owner's chosen name (or the business name)
+    // instead of a generated "Main Branch" label.
+    const mainBranchName =
+      branchName?.trim() || savedBusiness.name.trim() || 'Main Branch';
     const mainBranchUsername =
-      await this.generateUniqueBranchUsername('Main Branch');
+      await this.generateUniqueBranchUsername(mainBranchName);
     const mainBranch = this.branchRepository.create({
-      name: 'Main Branch',
+      name: mainBranchName,
       username: mainBranchUsername,
       businessId: savedBusiness.id,
       isMainBranch: true,
@@ -378,9 +383,23 @@ export class BusinessesService {
       (updateBusinessDto as any).socials = existingSocials;
     }
 
+    // Location fields belong on the main branch as well as the business. Capture
+    // them before stripping the aliases so TypeORM never sees unknown columns.
+    const branchUpdate = {
+      name: updateBusinessDto.branchName?.trim() || undefined,
+      address: updateBusinessDto.address,
+      district: updateBusinessDto.district,
+      city: updateBusinessDto.city,
+      state: updateBusinessDto.state,
+      latitude: updateBusinessDto.latitude,
+      longitude: updateBusinessDto.longitude,
+    };
+
     // Clean up alias fields before assign to avoid TypeORM warnings
     delete (updateBusinessDto as any).about;
     delete (updateBusinessDto as any).businessHours;
+    delete (updateBusinessDto as any).branchName;
+    delete (updateBusinessDto as any).district;
     for (const field of socialFields) {
       delete (updateBusinessDto as any)[field];
     }
@@ -407,18 +426,16 @@ export class BusinessesService {
     Object.assign(business, updateBusinessDto);
     const saved = await this.businessesRepository.save(business);
 
-    if (
-      updateBusinessDto.latitude !== undefined ||
-      updateBusinessDto.longitude !== undefined
-    ) {
+    if (Object.values(branchUpdate).some((value) => value !== undefined)) {
       const mainBranch = await this.findMainBranch(id);
       if (mainBranch) {
-        if (updateBusinessDto.latitude !== undefined) {
-          mainBranch.latitude = updateBusinessDto.latitude;
-        }
-        if (updateBusinessDto.longitude !== undefined) {
-          mainBranch.longitude = updateBusinessDto.longitude;
-        }
+        if (branchUpdate.name) mainBranch.name = branchUpdate.name;
+        if (branchUpdate.address !== undefined) mainBranch.address = branchUpdate.address;
+        if (branchUpdate.district !== undefined) mainBranch.district = branchUpdate.district;
+        if (branchUpdate.city !== undefined) mainBranch.city = branchUpdate.city;
+        if (branchUpdate.state !== undefined) mainBranch.state = branchUpdate.state;
+        if (branchUpdate.latitude !== undefined) mainBranch.latitude = branchUpdate.latitude;
+        if (branchUpdate.longitude !== undefined) mainBranch.longitude = branchUpdate.longitude;
         await this.branchRepository.save(mainBranch);
       }
     }

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useIsDesktop } from '../../hooks/useIsDesktop';
 import { normaliseReferralCode, validateReferralCode } from '../../scripts/referralData';
+import { referralsService, type ReferrerInfo } from '../../services/referralsService';
 import { DesktopModal, ModalCloseButton } from '../desktop/DesktopModal';
 import { SheetShell } from '../sheets/SheetShell';
 import { Icon } from '../ui/Icon';
@@ -31,6 +32,8 @@ function ReferralConfirmBody({
   onCancel,
 }: Pick<ReferralConfirmSheetProps, 'initialCode' | 'ownCode' | 'onConfirm' | 'onSkip' | 'onCancel'>) {
   const [draft, setDraft] = useState(initialCode);
+  const [referrer, setReferrer] = useState<ReferrerInfo | null>(null);
+  const [loadingReferrer, setLoadingReferrer] = useState(false);
 
   const result = validateReferralCode(draft);
   const isOwn = Boolean(ownCode) && result.ok && result.code === normaliseReferralCode(ownCode ?? '');
@@ -46,6 +49,32 @@ function ReferralConfirmBody({
         : (result.message ?? INVALID_MESSAGE);
   const showError = hasInput && !valid;
   const preview = hasInput ? normaliseReferralCode(draft) : '';
+
+  useEffect(() => {
+    if (!valid || !preview) {
+      setReferrer(null);
+      setLoadingReferrer(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingReferrer(true);
+    referralsService
+      .lookup(preview)
+      .then((info) => {
+        if (!cancelled) {
+          setReferrer(info);
+          setLoadingReferrer(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLoadingReferrer(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [preview, valid]);
 
   return (
     <div className="flex flex-col">
@@ -63,20 +92,55 @@ function ReferralConfirmBody({
         {/* Who referred this account */}
         <div className="flex flex-col gap-space-2xs">
           <span className="font-caption text-caption text-text-secondary">You’re referred by</span>
-          <div className="flex flex-wrap items-center gap-space-xs">
-            <span
-              className={`inline-flex items-center gap-space-xs px-space-sm py-space-xs rounded-xl font-heading-md text-heading-md font-bold tracking-[0.08em] uppercase ${
-                preview ? 'bg-surface-subtle text-text-primary' : 'bg-surface-container-low text-text-tertiary'
-              }`}
-            >
-              <Icon name="confirmation_number" className="text-[18px] text-text-tertiary" />
-              {preview || '—'}
-            </span>
-            {preview && (
-              <span className="inline-flex items-center gap-1 px-space-xs py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
-                <Icon name="visibility" className="text-[12px]" />
-                <span>Preview</span>
+          <div className="flex flex-col gap-2 p-3.5 rounded-2xl bg-surface-subtle border border-border-subtle">
+            {/* Referral Code */}
+            <div className="flex items-center justify-between">
+              <span
+                className={`inline-flex items-center gap-space-xs font-heading-md text-heading-md font-bold tracking-[0.08em] uppercase ${
+                  preview ? 'text-text-primary' : 'text-text-tertiary'
+                }`}
+              >
+                <Icon name="confirmation_number" className="text-[20px] text-primary" />
+                {preview || '—'}
               </span>
+              {preview && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-badge-discount-bg text-badge-discount-text font-caption text-caption font-semibold">
+                  <Icon name="verified" className="text-[13px]" />
+                  <span>Referral Code</span>
+                </span>
+              )}
+            </div>
+
+            {/* Just under the referral code: First Name and Last Name of the referrer */}
+            {preview && valid && (
+              <div className="flex items-center gap-2.5 pt-2 border-t border-border-subtle">
+                <div className="w-9 h-9 rounded-full bg-surface-tint-blue text-primary flex items-center justify-center font-bold text-[13px] shrink-0 border border-primary/20">
+                  {loadingReferrer ? (
+                    <span className="w-4 h-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                  ) : referrer ? (
+                    `${(referrer.firstName?.[0] || 'V').toUpperCase()}${(referrer.lastName?.[0] || 'M').toUpperCase()}`
+                  ) : (
+                    <Icon name="person" className="text-[18px]" />
+                  )}
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-label-md text-label-md font-bold text-text-primary truncate">
+                      {loadingReferrer
+                        ? 'Auto-fetching referrer name…'
+                        : referrer
+                          ? `${referrer.firstName} ${referrer.lastName}`
+                          : 'Vemtap Member'}
+                    </span>
+                    {!loadingReferrer && referrer && (
+                      <Icon name="check_circle" className="text-[16px] text-badge-discount-text shrink-0" />
+                    )}
+                  </div>
+                  <span className="font-caption text-[11px] text-text-secondary">
+                    {loadingReferrer ? 'Verifying referral code…' : 'Referrer Name'}
+                  </span>
+                </div>
+              </div>
             )}
           </div>
         </div>

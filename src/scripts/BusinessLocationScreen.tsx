@@ -22,6 +22,9 @@ export function BusinessLocationScreen({ draft, onBack, onNext, onSaveDraft }: B
   // Live setup starts empty; the sample address is demo-only.
   const live = hasApiConfig();
   const [search, setSearch] = useState(live ? '' : 'Plot 1428, Adetokunbo Ademola Crescent, Wuse 2');
+  // Start from the business name the owner already entered; the first branch is
+  // editable here instead of being locked to a generated "Main Branch".
+  const [branchName, setBranchName] = useState(draft.name.trim() || (live ? '' : 'Wuse 2 Flagship'));
   const [street, setStreet] = useState(live ? '' : 'Plot 1428, Adetokunbo Ademola Crescent, Wuse 2, Abuja');
   const [landmark, setLandmark] = useState(live ? '' : 'Opposite Cubana Suites, Ground Floor (Suite G-02)');
   const lookup = useBusinessLocationLookup(search);
@@ -301,6 +304,22 @@ export function BusinessLocationScreen({ draft, onBack, onNext, onSaveDraft }: B
             <span className="font-caption text-caption text-text-secondary">Editable</span>
           </div>
           <div className="space-y-1">
+            <label className="font-label-sm text-label-sm font-medium text-text-secondary" htmlFor="input-branch-name">
+              Branch / Location Name
+            </label>
+            <input
+              className="w-full h-11 px-4 rounded-xl bg-surface-container-lowest text-on-surface shadow-sm font-body-md text-body-md focus:bg-surface-tint-blue focus:outline-none transition-all"
+              id="input-branch-name"
+              type="text"
+              value={branchName}
+              onChange={(event) => setBranchName(event.target.value)}
+              placeholder="e.g. Wuse II Branch, Main Store"
+            />
+            <p className="font-caption text-caption text-text-tertiary">
+              This is the name customers see when choosing where to shop.
+            </p>
+          </div>
+          <div className="space-y-1">
             <label className="font-label-sm text-label-sm font-medium text-text-secondary" htmlFor="input-street">
               Street / Building Address
             </label>
@@ -343,7 +362,9 @@ export function BusinessLocationScreen({ draft, onBack, onNext, onSaveDraft }: B
             type="button"
             onClick={() =>
               onNext({
+                ...(branchName.trim() ? { branchName: branchName.trim() } : {}),
                 address: [street.trim() || search.trim(), landmark.trim()].filter(Boolean).join(' — '),
+                ...(lookup.place?.district ? { district: lookup.place.district } : {}),
                 ...(lookup.place?.city ? { city: lookup.place.city } : {}),
                 ...(lookup.place?.state ? { state: lookup.place.state } : {}),
                 ...(lookup.coords ?? {}),

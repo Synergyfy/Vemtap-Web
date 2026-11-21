@@ -7,6 +7,8 @@ import { useBusinessBranch } from '../../context/BusinessBranchContext';
 import { hubCardChips, useHubModuleCounts } from '../../hooks/business/useHubModuleCounts';
 import { useOffers } from '../../hooks/business/useOffers';
 import { hasApiConfig } from '../../services/api/client';
+import { useSessionUser } from '../../hooks/useSessionUser';
+import { canAccessPage } from '../staffPageAccess';
 import type { HubModuleKey } from '../BusinessHubHomeScreen';
 
 interface DesktopBusinessHubScreenProps {
@@ -42,10 +44,10 @@ const HUB_MODULES: HubModule[] = [
     key: 'catalog',
     icon: 'inventory_2',
     iconBox: 'bg-surface-container-high text-primary',
-    title: 'Products & Services',
-    desc: 'Manage your central catalogue & branch inventory',
+    title: 'My Products',
+    desc: 'Manage your product catalogue & branch inventory',
     chips: [
-      { label: '42 Items • 8 Services', chipClass: 'bg-surface-container-low text-text-secondary font-medium' },
+      { label: '42 Products', chipClass: 'bg-surface-container-low text-text-secondary font-medium' },
     ],
   },
   {
@@ -66,22 +68,22 @@ const HUB_MODULES: HubModule[] = [
     chips: [{ label: 'Active • 3 Rewards', chipClass: 'bg-surface-tint-blue text-primary font-semibold' }],
   },
   {
+    key: 'staff',
+    icon: 'badge',
+    iconBox: 'bg-surface-container-high text-primary',
+    title: 'Staff & Permissions',
+    desc: 'Manage employee accounts and role permissions',
+    chips: [{ label: '6 Staff • 3 Roles', chipClass: 'bg-surface-container-low text-text-secondary font-medium' }],
+  },
+  {
     key: 'locations',
     icon: 'location_on',
     iconBox: 'bg-surface-container-high text-primary',
-    title: 'Locations & Branches',
+    title: 'Locations',
     desc: 'Manage branches and where the business operates',
     chips: [
       { label: '3 Branches (2 Active)', chipClass: 'bg-surface-container-low text-text-secondary font-medium' },
     ],
-  },
-  {
-    key: 'staff',
-    icon: 'badge',
-    iconBox: 'bg-surface-container-high text-primary',
-    title: 'Staff & Team Access',
-    desc: 'Manage employee accounts and role permissions',
-    chips: [{ label: '6 Staff • 3 Roles', chipClass: 'bg-surface-container-low text-text-secondary font-medium' }],
   },
   {
     key: 'profile',
@@ -113,6 +115,7 @@ export function DesktopBusinessHubScreen({
   const hubCounts = useHubModuleCounts();
   const live = hasApiConfig();
   const offers = useOffers();
+  const session = useSessionUser().data;
   // Live: promote the branch's first active deal; none → the card invites creating one.
   const boostItem = live
     ? (offers.data ?? []).find((offer) => offer.status === 'active')?.name ?? null
@@ -130,10 +133,23 @@ export function DesktopBusinessHubScreen({
     staff: 'staff',
     referrals: 'referrals',
   };
+  const CARD_PAGE: Partial<Record<HubModuleKey, string[]>> = {
+    deals: ['business-deals'],
+    catalog: ['business-catalog', 'business-services'],
+    services: ['business-services'],
+    customers: ['business-customers'],
+    loyalty: ['business-loyalty'],
+    locations: ['business-locations'],
+    staff: ['business-staff'],
+    profile: ['business-profile'],
+    referrals: ['business-referrals'],
+  };
   const visibleModules = HUB_MODULES.filter((card) => {
     if (card.key === 'catalog') return Boolean(features.products || features.services);
     const feature = CARD_FEATURE[card.key];
-    return feature === undefined || Boolean(features[feature]);
+    if (feature !== undefined && !features[feature]) return false;
+    const pages = CARD_PAGE[card.key];
+    return !pages?.length || pages.some((page) => canAccessPage(session, page));
   });
 
   const showToast = (message: string) => {

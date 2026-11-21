@@ -62,14 +62,15 @@ import {
 import { summariseImport } from '../productImport/importSummary';
 import { naira } from '../catalogueData';
 import type { ImportedProduct } from '../productImport/importTypes';
+import type { DealPriceChoice } from '../deals/dealStudioShared';
 
 interface DesktopBusinessCatalogHubScreenProps {
   onNav: (key: BusinessPortalNavKey) => void;
   /** Live: receives the item whose branch prices to edit. */
   onOpenBranchPricing?: (itemId?: string) => void;
   onOpenServices?: () => void;
-  /** Live: start a deal for this real item. */
-  onMakeDeal?: (item: CatalogueItem) => void;
+  /** Live: start a deal for this real item, with the pricing choice already made after publishing. */
+  onMakeDeal?: (item: CatalogueItem, choice?: DealPriceChoice) => void;
   /** A message to show once when the screen opens (e.g. "pick an item"). */
   notice?: string | null;
   /** Opens the create-product page (its own route); without it the form opens in place. */
@@ -78,6 +79,11 @@ interface DesktopBusinessCatalogHubScreenProps {
   startWithNewProduct?: boolean;
   /** Route mode: open straight on the create-service form (same exit contract as `startWithNewProduct`). */
   startWithNewService?: boolean;
+  /** Route mode: reuse the existing category form when arriving from the Services page. */
+  openCategoryModal?: boolean;
+  /** Which kind the category form should default to when opened from another page. */
+  initialCategoryKind?: 'product' | 'service';
+  onCategoryModalOpened?: () => void;
   onCloseForm?: () => void;
 }
 
@@ -629,15 +635,18 @@ function withDealLinked(row: CatalogRow, linked: boolean): CatalogRow {
 export function DesktopBusinessCatalogHubScreen({
   onNav,
   onOpenBranchPricing,
-  onOpenServices: _onOpenServices,
+  onOpenServices,
   onMakeDeal,
   notice,
   onAddProduct,
   startWithNewProduct = false,
   startWithNewService = false,
+  openCategoryModal = false,
+  initialCategoryKind = 'product',
+  onCategoryModalOpened,
   onCloseForm,
 }: DesktopBusinessCatalogHubScreenProps) {
-  const [activeTab, setActiveTab] = useState<'products' | 'services' | 'categories'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'categories'>('products');
   // Live: rows come from `/catalogue/items` for the active branch; demo keeps the sample rows.
   const live = hasApiConfig();
   const { activeBranchId, branches } = useBusinessBranch();
@@ -652,7 +661,7 @@ export function DesktopBusinessCatalogHubScreen({
   useEffect(() => {
     if (live && serviceItems.data) setServiceRows(serviceItems.data.map(itemToRow));
   }, [live, serviceItems.data]);
-  const liveCategories = useCatalogueCategories();
+  const liveCategories = useCatalogueCategories('product');
   const importedProducts = useImportedProducts();
   const importedRows = useMemo(() => importedProducts.map(importedProductToRow), [importedProducts]);
   /** Imported products still awaiting review/publish. */
@@ -662,22 +671,25 @@ export function DesktopBusinessCatalogHubScreen({
   );
   /** Seed rows + bulk-imported products (imported ones render first). Live: server items only. */
   const allProductRows = useMemo(() => (live ? productRows : [...importedRows, ...productRows]), [importedRows, productRows, live]);
-  const [demoCategories, setCentralCategories] = useState<CentralCategory[]>(() => getCentralCategories());
+  // Product-only rollout: demo service categories stay out of the picker.
+  const [demoCategories, setCentralCategories] = useState<CentralCategory[]>(() =>
+    getCentralCategories().filter((category) => category.type !== 'service'),
+  );
   // Live: the business's own categories with real item counts; demo keeps the sample set.
   const categoryMutation = useCategoryMutation();
   const storefront = useStorefrontPreview();
-  const liveCatalogueItems = [...(productItems.data ?? []), ...(serviceItems.data ?? [])];
+  const liveCatalogueItems = productItems.data ?? [];
   const centralCategories: CentralCategory[] = live
     ? (liveCategories.data ?? []).map((category) => {
         const items = liveCatalogueItems.filter((item) => item.categoryId === category.id || item.category?.id === category.id);
-        const kind = category.kind ?? (items.some((item) => item.itemType === 'service') ? 'service' : 'product');
+        const kind = 'product' as const;
         return {
           id: category.id,
           name: category.name,
           slug: category.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
           type: kind,
           description: category.description ?? '',
-          icon: category.icon ?? (kind === 'service' ? 'spa' : 'category'),
+          icon: category.icon ?? 'category',
           image: category.imageUrl ?? undefined,
           productCount: items.length,
           activeBranches: ['all'],
@@ -702,14 +714,21 @@ export function DesktopBusinessCatalogHubScreen({
   /** Optional category image (data URL), same storage approach as ServiceImageUploader. */
   const [catFormImage, setCatFormImage] = useState('');
 
-  const handleOpenAddCategory = () => {
+  const handleOpenAddCategory = (kind: 'product' | 'service' = 'product') => {
     setCatFormName('');
-    setCatFormType('product');
+    setCatFormType(kind);
     setCatFormDesc('');
-    setCatFormIcon('restaurant');
+    setCatFormIcon(kind === 'service' ? 'spa' : 'restaurant');
     setCatFormImage('');
     setCategoryModal({ mode: 'add' });
   };
+
+  // Reuse this exact category form when the Services page asks for a category.
+  useEffect(() => {
+    if (!openCategoryModal) return;
+    handleOpenAddCategory(initialCategoryKind);
+    onCategoryModalOpened?.();
+  }, [openCategoryModal, initialCategoryKind, onCategoryModalOpened]);
 
   const handleOpenEditCategory = (cat: CentralCategory) => {
     setCatFormName(cat.name);
@@ -725,7 +744,16 @@ export function DesktopBusinessCatalogHubScreen({
     const name = catFormName.trim();
     try {
       const imageUrl = catFormImage ? await uploadDataUrlImage(catFormImage, 'category') : undefined;
-      const details = { kind: catFormType, description: catFormDesc.trim(), icon: catFormIcon, ...(imageUrl ? { imageUrl } : {}) };
+      // Clearing the field on an existing category must be persisted explicitly;
+      // omitting imageUrl would leave the old hosted photo in place.
+      const imageRemoved =
+        categoryModal?.mode === 'edit' && Boolean(categoryModal.category?.image) && !catFormImage;
+      const details = {
+        kind: catFormType,
+        description: catFormDesc.trim(),
+        icon: catFormIcon,
+        ...(imageUrl ? { imageUrl } : imageRemoved ? { imageUrl: '' } : {}),
+      };
       if (categoryModal?.mode === 'edit' && categoryModal.category) {
         await categoryMutation.mutateAsync({ type: 'update', id: categoryModal.category.id, name, details });
         setToastMessage(`Category "${name}" updated successfully.`);
@@ -819,7 +847,7 @@ export function DesktopBusinessCatalogHubScreen({
     | 'service3'
     | 'serviceReview'
     | 'servicePublished'
-  >(startWithNewProduct ? 'addProduct1' : startWithNewService ? 'service1' : 'none');
+  >(startWithNewProduct ? 'addProduct1' : 'none');
   const [addMethodsOpen, setAddMethodsOpen] = useState(false);
   const [importWizardOpen, setImportWizardOpen] = useState(false);
 
@@ -874,8 +902,8 @@ export function DesktopBusinessCatalogHubScreen({
 
   /** The item just published, so its "Make a deal" can start from it. */
   const [lastPublished, setLastPublished] = useState<CatalogueItem | null>(null);
-  const makeDealFromPublished = () => {
-    if (live && lastPublished && onMakeDeal) return onMakeDeal(lastPublished);
+  const makeDealFromPublished = (choice?: DealPriceChoice) => {
+    if (live && lastPublished && onMakeDeal) return onMakeDeal(lastPublished, choice);
     onNav('deals');
   };
 
@@ -1026,7 +1054,7 @@ export function DesktopBusinessCatalogHubScreen({
   };
 
   const handleExportCSV = () => {
-    const currentList = activeTab === 'products' ? allProductRows : serviceRows;
+    const currentList = allProductRows;
     const headers = ['ID', 'SKU', 'Barcode', 'Name', 'Category', 'Price', 'Was Price', 'Branches', 'Stock Status', 'Units', 'Terminal Sync'];
     const csvRows = [
       headers.join(','),
@@ -1072,8 +1100,9 @@ export function DesktopBusinessCatalogHubScreen({
 
   // "Edit" reopens the full add-product / add-service flow, prefilled with the row's data,
   // so every component (basics, pricing, fulfillment, review) stays editable.
-  const liveItem = (id: string) => [...(productItems.data ?? []), ...(serviceItems.data ?? [])].find((item) => item.id === id);
-  const isServiceRow = (row: CatalogRow) => (live ? serviceRows.some((r) => r.id === row.id) : row.id.startsWith('s'));
+  // Product-only rollout: edits never open a service item or the service wizard.
+  const liveItem = (id: string) => (productItems.data ?? []).find((item) => item.id === id);
+  const isServiceRow = (_row: CatalogRow) => false;
 
   const handleOpenEditItem = (row: CatalogRow) => {
     setActionMenuRowId(null);
@@ -1413,8 +1442,9 @@ export function DesktopBusinessCatalogHubScreen({
         draft={serviceDraft}
         onMakeDeal={makeDealFromPublished}
         onViewCatalog={() => {
-          setActiveTab('services');
           setSubFlow('none');
+          if (onOpenServices) onOpenServices();
+          else setActiveTab('products');
         }}
         onAddAnother={() => {
           setServiceDraft(getInitialServiceDraft());
@@ -1426,10 +1456,11 @@ export function DesktopBusinessCatalogHubScreen({
     );
   }
 
-  const currentDataset = activeTab === 'products' ? allProductRows : serviceRows;
+  // Product and service catalogues are separate pages now; this hub only lists products.
+  const currentDataset = allProductRows;
 
-  // Live: tiles and chip counts come from the real rows; the demo keeps its sample figures.
-  const allLiveRows = [...productRows, ...serviceRows];
+  // Live: tiles and chip counts come from the real product rows; the demo keeps its sample figures.
+  const allLiveRows = productRows;
   const countWith = (key: CatalogChip) => currentDataset.filter((row) => row.filters.includes(key)).length;
   const stats = live
     ? [
@@ -1501,9 +1532,8 @@ export function DesktopBusinessCatalogHubScreen({
     {
       value: 'addToDeals',
       label: 'Add to Deals',
-      hint: 'Marks these items as deal-linked in this catalogue. Deal terms and discounts are configured in the Deals workspace.',
+      hint: 'Marks these items as deal-linked in this catalogue. Deal terms and discounts are configured in the Deals workspace. Items cannot be removed from deals from here; use the Deals page.',
     },
-    { value: 'removeFromDeals', label: 'Remove from Deals' },
     { value: 'delete', label: 'Delete' },
   ];
 
@@ -1542,11 +1572,10 @@ export function DesktopBusinessCatalogHubScreen({
       return;
     }
 
-    if (live && (action === 'addToDeals' || action === 'removeFromDeals')) {
+    if (live && action === 'addToDeals') {
       // Live deals are built on one item in the deal studio.
       const item = rows.length === 1 ? liveItem(rows[0].id) : undefined;
       setSelected([]);
-      if (action === 'removeFromDeals') return flash('End or pause the deal from Deals to stop it.');
       if (!item || !onMakeDeal) return flash('Select one item to make a deal from.');
       return onMakeDeal(item);
     }
@@ -1603,21 +1632,19 @@ export function DesktopBusinessCatalogHubScreen({
             : `${importedIds.length} imported products are governed by their publish status — use Publish or Move to Draft instead`,
         );
       }
-    } else if (action === 'addToDeals' || action === 'removeFromDeals') {
-      const linked = action === 'addToDeals';
-      const seedChanged = seedRowsSelected.filter((row) => row.filters.includes('deals') !== linked).length;
-      let changed = importedIds.length > 0 ? setImportedLinkedDeal(importedIds, linked) : 0;
-      if (seedIds.length > 0) {
-        updateSeedRows(seedIds, (row) => withDealLinked(row, linked));
-        changed += seedChanged;
+    } else if (action === 'addToDeals') {
+      const unlinkedRows = seedRowsSelected.filter((row) => !row.filters.includes('deals'));
+      const unlinkedIds = unlinkedRows.map((row) => row.id);
+      let changed = importedIds.length > 0 ? setImportedLinkedDeal(importedIds, true) : 0;
+      if (unlinkedIds.length > 0) {
+        updateSeedRows(unlinkedIds, (row) => withDealLinked(row, true));
+        changed += unlinkedIds.length;
       }
       if (changed > 0) {
-        parts.push(
-          `${linked ? 'linked' : 'unlinked'} ${changed} item${changed === 1 ? '' : 's'} ${linked ? 'to' : 'from'} a deal`,
-        );
-        parts.push('deal terms and discounts are still set up in the Deals workspace');
+        parts.push(`linked ${changed} item${changed === 1 ? '' : 's'} to a deal`);
+        parts.push('deal terms and discounts are configured in the Deals workspace');
       } else {
-        parts.push(`those items were already ${linked ? 'linked to' : 'unlinked from'} a deal`);
+        parts.push('selected items are already on a deal. Manage or remove deals from the Deals workspace.');
       }
     }
 
@@ -1675,7 +1702,7 @@ export function DesktopBusinessCatalogHubScreen({
             <Icon name="chevron_right" className="text-[14px] text-text-tertiary" />
             <span className="hover:text-primary transition-colors">Catalog</span>
             <Icon name="chevron_right" className="text-[14px] text-text-tertiary" />
-            <span className="text-on-surface font-label-sm text-label-sm font-semibold">Products & Services</span>
+            <span className="text-on-surface font-label-sm text-label-sm font-semibold">Products</span>
           </div>
           <div className="flex items-center gap-space-sm self-start sm:self-auto">
             <div className="flex items-center gap-space-2xs px-space-sm py-space-2xs rounded-full bg-surface-container-high text-on-surface-variant font-caption text-caption">
@@ -1697,11 +1724,10 @@ export function DesktopBusinessCatalogHubScreen({
               <span>Enterprise SKU Multi-Tenancy</span>
             </div>
             <h1 className="font-heading-lg text-heading-lg text-text-primary tracking-tight">
-              Central Products &amp; Services Catalogue
+              Central Product Catalogue
             </h1>
             <p className="font-body-md text-body-md text-text-secondary mt-space-2xs">
-              Centralized multi-location catalog. Manage dishes, retail merchandise, and services across Abuja and Lagos
-              branches.
+              Centralized multi-location catalog. Manage dishes and retail merchandise across Abuja and Lagos branches.
             </p>
           </div>
           <div className="flex flex-col sm:flex-row sm:items-center gap-space-sm">
@@ -1709,23 +1735,11 @@ export function DesktopBusinessCatalogHubScreen({
             <div className="flex items-center gap-space-sm shrink-0 whitespace-nowrap">
               <button
                 type="button"
-                onClick={handleOpenAddCategory}
+                onClick={() => handleOpenAddCategory()}
                 className="flex items-center gap-space-2xs px-space-md py-space-sm rounded-xl bg-surface-container-lowest text-on-surface hover:bg-surface-container-high transition-colors font-button-secondary text-button-secondary shadow-sm active:scale-[0.98]"
               >
                 <Icon name="create_new_folder" className="text-primary text-[20px]" />
                 <span>+ Add Category</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setServiceDraft(getInitialServiceDraft());
-                  setEditingRowId(null);
-                  setSubFlow('service1');
-                }}
-                className="flex items-center gap-space-2xs px-space-md py-space-sm rounded-xl bg-surface-container-lowest text-on-surface hover:bg-surface-container-high transition-colors font-button-secondary text-button-secondary shadow-sm active:scale-[0.98]"
-              >
-                <Icon name="room_service" className="text-primary text-[20px]" />
-                <span>+ Add Service</span>
               </button>
               <button
                 type="button"
@@ -1783,27 +1797,6 @@ export function DesktopBusinessCatalogHubScreen({
                 }`}
               >
                 {allProductRows.length} active
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('services')}
-              className={`flex items-center gap-space-xs px-space-md py-space-xs rounded-lg font-label-md text-label-md font-semibold transition-all whitespace-nowrap ${
-                activeTab === 'services'
-                  ? 'bg-primary-container text-on-primary-container'
-                  : 'text-on-surface-variant hover:bg-surface-container hover:text-on-surface'
-              }`}
-            >
-              <Icon name="spa" className="text-[18px]" />
-              <span>Services</span>
-              <span
-                className={`px-space-xs py-space-2xs rounded-full font-caption text-caption font-bold ${
-                  activeTab === 'services'
-                    ? 'bg-surface-canvas/20 text-on-primary'
-                    : 'bg-surface-container text-text-secondary'
-                }`}
-              >
-                {serviceRows.length} active
               </span>
             </button>
             <button
@@ -1899,7 +1892,7 @@ export function DesktopBusinessCatalogHubScreen({
 
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="flex items-center bg-surface-container-low p-1 rounded-xl">
-                  {(['all', 'product', 'service'] as const).map((t) => (
+                  {(['all', 'product'] as const).map((t) => (
                     <button
                       key={t}
                       type="button"
@@ -1921,7 +1914,7 @@ export function DesktopBusinessCatalogHubScreen({
 
                 <button
                   type="button"
-                  onClick={handleOpenAddCategory}
+                  onClick={() => handleOpenAddCategory('product')}
                   className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-on-primary font-semibold text-body-sm shadow-sm flex items-center gap-1.5 transition-colors"
                 >
                   <Icon name="add" className="text-[18px]" />
@@ -1996,7 +1989,7 @@ export function DesktopBusinessCatalogHubScreen({
                                   : 'bg-badge-discount-bg text-badge-discount-text'
                               }`}
                             >
-                              {cat.type === 'product' ? 'Product Category' : 'Service Category'}
+                              {cat.type === 'product' ? 'Product Category' : 'Category'}
                             </span>
                           </td>
                           <td className="py-3 px-4">
@@ -2006,7 +1999,7 @@ export function DesktopBusinessCatalogHubScreen({
                           </td>
                           <td className="py-3 px-4 whitespace-nowrap">
                             <span className="font-semibold text-text-primary">
-                              {cat.productCount} {cat.type === 'product' ? 'products' : 'services'}
+                              {cat.productCount} products
                             </span>
                           </td>
                           <td className="py-3 px-4">
@@ -2953,7 +2946,7 @@ export function DesktopBusinessCatalogHubScreen({
                   ? branches.length > 1
                     ? `Set a different price per branch for any item across your ${branches.length} branches.`
                     : 'Add another branch to price items differently per location.'
-                  : 'Victoria Island (Lagos) branch has a default 7.5% regional logistics markup applied on all imported meats and cellar items.'}
+                  : 'Open a branch to review which catalogue items are available there and set its own prices.'}
               </p>
               <button
                 type="button"
@@ -3055,6 +3048,7 @@ export function DesktopBusinessCatalogHubScreen({
                       <Icon name="inventory_2" className="text-[16px]" />
                       <span>Product Category</span>
                     </button>
+                    {/* Product-only rollout: service category type is hidden.
                     <button
                       type="button"
                       onClick={() => setCatFormType('service')}
@@ -3067,6 +3061,7 @@ export function DesktopBusinessCatalogHubScreen({
                       <Icon name="spa" className="text-[16px]" />
                       <span>Service Category</span>
                     </button>
+                    */}
                   </div>
                 </div>
 

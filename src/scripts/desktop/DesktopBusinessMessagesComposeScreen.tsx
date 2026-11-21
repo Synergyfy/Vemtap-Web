@@ -177,7 +177,6 @@ export function DesktopBusinessMessagesComposeScreen({ onNav, onView }: DesktopB
                   {([
                     { key: 'all' as InboxFilter, label: 'All' },
                     { key: 'unread' as InboxFilter, label: 'Unread' },
-                    { key: 'bookings' as InboxFilter, label: 'Bookings' },
                   ]).map((f) => (
                     <button
                       key={f.key}

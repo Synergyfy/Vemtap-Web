@@ -8,6 +8,7 @@ import { apiErrorMessage } from '../../services/errorMessages';
 import { formatRelativeTime } from '../../utils/format';
 import { TeamMemberActionDialog, type TeamMemberAction } from '../TeamMemberActionDialog';
 import {
+  grantedPageLabels,
   isOwnerMember,
   isPendingMember,
   memberInitials,
@@ -164,12 +165,11 @@ const CARD_CLASS =
 type LiveMemberAction = TeamMemberAction | 'branch' | 'pin' | 'remove';
 type StaffToast = { message: string; tone: 'success' | 'error' | 'info' };
 
-/** Live: the role description shown in a member's permissions panel. */
+/** Live: the granted side-menu pages shown in a member's permissions panel. */
 const roleCapabilities = (member: TeamMember) => {
-  const group = memberRoleGroup(member);
-  if (group === 'managers') return 'Runs daily operations at their branch: catalogue, deals, orders and the team on shift.';
-  const areas = (member.permissions ?? []).filter((permission) => !permission.includes(':'));
-  return areas.length ? `Can open: ${areas.join(', ')}.` : 'No pages allowed yet.';
+  if (isOwnerMember(member)) return 'Full business control across every page and branch.';
+  const pages = grantedPageLabels(member.permissions);
+  return pages.length ? `Can open: ${pages.join(', ')}.` : 'No pages allowed yet.';
 };
 
 function MemberAvatar({ member, children }: { member: TeamMember; children?: React.ReactNode }) {
@@ -451,7 +451,6 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
 
   const matches = (haystack: string) =>
     query.trim() === '' || haystack.toLowerCase().includes(query.trim().toLowerCase());
-
   const showOwner = (roleFilter === 'all' || roleFilter === 'owners') && matches('zainab ahmed zainab.ahmed@example.com all locations master');
   const showJohn = (roleFilter === 'all' || roleFilter === 'managers') && matches('john peter +234 803 219 8831 wuse branch abuja flagship');
   const showAmara = (roleFilter === 'all' || roleFilter === 'managers') && matches('amara kalu +234 812 443 0912 victoria island branch lagos');
@@ -888,7 +887,7 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
                   icon="verified_user"
                   iconClass="text-primary"
                   title="Role Capabilities"
-                  body="Branch operations, service schedules, bookings management, and localized customer resolution."
+                  body="Branch operations, shift schedules, order management, and localized customer resolution."
                 />
                 <div className="mt-space-md flex flex-wrap items-center justify-between gap-space-sm pt-space-xs ml-space-xs">
                   <span className="font-caption text-caption text-text-tertiary">
@@ -1015,84 +1014,88 @@ export function DesktopStaffDirectoryScreen({ onNav, onInvite }: DesktopStaffDir
           </div>
 
           <div className="lg:col-span-4 flex flex-col gap-space-lg">
-            <div className="rounded-xl bg-surface-canvas p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-space-md">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-space-xs">
-                  <Icon name="admin_panel_settings" className="text-primary text-[22px]" />
-                  <h2 className="font-heading-sm text-heading-sm text-text-primary font-bold">Access Governance</h2>
-                </div>
-                <span className="px-space-xs py-0.5 rounded bg-surface-container text-on-surface-variant font-caption text-caption font-semibold">
-                  SEC-30
-                </span>
-              </div>
-              <p className="font-body-md text-body-md text-text-secondary">
-                Role hierarchy strictly determines ledger viewability, discount caps, and terminal control.
-              </p>
-              <div className="flex flex-col gap-space-sm pt-space-xs">
-                {GOVERNANCE_TIERS.map((tier) => (
-                  <div
-                    key={tier.name}
-                    className="p-space-sm rounded-xl bg-surface-subtle flex flex-col gap-1.5 transition-colors hover:bg-surface-container-low"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-label-md text-label-md font-bold text-text-primary flex items-center gap-1.5">
-                        <span className={`w-2.5 h-2.5 rounded-full ${tier.dotClass}`} />
-                        {tier.name}
-                      </span>
-                      <span className={`font-caption text-caption font-semibold ${tier.badgeClass}`}>{tier.badge}</span>
+            {!live && (
+              <>
+                <div className="rounded-xl bg-surface-canvas p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-space-md">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-space-xs">
+                      <Icon name="admin_panel_settings" className="text-primary text-[22px]" />
+                      <h2 className="font-heading-sm text-heading-sm text-text-primary font-bold">Access Governance</h2>
                     </div>
-                    <p className="font-caption text-caption text-text-secondary leading-relaxed">{tier.body}</p>
+                    <span className="px-space-xs py-0.5 rounded bg-surface-container text-on-surface-variant font-caption text-caption font-semibold">
+                      SEC-30
+                    </span>
                   </div>
-                ))}
-              </div>
-              <div className="mt-space-xs p-space-sm rounded-xl bg-surface-tint-blue flex items-center justify-between">
-                <div className="flex flex-col">
-                  <span className="font-caption text-caption font-semibold text-text-primary">
-                    Till Auth Security Policy
-                  </span>
-                  <span className="font-caption text-caption text-text-secondary">
-                    Enforced on 3 POS Hardware Units
-                  </span>
+                  <p className="font-body-md text-body-md text-text-secondary">
+                    Role hierarchy strictly determines ledger viewability, discount caps, and terminal control.
+                  </p>
+                  <div className="flex flex-col gap-space-sm pt-space-xs">
+                    {GOVERNANCE_TIERS.map((tier) => (
+                      <div
+                        key={tier.name}
+                        className="p-space-sm rounded-xl bg-surface-subtle flex flex-col gap-1.5 transition-colors hover:bg-surface-container-low"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-label-md text-label-md font-bold text-text-primary flex items-center gap-1.5">
+                            <span className={`w-2.5 h-2.5 rounded-full ${tier.dotClass}`} />
+                            {tier.name}
+                          </span>
+                          <span className={`font-caption text-caption font-semibold ${tier.badgeClass}`}>{tier.badge}</span>
+                        </div>
+                        <p className="font-caption text-caption text-text-secondary leading-relaxed">{tier.body}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-space-xs p-space-sm rounded-xl bg-surface-tint-blue flex items-center justify-between">
+                    <div className="flex flex-col">
+                      <span className="font-caption text-caption font-semibold text-text-primary">
+                        Till Auth Security Policy
+                      </span>
+                      <span className="font-caption text-caption text-text-secondary">
+                        Enforced on 3 POS Hardware Units
+                      </span>
+                    </div>
+                    <Icon name="lock_reset" className="text-primary text-[20px]" />
+                  </div>
                 </div>
-                <Icon name="lock_reset" className="text-primary text-[20px]" />
-              </div>
-            </div>
 
-            <div className="rounded-xl bg-surface-canvas p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-space-md">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-space-xs">
-                  <Icon name="policy" className="text-badge-discount-text text-[22px]" />
-                  <h2 className="font-heading-sm text-heading-sm text-text-primary font-bold">
-                    Compliance Assurance
-                  </h2>
+                <div className="rounded-xl bg-surface-canvas p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-space-md">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-space-xs">
+                      <Icon name="policy" className="text-badge-discount-text text-[22px]" />
+                      <h2 className="font-heading-sm text-heading-sm text-text-primary font-bold">
+                        Compliance Assurance
+                      </h2>
+                    </div>
+                    <span className="px-space-xs py-0.5 rounded bg-surface-container text-on-surface-variant font-caption text-caption font-semibold">
+                      SEC-31
+                    </span>
+                  </div>
+                  <div className="p-space-md rounded-xl bg-surface-subtle flex flex-col gap-space-xs">
+                    <div className="flex items-center gap-space-xs text-badge-discount-text">
+                      <Icon name="verified" className="text-[18px]" />
+                      <span className="font-label-md text-label-md font-semibold text-text-primary">
+                        Immutable Audit Trails
+                      </span>
+                    </div>
+                    <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
+                      Removing a team member automatically preserves all historical transaction ledgers,
+                      shift audit trails, and POS logs.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-space-xs pt-space-xs">
+                    <div className="p-space-xs rounded-lg bg-surface-subtle flex flex-col text-center">
+                      <span className="font-heading-sm text-heading-sm text-text-primary font-bold">100%</span>
+                      <span className="font-caption text-caption text-text-tertiary">Ledger Retention</span>
+                    </div>
+                    <div className="p-space-xs rounded-lg bg-surface-subtle flex flex-col text-center">
+                      <span className="font-heading-sm text-heading-sm text-text-primary font-bold">7 Yrs</span>
+                      <span className="font-caption text-caption text-text-tertiary">Tax Compliance</span>
+                    </div>
+                  </div>
                 </div>
-                <span className="px-space-xs py-0.5 rounded bg-surface-container text-on-surface-variant font-caption text-caption font-semibold">
-                  SEC-31
-                </span>
-              </div>
-              <div className="p-space-md rounded-xl bg-surface-subtle flex flex-col gap-space-xs">
-                <div className="flex items-center gap-space-xs text-badge-discount-text">
-                  <Icon name="verified" className="text-[18px]" />
-                  <span className="font-label-md text-label-md font-semibold text-text-primary">
-                    Immutable Audit Trails
-                  </span>
-                </div>
-                <p className="font-body-md text-body-md text-text-secondary leading-relaxed">
-                  Removing a team member automatically preserves all historical transaction ledgers,
-                  shift audit trails, and POS logs.
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-space-xs pt-space-xs">
-                <div className="p-space-xs rounded-lg bg-surface-subtle flex flex-col text-center">
-                  <span className="font-heading-sm text-heading-sm text-text-primary font-bold">100%</span>
-                  <span className="font-caption text-caption text-text-tertiary">Ledger Retention</span>
-                </div>
-                <div className="p-space-xs rounded-lg bg-surface-subtle flex flex-col text-center">
-                  <span className="font-heading-sm text-heading-sm text-text-primary font-bold">7 Yrs</span>
-                  <span className="font-caption text-caption text-text-tertiary">Tax Compliance</span>
-                </div>
-              </div>
-            </div>
+              </>
+            )}
 
             <div className="rounded-xl bg-surface-canvas p-space-lg shadow-[0_4px_16px_-2px_rgba(13,37,76,0.04)] flex flex-col gap-space-md">
               <div className="flex items-center gap-space-xs">

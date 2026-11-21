@@ -58,10 +58,6 @@ export function StartVemtapScreen({
               <Icon name="local_mall" className="text-badge-discount-text text-[15px]" />
               <span className="font-label-sm text-label-sm text-text-primary">Groceries</span>
             </div>
-            <div className="absolute bottom-1 -translate-x-1 shadow-md bg-surface-canvas rounded-full px-3 py-1.5 flex items-center gap-1.5 hover:scale-105 transition-transform">
-              <Icon name="spa" className="text-secondary text-[15px]" />
-              <span className="font-label-sm text-label-sm text-text-primary">Services</span>
-            </div>
 
             <div className="relative z-10 flex items-center justify-center">
               <div className="absolute w-20 h-20 bg-primary-container/20 rounded-full blur-md" />

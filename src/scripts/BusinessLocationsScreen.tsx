@@ -4,7 +4,9 @@ import { Icon } from '../components/ui/Icon';
 import { BusinessTabBar, type BusinessTabKey } from '../components/BusinessTabBar';
 import { BusinessHubHeader } from './BusinessHubHeader';
 import { hasApiConfig } from '../services/api/client';
-import { useBranchCatalogueCounts, useBranches } from '../hooks/business/useBranchesAndTeam';
+import { useBranchCatalogueCounts, useBranches, useBranchMutations } from '../hooks/business/useBranchesAndTeam';
+import { useBusinessBranch } from '../context/BusinessBranchContext';
+import { apiErrorMessage } from '../services/errorMessages';
 import { branchAddressLabel, branchHoursLabel, branchOpenLabel } from './branchLive';
 
 import { getAddedBusinessLocations } from './businessLocationsStore';
@@ -107,6 +109,13 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
       }))
     : BRANCHES;
   const { getEffectiveBranchOfferings } = useBusinessOfferings();
+  const { update } = useBranchMutations();
+  const { branch: operatingBranch, activeBranchId, switchTo } = useBusinessBranch();
+  const [editingBranch, setEditingBranch] = useState<any | null>(null);
+  const [deactivatingBranch, setDeactivatingBranch] = useState<any | null>(null);
+  const [optionsBranch, setOptionsBranch] = useState<any | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [demoOverrides, setDemoOverrides] = useState<Record<string, any>>({});
   const [dismissed, setDismissed] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -115,6 +124,112 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
   const [addedLocations] = useState(() =>
     getAddedBusinessLocations().filter((location) => !location.id.startsWith('seed-')),
   );
+
+  const [editForm, setEditForm] = useState({
+    name: '',
+    address: '',
+    district: '',
+    city: 'Abuja',
+    state: 'FCT',
+    phone: '',
+    openTime: '08:00',
+    closeTime: '22:00',
+  });
+
+  const openEdit = (br: any) => {
+    setOptionsBranch(null);
+    setEditForm({
+      name: br.name || '',
+      address: br.address || '',
+      district: br.cluster || '',
+      city: 'Abuja',
+      state: 'FCT',
+      phone: br.phone !== '—' ? br.phone : '',
+      openTime: '08:00',
+      closeTime: '22:00',
+    });
+    setEditingBranch(br);
+  };
+
+  const handleSaveMobileEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editForm.name.trim()) {
+      showToast('Branch name is required.');
+      return;
+    }
+
+    if (live && editingBranch?.id) {
+      setSavingEdit(true);
+      update.mutate(
+        {
+          id: editingBranch.id,
+          input: {
+            name: editForm.name.trim(),
+            address: editForm.address.trim(),
+            district: editForm.district.trim(),
+            city: editForm.city.trim(),
+            state: editForm.state.trim(),
+            phone: editForm.phone.trim(),
+          },
+        },
+        {
+          onSuccess: () => {
+            setSavingEdit(false);
+            setEditingBranch(null);
+            showToast('Branch details updated successfully.');
+          },
+          onError: (err) => {
+            setSavingEdit(false);
+            showToast(apiErrorMessage(err, 'Failed to update branch.'));
+          },
+        }
+      );
+    } else {
+      setDemoOverrides((prev) => ({
+        ...prev,
+        [editingBranch.id]: {
+          name: editForm.name.trim(),
+          address: editForm.address.trim(),
+          district: editForm.district.trim(),
+          phone: editForm.phone.trim(),
+        },
+      }));
+      setEditingBranch(null);
+      showToast('Branch details updated successfully.');
+    }
+  };
+
+  const handleConfirmDeactivate = () => {
+    if (!deactivatingBranch) return;
+    const isPaused = deactivatingBranch.status === 'Paused';
+    const nextActive = isPaused;
+
+    if (live && deactivatingBranch.id) {
+      update.mutate(
+        { id: deactivatingBranch.id, input: { isActive: nextActive } },
+        {
+          onSuccess: () => {
+            setDeactivatingBranch(null);
+            showToast(nextActive ? `${deactivatingBranch.name} is active again.` : `${deactivatingBranch.name} has been deactivated.`);
+          },
+          onError: (err) => {
+            setDeactivatingBranch(null);
+            showToast(apiErrorMessage(err, 'Failed to update branch status.'));
+          },
+        }
+      );
+    } else {
+      setDemoOverrides((prev) => ({
+        ...prev,
+        [deactivatingBranch.id]: {
+          status: nextActive ? 'Active • Open now' : 'Paused',
+          pulse: nextActive,
+        },
+      }));
+      setDeactivatingBranch(null);
+      showToast(nextActive ? `${deactivatingBranch.name} is active again.` : `${deactivatingBranch.name} has been deactivated.`);
+    }
+  };
 
   useEffect(
     () => () => {
@@ -198,9 +313,6 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
                             {eff.includes('products') && (
                               <span className="px-1.5 py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption font-semibold">Products</span>
                             )}
-                            {eff.includes('services') && (
-                              <span className="px-1.5 py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption font-semibold">Services</span>
-                            )}
                           </>
                         );
                       })()}
@@ -214,6 +326,7 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
                     aria-label="Branch Options"
                     className="w-8 h-8 rounded-full text-text-secondary hover:bg-surface-container-low flex items-center justify-center shrink-0 transition-colors"
                     type="button"
+                    onClick={() => setOptionsBranch({ ...branch, ...(demoOverrides[branch.id] ?? {}) })}
                   >
                     <Icon name="more_vert" className="text-[20px]" />
                   </button>
@@ -223,7 +336,7 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
                   <div className="flex items-center justify-between font-caption text-caption">
                     <span className="text-text-secondary flex items-center gap-1">
                       <Icon name="call" className="text-[14px]" />
-                      {branch.phone}
+                      {demoOverrides[branch.id]?.phone ?? branch.phone}
                     </span>
                     <span className="text-text-primary font-medium flex items-center gap-1">
                       <Icon name="schedule" className="text-[14px] text-primary" />
@@ -239,12 +352,6 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
                     </span>
                     <span className="font-caption text-caption text-text-secondary">Products</span>
                   </div>
-                  <div className="bg-surface-container-low rounded-lg p-2 text-center">
-                    <span className="block font-heading-sm text-heading-sm text-secondary font-bold">
-                      {branch.metrics.services}
-                    </span>
-                    <span className="font-caption text-caption text-text-secondary">Services</span>
-                  </div>
                   <div className="bg-surface-tint-blue rounded-lg p-2 text-center">
                     <span className="block font-heading-sm text-heading-sm text-primary-container font-bold">
                       {branch.metrics.deals}
@@ -257,10 +364,10 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
                   <button
                     className="flex-1 h-11 bg-surface-container-low text-primary-container font-button-secondary text-button-secondary rounded-xl flex items-center justify-center gap-1.5 hover:bg-surface-container-high transition-colors font-semibold"
                     type="button"
-                    onClick={() => showToast(`${branch.name} editor opening...`)}
+                    onClick={() => openEdit({ ...branch, ...(demoOverrides[branch.id] ?? {}) })}
                   >
                     <Icon name="edit_location" className="text-[18px]" />
-                    Edit Branch Details
+                    Edit Location
                   </button>
                   <button
                     className="w-11 h-11 bg-surface-container-low text-text-secondary hover:text-text-primary rounded-xl flex items-center justify-center transition-colors"
@@ -301,9 +408,6 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
                             {eff.includes('products') && (
                               <span className="px-1.5 py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption font-semibold shrink-0">Products</span>
                             )}
-                            {eff.includes('services') && (
-                              <span className="px-1.5 py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption font-semibold shrink-0">Services</span>
-                            )}
                           </>
                         );
                       })()}
@@ -336,7 +440,7 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
                 <button
                   className="h-9 px-space-sm rounded-lg bg-surface-container-low text-primary-container font-button-secondary text-button-secondary hover:bg-surface-container-high transition-colors flex items-center gap-1"
                   type="button"
-                  onClick={() => showToast(`Editing ${location.name}...`)}
+                  onClick={() => openEdit({ id: location.id, name: location.name, address: location.address, cluster: location.district, phone: '' })}
                 >
                   <Icon name="edit_location" className="text-[17px]" />
                   Edit
@@ -411,6 +515,239 @@ export function BusinessLocationsScreen({ onTab, onAddBranch, onAddLocation }: B
           </div>
         </section>
       </div>
+
+      {/* Mobile Branch Options Action Sheet */}
+      {optionsBranch && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-xs animate-fade-in" onClick={() => setOptionsBranch(null)}>
+          <div className="w-full max-w-lg bg-surface-canvas rounded-t-3xl p-space-md shadow-2xl border-t border-border-subtle space-y-2 animate-slide-up" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between pb-2 border-b border-border-subtle">
+              <div className="min-w-0">
+                <h4 className="font-heading-sm text-heading-sm text-text-primary truncate">{optionsBranch.name}</h4>
+                <p className="font-caption text-caption text-text-secondary truncate">{optionsBranch.address}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOptionsBranch(null)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-text-tertiary hover:text-text-primary"
+              >
+                <Icon name="close" className="text-[20px]" />
+              </button>
+            </div>
+
+            <div className="py-1 space-y-1">
+              <button
+                type="button"
+                onClick={() => openEdit(optionsBranch)}
+                className="w-full h-11 px-3 rounded-xl bg-surface-container-low hover:bg-surface-container-high text-on-surface font-label-md text-label-md font-semibold flex items-center gap-2.5 transition-colors"
+              >
+                <Icon name="edit_location" className="text-[18px] text-primary" />
+                <span>Edit Location</span>
+              </button>
+
+              {(() => {
+                const isCurrent = Boolean(
+                  (live && optionsBranch.id)
+                    ? (optionsBranch.id === activeBranchId || optionsBranch.id === operatingBranch?.id)
+                    : (
+                      optionsBranch.id === operatingBranch?.key ||
+                      optionsBranch.id === operatingBranch?.id ||
+                      optionsBranch.name === operatingBranch?.name
+                    )
+                );
+                if (isCurrent) return null;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const br = optionsBranch;
+                      setOptionsBranch(null);
+                      switchTo(br.id || br.key || br.name);
+                      showToast(`Switched operating view to ${br.name}`);
+                    }}
+                    className="w-full h-11 px-3 rounded-xl bg-surface-container-low hover:bg-surface-container-high text-on-surface font-label-md text-label-md font-semibold flex items-center gap-2.5 transition-colors"
+                  >
+                    <Icon name="sync_alt" className="text-[18px] text-secondary" />
+                    <span>Switch to this Operating View</span>
+                  </button>
+                );
+              })()}
+
+              <button
+                type="button"
+                onClick={() => {
+                  const br = optionsBranch;
+                  setOptionsBranch(null);
+                  setDeactivatingBranch(br);
+                }}
+                className={`w-full h-11 px-3 rounded-xl font-label-md text-label-md font-semibold flex items-center gap-2.5 transition-colors ${
+                  optionsBranch.status === 'Paused'
+                    ? 'bg-badge-discount-bg text-badge-discount-text'
+                    : 'bg-error-container text-on-error-container'
+                }`}
+              >
+                <Icon name="power_settings_new" className="text-[18px]" />
+                <span>{optionsBranch.status === 'Paused' ? 'Reactivate Location' : 'Deactivate Location'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Deactivate Location Danger Modal */}
+      {deactivatingBranch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
+          <div className="relative w-full max-w-md rounded-2xl bg-surface-canvas p-space-md shadow-2xl border border-border-subtle flex flex-col gap-space-sm">
+            <div className="flex items-start gap-space-sm">
+              <div className="w-10 h-10 rounded-xl bg-error-container text-error flex items-center justify-center shrink-0">
+                <Icon name="warning" className="text-[24px]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary">
+                  Deactivate Location?
+                </h3>
+                <p className="font-caption text-caption text-text-secondary mt-0.5 truncate">
+                  {deactivatingBranch.name}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeactivatingBranch(null)}
+                className="w-7 h-7 rounded-full flex items-center justify-center text-text-tertiary"
+              >
+                <Icon name="close" className="text-[18px]" />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-error-container/40 border border-error/20 space-y-1.5 text-xs text-on-error-container">
+              <p className="font-semibold flex items-center gap-1 text-on-error-container">
+                <Icon name="error" className="text-[16px] text-error" />
+                <span>Operational Impact of Deactivation</span>
+              </p>
+              <ul className="space-y-1 list-disc list-inside text-[11px] leading-relaxed">
+                <li>Storefront &amp; Deals: Customers cannot order or redeem vouchers here.</li>
+                <li>POS Walk-ins: Cashiers and tills at this outlet will be locked offline.</li>
+                <li>Staff Access: Staff cannot process shifts until reactivated.</li>
+              </ul>
+              <p className="text-[10px] text-text-secondary pt-1 border-t border-error/20">
+                Past receipts and sales logs remain safe. You can reactivate anytime.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-border-subtle">
+              <button
+                type="button"
+                onClick={() => setDeactivatingBranch(null)}
+                className="px-3 py-2 rounded-xl border border-border-subtle bg-surface-canvas text-text-primary font-button-secondary text-button-secondary text-xs"
+              >
+                Keep Active
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeactivate}
+                className="px-3 py-2 rounded-xl bg-error text-white font-button-primary text-button-primary text-xs shadow-sm flex items-center gap-1"
+              >
+                <Icon name="power_settings_new" className="text-[15px]" />
+                <span>Confirm Deactivation</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Edit Branch Modal */}
+      {editingBranch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in overflow-y-auto">
+          <div className="relative w-full max-w-md rounded-2xl bg-surface-canvas p-space-md shadow-2xl border border-border-subtle flex flex-col gap-space-sm my-6">
+            <div className="flex items-center justify-between pb-2 border-b border-border-subtle">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-surface-tint-blue text-primary flex items-center justify-center">
+                  <Icon name="edit_location" className="text-[18px]" />
+                </div>
+                <h3 className="font-heading-sm text-heading-sm font-bold text-text-primary">
+                  Edit Location
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingBranch(null)}
+                className="w-7 h-7 rounded-full flex items-center justify-center text-text-tertiary"
+              >
+                <Icon name="close" className="text-[18px]" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveMobileEdit} className="space-y-3">
+              <div>
+                <label className="block font-label-sm text-[12px] font-semibold text-text-primary mb-1">
+                  Branch Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border-subtle text-body-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+
+              <div>
+                <label className="block font-label-sm text-[12px] font-semibold text-text-primary mb-1">
+                  Street Address *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.address}
+                  onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border-subtle text-body-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+
+              <div>
+                <label className="block font-label-sm text-[12px] font-semibold text-text-primary mb-1">
+                  District / Area
+                </label>
+                <input
+                  type="text"
+                  value={editForm.district}
+                  onChange={(e) => setEditForm({ ...editForm, district: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border-subtle text-body-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+
+              <div>
+                <label className="block font-label-sm text-[12px] font-semibold text-text-primary mb-1">
+                  Phone Hotline
+                </label>
+                <input
+                  type="text"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl bg-surface-subtle border border-border-subtle text-body-md text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 font-mono"
+                  placeholder="+234 800 000 0000"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border-subtle">
+                <button
+                  type="button"
+                  onClick={() => setEditingBranch(null)}
+                  className="px-3 py-2 rounded-xl border border-border-subtle bg-surface-canvas text-text-primary font-button-secondary text-button-secondary text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="px-3 py-2 rounded-xl bg-primary text-on-primary font-button-primary text-button-primary text-xs shadow-sm flex items-center gap-1 disabled:opacity-50"
+                >
+                  {savingEdit ? 'Saving…' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
       {toast && (

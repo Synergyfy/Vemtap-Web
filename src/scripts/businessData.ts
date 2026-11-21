@@ -62,9 +62,24 @@ export function resolveBusinessPath(path: string): {
   // which the business page loads from `GET /public/businesses/code/:code`.
   const business = findBusinessBySlug(migratedSlug ?? rawSlug) ?? { slug: rawSlug, id: '', name: '', venue: 'urban' as const };
 
-  const section = shortLink ? 'products' : parts[1] ?? '';
-  if (section === 'products' && (parts[2] || url.searchParams.get('product'))) {
-    return { business, section, productId: decodeURIComponent(parts[2] ?? url.searchParams.get('product') ?? '') };
+  /**
+   * Short `/b/<code>` links carry their destination in the query string:
+   *   ?src=store-qr            → the business's storefront profile
+   *   ?category=<id>           → the product catalogue, filtered to that category
+   *   ?product=<id>            → that product's detail page
+   * A bare short link also opens the storefront profile.
+   */
+  const requestedProduct = url.searchParams.get('product');
+  if (requestedProduct) {
+    return { business, section: 'products', productId: decodeURIComponent(requestedProduct) };
+  }
+  const section = shortLink
+    ? url.searchParams.get('category')
+      ? 'products'
+      : ''
+    : parts[1] ?? '';
+  if (section === 'products' && parts[2]) {
+    return { business, section, productId: decodeURIComponent(parts[2]) };
   }
   if (section === 'services' && parts[2]) {
     return { business, section, serviceSlug: decodeURIComponent(parts[2]) };

@@ -20,7 +20,7 @@ const DEMO_IMAGE =
 const STOCK_STATES: { key: StockState; label: string; hint: string; chip: string; active: string }[] = [
   { key: 'in', label: 'In Stock', hint: 'Sells on register', chip: 'bg-badge-discount-bg text-badge-discount-text', active: 'bg-badge-discount-text text-white border-badge-discount-text' },
   { key: 'low', label: 'Low Stock', hint: 'Warns at 5 left', chip: 'bg-secondary-fixed text-on-secondary-fixed', active: 'bg-on-secondary-fixed text-white border-on-secondary-fixed' },
-  { key: 'out', label: 'Out of Stock', hint: '86’d for this shift', chip: 'bg-surface-container text-text-secondary', active: 'bg-text-secondary text-white border-text-secondary' },
+  { key: 'out', label: 'Out of Stock', hint: 'Sold out for this shift', chip: 'bg-surface-container text-text-secondary', active: 'bg-text-secondary text-white border-text-secondary' },
 ];
 
 export function BusinessPosProductShiftScreen({ onBack, onAddToSale }: BusinessPosProductShiftScreenProps) {

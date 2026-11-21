@@ -6,8 +6,7 @@ import { naira } from './catalogueData';
 import { businessMapEmbed, mapsLink, todayHours, usePublicBusiness, type PublicBusiness, type PublicCatalogueItem } from '../hooks/usePublicBusiness';
 import { offerDiscountLabel, offerEndsLabel, offerImage, realOfferId, type OfferRecord } from '../utils/homeOffer';
 import { SaveToggle } from '../components/SaveToggle';
-import { messageService } from '../services/messageService';
-import { ApiError, getAccessToken } from '../services/api/client';
+import { BusinessChatBox } from '../components/BusinessChatBox';
 import type { ClaimDealSummary } from '../components/desktop/dialogs/ClaimIdentityModal';
 
 export interface BusinessProfileScreenProps {
@@ -22,6 +21,10 @@ export interface BusinessProfileScreenProps {
   onOpenDeal?: (deal: ClaimDealSummary) => void;
   /** Opens the product/service page. */
   onOpenItem?: (itemId: string) => void;
+  /** Opens the business-specific public "See All" pages. */
+  onOpenDeals?: () => void;
+  onOpenProducts?: () => void;
+  onOpenServices?: () => void;
   /** Opens with the message box ready, for a chat started from Messages. */
   startChat?: boolean;
   /** A first message was sent from that box. */
@@ -68,6 +71,9 @@ interface ProfileProps {
   onClaim: BusinessProfileScreenProps['onClaim'];
   onOpenDeal?: BusinessProfileScreenProps['onOpenDeal'];
   onOpenItem?: BusinessProfileScreenProps['onOpenItem'];
+  onOpenDeals?: BusinessProfileScreenProps['onOpenDeals'];
+  onOpenProducts?: BusinessProfileScreenProps['onOpenProducts'];
+  onOpenServices?: BusinessProfileScreenProps['onOpenServices'];
   /** Opens with the message box ready, for a chat started from Messages. */
   startChat?: boolean;
   onChatStarted?: (branchId: string) => void;
@@ -90,69 +96,13 @@ const telHref = (phone: string) => `tel:${phone.replace(/[^\d+]/g, '')}`;
 const waHref = (phone: string) => `https://wa.me/${phone.replace(/[^\d]/g, '')}`;
 const webHref = (url: string) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
 
-/** Starts a real chat with the business's main branch (`POST /customer/messaging/threads/start`). */
-function InAppChat({ business, onClose, onStarted }: { business: PublicBusiness; onClose: () => void; onStarted?: (branchId: string) => void }) {
-  const [text, setText] = useState('');
-  const [state, setState] = useState<{ kind: 'idle' | 'sending' | 'sent' | 'error'; message?: string }>({ kind: 'idle' });
-  const send = async () => {
-    const branchId = business.branches[0]?.id;
-    if (!text.trim() || !branchId) return;
-    if (!getAccessToken()) {
-      setState({ kind: 'error', message: 'Please sign in to message this business.' });
-      return;
-    }
-    setState({ kind: 'sending' });
-    try {
-      await messageService.startConversation({ branchId, content: text.trim() });
-      setText('');
-      setState({ kind: 'sent' });
-      onStarted?.(branchId);
-    } catch (err) {
-      setState({ kind: 'error', message: err instanceof ApiError && err.message && !/^Request failed/.test(err.message) ? err.message : 'Your message couldn’t be sent. Please try again.' });
-    }
-  };
-  return (
-    <div className="mt-3 rounded-2xl bg-surface-canvas p-3 shadow-sm space-y-2">
-      {state.kind === 'sent' ? (
-        <div className="flex items-center justify-between gap-2">
-          <p role="status" className="font-body-md text-body-md text-badge-discount-text">Message sent to {business.name}. Replies appear in Messages.</p>
-          <button type="button" onClick={onClose} className="font-label-md text-label-md text-primary font-semibold shrink-0">Done</button>
-        </div>
-      ) : (
-        <>
-          <textarea
-            aria-label={`Message ${business.name}`}
-            rows={2}
-            maxLength={1000}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            placeholder={`Ask ${business.name} a question…`}
-            className="w-full resize-none rounded-xl bg-surface-subtle px-3 py-2 font-body-md text-body-md text-on-surface placeholder:text-text-tertiary outline-none"
-          />
-          <div className="flex items-center justify-between gap-2">
-            {state.kind === 'error' ? <p role="alert" className="font-caption text-caption text-error">{state.message}</p> : <span />}
-            <button
-              type="button"
-              disabled={!text.trim() || state.kind === 'sending'}
-              onClick={() => void send()}
-              className="h-9 px-4 rounded-xl bg-primary text-on-primary font-label-md text-label-md font-semibold disabled:opacity-50 shrink-0"
-            >
-              {state.kind === 'sending' ? 'Sending…' : 'Send'}
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 /** Contact buttons for the channels the business actually set up. */
 function ContactGrid({ business, chatOpen, onToggleChat, tone }: { business: PublicBusiness; chatOpen: boolean; onToggleChat: () => void; tone: 'urban' | 'spa' }) {
   const tile = tone === 'urban' ? 'bg-surface-canvas rounded-2xl p-3 shadow-sm' : 'p-space-xs rounded-xl bg-surface-subtle';
   const items: { key: string; label: string; icon: string; circle: string; href?: string; onClick?: () => void; active?: boolean }[] = [];
   if (business.phone) items.push({ key: 'call', label: 'Call', icon: 'call', circle: 'bg-surface-tint-blue text-primary', href: telHref(business.phone) });
-  if (business.branches.length > 0) items.push({ key: 'chat', label: 'In-App', icon: 'chat_bubble', circle: chatOpen ? 'bg-primary text-on-primary' : 'bg-surface-tint-blue text-primary', onClick: onToggleChat, active: chatOpen });
-  if (business.whatsapp) items.push({ key: 'wa', label: 'WhatsApp', icon: 'sms', circle: 'bg-badge-discount-bg text-badge-discount-text', href: waHref(business.whatsapp) });
+  if (business.branches.length > 0) items.push({ key: 'chat', label: 'In-App', icon: chatOpen ? 'vemtap-chat-white' : 'vemtap-chat', circle: chatOpen ? 'bg-primary text-on-primary' : 'bg-surface-tint-blue text-primary', onClick: onToggleChat, active: chatOpen });
+  if (business.whatsapp) items.push({ key: 'wa', label: 'WhatsApp', icon: 'whatsapp', circle: 'bg-badge-discount-bg text-badge-discount-text', href: waHref(business.whatsapp) });
   if (business.website) items.push({ key: 'web', label: 'Website', icon: 'language', circle: 'bg-surface-tint-blue text-primary', href: webHref(business.website) });
   if (items.length === 0) return null;
   const cols = ['grid-cols-1', 'grid-cols-2', 'grid-cols-3', 'grid-cols-4'][items.length - 1];
@@ -203,14 +153,47 @@ function HoursList({ business, rowClass }: { business: PublicBusiness; rowClass:
   );
 }
 
-function UrbanProfile({ business, deals, products, services, catalogueLoading, onClaim, onOpenDeal, onOpenItem, startChat, onChatStarted }: ProfileProps) {
+function UrbanProfile({ business, deals, products, services, catalogueLoading, onClaim, onOpenDeal, onOpenItem, onOpenDeals, onOpenProducts, onOpenServices, startChat, onChatStarted }: ProfileProps) {
+  // Product-only rollout: services are not rendered in this profile layout.
+  void services;
+  void onOpenServices;
   const [expanded, setExpanded] = useState(false);
   const [claimed, setClaimed] = useState<Record<string, boolean>>({});
   const [chatOpen, setChatOpen] = useState(Boolean(startChat));
   const bestDeal = [...deals].sort((a, b) => b.percent - a.percent)[0];
   const map = mapsLink(business);
   const embed = businessMapEmbed(business);
-  const catalogue = [...products, ...services];
+
+  const renderCatalogueCard = (item: PublicCatalogueItem) => (
+    <div
+      className="w-40 shrink-0 bg-surface-canvas rounded-2xl p-2.5 shadow-sm flex flex-col cursor-pointer"
+      key={item.id}
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpenItem?.(item.id)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpenItem?.(item.id);
+        }
+      }}
+    >
+      <div className="w-full h-28 rounded-xl overflow-hidden bg-surface-container-high mb-2 flex items-center justify-center">
+        {item.image ? (
+          <img alt={item.name} className="w-full h-full object-cover" src={item.image} />
+        ) : (
+          <Icon name={item.kind === 'service' ? 'room_service' : 'inventory_2'} className="text-[28px] text-outline" />
+        )}
+      </div>
+      <h4 className="font-label-md text-label-md text-text-primary font-medium truncate">{item.name}</h4>
+      <div className="flex items-center justify-between mt-1">
+        <span className="font-label-md text-label-md text-text-primary font-bold">{item.price > 0 ? naira(item.price) : ''}</span>
+        <span aria-hidden="true" className="w-6 h-6 rounded-full bg-surface-tint-blue text-primary flex items-center justify-center">
+          <Icon name="chevron_right" className="text-[16px]" />
+        </span>
+      </div>
+    </div>
+  );
 
   return (
     <main className="relative w-full pt-14 pb-safe bg-surface min-h-screen">
@@ -265,7 +248,7 @@ function UrbanProfile({ business, deals, products, services, catalogueLoading, o
           <button
             className={`${map ? 'col-span-7' : 'col-span-12'} h-[52px] rounded-2xl bg-primary-container text-on-primary font-button-primary text-button-primary flex items-center justify-center gap-2 shadow-md active:scale-[0.98] transition-transform`}
             type="button"
-            onClick={() => document.getElementById('business-deals-section')?.scrollIntoView({ behavior: 'smooth' })}
+            onClick={() => (onOpenDeals ? onOpenDeals() : document.getElementById('business-deals-section')?.scrollIntoView({ behavior: 'smooth' }))}
           >
             <Icon name="local_offer" className="text-[20px]" />
             <span>View Deals ({deals.length})</span>
@@ -302,6 +285,12 @@ function UrbanProfile({ business, deals, products, services, catalogueLoading, o
               <h3 className="font-heading-sm text-heading-sm text-text-primary">Active Deals</h3>
               {!catalogueLoading ? <span className="px-2 py-0.5 rounded-full bg-primary text-on-primary font-caption text-caption">{deals.length}</span> : null}
             </div>
+            {onOpenDeals ? (
+              <button type="button" onClick={onOpenDeals} className="font-label-md text-label-md text-primary font-semibold flex items-center gap-0.5 shrink-0">
+                See All
+                <Icon name="chevron_right" className="text-[16px]" />
+              </button>
+            ) : null}
           </div>
           <div className="px-margin flex flex-col gap-3">
             {catalogueLoading ? (
@@ -359,50 +348,53 @@ function UrbanProfile({ business, deals, products, services, catalogueLoading, o
             )}
           </div>
         </div>
-        {catalogueLoading || catalogue.length > 0 ? (
+        {catalogueLoading || products.length > 0 ? (
           <div className="mt-7">
             <div className="px-margin flex items-center justify-between mb-3">
-              <h3 className="font-heading-sm text-heading-sm text-text-primary">{services.length > 0 && products.length > 0 ? 'Products & Services' : services.length > 0 ? 'Services' : 'Products'}</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-heading-sm text-heading-sm text-text-primary">Products</h3>
+                {!catalogueLoading ? <span className="px-2 py-0.5 rounded-full bg-surface-subtle text-text-secondary font-caption text-caption">{products.length}</span> : null}
+              </div>
+              {onOpenProducts ? (
+                <button type="button" onClick={onOpenProducts} className="font-label-md text-label-md text-primary font-semibold flex items-center gap-0.5 shrink-0">
+                  See All
+                  <Icon name="chevron_right" className="text-[16px]" />
+                </button>
+              ) : null}
             </div>
             <div className="grid grid-rows-2 grid-flow-col auto-cols-[10rem] gap-3 overflow-x-auto px-margin no-scrollbar pb-1">
               {catalogueLoading
                 ? [0, 1, 2, 3].map((key) => <Skeleton key={key} className="w-40 h-44 rounded-2xl" />)
-                : catalogue.map((product) => (
-                    <div
-                      className="w-40 shrink-0 bg-surface-canvas rounded-2xl p-2.5 shadow-sm flex flex-col cursor-pointer"
-                      key={product.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => onOpenItem?.(product.id)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault();
-                          onOpenItem?.(product.id);
-                        }
-                      }}
-                    >
-                      <div className="w-full h-28 rounded-xl overflow-hidden bg-surface-container-high mb-2 flex items-center justify-center">
-                        {product.image ? (
-                          <img alt={product.name} className="w-full h-full object-cover" src={product.image} />
-                        ) : (
-                          <Icon name={product.kind === 'service' ? 'room_service' : 'inventory_2'} className="text-[28px] text-outline" />
-                        )}
-                      </div>
-                      <h4 className="font-label-md text-label-md text-text-primary font-medium truncate">{product.name}</h4>
-                      <div className="flex items-center justify-between mt-1">
-                        <span className="font-label-md text-label-md text-text-primary font-bold">{product.price > 0 ? naira(product.price) : ''}</span>
-                        <span aria-hidden="true" className="w-6 h-6 rounded-full bg-surface-tint-blue text-primary flex items-center justify-center">
-                          <Icon name="chevron_right" className="text-[16px]" />
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                : products.map(renderCatalogueCard)}
             </div>
           </div>
         ) : null}
+        {/* Product-only rollout: service section is hidden.
+        {catalogueLoading || services.length > 0 ? (
+          <div className="mt-7">
+            <div className="px-margin flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <h3 className="font-heading-sm text-heading-sm text-text-primary">Services</h3>
+                {!catalogueLoading ? <span className="px-2 py-0.5 rounded-full bg-surface-subtle text-text-secondary font-caption text-caption">{services.length}</span> : null}
+              </div>
+              {onOpenServices ? (
+                <button type="button" onClick={onOpenServices} className="font-label-md text-label-md text-primary font-semibold flex items-center gap-0.5 shrink-0">
+                  See All
+                  <Icon name="chevron_right" className="text-[16px]" />
+                </button>
+              ) : null}
+            </div>
+            <div className="grid grid-rows-2 grid-flow-col auto-cols-[10rem] gap-3 overflow-x-auto px-margin no-scrollbar pb-1">
+              {catalogueLoading
+                ? [0, 1, 2, 3].map((key) => <Skeleton key={key} className="w-40 h-44 rounded-2xl" />)
+                : services.map(renderCatalogueCard)}
+            </div>
+          </div>
+        ) : null}
+        */}
         <div className="px-margin mt-7">
           <ContactGrid business={business} chatOpen={chatOpen} onToggleChat={() => setChatOpen((open) => !open)} tone="urban" />
-          {chatOpen ? <InAppChat business={business} onClose={() => setChatOpen(false)} onStarted={onChatStarted} /> : null}
+          {chatOpen ? <BusinessChatBox business={business} onClose={() => setChatOpen(false)} onStarted={onChatStarted} /> : null}
         </div>
         {business.hours.length > 0 ? (
           <div className="px-margin mt-6">
@@ -477,7 +469,11 @@ function UrbanProfile({ business, deals, products, services, catalogueLoading, o
   );
 }
 
-function SpaProfile({ business, deals, services, catalogueLoading, onClaim, onOpenDeal, onOpenItem, startChat, onChatStarted }: ProfileProps) {
+function SpaProfile({ business, deals, services, catalogueLoading, onClaim, onOpenDeal, onOpenItem, onOpenDeals, onOpenServices, startChat, onChatStarted }: ProfileProps) {
+  // Product-only rollout: the spa (services-only) layout is never rendered.
+  void services;
+  void onOpenServices;
+  void onOpenItem;
   const [expanded, setExpanded] = useState(false);
   const [claimed, setClaimed] = useState<Record<string, boolean>>({});
   const [chatOpen, setChatOpen] = useState(Boolean(startChat));
@@ -485,7 +481,7 @@ function SpaProfile({ business, deals, services, catalogueLoading, onClaim, onOp
   const map = mapsLink(business);
   const embed = businessMapEmbed(business);
   const summary = business.description ?? '';
-  const scrollToDeals = () => document.getElementById('spa-deals-section')?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToDeals = () => (onOpenDeals ? onOpenDeals() : document.getElementById('spa-deals-section')?.scrollIntoView({ behavior: 'smooth' }));
 
   return (
     <main className="relative w-full pt-14 pb-safe bg-surface-canvas min-h-screen">
@@ -577,8 +573,14 @@ function SpaProfile({ business, deals, services, catalogueLoading, onClaim, onOp
             <div className="flex items-center gap-2">
               <Icon name="loyalty" className="text-primary text-[22px]" />
               <h3 className="font-heading-sm text-heading-sm text-text-primary">Active Deals</h3>
+              {!catalogueLoading ? <span className="text-primary font-label-md text-label-md">{deals.length}</span> : null}
             </div>
-            {!catalogueLoading ? <span className="text-primary font-label-md text-label-md">{deals.length}</span> : null}
+            {onOpenDeals ? (
+              <button type="button" onClick={onOpenDeals} className="font-label-md text-label-md text-primary font-semibold flex items-center gap-0.5 shrink-0">
+                See All
+                <Icon name="chevron_right" className="text-[16px]" />
+              </button>
+            ) : null}
           </div>
           <div className="flex flex-col gap-space-sm">
             {catalogueLoading ? (
@@ -635,13 +637,21 @@ function SpaProfile({ business, deals, services, catalogueLoading, onClaim, onOp
             )}
           </div>
         </div>
+        {/* Product-only rollout: the services section is hidden.
         <div className="h-2 w-full bg-surface-subtle" />
         <div className="py-space-md">
           <div className="px-margin flex items-center justify-between mb-space-sm">
             <div className="flex items-center gap-2">
               <Icon name="spa" className="text-primary text-[22px]" />
               <h3 className="font-heading-sm text-heading-sm text-text-primary">Services</h3>
+              {!catalogueLoading ? <span className="text-text-secondary font-label-sm text-label-sm">{services.length}</span> : null}
             </div>
+            {onOpenServices ? (
+              <button type="button" onClick={onOpenServices} className="font-label-md text-label-md text-primary font-semibold flex items-center gap-0.5 shrink-0">
+                See All
+                <Icon name="chevron_right" className="text-[16px]" />
+              </button>
+            ) : null}
           </div>
           <div className="grid grid-rows-2 grid-flow-col auto-cols-[11rem] gap-space-sm overflow-x-auto px-margin pb-space-xs no-scrollbar">
             {catalogueLoading
@@ -677,11 +687,12 @@ function SpaProfile({ business, deals, services, catalogueLoading, onClaim, onOp
                 ))}
           </div>
         </div>
+        */}
         <div className="h-2 w-full bg-surface-subtle" />
         <div className="px-margin py-space-md">
           <h3 className="font-heading-sm text-heading-sm text-text-primary mb-space-sm">Connect with {business.name}</h3>
           <ContactGrid business={business} chatOpen={chatOpen} onToggleChat={() => setChatOpen((open) => !open)} tone="spa" />
-          {chatOpen ? <InAppChat business={business} onClose={() => setChatOpen(false)} onStarted={onChatStarted} /> : null}
+          {chatOpen ? <BusinessChatBox business={business} onClose={() => setChatOpen(false)} onStarted={onChatStarted} /> : null}
         </div>
         {business.hours.length > 0 ? (
           <>
@@ -747,7 +758,7 @@ function SpaProfile({ business, deals, services, catalogueLoading, onClaim, onOp
   );
 }
 
-export function BusinessProfileScreen({ business: selected, onBack, onClaim, onOpenDeal, onOpenItem, startChat, onChatStarted }: BusinessProfileScreenProps) {
+export function BusinessProfileScreen({ business: selected, onBack, onClaim, onOpenDeal, onOpenItem, onOpenDeals, onOpenProducts, onOpenServices, startChat, onChatStarted }: BusinessProfileScreenProps) {
   const [linkCopied, setLinkCopied] = useState(false);
   const { business, deals, products, services, loading, catalogueLoading, error, reload } = usePublicBusiness(selected?.slug ?? null);
   const liveDeals = useMemo(() => deals.map(toLiveDeal).filter((deal): deal is LiveDeal => Boolean(deal)), [deals]);
@@ -789,8 +800,8 @@ export function BusinessProfileScreen({ business: selected, onBack, onClaim, onO
     );
   }
 
-  // Businesses that only offer services use the services (spa) layout; everyone else the store layout.
-  const servicesOnly = !catalogueLoading && services.length > 0 && products.length === 0;
+  // Product-only rollout: the services-only (spa) layout is never used.
+  const servicesOnly = false;
 
   return (
     <AppScreen>
@@ -845,9 +856,9 @@ export function BusinessProfileScreen({ business: selected, onBack, onClaim, onO
           </SkeletonGroup>
         </main>
       ) : servicesOnly ? (
-        <SpaProfile business={business} deals={liveDeals} products={products} services={services} catalogueLoading={catalogueLoading} onClaim={onClaim} onOpenDeal={onOpenDeal} onOpenItem={onOpenItem} startChat={startChat} onChatStarted={onChatStarted} />
+        <SpaProfile business={business} deals={liveDeals} products={products} services={services} catalogueLoading={catalogueLoading} onClaim={onClaim} onOpenDeal={onOpenDeal} onOpenItem={onOpenItem} onOpenDeals={onOpenDeals} onOpenProducts={onOpenProducts} onOpenServices={onOpenServices} startChat={startChat} onChatStarted={onChatStarted} />
       ) : (
-        <UrbanProfile business={business} deals={liveDeals} products={products} services={services} catalogueLoading={catalogueLoading} onClaim={onClaim} onOpenDeal={onOpenDeal} onOpenItem={onOpenItem} startChat={startChat} onChatStarted={onChatStarted} />
+        <UrbanProfile business={business} deals={liveDeals} products={products} services={services} catalogueLoading={catalogueLoading} onClaim={onClaim} onOpenDeal={onOpenDeal} onOpenItem={onOpenItem} onOpenDeals={onOpenDeals} onOpenProducts={onOpenProducts} onOpenServices={onOpenServices} startChat={startChat} onChatStarted={onChatStarted} />
       )}
     </AppScreen>
   );

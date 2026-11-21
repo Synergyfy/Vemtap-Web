@@ -18,6 +18,14 @@ export class UpdateBusinessDto {
   @IsOptional()
   name?: string;
 
+  @ApiPropertyOptional({
+    example: 'Wuse II Branch',
+    description: 'Owner-facing name for this business location',
+  })
+  @IsString()
+  @IsOptional()
+  branchName?: string;
+
   @ApiPropertyOptional({ example: 'uuid' })
   @IsOptional()
   @IsUUID()
@@ -79,6 +87,14 @@ export class UpdateBusinessDto {
   @IsOptional()
   @IsString()
   address?: string;
+
+  @ApiPropertyOptional({
+    example: 'Abuja Municipal • Wuse II',
+    description: 'Neighbourhood or district for the main branch',
+  })
+  @IsOptional()
+  @IsString()
+  district?: string;
 
   @ApiPropertyOptional({ example: 6.5244, description: 'Latitude coordinate' })
   @IsOptional()

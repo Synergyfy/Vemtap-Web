@@ -6,6 +6,7 @@ import { useBusinessBranch } from '../../context/BusinessBranchContext';
 export const posKeys = {
   all: ['pos'] as const,
   register: () => [...posKeys.all, 'register'] as const,
+  registerHistory: () => [...posKeys.all, 'register-history'] as const,
   zReport: () => [...posKeys.all, 'z-report'] as const,
   tills: (branchId?: string) => [...posKeys.all, 'tills', branchId ?? 'all'] as const,
   summary: () => [...posKeys.all, 'summary'] as const,
@@ -25,6 +26,15 @@ export function useRegisterStatus() {
 
 export function useZReport(enabled: boolean) {
   return useQuery({ queryKey: posKeys.zReport(), queryFn: posService.zReport, enabled: live() && enabled });
+}
+
+/** Drawer records for the current cashier (or the whole business for owners). */
+export function useRegisterHistory(enabled: boolean) {
+  return useQuery({
+    queryKey: posKeys.registerHistory(),
+    queryFn: () => posService.registerHistory().then((res) => res.data),
+    enabled: live() && enabled,
+  });
 }
 
 export function usePosTills() {
@@ -82,9 +92,9 @@ export function usePosMutations() {
     refresh([...posKeys.all, 'sales'], posKeys.register(), posKeys.summary(), posKeys.tills(), ['catalogue-items'], ['pos-dashboard']);
   };
   return {
-    openRegister: useMutation({ mutationFn: posService.openRegister, onSuccess: () => refresh(posKeys.register(), [...posKeys.all, 'tills'], posKeys.summary()) }),
-    closeRegister: useMutation({ mutationFn: posService.closeRegister, onSuccess: () => refresh(posKeys.register(), posKeys.zReport(), [...posKeys.all, 'tills'], posKeys.summary()) }),
-    cashDrop: useMutation({ mutationFn: posService.cashDrop, onSuccess: () => refresh(posKeys.register(), posKeys.zReport()) }),
+    openRegister: useMutation({ mutationFn: posService.openRegister, onSuccess: () => refresh(posKeys.register(), posKeys.registerHistory(), [...posKeys.all, 'tills'], posKeys.summary()) }),
+    closeRegister: useMutation({ mutationFn: posService.closeRegister, onSuccess: () => refresh(posKeys.register(), posKeys.registerHistory(), posKeys.zReport(), [...posKeys.all, 'tills'], posKeys.summary()) }),
+    cashDrop: useMutation({ mutationFn: posService.cashDrop, onSuccess: () => refresh(posKeys.register(), posKeys.registerHistory(), posKeys.zReport()) }),
     createTill: useMutation({ mutationFn: posService.createTill, onSuccess: () => refresh([...posKeys.all, 'tills'], posKeys.summary()) }),
     // Never paused offline: a failed attempt is what moves the sale into the offline queue.
     completeSale: useMutation({ mutationFn: (body: NewSaleInput) => posService.completeSale(body), onSuccess: afterSale, networkMode: 'always' }),

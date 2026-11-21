@@ -1,15 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Icon } from './ui/Icon';
-import { SERVICE_LOCATIONS, type ServiceLocation } from '../scripts/serviceStudioShared';
+import type { ServiceLocation } from '../scripts/serviceStudioShared';
 
 interface ServiceLocationSelectorModalProps {
   isOpen: boolean;
   selectedLocations: string[];
-  /**
-   * Live: the business's own branches to pick from. When omitted (or empty),
-   * the demo-only sample list is used so the dev build without an API stays
-   * usable; real deployments always pass their branches.
-   */
+  /** The business's own branches to pick from. No sample branches are substituted. */
   locations?: ServiceLocation[];
   onSave: (locations: string[]) => void;
   onClose: () => void;
@@ -30,8 +26,7 @@ export function ServiceLocationSelectorModal({
 
   if (!isOpen) return null;
 
-  const availableLocations =
-    locations && locations.length > 0 ? locations : SERVICE_LOCATIONS;
+  const availableLocations = locations ?? [];
   const eligibleLocations = availableLocations.filter((loc) => loc.eligible);
   const allEligibleSelected =
     eligibleLocations.length > 0 &&
@@ -111,6 +106,11 @@ export function ServiceLocationSelectorModal({
           </div>
 
           <div className="flex flex-col gap-2.5">
+            {availableLocations.length === 0 && (
+              <p className="rounded-xl bg-surface-subtle p-4 font-caption text-caption text-text-secondary">
+                No branches yet — add your business locations in your business profile first.
+              </p>
+            )}
             {availableLocations.map((loc) => {
               const isSelected = selected.includes(loc.id);
               return (

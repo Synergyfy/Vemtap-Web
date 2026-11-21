@@ -30,7 +30,8 @@ const MOCK_LATENCY_MS = 600;
 const randomToken = () => `VEMINV${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 
 export function buildCustomerInviteUrl(businessSlug: string, token: string): string {
-  return `https://vemtap.com/join/${encodeURIComponent(businessSlug)}?invite=${encodeURIComponent(token)}`;
+  const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : 'https://vemtap.com';
+  return `${origin}/join/${encodeURIComponent(businessSlug)}?invite=${encodeURIComponent(token)}`;
 }
 
 const offlineError = () => new Error('You appear to be offline. Reconnect and try generating the invite again.');
@@ -49,12 +50,21 @@ export async function generateCustomerInvite(business: BusinessProfileRef = URBA
         '/business-customers/invites',
         { channels: ['link', 'qr'] },
       );
-      const slug = new URL(response.url).pathname.split('/').filter(Boolean).pop() ?? '';
+      let inviteUrl = response.url;
+      try {
+        if (typeof window !== 'undefined' && window.location?.origin) {
+          const parsed = new URL(response.url);
+          inviteUrl = `${window.location.origin}${parsed.pathname}${parsed.search}`;
+        }
+      } catch {
+        inviteUrl = response.url;
+      }
+      const slug = new URL(inviteUrl).pathname.split('/').filter(Boolean).pop() ?? '';
       return {
         businessSlug: decodeURIComponent(slug),
         businessName: response.merchantName,
         token: response.token,
-        url: response.url,
+        url: inviteUrl,
         createdAt: Date.now(),
         isPlaceholder: false,
       };
@@ -78,6 +88,7 @@ export async function generateCustomerInvite(business: BusinessProfileRef = URBA
 export interface InviteLookup {
   businessName: string;
   valid: boolean;
+  logoUrl?: string | null;
 }
 
 /** Resolves the business behind a join link; `null` for an unknown link. */
@@ -86,17 +97,17 @@ export async function lookupCustomerInvite(businessSlug: string, inviteToken: st
 
   if (hasApiConfig()) {
     try {
-      const invite = await api.get<{ merchantName: string; valid: boolean }>(
+      const invite = await api.get<{ merchantName: string; valid: boolean; logoUrl?: string | null }>(
         `/public/customer-invites/${encodeURIComponent(inviteToken)}`,
       );
-      return { businessName: invite.merchantName, valid: invite.valid };
+      return { businessName: invite.merchantName, valid: invite.valid, logoUrl: invite.logoUrl };
     } catch {
       return null;
     }
   }
 
   const business = findBusinessBySlug(businessSlug);
-  return business ? { businessName: business.name, valid: true } : null;
+  return business ? { businessName: business.name, valid: true, logoUrl: null } : null;
 }
 
 export interface InviteRegistrationInput {

@@ -4,10 +4,11 @@ import { useBusinessFeatures } from '../../context/BusinessFeaturesContext';
 import { useBusinessOfferings } from '../../context/BusinessOfferingsContext';
 import {
   BUSINESS_SIDEBAR_SECTIONS,
-  filterSidebarSections,
   resolveSidebarActive,
   type BusinessSidebarSubItem,
 } from './businessSidebarConfig';
+import { filterSidebarSectionsForUser } from '../staffPageAccess';
+import { useSessionUser } from '../../hooks/useSessionUser';
 
 const RAIL_TOP: Record<'16' | '20', string> = { '16': 'top-16', '20': 'top-20' };
 
@@ -30,11 +31,14 @@ export function BusinessSectionNavRail({
 }: BusinessSectionNavRailProps) {
   const { features } = useBusinessFeatures();
   const { offerings, mode } = useBusinessOfferings();
+  const session = useSessionUser().data;
   const { itemKey: activeItemKey } = resolveSidebarActive(active);
   const badgeFor = useNavBadges();
-  const section = filterSidebarSections(BUSINESS_SIDEBAR_SECTIONS, (id) => Boolean(features[id])).find(
-    (item) => item.key === sectionKey,
-  );
+  const section = filterSidebarSectionsForUser(
+    BUSINESS_SIDEBAR_SECTIONS,
+    (id) => Boolean(features[id]),
+    session,
+  ).find((item) => item.key === sectionKey);
   const items = section?.items?.filter((item) => {
     if (item.key === 'business-catalog') return offerings.hasProducts;
     if (item.key === 'business-services') return offerings.hasServices;

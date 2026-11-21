@@ -130,7 +130,7 @@ export function DesktopSpaBookingScreen({ onNav, onBack, onChat }: DesktopSpaBoo
                           onClick={() => setRouteMessages(onNav)}
                           className="px-4 py-2 rounded-xl bg-primary text-on-primary font-label-md text-label-md font-semibold shadow-sm hover:bg-primary/90 transition-colors flex items-center gap-2"
                         >
-                          <Icon name="chat" className="text-[18px]" />
+                          <Icon name="vemtap-chat-white" className="text-[18px]" />
                           <span>Chat with Reception</span>
                         </button>
                         <button
@@ -549,7 +549,7 @@ export function DesktopSpaBookingScreen({ onNav, onBack, onChat }: DesktopSpaBoo
                     onClick={onChat}
                     className="w-full py-3 rounded-xl bg-surface-subtle hover:bg-surface-container text-on-surface font-label-md text-label-md font-semibold transition-colors flex items-center justify-center gap-2"
                   >
-                    <Icon name="chat" className="text-[18px]" />
+                    <Icon name="vemtap-chat" className="text-[18px]" />
                     <span>Direct Chat with Reception</span>
                   </button>
                   <button

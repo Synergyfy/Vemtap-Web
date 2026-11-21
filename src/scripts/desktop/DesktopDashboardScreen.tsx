@@ -3,7 +3,6 @@ import { useMemo, useState } from 'react';
 import { Icon } from '../../components/ui/Icon';
 import { DesktopPage, type DesktopNavKey } from '../../components/ui/DesktopChrome';
 import { AnnouncementBanner } from '../../components/AnnouncementBanner';
-import { useBooking } from '../../context/BookingContext';
 import { activeVouchers, useClaims, voucherExpiryLabel, type ClaimRecord } from '../../context/ClaimsContext';
 import { useLocation } from '../../context/LocationContext';
 import { useOrders } from '../../context/OrdersContext';
@@ -24,7 +23,6 @@ interface DesktopDashboardScreenProps {
   /** Opens the contact options for this voucher's business. */
   onContact: (claim: ClaimRecord) => void;
   onOpenOrder: (ref: string) => void;
-  onOpenBooking: () => void;
   onScan: () => void;
 }
 
@@ -98,7 +96,7 @@ const toActiveDeal = (claim: ClaimRecord) => {
     save: saved > 0 ? `Save ${formatCurrency(saved)}` : '',
     id: `Code: ${claim.code}`,
     secondAction: 'Contact Business',
-    secondIcon: 'chat',
+    secondIcon: 'vemtap-chat',
     image: claim.dealImage || NO_IMAGE,
     alt: `${claim.dealTitle} by ${claim.dealBusiness}`,
   };
@@ -111,14 +109,12 @@ export function DesktopDashboardScreen({
   onShowPass,
   onContact,
   onOpenOrder,
-  onOpenBooking,
   onScan,
 }: DesktopDashboardScreenProps) {
   const canSwitch = useCanSwitchToBusiness();
   const { fullName } = useProfile();
   const { district, city, radius } = useLocation();
   const { orders } = useOrders();
-  const { appointments } = useBooking();
   const { claims } = useClaims();
   const { totalSaved, tier, savedCount, unreadMessages, recommended, nearbyBusinessCount } = useCustomerDashboard();
   const firstName = fullName.trim().split(/\s+/)[0] || 'there';
@@ -129,12 +125,11 @@ export function DesktopDashboardScreen({
   const activeDeals = useMemo(() => vouchers.slice(0, 2).map(toActiveDeal), [vouchers]);
   const activeDealCount = vouchers.length;
   const openOrders = orders.filter((order) => !['completed', 'cancelled', 'refunded'].includes(order.status)).length;
-  const upcomingBookings = appointments.filter((appointment) => appointment.status === 'confirmed').length;
   const shortcuts = [
     { icon: 'confirmation_number', label: 'My Deals & Vouchers', iconBg: 'bg-surface-tint-blue text-primary', trail: activeDealCount > 0 ? ('dot' as const) : ('chevron' as const), target: 'my-deals' as DesktopNavKey },
-    { icon: 'receipt_long', label: 'Orders & Bookings', iconBg: 'bg-surface-subtle text-text-secondary', trail: 'text' as const, trailText: `${openOrders + upcomingBookings} Active`, target: 'orders' as DesktopNavKey },
+    { icon: 'receipt_long', label: 'Orders', iconBg: 'bg-surface-subtle text-text-secondary', trail: 'text' as const, trailText: `${openOrders} Active`, target: 'orders' as DesktopNavKey },
     { icon: 'bookmark', label: 'Saved Items & Stores', iconBg: 'bg-surface-subtle text-text-secondary', trail: 'text' as const, trailText: String(savedCount), target: 'cart' as DesktopNavKey },
-    { icon: 'chat', label: 'Merchant In-App Chats', iconBg: 'bg-badge-discount-bg text-badge-discount-text', trail: unreadMessages > 0 ? ('badge' as const) : ('chevron' as const), trailText: `${unreadMessages} new`, target: 'messages' as DesktopNavKey },
+    { icon: 'vemtap-chat', label: 'Merchant In-App Chats', iconBg: 'bg-surface-tint-blue text-primary', trail: unreadMessages > 0 ? ('badge' as const) : ('chevron' as const), trailText: `${unreadMessages} new`, target: 'messages' as DesktopNavKey },
     { icon: 'manage_accounts', label: 'Account & Security', iconBg: 'bg-surface-subtle text-text-secondary', trail: 'chevron' as const, target: 'account-settings' as DesktopNavKey },
   ];
   const nearbyLabel = nearbyBusinessCount === null ? null : nearbyBusinessCount >= NEARBY_BUSINESS_LIMIT ? `${NEARBY_BUSINESS_LIMIT}+` : String(nearbyBusinessCount);
@@ -183,19 +178,6 @@ export function DesktopDashboardScreen({
         bubble: 'bg-badge-discount-bg opacity-70',
       },
       {
-        label: 'Bookings',
-        value: String(appointments.length),
-        suffix: appointments.length === 1 ? 'Booking' : 'Bookings',
-        suffixClass: 'text-primary',
-        note: appointments.length > 0 ? 'Latest appointment in your account' : 'No bookings yet',
-        noteStrong: '',
-        noteIcon: '',
-        noteIconClass: '',
-        icon: 'calendar_today',
-        iconBg: 'bg-surface-container text-primary',
-        bubble: 'bg-surface-container-high opacity-60',
-      },
-      {
         label: 'Orders',
         value: String(orders.length),
         suffix: orders.length === 1 ? 'Order' : 'Orders',
@@ -209,7 +191,7 @@ export function DesktopDashboardScreen({
         bubble: 'bg-surface-container-high opacity-60',
       },
     ],
-    [activeDealCount, totalSaved, appointments.length, orders.length],
+    [activeDealCount, totalSaved, orders.length],
   );
 
   const handleAnnouncementNavigate = (destination: AnnouncementDestination, item: Announcement) => {
@@ -460,7 +442,7 @@ export function DesktopDashboardScreen({
                     <div className="flex items-center gap-2">
                       <Icon name="history" className="text-primary text-[24px]" />
                       <h2 className="font-heading-lg text-heading-lg text-text-primary">
-                        Recent Orders &amp; Bookings
+                        Recent Orders
                       </h2>
                     </div>
                     <button
@@ -473,55 +455,16 @@ export function DesktopDashboardScreen({
                     </button>
                   </div>
 
-                  {appointments.length === 0 && orders.length === 0 ? (
+                  {orders.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-border-subtle bg-surface-canvas p-6 text-center shadow-sm">
                       <p className="font-heading-sm text-heading-sm text-text-primary mb-1">No recent activity</p>
                       <p className="font-body-md text-body-md text-text-secondary">
-                        Your orders and bookings will appear here.
+                        Your orders will appear here.
                       </p>
                     </div>
                   ) : (
                     <>
-                      {appointments.slice(0, 1).map((appointment) => (
-                        <div key={appointment.ref} className="bg-surface-canvas rounded-xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative overflow-hidden">
-                          <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-primary-container" />
-                          <div className="flex items-start gap-4 pl-1">
-                            <div className="w-12 h-12 rounded-xl bg-surface-tint-blue flex items-center justify-center text-primary shrink-0">
-                              <Icon name="spa" className="text-[26px]" />
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-surface-tint-blue text-primary font-caption text-caption font-bold">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-primary" />
-                                  <span>{appointment.status === 'confirmed' ? 'UPCOMING APPOINTMENT' : appointment.status.toUpperCase()}</span>
-                                </span>
-                                <span className="font-caption text-caption text-text-tertiary">• Booking #{appointment.ref}</span>
-                              </div>
-                              <h3 className="font-heading-sm text-heading-sm text-text-primary">{appointment.merchantName || 'Booked service'}</h3>
-                              <p className="font-body-md text-body-md text-text-secondary mt-0.5">
-                                {appointment.serviceNames.join(' & ') || 'Service booking'}
-                              </p>
-                              <p className="font-caption text-caption text-text-tertiary mt-0.5 flex items-center gap-1.5">
-                                <Icon name="schedule" className="text-[14px]" />
-                                <span>{appointment.dateShort || appointment.dateLong || 'Schedule pending'} • {appointment.time || 'Time pending'}</span>
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex flex-col sm:flex-row md:flex-col items-end gap-2 w-full md:w-auto shrink-0 pt-1 md:pt-0">
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-badge-discount-bg text-badge-discount-text font-label-sm text-label-sm font-semibold rounded-full">
-                              <Icon name="check_circle" className="text-[14px]" />
-                              <span>{appointment.status === 'confirmed' ? 'Confirmed by Host' : appointment.status}</span>
-                            </span>
-                            <button
-                              onClick={onOpenBooking}
-                              className="w-full md:w-auto px-4 py-2 rounded-xl bg-surface-subtle hover:bg-surface text-text-primary font-label-md text-label-md transition-colors text-center"
-                              type="button"
-                            >
-                              View Booking Details
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                      {/* Product-only rollout: appointment cards are hidden. */}
 
                       {orders.slice(0, 1).map((order) => (
                         <div key={order.ref} className="bg-surface-canvas rounded-xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative overflow-hidden">

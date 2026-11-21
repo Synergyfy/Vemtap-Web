@@ -12,6 +12,7 @@ export interface CatalogueItem {
   description?: string | null;
   mainImage?: string | null;
   galleryImages?: string[] | null;
+  videos?: string[] | null;
   category?: { id: string; name: string } | null;
   categoryId?: string | null;
   status: string;
@@ -63,6 +64,8 @@ export interface BookingRules {
 export interface CatalogueItemInput {
   name: string;
   loyaltyPointsValue?: number;
+  loyaltyPoints?: number;
+  enableLoyaltyPoints?: boolean;
   description: string;
   price?: number;
   compareAtPrice?: number;
@@ -70,6 +73,7 @@ export interface CatalogueItemInput {
   shortDescription?: string;
   mainImage?: string;
   galleryImages?: string[];
+  videos?: string[];
   categoryId?: string;
   sku?: string;
   barcode?: string | null;
@@ -205,6 +209,10 @@ export interface ProductDraftLike {
   variantsEnabled?: boolean;
   /** Uploaded photo URL (live). */
   mainImage?: string;
+  /** Additional gallery photo URLs (up to 4 optional photos). */
+  galleryImages?: string[];
+  /** Uploaded video URLs (live). */
+  videos?: string[];
   /** Only real (UUID) category ids are sent; demo slugs are ignored. */
   categoryId?: string;
   /** How customers can get it (unset on drafts saved before this existed). */
@@ -247,6 +255,8 @@ export function productDraftToInput(draft: ProductDraftLike, branchId: string, e
     : toPrice(draft.stock);
   return clean({
     loyaltyPointsValue: toPrice(draft.loyaltyPoints),
+    loyaltyPoints: toPrice(draft.loyaltyPoints),
+    enableLoyaltyPoints: Boolean(toPrice(draft.loyaltyPoints) && toPrice(draft.loyaltyPoints)! > 0),
     name: draft.title.trim(),
     // The backend requires a description; fall back to the name.
     description: draft.description.trim() || draft.title.trim(),
@@ -261,6 +271,8 @@ export function productDraftToInput(draft: ProductDraftLike, branchId: string, e
     allowBackOrder: draft.backorder,
     brand: draft.unbranded ? undefined : draft.producer?.trim() || undefined,
     mainImage: extra.mainImage ?? draft.mainImage,
+    galleryImages: draft.galleryImages?.length ? draft.galleryImages.slice(0, 4) : undefined,
+    videos: draft.videos?.length ? draft.videos : undefined,
     categoryId: extra.categoryId ?? apiCategoryId(draft.categoryId),
     variants: productVariants(draft),
     tags: draft.tags?.length ? draft.tags : undefined,
@@ -281,6 +293,7 @@ export interface ServiceDraftLike {
   deliveryFormat: 'in-salon' | 'mobile' | 'both';
   skuCode?: string;
   image?: string;
+  videos?: string[];
   categoryId?: string;
   bufferMins?: number;
   tiersEnabled?: boolean;
@@ -333,6 +346,8 @@ export function serviceDraftToInput(draft: ServiceDraftLike, branchId: string, e
   }) as BookingRules;
   return clean({
     loyaltyPointsValue: toPrice(draft.loyaltyPoints),
+    loyaltyPoints: toPrice(draft.loyaltyPoints),
+    enableLoyaltyPoints: Boolean(toPrice(draft.loyaltyPoints) && toPrice(draft.loyaltyPoints)! > 0),
     name: draft.title.trim(),
     description: draft.description.trim() || draft.title.trim(),
     price: toPrice(draft.standardPrice) ?? toPrice(draft.basePrice),
@@ -344,6 +359,7 @@ export function serviceDraftToInput(draft: ServiceDraftLike, branchId: string, e
     isBookable: true,
     bookingMethod: 'vemtap' as const,
     mainImage: image,
+    videos: draft.videos?.length ? draft.videos : undefined,
     categoryId: extra.categoryId ?? apiCategoryId(draft.categoryId),
     variants: tiers,
     priceType: tiers ? ('starting_from' as const) : ('fixed' as const),
@@ -392,6 +408,8 @@ export function itemToProductDraft(item: CatalogueItem) {
     title: item.name,
     description: item.description ?? '',
     mainImage: item.mainImage ?? undefined,
+    galleryImages: item.galleryImages ?? undefined,
+    videos: item.videos ?? undefined,
     categoryId: item.categoryId ?? item.category?.id ?? undefined,
     primaryCategory: item.category?.name ?? '',
     producer: item.brand ?? '',
@@ -429,6 +447,7 @@ export function itemToServiceDraft(item: CatalogueItem) {
     title: item.name,
     description: item.description ?? '',
     image: item.mainImage ?? '',
+    videos: item.videos ?? undefined,
     categoryId: item.categoryId ?? item.category?.id ?? undefined,
     primaryCategory: item.category?.name ?? '',
     basePrice: money(item.price),

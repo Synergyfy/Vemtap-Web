@@ -534,7 +534,7 @@ export function BusinessDealStudioStep2Screen({
           type="button"
           onClick={onBack}
         >
-          Back to Step 1
+          {studio.strategy === 'current' ? 'Change Deal Price' : 'Back to Step 1'}
         </button>
         <button
           className="h-[52px] flex-1 bg-primary-container text-on-primary font-button-primary text-button-primary rounded-xl shadow-[0_8px_24px_-4px_rgba(6,108,244,0.25)] active:scale-[0.98] transition-all flex items-center justify-center gap-space-xs"

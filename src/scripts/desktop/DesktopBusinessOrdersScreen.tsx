@@ -281,8 +281,6 @@ export function DesktopBusinessOrdersScreen({
                   <option value="Category QR">Category QR Code</option>
                   <option value="Product QR">Product QR Code</option>
                   <option value="Deal">Deals &amp; Promotions</option>
-                  <option value="Service">Services &amp; Appointments</option>
-                  <option value="Booking">Bookings &amp; Tables</option>
                   <option value="Cluster">Cluster Discovery</option>
                   <option value="POS Walk-in">POS Walk-in</option>
                 </select>
@@ -723,7 +721,7 @@ export function DesktopBusinessOrdersScreen({
                           className="p-1.5 rounded-lg text-primary hover:bg-surface-tint-blue transition-colors"
                           title="Message customer"
                         >
-                          <Icon name="chat" className="text-[18px]" />
+                          <Icon name="vemtap-chat" className="text-[18px]" />
                         </button>
                       </div>
                     </div>
@@ -741,6 +739,7 @@ export function DesktopBusinessOrdersScreen({
           limit={50}
           branchId={branchFilter === 'all' ? null : branchFilter}
           search={searchQuery}
+          allowRedeem
         />
       </div>
 

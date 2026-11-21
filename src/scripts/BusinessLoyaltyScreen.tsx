@@ -14,14 +14,20 @@ import {
   type LoyaltyTierFilter,
 } from '../hooks/business/useLoyaltyDesk';
 import {
+  birthdayRuleLabel,
   DEFAULT_BONUS,
+  EDITABLE_RULE_FIELDS,
   earnsOnSpend,
   earnsOnVisit,
+  referralRuleLabel,
   rewardRedeemedLabel,
   rewardStatus,
+  ruleEditValues,
+  rulePatchFromValues,
   ruleTypeFor,
   spendRuleLabel,
   statValue,
+  type EarningRuleKey,
 } from './loyaltyLive';
 
 interface BusinessLoyaltyScreenProps {
@@ -77,6 +83,8 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
   const [bulkPointsValue, setBulkPointsValue] = useState('50');
   const [bulkSaving, setBulkSaving] = useState(false);
 
+  const [editingRule, setEditingRule] = useState<EarningRuleKey | null>(null);
+  const [ruleDraft, setRuleDraft] = useState<Record<string, number>>({});
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -113,13 +121,13 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
         },
         {
           key: 'birthday',
-          label: `+${(data.birthdayBonus || DEFAULT_BONUS.birthdayBonus).toLocaleString('en-US')} birthday points`,
+          label: birthdayRuleLabel(data),
           desc: 'Credited during the member birthday week',
           enabled: data.birthdayBonus > 0,
         },
         {
           key: 'referral',
-          label: `+${(data.referralBonus || DEFAULT_BONUS.referralBonus).toLocaleString('en-US')} points for referrals`,
+          label: referralRuleLabel(data),
           desc: 'When a referred guest makes a first order',
           enabled: data.referralBonus > 0,
         },
@@ -153,6 +161,18 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
     }
     const field = key === 'birthday' ? 'birthdayBonus' : 'referralBonus';
     saveRules({ [field]: on ? 0 : data[field] || DEFAULT_BONUS[field] }, 'Earning rule updated');
+  };
+
+  const startRuleEdit = (key: EarningRuleKey) => {
+    if (!data || updateRules.isPending) return;
+    setEditingRule(key);
+    setRuleDraft(ruleEditValues(data, key));
+  };
+
+  const saveRuleEdit = (key: EarningRuleKey) => {
+    if (!data || updateRules.isPending) return;
+    saveRules(rulePatchFromValues(key, ruleDraft), 'Earning rule updated');
+    setEditingRule(null);
   };
 
   // Search runs on the API; the tier pills narrow the loaded customers.
@@ -618,29 +638,83 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
                     </span>
                   )}
                   {rules.map((rule) => (
-                    <div key={rule.key} className="py-2 flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <span className="text-[11px] font-bold text-on-surface block truncate">{rule.label}</span>
-                        <span className="text-[10px] text-text-tertiary block truncate">{rule.desc}</span>
+                    <div key={rule.key} className="py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="text-[11px] font-bold text-on-surface block truncate">{rule.label}</span>
+                          <span className="text-[10px] text-text-tertiary block truncate">{rule.desc}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => startRuleEdit(rule.key)}
+                            disabled={!data || updateRules.isPending}
+                            className="text-[10px] font-semibold text-primary"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleRule(rule.key)}
+                            disabled={!data || updateRules.isPending}
+                            aria-label={`${rule.enabled ? 'Turn off' : 'Turn on'} ${rule.label}`}
+                            className={`w-8 h-4.5 rounded-full relative shrink-0 transition-colors ${
+                              rule.enabled ? 'bg-primary' : 'bg-surface-container-highest'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${
+                                rule.enabled ? 'left-4' : 'left-0.5'
+                              }`}
+                            />
+                          </button>
+                        </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => toggleRule(rule.key)}
-                        disabled={updateRules.isPending}
-                        aria-label={`${rule.enabled ? 'Turn off' : 'Turn on'} ${rule.label}`}
-                        className={`w-8 h-4.5 rounded-full relative shrink-0 transition-colors ${
-                          rule.enabled ? 'bg-primary' : 'bg-surface-container-highest'
-                        }`}
-                      >
-                        <span
-                          className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${
-                            rule.enabled ? 'left-4' : 'left-0.5'
-                          }`}
-                        />
-                      </button>
+                      {editingRule === rule.key && (
+                        <div className="mt-2 pt-2 border-t border-border/60 grid grid-cols-2 gap-2">
+                          {EDITABLE_RULE_FIELDS[rule.key].map((field) => (
+                            <label key={field.field} className="flex flex-col gap-1">
+                              <span className="text-[10px] text-text-tertiary">{field.label}</span>
+                              <input
+                                type="number"
+                                min={field.min}
+                                value={ruleDraft[field.field] ?? field.min}
+                                onChange={(event) =>
+                                  setRuleDraft((prev) => ({ ...prev, [field.field]: Number(event.target.value) }))
+                                }
+                                className="w-full px-2 py-1.5 rounded-lg bg-surface-subtle border border-border text-[11px] text-on-surface"
+                              />
+                            </label>
+                          ))}
+                          <div className="col-span-2 flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setEditingRule(null)}
+                              className="px-2 py-1 rounded-lg border border-border text-[10px] font-semibold text-text-secondary"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={updateRules.isPending}
+                              onClick={() => saveRuleEdit(rule.key)}
+                              className="px-2 py-1 rounded-lg bg-primary text-on-primary text-[10px] font-semibold disabled:opacity-60"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => showToast('Custom earning rules are not available yet. Edit the live rules above instead.')}
+                  className="w-full py-2 rounded-xl border border-dashed border-primary/30 text-[11px] font-semibold text-primary"
+                >
+                  + Add custom earning rule
+                </button>
               </div>
             )}
 
@@ -1075,9 +1149,8 @@ export function BusinessLoyaltyScreen({ onTab, onOpenRewards }: BusinessLoyaltyS
                 onChange={(e) => setBulkTarget(e.target.value as any)}
                 className="w-full h-8 px-2.5 rounded-xl border border-border bg-surface-container-lowest text-[11px] text-on-surface focus:outline-hidden focus:border-primary"
               >
-                <option value="all">All Items (Products &amp; Services)</option>
+                <option value="all">All Products</option>
                 <option value="product">Products Only</option>
-                <option value="service">Services Only</option>
               </select>
             </div>
 

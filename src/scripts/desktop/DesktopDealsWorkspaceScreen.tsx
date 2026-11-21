@@ -1,14 +1,14 @@
 import { useState, type ReactNode } from 'react';
 import { FilterMenu } from '../../components/FilterMenu';
 import { Icon } from '../../components/ui/Icon';
+import { DealClaimsLedger } from '../../components/DealClaimsLedger';
 import { MerchantPortalChrome } from './MerchantPortalChrome';
 import type { BusinessPortalNavKey } from './BusinessPortalChrome';
 import { hasApiConfig } from '../../services/api/client';
-import { useOfferMutations, useOfferSummary, useOffers } from '../../hooks/business/useOffers';
+import { useOfferSummary, useOffers } from '../../hooks/business/useOffers';
 import { DealEndDialog, type DealEndRequest } from '../../components/DealEndDialog';
 import { useBusinessAnalytics } from '../../hooks/business/useBusinessAnalytics';
 import { useBusinessBranch } from '../../context/BusinessBranchContext';
-import { apiErrorMessage } from '../../services/errorMessages';
 import type { BusinessOffer } from '../../services/offersService';
 import {
   dealBadgeLabel,
@@ -238,13 +238,20 @@ export function DesktopDealsWorkspaceScreen({
   const [search, setSearch] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
 
-  const togglePause = (key: string) => setPausedDeals((prev) => ({ ...prev, [key]: !prev[key] }));
+  const requestDemoPauseToggle = (key: string, name: string) => {
+    const isPaused = Boolean(pausedDeals[key]);
+    setEndRequest({
+      kind: isPaused ? 'resume' : 'pause',
+      dealGroupId: key,
+      name,
+      onDemoConfirm: () => setPausedDeals((prev) => ({ ...prev, [key]: !prev[key] })),
+    });
+  };
 
   // Live: the active branch's real deals and deal totals; demo keeps the sample cards.
   const live = hasApiConfig();
   const offersQuery = useOffers();
   const summaryQuery = useOfferSummary();
-  const offerMutations = useOfferMutations();
   const locations = useBusinessAnalytics('locations', 30);
   const { branches, branch: activeBranch, switchTo } = useBusinessBranch();
   const liveOffers = offersQuery.data ?? [];
@@ -259,11 +266,15 @@ export function DesktopDealsWorkspaceScreen({
   const totalRedeemed = liveOffers.reduce((sum, offer) => sum + (offer.redeemedCount ?? 0), 0);
   const naira = (value: number) => `₦${Math.round(value).toLocaleString('en-US')}`;
   const groupId = (offer: BusinessOffer) => offer.dealGroupId ?? offer.id;
-  const toggleLivePause = (offer: BusinessOffer) =>
-    offerMutations.setStatus.mutate(
-      { id: offer.id, status: isOfferPaused(offer) ? 'active' : 'inactive' },
-      { onError: (error) => showLiveToast(apiErrorMessage(error, 'Could not update this deal.')) },
-    );
+  const requestLivePauseToggle = (offer: BusinessOffer) => {
+    const paused = isOfferPaused(offer);
+    setEndRequest({
+      kind: paused ? 'resume' : 'pause',
+      dealGroupId: groupId(offer),
+      offerId: offer.id,
+      name: offer.name,
+    });
+  };
 
   /**
    * The deal cards further down are composed inline rather than mapped from a
@@ -585,7 +596,7 @@ export function DesktopDealsWorkspaceScreen({
                 <DealCard
                   key={offer.id}
                   paused={paused}
-                  onPause={() => toggleLivePause(offer)}
+                  onPause={() => requestLivePauseToggle(offer)}
                   onEdit={() => onEditDeal?.(groupId(offer))}
                   onMore={() => onOpenDealDetail?.(groupId(offer))}
                   menu={[
@@ -679,7 +690,7 @@ export function DesktopDealsWorkspaceScreen({
           {!live && matchesDeal('wuse') && (
           <DealCard
             paused={!!pausedDeals.wuse}
-            onPause={() => togglePause('wuse')}
+            onPause={() => requestDemoPauseToggle('wuse', 'Weekend Prime Lunch Combo')}
             onEdit={() => onEditDeal?.()}
             onMore={() => undefined}
             image="https://lh3.googleusercontent.com/aida-public/AB6AXuApQ5ezQVyveoZZcJBH3RCv1zTnsyXz1eB4gQsiSmUjF1rc9P6BWIY1fEHizr7Gp4SSU5XgX6laUsXhmlrpJ1SGAN-uZoc-7dghtPWCIsUhAmZyYYNgEZgOi2C3DS3lb40N1JpN-35efQm9XfDEpKq94wKX8ekrYsbuCMFcQ03I2-vFrBbTNtJn5LSN5g7AtddvEkUa1Heq9Z8ge_NzW0MXEqj-Nl9AGw7mQ_RCFN_MdCFtg04Ux3t3Nw"
@@ -748,7 +759,7 @@ export function DesktopDealsWorkspaceScreen({
           {!live && matchesDeal('smash') && (
           <DealCard
             paused={!!pausedDeals.smash}
-            onPause={() => togglePause('smash')}
+            onPause={() => requestDemoPauseToggle('smash', 'Double Smash Cheeseburger Deal')}
             onEdit={() => onEditDeal?.()}
             onMore={() => undefined}
             accent={<span className="absolute top-0 left-0 right-0 h-1 bg-primary" />}
@@ -822,7 +833,7 @@ export function DesktopDealsWorkspaceScreen({
           {!live && matchesDeal('chill') && (
           <DealCard
             paused={!!pausedDeals.chill}
-            onPause={() => togglePause('chill')}
+            onPause={() => requestDemoPauseToggle('chill', 'Sunset Cocktail Pitcher Special')}
             onEdit={() => onEditDeal?.()}
             onMore={() => undefined}
             image="https://lh3.googleusercontent.com/aida-public/AB6AXuCsG2QZ-uo912K8TVQkQhIj5Eaafr4k-vp_gNAFMoQVgSsuzXXuPDxdVWsgBfgf04RIyTsS4wzy3hIITuulPvRUnvFtziOHyAn9DwzQcEct6pB1rHG6so3k5CVbtVALoIX3DxJg2gqqYGZByq4-1r1ShE035TX3J-ospKAQx5fpg8nbBpI3JIjbpQjK3lEeoPKqxRSHsabElJ9bupNK8WN40johtun9h5THcwdU-CHb1ANvlZqZGaY44g"
@@ -972,6 +983,15 @@ export function DesktopDealsWorkspaceScreen({
             </table>
           </div>
         </section>
+
+        {/* Live Deal Claims & Vouchers Ledger */}
+        <DealClaimsLedger
+          title="Recent Deal Claims & Vouchers"
+          limit={50}
+          branchId={activeBranch.key ? activeBranch.key : null}
+          search={search}
+          allowRedeem
+        />
 
         {/* 0% VEMTAP Commission Guarantee */}
         <section className="bg-gradient-to-r from-surface-tint-blue via-surface-container to-surface-tint-blue rounded-2xl p-space-lg shadow-[0_4px_24px_-4px_rgba(6,108,244,0.12)] flex flex-col lg:flex-row items-center justify-between gap-space-lg">
